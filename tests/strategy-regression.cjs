@@ -71,10 +71,10 @@ function boot() {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'military,warReadiness,targetOpportunity,targetEconomics,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,economy,economicNeeds,economicAnchors,portCoastalAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
+    'military,warReadiness,targetOpportunity,targetEconomics,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'setWarWait:n=>warWaitSince=n,setEconFails:n=>failedEconomyProbes=n,',
-    'setPending:p=>pendingAttack=p,',
+    'setPending:p=>pendingAttack=p,setLastBattle:p=>lastBattle=p,',
     'setWar:(id,name)=>warState={id,name,since:game.ticks(),blockedUntil:-Infinity},',
     'setGroups:groups=>strategic.groups=groups,',
     'setBoats:yes=>opts.boats=yes,setBoatCtor:C=>ctors.boat=C,',
@@ -82,7 +82,7 @@ function boot() {
     'setMode:m=>strategic.mode=m,setAllianceCtor:C=>ctors.alliance=C,',
     'setNukePending:p=>nukePending=p,',
     'setPerf:(combat,border,economy)=>runtime={...runtime,combatMs:combat,borderMs:border,economyMs:economy},',
-    'state:()=>({pendingAttack,attackReceipts,warState,gameEnd,diagnostics,spawnState,spawnCache,spawnJob,economicStatus,failedEconomyProbes,investmentStatus,pendingBoat,pendingWarship,marineStats,portProbeFailures,strategic,winStatus,incomeStatus,fleetStatus,strategicTelemetry,defenseStatus,defenseStats,autoTuning,nukeShots,nukeAttempts,nukeUnconfirmed,nukePending,lastProposalTick,diplomacyStatus,diplomacyPending:[...diplomacyPending.values()],retreatRequests:[...retreatRequests.values()]}),opts};'
+    'state:()=>({pendingAttack,attackReceipts,warState,lastBattle,gameEnd,diagnostics,spawnState,spawnCache,spawnJob,economicStatus,failedEconomyProbes,investmentStatus,pendingBoat,pendingWarship,marineStats,portProbeFailures,strategic,winStatus,incomeStatus,fleetStatus,strategicTelemetry,defenseStatus,defenseStats,autoTuning,nukeShots,nukeAttempts,nukeUnconfirmed,nukePending,lastProposalTick,diplomacyStatus,diplomacyPending:[...diplomacyPending.values()],retreatRequests:[...retreatRequests.values()]}),opts};'
   ].join('\n');
   vm.runInNewContext(source.replace(anchor, expose + '\n' + anchor), context, {timeout:2000});
   win.__test.setup(game, {emit:event=>sent.push(event)}, {attack:Attack, build:Build});
@@ -113,7 +113,7 @@ function boot() {
     const x=boot();
     x.b.setPending({id:'weak',name:'weak',tick:200,amount:500,
       ownLand:1200,enemyLand:900,beforeIds:[],beforeTroops:0});
-    x.out.push({id:'new',targetID:'weak',troops:500,retreating:false});
+    x.out.push({id:'new',targetID:2,troops:500,retreating:false});
     x.b.confirmAttack(x.me,210);
     assert.equal(x.b.state().warState.id,'weak');
   });
@@ -227,7 +227,7 @@ function boot() {
   await check('minor incoming attack does not trigger 25 percent retreat loss', () => {
     const x=boot();class Cancel{constructor(attackID){this.attackID=attackID;}}
     x.b.setCancelCtor(Cancel);
-    x.out.push({id:'valuable-war',targetID:'weak',troops:40000,retreating:false});
+    x.out.push({id:'valuable-war',targetID:2,troops:40000,retreating:false});
     x.me.incomingAttacks=()=>[{id:'enemy-1',attackerID:2,troops:12000,retreating:false}];
     assert.equal(x.b.emergencyRetreat(x.me,300,x.b.military(x.me,[])),false);
     assert.equal(x.sent.length,0);
@@ -235,7 +235,7 @@ function boot() {
   await check('emergency recalls attacks despite a full action budget', () => {
     const x=boot();class Cancel{constructor(attackID){this.attackID=attackID;}}
     x.b.setCancelCtor(Cancel);x.b.setBudget(72);
-    x.out.push({id:'front-1',targetID:'weak',troops:33000,retreating:false});
+    x.out.push({id:'front-1',targetID:2,troops:33000,retreating:false});
     x.me.incomingAttacks=()=>[{id:'enemy-1',attackerID:2,troops:77000,retreating:false}];
     assert.equal(x.b.emergencyRetreat(x.me,300,x.b.military(x.me,[])),true);
     assert.equal(x.sent[0].attackID,'front-1');
@@ -1002,7 +1002,7 @@ function boot() {
     const x=boot();x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Medium'});
     x.b.setPending({id:'weak',name:'weak',tick:250,amount:12000,
       ownLand:1200,enemyLand:900,beforeIds:[],beforeTroops:0});
-    x.out.push({id:'front',targetID:'weak',troops:12000,retreating:false});
+    x.out.push({id:'front',targetID:2,troops:12000,retreating:false});
     x.b.confirmAttack(x.me,301);
     assert.equal(x.b.coordinatedWar(),true);
     assert.equal(x.b.state().warState.id,'weak');
@@ -1015,7 +1015,7 @@ function boot() {
   });
   await check('v1.10.2 Public Medium war director adopts existing attack', () => {
     const x=boot();x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Medium'});
-    x.out.push({id:'attack-1',targetID:'weak',troops:20000,retreating:false});
+    x.out.push({id:'attack-1',targetID:2,troops:20000,retreating:false});
     x.b.manageWar(x.me,[{id:'weak',opponent:x.weak}],
       x.b.military(x.me,[]),300);
     assert.equal(x.b.state().warState.id,'weak');
