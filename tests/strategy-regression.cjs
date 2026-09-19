@@ -361,7 +361,7 @@ function boot() {
     x.weak.troops=()=>17594;x.strong.troops=()=>102839;
     const groups=[{id:'weak',opponent:x.weak,front:10,tiles:[5]},
       {id:'strong',opponent:x.strong,front:10,tiles:[6]}];
-    x.incoming.push({id:'in',attackerID:3,targetID:1,troops:20000,retreating:false});
+    x.me.incomingAttacks().push({id:'in',attackerID:3,targetID:1,troops:20000,retreating:false});
     const st=x.b.military(x.me,groups);
     assert.equal(x.b.targetOpportunity(x.me,groups,st,groups[0]),false);
     assert.equal(x.b.warReadiness(x.me,groups,st,184).ready,false);
@@ -400,9 +400,9 @@ function boot() {
       strongest:85000,committed:0,reserve:0,available:0});
     x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
       type,canBuild:tile,canUpgrade:false,cost:BigInt(type==='Defense Post'?50000:250000)}))});
-    const needs=x.b.economicNeeds(x.me,units,[250]);
+    const needs=x.b.economicNeeds(x.me,units,[5500]);
     assert.equal(needs.immediate,true);
-    assert.equal(await x.b.economy(x.me,2400,0,[250]),true);
+    assert.equal(await x.b.economy(x.me,2400,0,[5500]),true);
     assert.equal(x.sent[0].unit,'Defense Post');
   });
   await check('issue #4 Transport is legal, Transport Ship is not', async () => {
