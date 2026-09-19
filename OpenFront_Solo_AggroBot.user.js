@@ -701,7 +701,7 @@
       if(p.id!==null){
         lastBattle={id:p.id,name:p.name,tick:p.tick,
           enemyLand:p.enemyLand,ownLand:p.ownLand};
-        if(hardMode()&&warState.id===null){
+        if(coordinatedWar()&&warState.id===null){
           warState={id:p.id,name:p.name,since:tick,blockedUntil:-Infinity};
           log('HAUPTKRIEGSZIEL BESTÄTIGT → '+p.name);
         }
@@ -735,7 +735,7 @@
   // in the first two minutes. All own outgoing attacks and incoming threats
   // are examined before committing to a new enemy.
   function manageWar(me,items,s,tick) {
-    if(!opts.impossibleMode)return;
+    if(!coordinatedWar())return;
     if(pendingAttack && pendingAttack.id!==null)return;
     const foes=items.filter(x=>x.id!==null && x.opponent?.isAlive?.());
     const active=s.out.filter(a=>a.targetID!==null&&a.targetID!==0 && !a.retreating);
@@ -940,7 +940,7 @@
     return items.flatMap(item=>{
       const enemy=item.opponent,key=item.id===null?'neutral':String(item.id);
       if(enemy && !enemy.isAlive?.())return [];
-      if(enemy && hardMode() && (
+      if(enemy && coordinatedWar() && (
         (pendingAttack?.id!==null && pendingAttack?.id!==undefined && pendingAttack.id!==item.id) ||
         (isWar() && item.id!==warState.id) || tick<warState.blockedUntil ||
         !context.readiness?.ready || !targetOpportunity(me,items,s,item) ||
@@ -965,7 +965,7 @@
         const minimumRatio=enemyOpportunityRatio(enemy,late,s.home,effectivePlan()==='Blitz');
         if(s.ratio<(late?.29:.40) || available<enemyTroops*minimumRatio ||
           s.home<enemyTroops*(hardMode()?(late?1.45:1.85):(late?1.24:1.45)) ||
-          (hardMode() && s.home-Math.min(available*.76,
+          (coordinatedWar() && s.home-Math.min(available*.76,
             Math.max(enemyTroops*1.57,available*.48))<otherThreat*.58) ||
           enemyTroops<=0 && enemyTiles<=0)return [];
       }
@@ -1119,7 +1119,7 @@
       try{attacker=game.playerBySmallID?.(a.attackerID);}catch(_){continue;}
       if(!attacker?.isPlayer?.()||friendly(attacker,me))continue;
       const id=safeID(attacker),key=String(id),their=number(()=>attacker.troops(),Infinity);
-      if(hardMode()&&isWar()&&id!==warState.id)continue;
+      if(coordinatedWar()&&isWar()&&id!==warState.id)continue;
       const spare=s.available;
       if(spare<Math.max(500,their*1.25)||
          tick-(cooldowns.get(key)??-Infinity)<160)continue;
@@ -1156,9 +1156,19 @@
       if(item.fallout && (fresh.incoming>0 ||
         fresh.strongest>fresh.home*.65 || fresh.ratio<.60 ||
         fresh.available<fresh.home*.30))continue;
-      if(item.id!==null && hardMode() && (!warReadiness(me,strategic.groups,fresh,tick,item).ready ||
+      if(item.id!==null && coordinatedWar() && (!warReadiness(me,strategic.groups,fresh,tick,item).ready ||
         !targetOpportunity(me,strategic.groups,fresh,item) ||
         (isWar()&&warState.id!==item.id)))continue;
+      // Re-read the live relation after the async worker legality probe.
+      if(item.id!==null){
+        const current=game.playerViews?.().find(p=>safeID(p)===item.id);
+        if(!current?.isAlive?.()||friendly(current,me)||
+          (coordinatedWar()&&isWar()&&warState.id!==item.id)){
+          telemetry('attack_allied_skip','Angriff nach Allianz-/Frontwechsel verhindert',
+            {target:item.id,friendly:!!current&&friendly(current,me)});
+          continue;
+        }
+      }
       const amount=Math.min(item.amount,fresh.available,
         item.id===null ? neutralAttackAmount(fresh,clamp(setting('aggressive'),40,100)/100) : Math.floor(fresh.available*(hardMode()?.76:.8)));
       if(amount<100)continue;
@@ -2161,7 +2171,7 @@
     const foes=game.playerViews().filter(p=>safeID(p)!==safeID(me)&&p.isAlive?.()&&
       !friendly(p,me)&&Number.isInteger(p.state?.spawnTile)&&
       // The naval planner must obey the single-front war director as well.
-      (!hardMode() || !isWar() || safeID(p)===warState.id));
+      (!coordinatedWar() || !isWar() || safeID(p)===warState.id));
     foes.sort((a,b)=>number(()=>a.troops())-number(()=>b.troops()));
     for(const foe of foes.slice(0,6)){
       if(spare<number(()=>foe.troops(),Infinity)*1.9 ||
