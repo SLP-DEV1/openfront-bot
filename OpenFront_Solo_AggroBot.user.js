@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.9.2
+// @version      1.9.3
 // @description  Singleplayer autopilot: Impossible-focused singleplayer AI: one-front warfare, economy, nukes, SAM coverage, verified autonomous diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -11,10 +11,10 @@
 
 (() => {
   'use strict';
-  if (window.__ofSoloAggroBot192) return;
-  window.__ofSoloAggroBot192 = true;
+  if (window.__ofSoloAggroBot193) return;
+  window.__ofSoloAggroBot193 = true;
 
-  const VERSION = '1.9.2', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v192';
+  const VERSION = '1.9.3', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v193';
   const defaults = {enabled:false, aggressive:78, reserve:35, actionsPerMinute:72,
     economy:true, boats:false, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -24,7 +24,7 @@
   try { opts = {...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; }
   catch (_) {opts = {...defaults};}
   try {if(!localStorage.getItem(KEY)){
-    opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
+    opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v192')||localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
     // Only import user-adjustable preferences, never a previously enabled bot.
   }}catch(_){}
   opts.enabled = false;                         // Never auto-start after reload.
@@ -61,6 +61,8 @@
   let pendingAttack=null,attackReceipts={confirmed:0,unconfirmed:0,territoryGained:0};
   let failedEconomyProbes=0,successfulEconomyTick=-Infinity,warWaitSince=-Infinity;
   let investmentStatus='Grundaufbau',lastWarReview=-Infinity;
+  let defenseStatus='Keine Bedrohung',lastEmergencyRetreat=-Infinity,lastDefenseLog=-Infinity;
+  let retreatRequests=new Map(),defenseStats={retreatsOrdered:0,retreatsObserved:0,unconfirmed:0};
   const hardMode=()=>opts.impossibleMode && game?.config?.().gameConfig?.().difficulty==='Impossible';
   const isWar=()=>warState.id!==null;
   function telemetry(kind,message,extra={}) {
@@ -78,10 +80,11 @@
       options:{...opts,enabled:false},attackReceipts, pendingAttack,
       construction:{pending:economicPending,blocked:[...economicBlocked.entries()],failedProbes:failedEconomyProbes,lastConfirmed:successfulEconomyTick,investment:investmentStatus},
       war:{...warState},military:troopSnapshot,
+      defense:{status:defenseStatus,stats:defenseStats,pendingRetreats:[...retreatRequests.values()]},
       diplomacy:{status:diplomacyStatus,stats:diplomacyStats,pending:[...diplomacyPending.values()]},records:diagnostics,createdAt:new Date().toISOString()};
     const blob=new Blob([JSON.stringify(details,null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download='OpenFront_AggroBot_1.9.2_Diagnose.json';document.body.append(a);a.click();a.remove();
+    a.href=url;a.download='OpenFront_AggroBot_1.9.3_Diagnose.json';document.body.append(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),2000);
   }
 
@@ -91,7 +94,7 @@
     try {return g?.config?.().gameConfig?.().gameType === 'Singleplayer' &&
       !g.config().isReplay?.();} catch (_) {return false;}
   };
-  const conflicts = () => !!(window.__ofSoloAggroBot1 || window.__ofSoloAggroBot11 || window.__ofSoloAggroBot12 || window.__ofSoloAggroBot13 || window.__ofSoloAggroBot14 || window.__ofSoloAggroBot15 || window.__ofSoloAggroBot16 || window.__ofSoloAggroBot17 || window.__ofSoloAggroBot18 || window.__ofSoloAggroBot181 || window.__ofSoloAggroBot190 || window.__ofSoloAggroBot191);
+  const conflicts = () => !!(window.__ofSoloAggroBot1 || window.__ofSoloAggroBot11 || window.__ofSoloAggroBot12 || window.__ofSoloAggroBot13 || window.__ofSoloAggroBot14 || window.__ofSoloAggroBot15 || window.__ofSoloAggroBot16 || window.__ofSoloAggroBot17 || window.__ofSoloAggroBot18 || window.__ofSoloAggroBot181 || window.__ofSoloAggroBot190 || window.__ofSoloAggroBot191 || window.__ofSoloAggroBot192);
   function advisorConflict() {
     if (!window.__openfrontSpawnAdvisorV104) return false;
     try {const s=JSON.parse(localStorage.getItem('openfront-spawn-advisor-10.4')||'{}');
@@ -120,16 +123,17 @@
   function recognize(b) {
     const result={};
     if(!(b?.listeners instanceof Map)) return result;
-    const names={spawn:'SendSpawnIntentEvent',attack:'SendAttackIntentEvent',
+    const names={spawn:'SendSpawnIntentEvent',attack:'SendAttackIntentEvent',cancel:'CancelAttackIntentEvent',
       boat:'SendBoatAttackIntentEvent',build:'BuildUnitIntentEvent',
       upgrade:'SendUpgradeStructureIntentEvent',
       alliance:'SendAllianceRequestIntentEvent',reject:'SendAllianceRejectIntentEvent'};
-    const possibilities={spawn:[],attack:[],boat:[],build:[],upgrade:[],alliance:[],reject:[]};
+    const possibilities={spawn:[],attack:[],cancel:[],boat:[],build:[],upgrade:[],alliance:[],reject:[]};
     for(const C of b.listeners.keys()) {
       if(typeof C!=='function') continue;
       for(const [key,n] of Object.entries(names)) if(C.name===n) result[key]=C;
       try {const o=new C(4812);if(o?.tile===4812 && Object.keys(o).length===1) possibilities.spawn.push(C);}catch(_){}
       try {const o=new C('__BOT_PROBE__',4812);if(o?.targetID==='__BOT_PROBE__' && o?.troops===4812) possibilities.attack.push(C);}catch(_){}
+      try {const o=new C('__BOT_CANCEL__');if(o?.attackID==='__BOT_CANCEL__' && Object.keys(o).length===1)possibilities.cancel.push(C);}catch(_){}
       try {const o=new C(4812,1824);if(o?.dst===4812 && o?.troops===1824) possibilities.boat.push(C);}catch(_){}
       try {const o=new C('City',4812);if(o?.unit==='City' && o?.tile===4812) possibilities.build.push(C);}catch(_){}
       try {const o=new C(4812,'City',1);if(o?.unitId===4812 && o?.unitType==='City') possibilities.upgrade.push(C);}catch(_){}
@@ -163,6 +167,8 @@
     nukeBusy=false;lastNuke=-Infinity;nukePending=null;nukeStatus='Warte auf Silo';nukeShots=0;nuclearCache=null;nuclearCacheTick=-Infinity;
     warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};diagnostics=[];lastDiagnosticTick=-Infinity;combatAwaiting=null;
     investmentStatus='Grundaufbau';lastWarReview=-Infinity;
+    defenseStatus='Keine Bedrohung';lastEmergencyRetreat=-Infinity;lastDefenseLog=-Infinity;
+    retreatRequests.clear();defenseStats={retreatsOrdered:0,retreatsObserved:0,unconfirmed:0};
     opts.enabled=false;persist();
     status=single(g)?'Singleplayer erkannt · Bot starten':'Multiplayer/Replay · gesperrt';
     log(status);
@@ -631,24 +637,98 @@
     }
     return null;
   }
+  // OpenFront counters incoming attacks against the same opponent 1:1;
+  // leaving troops at home usually preserves the Defense Post bonus.
+  // Retreating a player attack costs 25% and returns after ~20 game ticks.
+  function defenseAssessment(me,s,tick) {
+    const hostile=s.inc.filter(a=>{
+      try {const p=game.playerBySmallID?.(a.attackerID);
+        return !p || !friendly(p,me);}catch(_){return true;}
+    });
+    const incoming=hostile.reduce((sum,a)=>sum+a.troops,0);
+    const home=Math.max(1,s.home),ratio=incoming/home;
+    const samples=troopSamples.filter(x=>tick-x.tick<=110);
+    const prev=samples[0],land=number(()=>me.numTilesOwned(),0);
+    const landLoss=prev&&prev.tiles>0?Math.max(0,(prev.tiles-land)/prev.tiles):0;
+    return {incoming,ratio,landLoss,hostile,
+      severe:ratio>=.43||(ratio>=.23&&landLoss>=.035),
+      critical:ratio>=.80||(ratio>=.40&&landLoss>=.075)};
+  }
+  function refreshRetreats(s,tick) {
+    const active=new Map(s.out.map(a=>[a.id,a]));
+    for(const [id,request] of retreatRequests){
+      const a=active.get(id);
+      if(!a || a.retreating){
+        retreatRequests.delete(id);defenseStats.retreatsObserved++;
+        telemetry('defense_retreat_confirmed','Rückzug im Spielzustand sichtbar',
+          {attackID:id,target:request.target,retreating:!!a});
+      } else if(tick-request.tick>=65){
+        retreatRequests.delete(id);defenseStats.unconfirmed++;
+        telemetry('defense_retreat_unconfirmed','Rückzug nicht bestätigt',
+          {attackID:id,target:request.target});
+      }
+    }
+  }
+  function emergencyRetreat(me,tick,s) {
+    refreshRetreats(s,tick);
+    const threat=defenseAssessment(me,s,tick);
+    if(!threat.incoming){defenseStatus='Keine eingehenden Angriffe';return false;}
+    defenseStatus='Eingehend '+Math.floor(threat.incoming/10)+' · Heim '+
+      Math.floor(s.home/10)+' · '+Math.round(threat.ratio*100)+'%';
+    if(!opts.defense||!threat.severe)return false;
+    if(!ctors.cancel){
+      defenseStatus+=' · Rückzug-Event nicht gefunden';
+      if(tick-lastDefenseLog>=100){lastDefenseLog=tick;
+        telemetry('defense_unavailable',defenseStatus,{incoming:threat.incoming,committed:s.committed});}
+      return false;
+    }
+    const candidates=s.out.filter(a=>typeof a.id==='string'&&a.troops>0&&
+      !a.retreating&&!retreatRequests.has(a.id));
+    if(!candidates.length){defenseStatus+=' · Keine rückrufbaren Angriffe';return false;}
+    if(tick-lastEmergencyRetreat<6||retreatRequests.size>=5)return false;
+    candidates.sort((a,b)=>{
+      const rank=x=>x.targetID===null||x.targetID===0?0:
+        (isWar()&&x.targetID===warState.id?2:1);
+      return rank(a)-rank(b)||b.troops-a.troops;
+    });
+    let issued=0;
+    for(const a of candidates){
+      const recoverable=a.troops*(a.targetID===null||a.targetID===0?1:.75);
+      if(recoverable<Math.max(250,s.home*.025))continue;
+      if(!send('cancel',[a.id],'NOT-RÜCKZUG → '+String(a.targetID??'neutral')+
+          ' ('+Math.floor(recoverable/10)+' Tr. voraussichtlich zurück)',true))continue;
+      retreatRequests.set(a.id,{id:a.id,target:a.targetID,tick,troops:a.troops,recoverable});
+      defenseStats.retreatsOrdered++;issued++;
+      telemetry('defense_retreat_ordered','Angriff wegen akuter Bedrohung zurückgerufen',
+        {attackID:a.id,target:a.targetID,troops:a.troops,recoverable,
+          incoming:threat.incoming,home:s.home,critical:threat.critical});
+      if(issued>=(threat.critical?3:1)||retreatRequests.size>=5)break;
+    }
+    if(issued){lastEmergencyRetreat=tick;defenseStatus+=' · '+issued+' Rückzug/Rückzüge angefordert';}
+    return issued>0;
+  }
   async function defense(me,tick,serial,groups,s) {
-    if(!opts.defense||!ctors.attack||!s.incoming||s.activeEnemy||pendingAttack)return false;
-    // Defensive play is normally to RETAIN troops, not send them away.
-    // Counterattack only if a safe advantage exists and the path is legal.
-    const attacks=s.inc.slice().sort((a,b)=>(b.troops||0)-(a.troops||0));
-    for(const a of attacks.slice(0,3)) {
+    if(!opts.defense||!ctors.attack||!s.incoming||pendingAttack)return false;
+    const threat=defenseAssessment(me,s,tick);
+    if(threat.severe||threat.incoming>s.home*.24)return false;
+    // Only counterattack if enough troops remain safely at home.
+    if(s.activeEnemy||s.home<threat.incoming*3.2)return false;
+    const attacks=threat.hostile.slice().sort((a,b)=>b.troops-a.troops);
+    for(const a of attacks.slice(0,3)){
       let attacker;
-      try{attacker=game.playerBySmallID(a.attackerID);}catch(_){continue;}
+      try{attacker=game.playerBySmallID?.(a.attackerID);}catch(_){continue;}
       if(!attacker?.isPlayer?.()||friendly(attacker,me))continue;
       const id=safeID(attacker),key=String(id),their=number(()=>attacker.troops(),Infinity);
+      if(hardMode()&&isWar()&&id!==warState.id)continue;
       const spare=s.available;
-      if(spare<Math.max(250,their*1.6) || s.home<s.incoming*1.4 ||
+      if(spare<Math.max(500,their*1.25)||
          tick-(cooldowns.get(key)??-Infinity)<160)continue;
       const candidate=groups.find(x=>x.id===id);
-      if(!candidate || !await legalTarget(me,candidate,serial))continue;
+      if(!candidate||!await legalTarget(me,candidate,serial))continue;
       if(!live(serial))return false;
-      const amount=Math.floor(Math.min(spare*.75,Math.max(their*1.4,spare*.48)));
-      if(send('attack',[id,amount],`SICHERER GEGENANGRIFF → ${nameOf(attacker)}`)){
+      const amount=Math.floor(Math.min(spare*.42,s.home*.16));
+      if(amount<100||s.home-amount<threat.incoming*2.8)continue;
+      if(send('attack',[id,amount],'KONTROLLIERTER GEGENANGRIFF → '+nameOf(attacker))){
         const out=s.out.filter(x=>x.targetID===id&&!x.retreating);
         pendingAttack={id,name:nameOf(attacker),tick,amount,ownLand:number(()=>me.numTilesOwned()),
           enemyLand:number(()=>attacker.numTilesOwned()),beforeIds:out.map(x=>x.id),
