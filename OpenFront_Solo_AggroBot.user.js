@@ -186,6 +186,66 @@
   // Never overwrite manually selected slider values. Auto settings are
   // recomputed from current troops, threats, strategy and worker latency.
   function setting(key){return opts.fullAuto?autoTuning[key]:opts[key];}
+  // Hysteresis prevents oscillation and keeps worker/transport costs bounded.
+  // Critical defense changes are immediate; ordinary strategy changes settle
+  // for at least 45 ticks. These values never modify the user's manual sliders.
+  function tuneAutonomously(me,items,s,tick,context) {
+    if(!opts.fullAuto)return s;
+    const late=lateGame(me),home=Math.max(1,s.home);
+    const invasion=s.incoming/home,neighbor=s.strongest/home;
+    const emergency=invasion>=.18 || (invasion>=.10 && context.rebuilding);
+    let mode='BALANCED',reason='Ausgeglichene Spielphase';
+    let v={aggressive:82,reserve:35,actionsPerMinute:76,maxTargets:15};
+    if(emergency || (context.wanted==='DEFEND'&&s.incoming>0)){
+      mode='DEFEND';reason='Eingehender Angriff – Heimtruppen sichern';
+      v={aggressive:60,reserve:63,actionsPerMinute:88,maxTargets:9};
+    } else if(context.wanted==='RECOVER'||s.ratio<.23){
+      mode='RECOVER';reason='Truppen regenerieren und Bauaktionen zulassen';
+      v={aggressive:64,reserve:49,actionsPerMinute:65,maxTargets:10};
+    } else if(context.wanted==='ASSAULT'&&!s.incoming){
+      mode='ASSAULT';reason='Konzentrierte Offensive mit überprüfter Heimreserve';
+      v={aggressive:late?98:92,reserve:late?23:29,actionsPerMinute:late?98:87,maxTargets:late?22:19};
+    } else if(context.wanted==='TECH'||context.wanted==='ECONOMY'){
+      mode=context.wanted;reason='Wirtschaft und strategische Technik finanzieren';
+      v={aggressive:73,reserve:40,actionsPerMinute:72,maxTargets:13};
+    } else if(context.wanted==='EXPAND'){
+      mode='EXPAND';reason='Neutrales Land effizient erobern';
+      v={aggressive:late?87:82,reserve:late?29:33,actionsPerMinute:late?88:78,maxTargets:late?18:15};
+    } else if(late&&s.ratio>.74&&!s.incoming){
+      mode='LATE';reason='Große Truppenreserve – Chancen häufiger prüfen';
+      v={aggressive:93,reserve:27,actionsPerMinute:91,maxTargets:20};
+    }
+    if(!emergency && s.incoming>0){
+      v.reserve+=Math.min(13,Math.ceil(invasion*35));
+      v.aggressive-=9;
+    }
+    if(!emergency && neighbor>1 && (mode==='ASSAULT'||mode==='EXPAND')){
+      v.reserve+=Math.min(13,Math.ceil((neighbor-1)*14));
+    }
+    // More worker probes only help when workers respond promptly. Do not
+    // compensate for a slow worker by flooding it with even more requests.
+    if(runtime.combatMs>1100||runtime.borderMs>850){
+      v.maxTargets-=5;v.actionsPerMinute-=12;
+      reason+=' · Worker entlasten';
+    } else if(runtime.combatMs>650){
+      v.maxTargets-=3;v.actionsPerMinute-=6;
+    }
+    if(runtime.economyMs>1600)v.actionsPerMinute-=6;
+    v.aggressive=clamp(v.aggressive,40,100);
+    v.reserve=clamp(v.reserve,18,65);
+    v.actionsPerMinute=clamp(v.actionsPerMinute,45,110);
+    v.maxTargets=clamp(v.maxTargets,6,24);
+    const changed=mode!==autoTuning.mode || ['aggressive','reserve','actionsPerMinute','maxTargets']
+      .some(k=>autoTuning[k]!==v[k]);
+    if(!changed)return s;
+    if(!emergency && tick-autoTuning.tick<45)return s;
+    autoTuning={...v,mode,reason,tick};
+    if(mode!=='DEFEND'||tick-lastDefenseLog>=75){
+      telemetry('auto_tuning','Autonome Parameter: '+mode,{...v,reason});
+      if(mode==='DEFEND')lastDefenseLog=tick;
+    }
+    return military(me,items);
+  }
   function actionBudget(channel='general') {
     const now=Date.now();actions=actions.filter(t=>now-t<60000);
     const cap=clamp(setting('actionsPerMinute'),15,120);
@@ -1524,15 +1584,17 @@
       const tiles=await borders(me,tick);
       if(!live(serial))return;
       const groups=targetsFromBorder(me,tiles);
-      const s=military(me,groups);troopSnapshot=s;
+      let s=military(me,groups);troopSnapshot=s;
       manageWar(me,groups,s,tick);
       const context=strategy(me,groups,s);
+      s=tuneAutonomously(me,groups,s,tick,context);
+      troopSnapshot=s;
       if(tick-lastDiagnosticTick>=80){lastDiagnosticTick=tick;
         telemetry('snapshot','Spielzustand',{difficulty:game.config().gameConfig().difficulty,
           gameType:game.config().gameConfig().gameType,investment:investmentStatus,
           cities:ownStructures(me).filter(u=>u.type?.()==='City').length,
           factories:ownStructures(me).filter(u=>u.type?.()==='Factory').length,
-          borders:tiles.length,defense:{status:defenseStatus,incoming:s.incoming,
+          borders:tiles.length,tuning:{...autoTuning,enabled:!!opts.fullAuto},defense:{status:defenseStatus,incoming:s.incoming,
             committed:s.committed,pendingRetreats:retreatRequests.size},enemies:groups.filter(g=>g.id!==null).map(g=>({name:nameOf(g.opponent),troops:number(()=>g.opponent.troops()),land:number(()=>g.opponent.numTilesOwned())})),
           readiness:context.readiness?.reason,ratio:s.ratio,maxTroops:s.max});}
 
@@ -1585,7 +1647,11 @@
       if(key==='enabled'){
         if(!connected())status=conflicts()?'Alte Bot-Version deaktivieren':advisorConflict()?'Spawn Advisor Auto/Smart/Auto-Accept ausschalten':'Nur in laufender Singleplayer-Partie mit EventBus';
         else {opts.enabled=!opts.enabled;generation++;log(opts.enabled?'BOT START':'BOT PAUSE');}
-      }else if(['economy','boats','autoSpawn','defense','stopOnError','upgrades','safeMode','autoStrategy','diplomacy','offerAlliances','nukes','antiNuke','lateOffense','impossibleMode'].includes(key))opts[key]=!opts[key];
+      }else if(key==='fullAuto'){
+        opts.fullAuto=!opts.fullAuto;
+        if(opts.fullAuto){opts.autoStrategy=true;autoTuning.tick=-Infinity;}
+      }else if(key==='autoStrategy'&&opts.fullAuto){opts.fullAuto=false;opts.autoStrategy=false;}
+      else if(['economy','boats','autoSpawn','defense','stopOnError','upgrades','safeMode','autoStrategy','diplomacy','offerAlliances','nukes','antiNuke','lateOffense','impossibleMode'].includes(key))opts[key]=!opts[key];
       else if(key==='plan'){opts.autoStrategy=false;opts.plan=opts.plan==='Blitz'?'Adaptiv':opts.plan==='Adaptiv'?'Ökonomie':'Blitz';}
       else if(key==='buildStyle'){opts.autoStrategy=false;opts.buildStyle=opts.buildStyle==='Ausgewogen'?'Wirtschaft':opts.buildStyle==='Wirtschaft'?'Defensiv':'Ausgewogen';}
       persist();lastPaint=0;paint();
@@ -1611,7 +1677,7 @@
       <div style="color:#bed5e8;margin:6px 0">${escapeHTML(status)}</div>
       <div>${b('enabled',opts.enabled?'⏸ PAUSE':'▶ BOT STARTEN')}</div>
       <div>${b('autoSpawn','Spawn')} ${b('defense','Gegenangriff')} ${b('economy','Wirtschaft')} ${b('boats','Marine')}</div>
-      <div>${b('upgrades','Upgrades')} ${b('safeMode','Not-Aus')} ${b('autoStrategy','Auto-Strategie '+(opts.autoStrategy?'AN':'AUS'))}</div>
+      <div>${b('upgrades','Upgrades')} ${b('safeMode','Not-Aus')} ${b('autoStrategy','Auto-Strategie '+(opts.autoStrategy?'AN':'AUS'))} ${b('fullAuto','Vollautonom '+(opts.fullAuto?'AN':'AUS'))}</div>
       <div>${b('diplomacy','Diplomatie')} ${b('offerAlliances','Bündnisse anbieten')}</div>
       <div>${b('nukes','Auto-Nukes')} ${b('antiNuke','Intelligente SAMs')} ${b('lateOffense','Late-Game-Offensive')}</div>
       <div>${b('impossibleMode','Unmöglich-Taktik')} <button data-key="export" style="border:1px solid #73acdd;border-radius:5px;background:#235078;color:white;padding:5px 7px;cursor:pointer">📄 Diagnose JSON</button></div>
@@ -1621,14 +1687,15 @@
       <div style="color:#9bd0e4">Verteidigung: ${escapeHTML(defenseStatus)} · Rückzüge ${defenseStats.retreatsOrdered}/${defenseStats.retreatsObserved} beobachtet · unbestätigt ${defenseStats.unconfirmed}</div>
       <div style="color:#9bd0e4">Nukes: ${escapeHTML(nukeStatus)} · Startbefehle ${nukeShots} · SAM-Schutz ${nuclearCache?.assets?.length - nuclearCache?.uncovered?.length||0}/${nuclearCache?.assets?.length||0}</div>
       <div style="color:#9bd0e4">Allianzen: ${escapeHTML(diplomacyStatus)} · Bestätigt: ${diplomacyStats.accepted} angenommen, ${diplomacyStats.rejected} abgelehnt · ${diplomacyPending.size} ausstehend · ${diplomacyStats.offered} angeboten</div>
-      <label>Aggressivität: ${opts.aggressive}%<input type="range" data-option="aggressive" min="40" max="100" value="${opts.aggressive}" style="display:block;width:100%"></label>
-      <label>Reserve: ${opts.reserve}%<input type="range" data-option="reserve" min="5" max="65" value="${opts.reserve}" style="display:block;width:100%"></label>
-      <label>Aktionen/Min.: ${opts.actionsPerMinute}<input type="range" data-option="actionsPerMinute" min="15" max="120" value="${opts.actionsPerMinute}" style="display:block;width:100%"></label>
-      <label>Zielprüfungen: ${opts.maxTargets}<input type="range" data-option="maxTargets" min="4" max="25" value="${opts.maxTargets}" style="display:block;width:100%"></label>
+      <div style="color:#a9efc9">Parameter: ${opts.fullAuto?'AUTONOM '+escapeHTML(autoTuning.mode)+' · '+escapeHTML(autoTuning.reason):'MANUELL'}</div>
+      <label>Aggressivität: ${setting('aggressive')}%${opts.fullAuto?' (Auto)':''}<input type="range" data-option="aggressive" min="40" max="100" value="${setting('aggressive')}" ${opts.fullAuto?'disabled':''} style="display:block;width:100%"></label>
+      <label>Reserve: ${setting('reserve')}%${opts.fullAuto?' (Auto)':''}<input type="range" data-option="reserve" min="5" max="65" value="${setting('reserve')}" ${opts.fullAuto?'disabled':''} style="display:block;width:100%"></label>
+      <label>Aktionen/Min.: ${setting('actionsPerMinute')}${opts.fullAuto?' (Auto)':''}<input type="range" data-option="actionsPerMinute" min="15" max="120" value="${setting('actionsPerMinute')}" ${opts.fullAuto?'disabled':''} style="display:block;width:100%"></label>
+      <label>Zielprüfungen: ${setting('maxTargets')}${opts.fullAuto?' (Auto)':''}<input type="range" data-option="maxTargets" min="4" max="25" value="${setting('maxTargets')}" ${opts.fullAuto?'disabled':''} style="display:block;width:100%"></label>
       <div style="color:#9bd0e4">Bau: ${escapeHTML(economicStatus)} · Sparziel: ${escapeHTML(investmentStatus)} · Prioritäten: ${escapeHTML(economicLastPlan)}</div>
       <div style="color:#9bd0e4">Tempo: Front ${runtime.borderMs}ms · Kampf ${runtime.combatMs}ms · Bau ${runtime.economyMs}ms · Worker-Checks ${runtime.attackProbes}/${runtime.buildProbes}</div>
       <div style="color:#9bd0e4">Events: ${escapeHTML(Object.keys(ctors).filter(k=>ctors[k]).join(', ')||'keine')}</div>
-      <div style="color:#9bd0e4">Aktionsbudget: ${actions.length}/${opts.actionsPerMinute} · Gesendet: ${totalSent} · Fehlgeschlagen: ${totalFailed} · Fehler: ${errors}</div>
+      <div style="color:#9bd0e4">Aktionsbudget: ${actions.length}/${setting('actionsPerMinute')} · Gesendet: ${totalSent} · Fehlgeschlagen: ${totalFailed} · Fehler: ${errors}</div>
       <div style="color:#9bd0e4">Heim: ${Math.floor(troopSnapshot.home/10)} · Reserve: ${Math.floor(troopSnapshot.reserve/10)} · Laufende Angriffe: ${Math.floor(troopSnapshot.committed/10)} · Einkommen/Reserve: ${(troopSnapshot.ratio*100).toFixed(0)}% Kapazität</div>
       <div style="color:#9bd0e4">Eingehend: ${Math.floor(troopSnapshot.incoming/10)} · Stärkster Grenznachbar: ${Math.floor(troopSnapshot.strongest/10)} · Ziel: ${escapeHTML(lastSelection||plan?.name||'Suche')} · ${borderCache?.length||0} Grenzfelder</div>
       <div style="border-top:1px solid #527;margin-top:7px;padding-top:5px"><b>Letzte Entscheidungen</b>${recent.map(s=>`<div>• ${escapeHTML(s)}</div>`).join('')}</div>
