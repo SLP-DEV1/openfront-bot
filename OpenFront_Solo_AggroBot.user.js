@@ -1198,12 +1198,15 @@
     const hostileFronts=strategic.groups.filter(g=>g.id!==null&&g.opponent?.isAlive?.()).length;
     const count=type=>economicUnitsByType(units,type).length;
     const cities=count('City'),factories=count('Factory'),ports=count('Port');
-    const wantedCity=hardMode()?Math.min(13,Math.max(2,2+Math.floor(mine/600))):Math.min(9,Math.max(1,1+Math.floor(mine/900)));
-    const wantedFactory=hardMode()?Math.min(11,Math.max(2,2+Math.floor(mine/900))):Math.min(8,Math.max(1,1+Math.floor(mine/1350)));
-    const wantedPort=opts.boats?Math.min(3,Math.max(1,Math.floor(mine/1800)+1)):
+    const cityEnabled=game.config().isUnitDisabled?.('City')!==true;
+    const factoryEnabled=game.config().isUnitDisabled?.('Factory')!==true;
+    const portEnabled=game.config().isUnitDisabled?.('Port')!==true;
+    const wantedCity=cityEnabled?(hardMode()?Math.min(13,Math.max(2,2+Math.floor(mine/600))):Math.min(9,Math.max(1,1+Math.floor(mine/900)))):0;
+    const wantedFactory=factoryEnabled?(hardMode()?Math.min(11,Math.max(2,2+Math.floor(mine/900))):Math.min(8,Math.max(1,1+Math.floor(mine/1350)))):0;
+    const wantedPort=!portEnabled?0:opts.boats?Math.min(3,Math.max(1,Math.floor(mine/1800)+1)):
       (factories>=1 && mine>600?Math.min(2,Math.floor(mine/2700)+1):0);
-    const startup=cities<1||factories<1;
-    const basic=cities<2||factories<2;
+    const startup=(cityEnabled&&cities<1)||(factoryEnabled&&factories<1);
+    const basic=(cityEnabled&&cities<2)||(factoryEnabled&&factories<2);
     // Never buy decorative defense posts while the first city/factory are still
     // unaffordable. Only a *real* incoming offensive can override the basics.
     const immediate=troopSnapshot.incoming>troops*.18;
@@ -1214,14 +1217,14 @@
     const intel=nuclearIntel(me,units);
     const enemySilos=intel.enemySilos.length,enemyNukes=intel.incomingNukes.length;
     const threat=!!(enemySilos||enemyNukes);
-    const wantedSAM=opts.antiNuke&&threat?Math.min(10,Math.max(1,
+    const wantedSAM=opts.antiNuke&&threat&&game.config().isUnitDisabled?.('SAM Launcher')!==true?Math.min(10,Math.max(1,
       Math.ceil(intel.assets.length/3)+Math.ceil(intel.uncovered.length/3)+(enemyNukes?2:0))):0;
     const late=lateGame(me),siloCount=count('Missile Silo');
     const siloAllowed=opts.nukes && game.config().isUnitDisabled?.('Missile Silo')!==true &&
-      game.config().isUnitDisabled?.('Atom Bomb')!==true;
+      ['Atom Bomb','Hydrogen Bomb','MIRV'].some(t=>game.config().isUnitDisabled?.(t)!==true);
     // Earlier requiring 1.8m *before* considering a silo caused endless
     // reinvestment in cheap upgrades. OpenFront silo costs start at 1m.
-    const wantedSilo=siloAllowed && cities>=2&&factories>=2 && late && mine>900 ?
+    const wantedSilo=siloAllowed && (!cityEnabled||cities>=2)&&(!factoryEnabled||factories>=2) && late && mine>900 ?
       (siloCount===0?1:nukeShots>0&&gold>2500000?Math.min(3,1+Math.floor(mine/18000)):1):0;
     const pressure=troops/cap;
     const style=effectiveBuildStyle() || 'Ausgewogen';
@@ -1231,8 +1234,10 @@
           (pressure>.80&&!immediate?30:0)+(cities===0?115:hardMode()&&cities<2?80:0)},
       {type:'Factory',desired:wantedFactory,score:91+econBoost+
           (factories===0?100:hardMode()&&factories<2?85:0)+
-          (gold<450000?15:0)+(pressure<.60&&factories>0?10:0)},
-      {type:'Port',desired:wantedPort,score:59+econBoost/2+(ports===0&&wantedPort?12:0)},
+          (gold<450000?15:0)+(pressure<.60&&factories>0?10:0)-
+          (incomeStatus.observed&&incomeStatus.train===0&&factories>=2?26:0)},
+      {type:'Port',desired:wantedPort,score:59+econBoost/2+(ports===0&&wantedPort?12:0)+
+        (incomeStatus.observed&&incomeStatus.trade===0&&ports===0?13:0)},
       {type:'Defense Post',desired:wantedDefense,score:immediate?310+defBoost:threatened?(basic?70:119)+defBoost:20},
       {type:'SAM Launcher',desired:wantedSAM,score:enemyNukes?165+defBoost:threat?116+defBoost:40},
       {type:'Missile Silo',desired:wantedSilo,score:siloCount===0?305:opts.nukes?(late?131:94)+(gold>6000000?13:0):0}
@@ -1254,9 +1259,11 @@
     const saveForSilo=siloAllowed && late && !basic && siloCount===0;
     const saveForNuke=siloAllowed && late && siloCount>0 &&
       intel.enemy.length>0 && nukeShots===0;
-    const savingsTarget=saveForSilo?1150000:saveForNuke?1100000:0;
+    const firstRocketFund=game.config().isUnitDisabled?.('Atom Bomb')===true?
+      (game.config().isUnitDisabled?.('Hydrogen Bomb')===true?0:6400000):1100000;
+    const savingsTarget=saveForSilo?1150000:saveForNuke?firstRocketFund:0;
     investmentStatus=startup?'Erste Stadt/Fabrik':basic?'Zwei Städte und zwei Fabriken':
-      saveForSilo?'Silo-Fonds 1,15 Mio.':saveForNuke?'Atom-Fonds 1,1 Mio.':'Wirtschaft & Offensive';
+      saveForSilo?'Silo-Fonds 1,15 Mio.':saveForNuke?'Raketen-Fonds '+firstRocketFund.toLocaleString():'Wirtschaft & Offensive';
     return {list:value,threatened,gold,cities,factories,mine,pressure,nuclearThreat:threat,incomingNukes:enemyNukes,intel,
       startup,basic,emergency,immediate,savingsTarget,saveForSilo,saveForNuke,siloCount};
   }
@@ -1311,6 +1318,23 @@
     }
     return false;
   }
+  // Approximate reachable rail-station candidate based on the official
+  // trainStationMinRange/MaxRange, NOT an asserted path or trade guarantee.
+  function railStationScore(ref,units){
+    const cfg=game.config(),min=number(()=>cfg.trainStationMinRange?.(),12);
+    const max=number(()=>cfg.trainStationMaxRange?.(),110);
+    const x=game.x(ref),y=game.y(ref);
+    const stations=units.filter(u=>['City','Factory','Port'].includes(u.type?.()) &&
+      !u.isUnderConstruction?.() && u.hasTrainStation?.()!==false);
+    let reachable=0,tooClose=0;
+    for(const u of stations){
+      const d=Math.hypot(x-game.x(u.tile()),y-game.y(u.tile()));
+      if(d>=min&&d<=max)reachable++;
+      if(d<min)tooClose++;
+    }
+    return {reachable,score:Math.min(40,reachable*15)-tooClose*30-
+      (stations.length>1&&reachable===0?25:0)};
+  }
   function siteScore(type,ref,fronts,units,priority,alreadyCoastal,precomputedDist) {
     const distance=precomputedDist===undefined?frontDistance(ref,fronts):precomputedDist;
     const coast=alreadyCoastal ?? shoreNear(ref);
@@ -1342,9 +1366,9 @@
     }
     else {
       value+=Number.isFinite(distance)?Math.min(38,distance*.18)-Math.max(0,60-distance)*1.05:25;
+      if(['City','Factory','Port'].includes(type))value+=railStationScore(ref,units).score;
       if(type==='Factory'){
-        // Favor nearby City/Port infrastructure. This improves placement;
-        // it does NOT claim a connected rail route or guaranteed income.
+        // Favor nearby City/Port infrastructure without assuming rail connectivity.
         const hubs=units.filter(u=>['City','Port'].includes(u.type?.()) &&
           u.isUnderConstruction?.()!==true);
         if(hubs.length){
