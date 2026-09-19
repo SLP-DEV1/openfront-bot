@@ -442,9 +442,10 @@
       Math.max(0,gc.maxTimerValue*60-elapsed):null;
     const threshold=total>0&&Number.isFinite(winPct)?winPct:null;
     const progress=total>0?land/Math.max(1,total-fallout):null;
-    const urgent=(remaining!==null&&remaining<300)||
+    const urgent=(remaining!==null&&remaining<300)||!!me.inDoomsdayClock?.()||
       (progress!==null&&threshold!==null&&progress*100>=threshold-8);
     winStatus={mode,progress,threshold,remaining,urgent,
+      doomsday:!!me.inDoomsdayClock?.(),
       ownTiles:ours,teamTiles:land};
     return winStatus;
   }
@@ -1783,7 +1784,7 @@
   function diplomacyTickSafe() {
     if(!opts.enabled)return;
     if(!opts.diplomacy){diplomacyStatus='Diplomatie im Menü AUS';return;}
-    if(!connected()){diplomacyStatus='Diplomatie wartet auf aktiven Singleplayer';return;}
+    if(!connected()){diplomacyStatus='Diplomatie wartet auf aktive Partie';return;}
     if(game.config().disableAlliances?.()===true){diplomacyStatus='Allianzen in Spieleinstellungen deaktiviert';return;}
     if(game.inSpawnPhase?.())return;
     const me=myPlayer(),tick=number(()=>game.ticks(),-1);
@@ -1841,6 +1842,7 @@
       }
       return;
     }
+    if(renewAlliances(me,tick))return;
     if(!opts.offerAlliances || !ctors.alliance || !actionBudget() ||
       tick-lastProposalTick<850)return;
     const s=military(me,strategic.groups);
@@ -1946,10 +1948,13 @@
   function renewAlliances(me,tick){
     if(!opts.diplomacy||!ctors.extend)return false;
     for(const a of me.alliances?.()||[]){
-      if(!a.hasExtensionRequest||a.expiresAt-tick>250||a.expiresAt<=tick)continue;
+      if(!a.hasExtensionRequest||a.expiresAt-tick>250||a.expiresAt<=tick ||
+        (diplomacyHandled.get('extend:'+a.id)||0)>tick)continue;
       const partner=game.playerViews().find(p=>safeID(p)===a.other);
       if(partner&&friendly(partner,me)&&send('extend',[partner],
-        'ALLIANZ VERLÄNGERN → '+nameOf(partner),true))return true;
+        'ALLIANZ VERLÄNGERN → '+nameOf(partner),true)){
+        diplomacyHandled.set('extend:'+a.id,tick+125);return true;
+      }
     }
     return false;
   }
@@ -1966,17 +1971,26 @@
       (!hardMode() || !isWar() || safeID(p)===warState.id));
     foes.sort((a,b)=>number(()=>a.troops())-number(()=>b.troops()));
     for(const foe of foes.slice(0,6)){
-      const dest=foe.state.spawnTile;
-      if(!game.isLand(dest)||safeID(game.owner(dest))!==safeID(foe))continue;
-      let legal;
-      try {legal=await me.actions(dest,['Transport']);}catch(_){continue;}
-      if(!live(serial))return false;
-      const ship=legal?.buildableUnits?.find(x=>x.type==='Transport'&&x.canBuild!==false);
-      if(!ship || (Number(me.gold())<Number(ship.cost)&&!game.config().infiniteGold?.()))continue;
-      if(game.euclideanDistSquared && game.euclideanDistSquared(dest,ship.canBuild)>10000)continue;
-      const amount=Math.min(spare,Math.floor(number(()=>me.troops())*.58));
-      if(spare<number(()=>foe.troops(),Infinity)*1.9 || number(()=>me.troops())<number(()=>game.config().maxTroops(me),1)*.47)continue;
-      if(send('boat',[dest,Math.min(amount,Math.floor(spare*.60))],`LANDUNG → ${nameOf(foe)}`))return true;
+      if(spare<number(()=>foe.troops(),Infinity)*1.9 ||
+        number(()=>me.troops())<number(()=>game.config().maxTroops(me),1)*.47)continue;
+      const points=[foe.state.spawnTile];
+      // Spawn may be inland or already nuked. The worker is the source
+      // of truth for reachable shore/deployment tile.
+      for(const u of foe.units?.()||[]){
+        const t=u.tile?.();
+        if(Number.isInteger(t)&&!points.includes(t)&&points.length<7)points.push(t);
+      }
+      for(const dest of points){
+        if(!game.isLand(dest)||safeID(game.owner(dest))!==safeID(foe))continue;
+        let legal;
+        try {legal=await me.actions(dest,['Transport']);}catch(_){continue;}
+        if(!live(serial))return false;
+        const ship=legal?.buildableUnits?.find(x=>x.type==='Transport'&&Number.isInteger(x.canBuild));
+        if(!ship || (Number(me.gold())<Number(ship.cost)&&!game.config().infiniteGold?.()))continue;
+        const amount=Math.min(spare,Math.floor(number(()=>me.troops())*.58));
+        if(send('boat',[dest,Math.min(amount,Math.floor(spare*.60))],
+          'LANDUNG → '+nameOf(foe)))return true;
+      }
     }
     return false;
   }
