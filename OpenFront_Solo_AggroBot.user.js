@@ -543,7 +543,25 @@
         log('KRIEGSZIEL ÜBERNOMMEN: '+warState.name);}
     }
   }
-  function warReadiness(me,items,s,tick) {
+  // Compare the specific attack target with the OTHER neighboring threats.
+  // A larger unrelated neighbor alone must not freeze every weak-front attack;
+  // however the home force after the strike still must cover that neighbor.
+  function targetOpportunity(me,items,s,item) {
+    if(!item?.opponent?.isAlive?.()||friendly(item.opponent,me))return false;
+    const late=lateGame(me),troops=number(()=>item.opponent.troops(),Infinity);
+    if(!(troops>0)||s.incoming>s.home*(late?.15:.04)||s.ratio<(late?.29:.40))return false;
+    const minRatio=hardMode()?(late?1.34:1.75):(late?1.18:1.55);
+    if(s.available<troops*minRatio ||
+      s.home<troops*(hardMode()?(late?1.45:1.85):(late?1.24:1.45)))return false;
+    const otherThreat=items.filter(x=>x.id!==null&&x.id!==item.id&&x.opponent?.isAlive?.())
+      .reduce((v,x)=>Math.max(v,number(()=>x.opponent.troops(),0)),0);
+    const strike=Math.min(s.available*(hardMode()?.76:.80),
+      Math.max(troops*(hardMode()?1.57:1.40),s.available*.48));
+    // Do not cap the other neighbor's reserve to a percentage of our own
+    // army: that would incorrectly approve suicidal attacks against giants.
+    return s.home-strike>=Math.max(s.home*.22,otherThreat*(hardMode()?.58:.50));
+  }
+  function warReadiness(me,items,s,tick,target=null) {
     if(!hardMode())return {ready:true,reason:'Normal'};
     const units=ownStructures(me),cities=units.filter(x=>x.type?.()==='City').length,
       factories=units.filter(x=>x.type?.()==='Factory').length,
@@ -567,8 +585,11 @@
     } else warWaitSince=-Infinity;
     if(s.ratio<(late?.32:.47))return {ready:false,reason:'Truppen auffüllen'};
     if(s.committed>Math.max(s.home*.70,s.max*.20))return {ready:false,reason:'Truppen bereits an Front gebunden'};
-    if(s.home<Math.max(5500,s.strongest*(late?1.25:1.48))&&s.strongest>0)
-      return {ready:false,reason:'Keine sichere Hinterland-Reserve'};
+    if(s.home<Math.max(5500,s.strongest*(late?1.25:1.48))&&s.strongest>0){
+      const candidates=target?[target]:items.filter(x=>x.id!==null);
+      if(!candidates.some(x=>targetOpportunity(me,items,s,x)))
+        return {ready:false,reason:'Keine sichere Hinterland-Reserve'};
+    }
     return {ready:true,reason:'Kriegsfreigabe'};
   }
   function strategy(me,items,s) {
@@ -585,7 +606,8 @@
     const rebuilding=(s.ratio<(late?.17:.25) && (s.strongest>s.home*.52 || s.incoming>s.home*.12)) ||
       (losing&&(!late||s.incoming>s.home*.10)) || (s.incoming>s.home*.40);
     const readiness=warReadiness(me,items,s,tick);
-    const weak=enemies.filter(x=>s.available>number(()=>x.opponent.troops(),Infinity)*(hardMode()?(late?1.42:1.8):(late?1.17:1.5)));
+    const weak=enemies.filter(x=>hardMode()?targetOpportunity(me,items,s,x):
+      s.available>number(()=>x.opponent.troops(),Infinity)*(late?1.17:1.5));
     const fullLate=late&&s.ratio>.78&&!s.incoming&&enemies.length>0;
     const nuclearReady=opts.nukes && game.config().isUnitDisabled?.('Missile Silo')!==true &&
       game.config().isUnitDisabled?.('Atom Bomb')!==true;
@@ -644,7 +666,7 @@
       if(enemy && hardMode() && (
         (pendingAttack?.id!==null && pendingAttack?.id!==undefined && pendingAttack.id!==item.id) ||
         (isWar() && item.id!==warState.id) || tick<warState.blockedUntil ||
-        !context.readiness?.ready ||
+        !context.readiness?.ready || !targetOpportunity(me,items,s,item) ||
         (combatAwaiting && combatAwaiting.id===item.id && tick-combatAwaiting.tick<250)))return [];
       if(tick-(cooldowns.get(key)??-Infinity)<(item.id===null?22:80))return [];
       if(tick-(rejected.get(key)??-Infinity)<25 || tick<(blockedTargets.get(item.id)||0))return [];
@@ -666,7 +688,8 @@
         const minimumRatio=hardMode()?(late?1.34:1.75):(late?1.18:effectivePlan()==='Blitz'?1.30:1.55);
         if(s.ratio<(late?.29:.40) || available<enemyTroops*minimumRatio ||
           s.home<enemyTroops*(hardMode()?(late?1.45:1.85):(late?1.24:1.45)) ||
-          (hardMode() && s.home-Math.min(available*.75,enemyTroops*1.40)<otherThreat*.58) ||
+          (hardMode() && s.home-Math.min(available*.76,
+            Math.max(enemyTroops*1.57,available*.48))<otherThreat*.58) ||
           enemyTroops<=0 && enemyTiles<=0)return [];
       }
       let score=isNeutral?75:52;
@@ -831,7 +854,8 @@
         fresh.activeEnemy>=(lateGame(me)&&fresh.strongest<fresh.home*.55?2:1) ||
         fresh.available<Math.max(100,number(()=>item.opponent.troops(),Infinity)*(lateGame(me)?1.15:1.3))))continue;
       if(item.id===null && fresh.activeNeutral>=1)continue;
-      if(item.id!==null && hardMode() && (!warReadiness(me,strategic.groups,fresh,tick).ready ||
+      if(item.id!==null && hardMode() && (!warReadiness(me,strategic.groups,fresh,tick,item).ready ||
+        !targetOpportunity(me,strategic.groups,fresh,item) ||
         (isWar()&&warState.id!==item.id)))continue;
       const amount=Math.min(item.amount,fresh.available,
         item.id===null ? Math.floor(fresh.home*(hardMode()?.10:.19)) : Math.floor(fresh.available*(hardMode()?.76:.8)));
