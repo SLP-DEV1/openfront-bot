@@ -416,6 +416,77 @@ function boot() {
     assert.equal(await bad.b.naval(bad.me,300,0),false);
     assert.equal(bad.sent.length,0);
   });
+
+  await check('issue #3 explicit retreat flag confirms, no inferred success', () => {
+    const x=boot();class Cancel{constructor(attackID){this.attackID=attackID;}}
+    x.b.setCancelCtor(Cancel);
+    x.out.push({id:'front-3',targetID:null,troops:30000,retreating:false});
+    x.me.incomingAttacks().push({id:'in',attackerID:2,troops:55000,retreating:false});
+    assert.equal(x.b.emergencyRetreat(x.me,300,x.b.military(x.me,[])),true);
+    x.out[0].retreating=true;
+    x.b.emergencyRetreat(x.me,307,x.b.military(x.me,[]));
+    assert.equal(x.b.state().defenseStats.retreatsObserved,1);
+    assert.equal(x.b.state().defenseStats.unknown,0);
+  });
+  await check('issue #3 destroyed stack reports unknown rather than retreat', () => {
+    const x=boot();class Cancel{constructor(attackID){this.attackID=attackID;}}
+    x.b.setCancelCtor(Cancel);
+    x.out.push({id:'front-4',targetID:null,troops:30000,retreating:false});
+    x.me.incomingAttacks().push({id:'in',attackerID:2,troops:55000,retreating:false});
+    assert.equal(x.b.emergencyRetreat(x.me,300,x.b.military(x.me,[])),true);
+    x.out.splice(0,1);
+    x.b.emergencyRetreat(x.me,307,x.b.military(x.me,[]));
+    assert.equal(x.b.state().defenseStats.retreatsObserved,0);
+    assert.equal(x.b.state().defenseStats.unknown,1);
+  });
+  await check('issue #3 ongoing attack without retreat flag times out', () => {
+    const x=boot();class Cancel{constructor(attackID){this.attackID=attackID;}}
+    x.b.setCancelCtor(Cancel);
+    x.out.push({id:'front-5',targetID:null,troops:30000,retreating:false});
+    x.me.incomingAttacks().push({id:'in',attackerID:2,troops:55000,retreating:false});
+    assert.equal(x.b.emergencyRetreat(x.me,300,x.b.military(x.me,[])),true);
+    x.b.emergencyRetreat(x.me,366,x.b.military(x.me,[]));
+    assert.equal(x.b.state().defenseStats.retreatsObserved,0);
+    assert.equal(x.b.state().defenseStats.unconfirmed,1);
+  });
+  await check('issue #2 sent nuclear intent alone is not a confirmed launch', async () => {
+    const x=boot();x.setTick(2400);x.setLand(51613);x.setGold(1200000);
+    const silo={type:()=> 'Missile Silo',isActive:()=>true,
+      isUnderConstruction:()=>false,isInCooldown:()=>false,tile:()=>5500,id:()=>99};
+    const own=['City','City','Factory','Factory'].map((type,i)=>({
+      type:()=>type,isActive:()=>true,tile:()=>5501+i*21,id:()=>i+1,level:()=>1}));
+    x.me.units=()=>[...own,silo];
+    const enemyCity={type:()=> 'City',isActive:()=>true,owner:()=>x.weak,tile:()=>5};
+    x.game.units=()=>[enemyCity];
+    x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
+      type,canBuild:tile,canUpgrade:false,cost:750000n}))});
+    await x.b.nukeStep();
+    assert.equal(x.sent.length,1,'one nuclear launch intent');
+    assert.equal(x.sent[0].unit,'Atom Bomb');
+    assert.equal(x.b.state().nukeAttempts,1);
+    assert.equal(x.b.state().nukeShots,0);
+    assert(x.b.state().nukePending);
+    assert.equal(x.b.inspectNukeLaunch(x.me,2456),false);
+    assert.equal(x.b.state().nukeShots,0);
+    assert.equal(x.b.state().nukeUnconfirmed,1);
+    assert.equal(x.b.economicNeeds(x.me,x.me.units(),[]).saveForNuke,true);
+  });
+  await check('issue #2 a newly observed missile is confirmed exactly once', () => {
+    const x=boot();x.setTick(2400);
+    const old={type:()=> 'Atom Bomb',isActive:()=>true,owner:()=>x.me,
+      targetTile:()=>5,id:()=>10};
+    x.game.units=()=>[old];
+    x.b.setNukePending({tile:5,type:'Atom Bomb',tick:2400,
+      beforeIds:['10'],beforeMatches:1,attempt:1});
+    assert.equal(x.b.inspectNukeLaunch(x.me,2410),true);
+    assert.equal(x.b.state().nukeShots,0);
+    x.game.units=()=>[old,{type:()=> 'Atom Bomb',isActive:()=>true,owner:()=>x.me,
+      targetTile:()=>5,id:()=>11}];
+    assert.equal(x.b.inspectNukeLaunch(x.me,2411),false);
+    assert.equal(x.b.state().nukeShots,1);
+    assert.equal(x.b.inspectNukeLaunch(x.me,2412),false);
+    assert.equal(x.b.state().nukeShots,1);
+  });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
 })();
