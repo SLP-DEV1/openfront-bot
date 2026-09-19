@@ -559,7 +559,9 @@ function boot() {
     x.b.setAllianceCtor(Alliance);
     x.b.setGroups([{id:'strong',opponent:x.strong,front:10,tiles:[6]}]);
     x.me.actions=async()=>({interaction:{canSendAllianceRequest:true}});
-    x.b.diplomacyTickSafe();await Promise.resolve();await Promise.resolve();
+    x.b.diplomacyTickSafe();
+    // The userscript VM owns a separate Promise job queue; flush an event loop turn.
+    await new Promise(resolve=>setImmediate(resolve));
     assert.equal(x.sent.length,1,JSON.stringify({state:x.b.state(),score:x.b.diplomacyScore(x.me,x.strong,x.b.military(x.me,x.b.state().strategic.groups),true),connected:x.b.connected()}));
     assert.equal(x.sent[0].recipient,x.strong);
   });
