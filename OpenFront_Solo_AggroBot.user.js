@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.10.2
+// @version      1.10.3
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -11,10 +11,10 @@
 
 (() => {
   'use strict';
-  if (window.__ofSoloAggroBot1102) return;
-  window.__ofSoloAggroBot1102 = true;
+  if (window.__ofSoloAggroBot1103) return;
+  window.__ofSoloAggroBot1103 = true;
 
-  const VERSION = '1.10.2', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1102';
+  const VERSION = '1.10.3', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1103';
   const defaults = {enabled:false, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -24,7 +24,7 @@
   try { opts = {...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; }
   catch (_) {opts = {...defaults};}
   try {if(!localStorage.getItem(KEY)){
-    opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v1101')||localStorage.getItem('of-solo-aggrobot-v1100')||localStorage.getItem('of-solo-aggrobot-v199')||localStorage.getItem('of-solo-aggrobot-v198')||localStorage.getItem('of-solo-aggrobot-v197')||localStorage.getItem('of-solo-aggrobot-v196')||localStorage.getItem('of-solo-aggrobot-v195')||localStorage.getItem('of-solo-aggrobot-v194')||localStorage.getItem('of-solo-aggrobot-v193')||localStorage.getItem('of-solo-aggrobot-v192')||localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
+    opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v1102')||localStorage.getItem('of-solo-aggrobot-v1101')||localStorage.getItem('of-solo-aggrobot-v1100')||localStorage.getItem('of-solo-aggrobot-v199')||localStorage.getItem('of-solo-aggrobot-v198')||localStorage.getItem('of-solo-aggrobot-v197')||localStorage.getItem('of-solo-aggrobot-v196')||localStorage.getItem('of-solo-aggrobot-v195')||localStorage.getItem('of-solo-aggrobot-v194')||localStorage.getItem('of-solo-aggrobot-v193')||localStorage.getItem('of-solo-aggrobot-v192')||localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
     // Only import user-adjustable preferences, never a previously enabled bot.
   }}catch(_){}
   opts.enabled = false;                         // Never auto-start after reload.
@@ -44,7 +44,7 @@
   let lastIntentHealth=null,lastIntentProbe=-Infinity,missingIntentLogged=new Set();
   let lastTick=-1, lastSpawn=-Infinity, lastEconomy=-Infinity, lastEconomyProbe=-Infinity;
   let lastBoat=-Infinity, lastBorderTick=-Infinity, borderCache=null, borderPlayer=null;
-  let buildCursor=0, spawnCache=null, spawnJob=null, spawnRetryAt=0, status='Warte auf Singleplayer';
+  let buildCursor=0, spawnCache=null, spawnJob=null, spawnRetryAt=0, spawnAlternatives=[], spawnState={scanned:0,phase:'idle',lastSent:null,attempts:0}, status='Warte auf Spiel';
   let plan=null, rejected=new Map(), lastEmission=0, lastSelection='';
   let totalSent=0, totalFailed=0;
   let borderOffset=0, lastBorderRefresh=0, lastPlanTick=-Infinity;
@@ -132,13 +132,13 @@
         effective:{aggressive:setting('aggressive'),reserve:setting('reserve'),
           actionsPerMinute:setting('actionsPerMinute'),maxTargets:setting('maxTargets')}},attackReceipts, pendingAttack,
       construction:{pending:economicPending,blocked:[...economicBlocked.entries()],failedProbes:failedEconomyProbes,lastConfirmed:successfulEconomyTick,investment:investmentStatus},
-      war:{...warState},gameEnd,victory:winStatus,income:incomeStatus,fleet:fleetStatus,strategicTelemetry,military:troopSnapshot,
+      war:{...warState},gameEnd,spawn:{...spawnState,best:spawnCache?{...spawnCache}:null},victory:winStatus,income:incomeStatus,fleet:fleetStatus,strategicTelemetry,military:troopSnapshot,
       defense:{status:defenseStatus,stats:defenseStats,pendingRetreats:[...retreatRequests.values()]},
       rockets:{confirmed:nukeShots,attempts:nukeAttempts,unconfirmed:nukeUnconfirmed,pending:nukePending},
       diplomacy:{status:diplomacyStatus,stats:diplomacyStats,pending:[...diplomacyPending.values()]},records:diagnostics,createdAt:new Date().toISOString()};
     const blob=new Blob([JSON.stringify(details,null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download='OpenFront_AggroBot_1.10.2_Diagnose.json';document.body.append(a);a.click();a.remove();
+    a.href=url;a.download='OpenFront_AggroBot_1.10.3_Diagnose.json';document.body.append(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),2000);
   }
 
@@ -155,7 +155,7 @@
       ['Singleplayer','Public','Private'].includes(gameType(g));}
     catch(_){return false;}
   };
-  const conflicts = () => !!(window.__ofSoloAggroBot1 || window.__ofSoloAggroBot11 || window.__ofSoloAggroBot12 || window.__ofSoloAggroBot13 || window.__ofSoloAggroBot14 || window.__ofSoloAggroBot15 || window.__ofSoloAggroBot16 || window.__ofSoloAggroBot17 || window.__ofSoloAggroBot18 || window.__ofSoloAggroBot181 || window.__ofSoloAggroBot190 || window.__ofSoloAggroBot191 || window.__ofSoloAggroBot192 || window.__ofSoloAggroBot193 || window.__ofSoloAggroBot194 || window.__ofSoloAggroBot195 || window.__ofSoloAggroBot196 || window.__ofSoloAggroBot197 || window.__ofSoloAggroBot198 || window.__ofSoloAggroBot199 || window.__ofSoloAggroBot1100 || window.__ofSoloAggroBot1101);
+  const conflicts = () => !!(window.__ofSoloAggroBot1 || window.__ofSoloAggroBot11 || window.__ofSoloAggroBot12 || window.__ofSoloAggroBot13 || window.__ofSoloAggroBot14 || window.__ofSoloAggroBot15 || window.__ofSoloAggroBot16 || window.__ofSoloAggroBot17 || window.__ofSoloAggroBot18 || window.__ofSoloAggroBot181 || window.__ofSoloAggroBot190 || window.__ofSoloAggroBot191 || window.__ofSoloAggroBot192 || window.__ofSoloAggroBot193 || window.__ofSoloAggroBot194 || window.__ofSoloAggroBot195 || window.__ofSoloAggroBot196 || window.__ofSoloAggroBot197 || window.__ofSoloAggroBot198 || window.__ofSoloAggroBot199 || window.__ofSoloAggroBot1100 || window.__ofSoloAggroBot1101 || window.__ofSoloAggroBot1102);
   function advisorConflict() {
     if (!window.__openfrontSpawnAdvisorV104) return false;
     try {const s=JSON.parse(localStorage.getItem('openfront-spawn-advisor-10.4')||'{}');
@@ -252,7 +252,7 @@
     lastIntentHealth=null;lastIntentProbe=-Infinity;missingIntentLogged.clear();
     lastTick=-1;lastSpawn=-Infinity;lastEconomy=-Infinity;lastEconomyProbe=-Infinity;
     lastBoat=-Infinity;lastBorderTick=-Infinity;borderCache=null;borderPlayer=null;
-    buildCursor=0;spawnCache=null;spawnJob=null;spawnRetryAt=0;cooldowns.clear();rejected.clear();
+    buildCursor=0;spawnCache=null;spawnJob=null;spawnRetryAt=0;spawnAlternatives=[];spawnState={scanned:0,phase:'idle',lastSent:null,attempts:0};cooldowns.clear();rejected.clear();
     plan=null;lastSelection='';lastEmission=0;borderOffset=0;lastBorderRefresh=0;
     totalSent=0;totalFailed=0;actions=[];errors=0;troopSamples=[];
     lastRecoveryReason='';lastBattle=null;pendingAttack=null;targetIntelCache.clear();
@@ -382,63 +382,229 @@
   function friendly(p,me) {
     try {return p?.id?.()===me.id() || p.isFriendly?.(me) || me.isFriendly?.(p);}catch(_){return false;}
   }
+  function spawnRemaining(g) {
+    const fallback=multiplayerMatch(g)?200:100;
+    const turns=number(()=>g.config().numSpawnPhaseTurns?.(),fallback);
+    return Math.max(0,turns-number(()=>g.ticks(),0));
+  }
+  function spawnTileValid(g,tile) {
+    try{return Number.isInteger(tile)&&
+      (typeof g.isValidRef!=='function'||g.isValidRef(tile))&&
+      g.isLand(tile)&&!g.isImpassable(tile)&&
+      !g.hasOwner(tile)&&!g.isBorder?.(tile);}
+    catch(_){return false;}
+  }
+  function spawnRivals(g,me) {
+    const ownTeam=me?.team?.();
+    return (g.playerViews?.()||[]).filter(p=>safeID(p)!==safeID(me))
+      .map(p=>{
+        const tile=p.state?.spawnTile;
+        if(!Number.isInteger(tile)||(typeof g.isValidRef==='function'&&!g.isValidRef(tile)))return null;
+        return {x:g.x(tile),y:g.y(tile),
+          teammate:ownTeam!==null&&ownTeam!==undefined &&
+            p.team?.()===ownTeam};
+      }).filter(Boolean);
+  }
+  // Use the actual 4-tile spawn footprint and three additional land rings.
+  // Nearby free plains provide opening growth, while the outer rings penalize
+  // islands/peninsulas and distant teammates do not count as enemy threats.
+  function spawnScore(g,tile,rivals=spawnRivals(g,myPlayer()),urgent=false) {
+    if(!spawnTileValid(g,tile))return null;
+    const x=g.x(tile),y=g.y(tile),w=g.width(),h=g.height();
+    const good=(xx,yy)=>{
+      if(xx<0||yy<0||xx>=w||yy>=h)return null;
+      const t=g.ref(xx,yy);
+      if(!g.isLand(t)||g.isImpassable(t)||g.hasOwner(t))return null;
+      const magnitude=number(()=>g.magnitude?.(t),
+        number(()=>g.terrainByte?.(t)&31,10));
+      return {plain:magnitude<10,high:magnitude<20};
+    };
+    let core=0,coreTotal=0,plain=0;
+    for(let dy=-4;dy<=4;dy++)for(let dx=-4;dx<=4;dx++){
+      if(dx*dx+dy*dy>16)continue;
+      coreTotal++;
+      const v=good(x+dx,y+dy);
+      if(v){core++;plain+=v.plain?1:0;}
+    }
+    if(core<coreTotal*(urgent?.58:.83))return null;
+    const minSide=Math.min(w,h),scale=Math.min(70,Math.max(15,minSide/7));
+    const rings=[Math.max(8,scale*.27),Math.max(13,scale*.57),scale];
+    let accessible=0,weight=0,plains=0,coastal=0;
+    const angles=16;
+    for(let i=0;i<rings.length;i++){
+      const rr=rings[i],importance=i===0?1:i===1?1.25:1.5;
+      for(let j=0;j<angles;j++){
+        const t=2*Math.PI*j/angles;
+        const xx=Math.round(x+rr*Math.cos(t)),yy=Math.round(y+rr*Math.sin(t));
+        const v=good(xx,yy);
+        weight+=importance;
+        if(v){accessible+=importance;plains+=v.plain?importance:v.high?importance*.38:0;}
+        try{
+          if(xx>=0&&yy>=0&&xx<w&&yy<h&&
+            (g.isOceanShore?.(g.ref(xx,yy))||
+             (!g.isOceanShore&&g.isShore?.(g.ref(xx,yy)))))
+            coastal+=importance;
+        }catch(_){}
+      }
+    }
+    const density=accessible/Math.max(1,weight);
+    if(density<(urgent?.24:.48))return null;
+    const enemy=rivals.filter(p=>!p.teammate)
+      .map(p=>Math.abs(p.x-x)+Math.abs(p.y-y));
+    const ally=rivals.filter(p=>p.teammate)
+      .map(p=>Math.abs(p.x-x)+Math.abs(p.y-y));
+    const nearestEnemy=enemy.length?Math.min(...enemy):Infinity;
+    const nearestAlly=ally.length?Math.min(...ally):Infinity;
+    const minimum=number(()=>g.config().minDistanceBetweenPlayers?.(),30);
+    if(nearestEnemy<(urgent?minimum:minimum+4))return null;
+    // Too many people in one shared territory prevents both players growing.
+    if(nearestAlly<(urgent?16:Math.max(22,minimum*.8)))return null;
+    const enemyScore=enemy.length===0?0.75:
+      Math.min(1,Math.max(0,(nearestEnemy-minimum)/(minimum*2.5)));
+    const teamScore=!ally.length?0:
+      Math.min(1,Math.max(0,(nearestAlly-minimum)/(minimum*2.5)))*
+        Math.min(1,190/Math.max(60,nearestAlly));
+    const openScore=core/coreTotal;
+    const edge=Math.min(x,y,w-1-x,h-1-y);
+    const edgeScore=Math.min(1,edge/Math.max(22,scale));
+    // Coast is helpful for ports, not a reason to prefer a tiny island.
+    const coastScore=Math.min(1,coastal/Math.max(1,weight)*3);
+    const score=openScore*.19+density*.32+
+      (plain/Math.max(1,core)*.45+plains/Math.max(1,weight)*.55)*.18+
+      enemyScore*.16+edgeScore*.05+coastScore*.04+
+      (ally.length?teamScore*.06:0);
+    return {tile,x,y,score,density,core:openScore,
+      coast:coastScore,enemy:Number.isFinite(nearestEnemy)?nearestEnemy:null,
+      teammate:Number.isFinite(nearestAlly)?nearestAlly:null};
+  }
   function startSpawnSearch() {
-    if(spawnJob || spawnCache || !game || Date.now()<spawnRetryAt)return;
-    const g=game, serial=generation;
-    const w=g.width(),h=g.height(),r=Math.max(6,Math.min(27,Math.floor(Math.min(w,h)/20)));
-    const stride=Math.max(17,Math.floor(Math.min(w,h)/15));
-    const rivals=[];
-    try {for(const p of g.playerViews()) {
-      if(p.id?.()===myPlayer()?.id?.()) continue;
-      const t=p.state?.spawnTile;
-      if(Number.isInteger(t)&&t>=0) rivals.push([g.x(t),g.y(t)]);
-    }}catch(_){}
-    const samples=[];
-    for(let dy=-r;dy<=r;dy+=Math.max(3,Math.floor(r/4)))
-      for(let dx=-r;dx<=r;dx+=Math.max(3,Math.floor(r/4)))
-        if(dx*dx+dy*dy<=r*r)samples.push([dx,dy]);
-    let x=r,y=r,best=null;
-    spawnJob={serial};
-    function chunk() {
-      if(serial!==generation || game!==g || !opts.enabled || !permittedMatch(g) || !g.inSpawnPhase?.()){
+    if(spawnJob||!game||!opts.enabled||Date.now()<spawnRetryAt||
+      !game.inSpawnPhase?.()||game.config().isRandomSpawn?.())return;
+    const g=game,serial=generation,me=myPlayer();
+    if(!me||me.hasSpawned?.()||Number.isInteger(me.state?.spawnTile))return;
+    const w=g.width(),h=g.height(),margin=6;
+    if(w<=margin*2||h<=margin*2)return;
+    const stride=Math.max(11,Math.floor(Math.min(w,h)/19));
+    const rivals=spawnRivals(g,me),candidates=new Map();
+    const offsets=[0,.5].map(f=>Math.floor(stride*f));
+    const jobs=[];
+    for(const offset of offsets){
+      for(let y=margin+offset;y<h-margin;y+=stride)
+        for(let x=margin+offset;x<w-margin;x+=stride)
+          jobs.push([x,y]);
+    }
+    let index=0;
+    spawnAlternatives=[];
+    spawnJob={serial,started:number(()=>g.ticks(),0),total:jobs.length,candidates};
+    spawnState.phase='Suche';spawnState.scanned=0;
+    function chunk(){
+      if(serial!==generation||g!==game||!opts.enabled||!permittedMatch(g)||
+        !g.inSpawnPhase?.()||me.hasSpawned?.()||
+        Number.isInteger(me.state?.spawnTile)){
         spawnJob=null;return;
       }
       const start=performance.now();
-      try {
-        while(y<h-r && performance.now()-start<8) {
-          if(x>=w-r){x=r;y+=stride;continue;}
-          const cx=x,cy=y;x+=stride;
-          const t=g.ref(cx,cy);
-          if(!g.isLand(t)||g.isImpassable(t)||g.hasOwner(t))continue;
-          let land=0,plain=0;
-          for(const [dx,dy] of samples){const byte=g.terrainByte(g.ref(cx+dx,cy+dy));
-            if(byte&128){land++;if((byte&31)<10)plain++;}}
-          const density=land/samples.length;if(density<.62)continue;
-          const distance=rivals.length?Math.min(...rivals.map(([px,py])=>Math.hypot(cx-px,cy-py))):r*7;
-          const edge=Math.min(cx,cy,w-1-cx,h-1-cy);
-          // A useful port coastline is a bonus, never a reason to spawn on
-          // a cramped island; the land-density gate remains mandatory.
-          const coast=typeof g.isShore==='function' && [[0,0],[r,0],[-r,0],[0,r],[0,-r]]
-            .some(([dx,dy])=>{try{return g.isShore(g.ref(cx+dx,cy+dy));}catch(_){return false;}});
-          const score=density*.44 + plain/Math.max(1,land)*.20 +
-            Math.min(1,distance/(r*5))*.23 + Math.min(1,edge/(r*3))*.09 +
-            (coast?.04:0);
-          if(!best||score>best.score)best={tile:t,x:cx,y:cy,score};
+      try{
+        while(index<jobs.length && performance.now()-start<8){
+          const [x,y]=jobs[index++],tile=g.ref(x,y);
+          const candidate=spawnScore(g,tile,rivals);
+          if(!candidate)continue;
+          candidates.set(tile,candidate);
+          if(candidates.size>18){
+            const worst=[...candidates.values()].sort((a,b)=>a.score-b.score)[0];
+            candidates.delete(worst.tile);
+          }
+          if(!spawnCache || candidate.score>spawnCache.score)
+            spawnCache=candidate;
         }
-      }catch(e){spawnJob=null;status='Spawn-Analyse: '+e.message;spawnRetryAt=Date.now()+15000;return;}
-      if(y<h-r){setTimeout(chunk,0);return;}
-      spawnJob=null;spawnCache=best;
-      if(!best){status='Keine geeignete Startposition';spawnRetryAt=Date.now()+12000;return;}
+        spawnState.scanned=index;
+      }catch(e){
+        spawnJob=null;spawnState.phase='Fehler';
+        status='Spawn-Analyse: '+String(e?.message||e).slice(0,90);
+        spawnRetryAt=Date.now()+600;return;
+      }
+      if(index<jobs.length){
+        // Near deadline, send the best VALID candidate found so far while
+        // the grid continues. Do not wait out the last spawn-phase tick.
+        if(spawnRemaining(g)<=55 && spawnCache)doSpawn(number(()=>g.ticks(),0));
+        setTimeout(chunk,0);return;
+      }
+      spawnJob=null;spawnState.phase='Fertig';
+      spawnAlternatives=[...candidates.values()].sort((a,b)=>b.score-a.score).slice(0,18);
+      if(candidates.size){
+        // Refine only the top candidates in a bounded local neighborhood.
+        for(const top of [...candidates.values()].sort((a,b)=>b.score-a.score).slice(0,6)){
+          for(const [dx,dy] of [[0,0],[stride/3,0],[-stride/3,0],
+            [0,stride/3],[0,-stride/3],[stride/3,stride/3],
+            [-stride/3,-stride/3]]){
+            const x=Math.round(top.x+dx),y=Math.round(top.y+dy);
+            if(x<margin||y<margin||x>=w-margin||y>=h-margin)continue;
+            const v=spawnScore(g,g.ref(x,y),rivals);
+            if(v&&(!spawnCache||v.score>spawnCache.score))spawnCache=v;
+          }
+        }
+      }
+      if(!spawnCache){
+        status='Spawn: kein sicherer Standort; Suche wiederholen';
+        spawnRetryAt=Date.now()+800;return;
+      }
       doSpawn(number(()=>g.ticks(),0));
     }
     setTimeout(chunk,0);
   }
+  function emergencySpawnSearch(g,me){
+    if(!g?.inSpawnPhase?.() || g.config().isRandomSpawn?.())return null;
+    const w=g.width(),h=g.height(),step=Math.max(9,Math.floor(Math.min(w,h)/14)),
+      rivals=spawnRivals(g,me);
+    let best=null;
+    for(let y=5;y<h-5;y+=step)for(let x=5;x<w-5;x+=step){
+      const current=spawnScore(g,g.ref(x,y),rivals,true);
+      if(current&&(!best||current.score>best.score))best=current;
+    }
+    if(best){
+      spawnState.phase='Deadline-Fallback';spawnCache=best;
+    }
+    return best;
+  }
   function doSpawn(tick) {
-    if(!opts.autoSpawn||!ctors.spawn||tick-lastSpawn<30 || game.config().isRandomSpawn?.())return;
-    const me=myPlayer();if(me?.hasSpawned?.()||me?.state?.spawnTile!==undefined)return;
-    if(!spawnCache){startSpawnSearch();return;}
-    const p=spawnCache;
-    if(send('spawn',[p.tile],`SPAWN (${p.x},${p.y})`))lastSpawn=tick;
+    if(!opts.autoSpawn||!ctors.spawn||tick-lastSpawn<30||
+      game.config().isRandomSpawn?.()||!game.inSpawnPhase?.())return;
+    const me=myPlayer();
+    if(!me||me.hasSpawned?.()||Number.isInteger(me.state?.spawnTile))return;
+    if(!spawnCache){
+      if(spawnRemaining(game)<=55)spawnCache=emergencySpawnSearch(game,me);
+      if(!spawnCache){startSpawnSearch();return;}
+    }
+    if(spawnJob && spawnRemaining(game)>55)return;
+    const rivals=spawnRivals(game,me),urgent=spawnRemaining(game)<=55;
+    const candidates=[spawnCache,...spawnAlternatives,...(spawnJob?.candidates?.values()||[])];
+    let best=null;
+    for(const candidate of candidates){
+      const current=spawnScore(game,candidate.tile,rivals,urgent);
+      if(!current)continue;
+      // A selected tile that has not appeared in the game state after a
+      // full retry interval should not monopolize the last multiplayer ticks.
+      if(spawnState.lastSent?.tile===current.tile &&
+        tick-spawnState.lastSent.tick>=30 && candidates.length>1)continue;
+      if(!best||current.score>best.score)best=current;
+    }
+    if(!best && urgent)best=emergencySpawnSearch(game,me);
+    if(!best){
+      spawnCache=null;spawnState.phase='Standort neu prüfen';
+      if(!spawnJob)startSpawnSearch();
+      return;
+    }
+    spawnCache=best;
+    if(send('spawn',[best.tile],
+      'SPAWN → strategischer Standort ('+best.x+','+best.y+
+      ') · Land '+Math.round(best.density*100)+'% · Score '+best.score.toFixed(3),
+      spawnRemaining(game)<=55)){
+      lastSpawn=tick;spawnState.phase='Auswahl gesendet';spawnState.attempts++;
+      spawnState.lastSent={tile:best.tile,tick,score:best.score,
+        density:best.density,enemy:best.enemy,teammate:best.teammate};
+      telemetry('spawn_intent','Strategischer Spawn angefordert',
+        {spawn:{...spawnState.lastSent}});
+    }
   }
   async function borders(me,tick) {
     const id=safeID(me);
@@ -2302,7 +2468,20 @@
     if(tick<0||tick===lastTick){paint();return;}
     lastTick=tick;busy=true;const serial=generation,t0=performance.now();
     try {
-      if(game.inSpawnPhase?.()){status='Auto-Spawn';doSpawn(tick);return;}
+      const spawnMe=myPlayer();
+      if(spawnState.lastSent && spawnMe?.hasSpawned?.() &&
+        spawnState.phase!=='Bestätigt'){
+        spawnState.phase='Bestätigt';
+        const actual=spawnMe.state?.spawnTile;
+        telemetry('spawn_confirmed','Spawn im Spielzustand bestätigt',
+          {spawn:{...spawnState.lastSent,actualTile:Number.isInteger(actual)?actual:null,
+            moved:Number.isInteger(actual)&&actual!==spawnState.lastSent.tile}});
+      }
+      if(game.inSpawnPhase?.()){
+        status=game.config().isRandomSpawn?.()?'Zufallsspawn durch Spielserver':
+          'Auto-Spawn · '+spawnState.phase;
+        doSpawn(tick);return;
+      }
       const me=myPlayer();
       if(!me?.isAlive?.()||!me.hasSpawned?.()){status='Warte auf Spawn';return;}
       sampleTroops(tick,me);sampleIncome(me,tick);victoryPlan(me);confirmAttack(me,tick);evaluateLastBattle(tick,me);
@@ -2419,6 +2598,10 @@
     const b=(key,label)=>`<button data-key="${key}" style="border:1px solid #779;border-radius:5px;color:#fff;background:${opts[key]?'#167247':'#344157'};padding:5px 7px;margin:2px;cursor:pointer">${label}</button>`;
     panel.innerHTML=`<b style="font-size:15px;color:#83dcff">Solo AggroBot ${VERSION}</b> ${permittedMatch(game)?'🟢':'🔒'}
       <div style="color:#bed5e8;margin:6px 0">${escapeHTML(status)}</div>
+      ${game?.inSpawnPhase?.()?'<div style="color:#9bd0e4">Strategischer Spawn: '+
+        escapeHTML(spawnState.phase)+' · geprüft '+spawnState.scanned+
+        ' · Versuche '+spawnState.attempts+' · Rest '+
+        spawnRemaining(game)+' Ticks</div>':''}
       <div>${b('enabled',opts.enabled?'⏸ PAUSE':'▶ BOT STARTEN')}</div>
       <div>${b('autoSpawn','Spawn')} ${b('defense','Gegenangriff')} ${b('economy','Wirtschaft')} ${b('boats','Marine')}</div>
       <div>${b('upgrades','Upgrades')} ${b('safeMode','Not-Aus')} ${b('autoStrategy','Auto-Strategie '+(opts.autoStrategy?'AN':'AUS'))} ${b('fullAuto','Vollautonom '+(opts.fullAuto?'AN':'AUS'))}</div>

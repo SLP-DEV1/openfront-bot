@@ -13,7 +13,7 @@ async function check(name, test) {
 }
 function boot() {
   let tick = 300, land = 1200, gold = 1000000, home = 90000, enemyLand = 900, gameOver = false;
-  const out = [], incoming = [], sent = [], warnings = [], infos = [];
+  const out = [], incoming = [], sent = [], warnings = [], infos = [], timers = [];
   const me = {
     id: () => 'me', smallID: () => 1, troops: () => home, numTilesOwned: () => land,
     gold: () => BigInt(gold), isAlive: () => true, hasSpawned: () => true,
@@ -63,7 +63,7 @@ function boot() {
     localStorage: {getItem: () => null, setItem: () => {}},
     Date: fixedDate, console: {info: (...parts) => infos.push(parts.join(' ')),
       warn: (...parts) => warnings.push(parts.join(' ')), error: () => {}},
-    setInterval: () => 1, clearInterval: () => {}, setTimeout: () => 1,
+    setInterval: () => 1, clearInterval: () => {}, setTimeout: fn => {timers.push(fn);return 1;},
     performance: {now: () => 0},
     URL: {createObjectURL: () => '', revokeObjectURL: () => {}},
     Blob: class {}
@@ -71,7 +71,7 @@ function boot() {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'military,warReadiness,targetOpportunity,targetEconomics,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,economy,economicNeeds,economicAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,',
+    'military,warReadiness,targetOpportunity,targetEconomics,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,economy,economicNeeds,economicAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'setWarWait:n=>warWaitSince=n,setEconFails:n=>failedEconomyProbes=n,',
     'setPending:p=>pendingAttack=p,',
@@ -82,11 +82,12 @@ function boot() {
     'setMode:m=>strategic.mode=m,setAllianceCtor:C=>ctors.alliance=C,',
     'setNukePending:p=>nukePending=p,',
     'setPerf:(combat,border,economy)=>runtime={...runtime,combatMs:combat,borderMs:border,economyMs:economy},',
-    'state:()=>({pendingAttack,attackReceipts,warState,gameEnd,diagnostics,economicStatus,failedEconomyProbes,investmentStatus,strategic,winStatus,incomeStatus,fleetStatus,strategicTelemetry,defenseStatus,defenseStats,autoTuning,nukeShots,nukeAttempts,nukeUnconfirmed,nukePending,lastProposalTick,diplomacyStatus,diplomacyPending:[...diplomacyPending.values()],retreatRequests:[...retreatRequests.values()]}),opts};'
+    'state:()=>({pendingAttack,attackReceipts,warState,gameEnd,diagnostics,spawnState,spawnCache,spawnJob,economicStatus,failedEconomyProbes,investmentStatus,strategic,winStatus,incomeStatus,fleetStatus,strategicTelemetry,defenseStatus,defenseStats,autoTuning,nukeShots,nukeAttempts,nukeUnconfirmed,nukePending,lastProposalTick,diplomacyStatus,diplomacyPending:[...diplomacyPending.values()],retreatRequests:[...retreatRequests.values()]}),opts};'
   ].join('\n');
   vm.runInNewContext(source.replace(anchor, expose + '\n' + anchor), context, {timeout:2000});
   win.__test.setup(game, {emit:event=>sent.push(event)}, {attack:Attack, build:Build});
   return {b:win.__test,game,me,weak,strong,out,sent,warnings,infos,
+    flushTimers:(limit=40)=>{for(let i=0;i<limit&&timers.length;i++)timers.shift()();return timers.length;},
     setTick:v=>tick=v,setLand:v=>land=v,setEnemyLand:v=>enemyLand=v,
     setOver:v=>gameOver=v,setGold:v=>gold=v,setHome:v=>home=v};
 }
@@ -1103,6 +1104,106 @@ function boot() {
     assert.equal(x.b.gameOutcome(x.game,x.me).outcome,'incomplete');
     x.game.updatesSinceLastTick=()=>null;
     assert.equal(x.b.gameOutcome(x.game,x.me).outcome,'unknown');
+  });
+  function spawnFixture(x,tick=20){
+    x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Medium',gameMode:'FFA'});
+    x.game.config().numSpawnPhaseTurns=()=>200;
+    x.game.config().minDistanceBetweenPlayers=()=>30;
+    x.game.config().isRandomSpawn=()=>false;
+    x.game.inSpawnPhase=()=>true;x.game.hasOwner=()=>false;
+    x.game.isBorder=()=>false;x.game.magnitude=()=>0;
+    x.game.terrainByte=()=>128;
+    x.game.isOceanShore=()=>false;
+    x.me.hasSpawned=()=>false;
+    x.me.state.spawnTile=undefined;
+    x.setTick(tick);
+    class Spawn{constructor(tile){this.tile=tile;}}
+    x.b.setCtor('spawn',Spawn);
+  }
+  await check('v1.10.3 spawn requires unowned traversable footprint', () => {
+    const x=boot();spawnFixture(x);const t=x.game.ref(50,50);
+    assert(x.b.spawnScore(x.game,t),'legal center should be ranked');
+    x.game.hasOwner=tile=>tile===t;
+    assert.equal(x.b.spawnScore(x.game,t),null);
+    x.game.hasOwner=()=>false;
+    x.game.isImpassable=tile=>tile===t;
+    assert.equal(x.b.spawnScore(x.game,t),null);
+    x.game.isImpassable=()=>false;
+    x.game.isLand=tile=>tile!==t;
+    assert.equal(x.b.spawnScore(x.game,t),null);
+  });
+  await check('v1.10.3 large open land beats cramped island', () => {
+    const x=boot();spawnFixture(x);
+    const full=x.b.spawnScore(x.game,x.game.ref(70,70));
+    x.game.isLand=t=>{
+      const a=x.game.x(t),b=x.game.y(t);
+      return (a>=22&&a<=38&&b>=22&&b<=38) ||
+        (a>=52&&a<=98&&b>=52&&b<=98);
+    };
+    assert.equal(x.b.spawnScore(x.game,x.game.ref(30,30)),null,
+      'a tiny island should fail outer-land screening');
+    const open=x.b.spawnScore(x.game,x.game.ref(70,70));
+    assert(open && open.density>.7);
+    assert(open.score<=full.score+0.01);
+  });
+  await check('v1.10.3 avoids enemy crowding without rejecting teammates as foes', () => {
+    const x=boot();spawnFixture(x);
+    const center=x.game.ref(50,50);
+    const rivals=[{x:53,y:50,teammate:false}];
+    assert.equal(x.b.spawnScore(x.game,center,rivals),null);
+    assert.equal(x.b.spawnScore(x.game,center,[{x:54,y:50,teammate:true}]),null,
+      'do not overlap friendly territory either');
+    assert(x.b.spawnScore(x.game,center,[{x:110,y:50,teammate:true}]));
+    x.me.team=()=> 'blue';x.weak.team=()=> 'blue';
+    x.weak.state.spawnTile=x.game.ref(50,60);
+    assert.equal(x.b.spawnRivals(x.game,x.me).find(v=>v.x===50&&v.y===60).teammate,true);
+  });
+  await check('v1.10.3 finished multiplayer scan sends highest scored legal spawn', () => {
+    const x=boot();spawnFixture(x,20);
+    x.b.startSpawnSearch();assert(x.b.state().spawnJob,'scan should begin');
+    assert.equal(x.sent.length,0);
+    assert.equal(x.flushTimers(),0);
+    assert.equal(x.sent.length,1);
+    const picked=x.sent[0].tile;
+    assert.equal(x.b.spawnTileValid(x.game,picked),true);
+    assert.equal(x.b.state().spawnState.phase,'Auswahl gesendet');
+    assert(x.b.state().spawnState.scanned>0);
+    assert(x.b.state().diagnostics.some(v=>v.kind==='spawn_intent'));
+  });
+  await check('v1.10.3 deadline picks emergency candidate while grid scan is pending', () => {
+    const x=boot();spawnFixture(x,185);
+    x.b.doSpawn(185);
+    assert.equal(x.sent.length,1);
+    assert.equal(x.b.state().spawnState.attempts,1);
+    assert.equal(x.b.state().spawnState.phase,'Auswahl gesendet');
+    assert.equal(x.b.state().spawnJob,null);
+  });
+  await check('v1.10.3 worker-selected tile lost to rival is not submitted', () => {
+    const x=boot();spawnFixture(x,20);
+    x.b.startSpawnSearch();x.flushTimers();
+    const first=x.sent[0].tile;
+    x.game.hasOwner=t=>t===first;
+    x.setTick(60);x.b.doSpawn(60);
+    assert(!x.sent.some((event,i)=>i>0&&event.tile===first));
+  });
+  await check('v1.10.3 random spawn, replay and ended phases emit no choice', () => {
+    const x=boot();spawnFixture(x,185);
+    x.game.config().isRandomSpawn=()=>true;
+    x.b.doSpawn(185);x.b.startSpawnSearch();
+    assert.equal(x.sent.length,0);
+    x.game.config().isRandomSpawn=()=>false;
+    x.game.config().isReplay=()=>true;
+    x.b.doSpawn(185);assert.equal(x.sent.length,0);
+    x.game.config().isReplay=()=>false;
+    x.game.inSpawnPhase=()=>false;
+    x.b.doSpawn(185);assert.equal(x.sent.length,0);
+  });
+  await check('v1.10.3 stopped bot cancels deferred spawn search', () => {
+    const x=boot();spawnFixture(x,20);
+    x.b.startSpawnSearch();x.b.opts.enabled=false;
+    x.flushTimers();
+    assert.equal(x.sent.length,0);
+    assert.equal(x.b.state().spawnJob,null);
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;

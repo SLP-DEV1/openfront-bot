@@ -2,7 +2,7 @@
 
 Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscript für [OpenFront](https://openfront.io/).
 
-**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.10.2**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
+**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.10.3**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
 
 ## Installation
 
@@ -16,6 +16,14 @@ Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscr
 ## Strategie & Diagnose
 
 Strategie-, Wirtschafts-, Marine-, Diplomatie-, Nuke- und SAM-Planung sind vorhanden. Der Bot kann Befehle senden; daraus folgt **keine garantierte Gewinnrate auf „Unmöglich“**. Ein vollständiger Live-Test ist noch nicht erfolgt. „Diagnose JSON“ im Bot-Menü zeichnet unter anderem Gebietsänderungen, Truppenlage, Bauaufträge und Allianzantworten auf. Bitte den Export vor dem Neuladen erstellen.
+
+### Änderung 1.10.3 – Strategischer Auto-Spawn im Multiplayer
+
+- **Richtiger Zeitpunkt:** Auto-Spawn funktioniert nur während der Spawnphase, nach manuellem Bot-Start und bei verfügbarem `SendSpawnIntentEvent`; Random-Spawn sowie Replay bleiben ausgeschlossen. Standard-Multiplayer hat laut offizieller Config 200 Spawn-Ticks. Ab 55 verbleibenden Ticks wählt der Bot eine gültige bisher gefundene Position; bei spätem Start gibt es eine sofortige, etwas gelockerte Deadline-Suche. Er kann **nicht** nach abgelaufener Spawnphase beitreten.
+- **Strategische Position:** Bewertet die tatsächliche Spawnfläche (Radius vier), drei weitere Wachstumsringe, unbesetzte passierbare Ebene/Hochland-Flächen, Kartenränder und erreichbare Küste. Kleine Inseln/Halbinseln werden gegenüber zusammenhängendem freiem Expansionsland abgewertet. Der Küstenbonus bleibt klein.
+- **Multiplayer-Rivalen und Teams:** Beobachtete Spawnpositionen anderer Spieler werden live vor dem Senden erneut bewertet. Der Gegnerabstand folgt dem offiziellen `minDistanceBetweenPlayers()` als Sicherheitsuntergrenze (Manhattan); Teamkameraden werden nicht als Feinde behandelt, aber direktes Team-Spawnen auf demselben Fleck wird ebenfalls vermieden.
+- **Zuverlässigkeit:** Begrenzter, in UI-Zeitscheiben laufender Grid-Scan und lokale Verfeinerung der besten Kandidaten. Wenn das Ziel belegt wird oder ein Intent 30 Ticks lang nicht bestätigt wird, versucht der Bot eine Alternative. Spawnversuche, Dichte, Punktewert, verstrichene Suche und erkannter tatsächlicher Spawn werden protokolliert.
+- **Grenzen:** Die Wertung schätzt strategische Erreichbarkeit über Gelände-Stichproben, nicht vollständige spätere Konflikt-/Bahnnetzpfade. Bei Random Spawn entscheidet weiterhin der Server. Es gibt keine Garantie für den global besten Spawn oder ein gewonnenes Multiplayer-Spiel.
 
 ### Änderung 1.10.2 – Public/Medium-Live-Test (Diagnose 1.10.1)
 
