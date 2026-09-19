@@ -70,7 +70,7 @@ function boot() {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'military,warReadiness,confirmAttack,economy,economicNeeds,strategy,manageWar,actionBudget,connected,naval,defenseAssessment,emergencyRetreat,siteScore,recognize,tuneAutonomously,setting,',
+    'military,warReadiness,targetOpportunity,rankedTargets,confirmAttack,economy,economicNeeds,strategy,manageWar,actionBudget,connected,naval,defenseAssessment,emergencyRetreat,siteScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'setWarWait:n=>warWaitSince=n,setEconFails:n=>failedEconomyProbes=n,',
     'setPending:p=>pendingAttack=p,',
@@ -78,8 +78,9 @@ function boot() {
     'setGroups:groups=>strategic.groups=groups,',
     'setBoats:yes=>opts.boats=yes,setBoatCtor:C=>ctors.boat=C,',
     'setCancelCtor:C=>ctors.cancel=C,setTroopSnapshot:t=>troopSnapshot=t,',
+    'setNukePending:p=>nukePending=p,',
     'setPerf:(combat,border,economy)=>runtime={...runtime,combatMs:combat,borderMs:border,economyMs:economy},',
-    'state:()=>({pendingAttack,attackReceipts,warState,economicStatus,failedEconomyProbes,investmentStatus,strategic,defenseStatus,defenseStats,autoTuning,retreatRequests:[...retreatRequests.values()]}),opts};'
+    'state:()=>({pendingAttack,attackReceipts,warState,economicStatus,failedEconomyProbes,investmentStatus,strategic,defenseStatus,defenseStats,autoTuning,nukeShots,nukeAttempts,nukeUnconfirmed,nukePending,retreatRequests:[...retreatRequests.values()]}),opts};'
   ].join('\n');
   vm.runInNewContext(source.replace(anchor, expose + '\n' + anchor), context, {timeout:2000});
   win.__test.setup(game, {emit:event=>sent.push(event)}, {attack:Attack, build:Build});
@@ -127,7 +128,7 @@ function boot() {
     const x=boot();x.b.setBoats(true);x.b.setWar('strong','strong');
     x.strong.troops=()=>5000;
     x.b.setGroups([{id:'weak',opponent:x.weak},{id:'strong',opponent:x.strong}]);
-    x.me.actions=async()=>({buildableUnits:[{type:'Transport Ship',canBuild:1,cost:0n}]});
+    x.me.actions=async()=>({buildableUnits:[{type:'Transport',canBuild:1,cost:0n}]});
     class Boat{constructor(dst,troops){this.dst=dst;this.troops=troops;}}
     x.b.setBoatCtor(Boat);
     assert.equal(await x.b.naval(x.me,300,0),true);
@@ -136,7 +137,7 @@ function boot() {
   await check('navy keeps reserves against all border enemies', async () => {
     const x=boot();x.b.setBoats(true);x.b.setWar('weak','weak');
     x.b.setGroups([{id:'weak',opponent:x.weak},{id:'strong',opponent:x.strong}]);
-    x.me.actions=async()=>({buildableUnits:[{type:'Transport Ship',canBuild:1,cost:0n}]});
+    x.me.actions=async()=>({buildableUnits:[{type:'Transport',canBuild:1,cost:0n}]});
     class Boat{constructor(dst,troops){this.dst=dst;this.troops=troops;}}
     x.b.setBoatCtor(Boat);
     assert.equal(await x.b.naval(x.me,300,0),true);
@@ -332,6 +333,159 @@ function boot() {
     const x=boot();x.b.opts.fullAuto=true;
     x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Impossible'});
     assert.equal(x.b.connected(),false);
+  });
+
+  await check('PR #1 weak border target remains viable beside larger neighbor', () => {
+    const x=boot();x.setTick(184);x.setLand(440);x.setHome(93198);x.setGold(16300);
+    x.weak.troops=()=>17594;x.strong.troops=()=>102839;
+    const groups=[{id:'weak',opponent:x.weak,front:10,tiles:[5]},
+      {id:'strong',opponent:x.strong,front:10,tiles:[6]}];
+    const st=x.b.military(x.me,groups);
+    assert.equal(x.b.warReadiness(x.me,groups,st,184).ready,true);
+    assert.equal(x.b.targetOpportunity(x.me,groups,st,groups[0]),true);
+    const ranked=x.b.rankedTargets(groups,x.me,184,st,x.b.strategy(x.me,groups,st));
+    assert(ranked.some(t=>t.id==='weak'),JSON.stringify(ranked));
+    assert(!ranked.some(t=>t.id==='strong'));
+  });
+  await check('PR #1 extremely strong other neighbor must still veto attack', () => {
+    const x=boot();x.setTick(184);x.setHome(120000);
+    x.weak.troops=()=>1000;x.strong.troops=()=>450000;
+    const groups=[{id:'weak',opponent:x.weak,front:10,tiles:[5]},
+      {id:'strong',opponent:x.strong,front:10,tiles:[6]}];
+    const st=x.b.military(x.me,groups);
+    assert.equal(x.b.targetOpportunity(x.me,groups,st,groups[0]),false);
+    assert.equal(x.b.warReadiness(x.me,groups,st,184).ready,false);
+  });
+  await check('PR #1 incoming attack vetoes weak-neighbor war', () => {
+    const x=boot();x.setTick(184);x.setHome(93198);
+    x.weak.troops=()=>17594;x.strong.troops=()=>102839;
+    const groups=[{id:'weak',opponent:x.weak,front:10,tiles:[5]},
+      {id:'strong',opponent:x.strong,front:10,tiles:[6]}];
+    x.me.incomingAttacks().push({id:'in',attackerID:3,targetID:1,troops:20000,retreating:false});
+    const st=x.b.military(x.me,groups);
+    assert.equal(x.b.targetOpportunity(x.me,groups,st,groups[0]),false);
+    assert.equal(x.b.warReadiness(x.me,groups,st,184).ready,false);
+  });
+  await check('PR #1 economy failure explains missing gold', async () => {
+    const x=boot();x.setGold(55000);
+    x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
+      type,canBuild:tile,canUpgrade:false,cost:125000n}))});
+    assert.equal(await x.b.economy(x.me,300,0,[]),false);
+    assert.match(x.b.state().economicStatus,/Gold für gültige Bauoption fehlt/);
+  });
+  await check('issue #5 potential neighbor does not cancel Silo fund', async () => {
+    const x=boot();x.setTick(2400);x.setLand(51613);x.setGold(900000);
+    const units=['City','City','Factory','Factory'].map((type,i)=>({
+      type:()=>type,isActive:()=>true,tile:()=>5500+i*20,id:()=>i+1,level:()=>1}));
+    x.me.units=()=>units;x.strong.troops=()=>200000;
+    x.b.setGroups([{id:'weak',opponent:x.weak},{id:'strong',opponent:x.strong}]);
+    x.b.setTroopSnapshot({home:90000,max:100000,ratio:.60,incoming:0,
+      strongest:200000,committed:0,reserve:0,available:0});
+    x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
+      type,canBuild:tile,canUpgrade:false,cost:250000n}))});
+    const needs=x.b.economicNeeds(x.me,units,[]);
+    assert.equal(needs.emergency,true);assert.equal(needs.immediate,false);
+    assert.equal(needs.saveForSilo,true);
+    assert.equal(await x.b.economy(x.me,2400,0,[]),false);
+    assert.equal(x.sent.length,0);
+    assert.equal(x.b.state().failedEconomyProbes,0);
+  });
+  await check('issue #5 real invasion can fund emergency Defense Post', async () => {
+    const x=boot();x.setTick(2400);x.setLand(51613);x.setGold(900000);
+    const units=['City','City','Factory','Factory'].map((type,i)=>({
+      type:()=>type,isActive:()=>true,tile:()=>5500+i*20,id:()=>i+1,level:()=>1}));
+    x.me.units=()=>units;
+    x.b.setGroups([{id:'strong',opponent:x.strong}]);
+    x.b.setTroopSnapshot({home:90000,max:100000,ratio:.90,incoming:50000,
+      strongest:85000,committed:0,reserve:0,available:0});
+    x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
+      type,canBuild:tile,canUpgrade:false,cost:BigInt(type==='Defense Post'?50000:type==='Missile Silo'?1000000:250000)}))});
+    const needs=x.b.economicNeeds(x.me,units,[5500]);
+    assert.equal(needs.immediate,true);
+    assert.equal(await x.b.economy(x.me,2400,0,[5500]),true);
+    assert.equal(x.sent[0].unit,'Defense Post');
+  });
+  await check('issue #4 Transport is legal, Transport Ship is not', async () => {
+    class Boat{constructor(dst,troops){this.dst=dst;this.troops=troops;}}
+    const good=boot();good.b.setBoats(true);good.b.setBoatCtor(Boat);
+    good.me.actions=async()=>({buildableUnits:[{type:'Transport',canBuild:1,cost:0n}]});
+    assert.equal(await good.b.naval(good.me,300,0),true);
+    assert(good.sent[0] instanceof Boat);
+    const bad=boot();bad.b.setBoats(true);bad.b.setBoatCtor(Boat);
+    bad.me.actions=async()=>({buildableUnits:[{type:'Transport Ship',canBuild:1,cost:0n}]});
+    assert.equal(await bad.b.naval(bad.me,300,0),false);
+    assert.equal(bad.sent.length,0);
+  });
+
+  await check('issue #3 explicit retreat flag confirms, no inferred success', () => {
+    const x=boot();class Cancel{constructor(attackID){this.attackID=attackID;}}
+    x.b.setCancelCtor(Cancel);
+    x.out.push({id:'front-3',targetID:null,troops:30000,retreating:false});
+    x.me.incomingAttacks().push({id:'in',attackerID:2,troops:55000,retreating:false});
+    assert.equal(x.b.emergencyRetreat(x.me,300,x.b.military(x.me,[])),true);
+    x.out[0].retreating=true;
+    x.b.emergencyRetreat(x.me,307,x.b.military(x.me,[]));
+    assert.equal(x.b.state().defenseStats.retreatsObserved,1);
+    assert.equal(x.b.state().defenseStats.unknown,0);
+  });
+  await check('issue #3 destroyed stack reports unknown rather than retreat', () => {
+    const x=boot();class Cancel{constructor(attackID){this.attackID=attackID;}}
+    x.b.setCancelCtor(Cancel);
+    x.out.push({id:'front-4',targetID:null,troops:30000,retreating:false});
+    x.me.incomingAttacks().push({id:'in',attackerID:2,troops:55000,retreating:false});
+    assert.equal(x.b.emergencyRetreat(x.me,300,x.b.military(x.me,[])),true);
+    x.out.splice(0,1);
+    x.b.emergencyRetreat(x.me,307,x.b.military(x.me,[]));
+    assert.equal(x.b.state().defenseStats.retreatsObserved,0);
+    assert.equal(x.b.state().defenseStats.unknown,1);
+  });
+  await check('issue #3 ongoing attack without retreat flag times out', () => {
+    const x=boot();class Cancel{constructor(attackID){this.attackID=attackID;}}
+    x.b.setCancelCtor(Cancel);
+    x.out.push({id:'front-5',targetID:null,troops:30000,retreating:false});
+    x.me.incomingAttacks().push({id:'in',attackerID:2,troops:55000,retreating:false});
+    assert.equal(x.b.emergencyRetreat(x.me,300,x.b.military(x.me,[])),true);
+    x.b.emergencyRetreat(x.me,366,x.b.military(x.me,[]));
+    assert.equal(x.b.state().defenseStats.retreatsObserved,0);
+    assert.equal(x.b.state().defenseStats.unconfirmed,1);
+  });
+  await check('issue #2 sent nuclear intent alone is not a confirmed launch', async () => {
+    const x=boot();x.setTick(2400);x.setLand(51613);x.setGold(1200000);
+    const silo={type:()=> 'Missile Silo',isActive:()=>true,
+      isUnderConstruction:()=>false,isInCooldown:()=>false,tile:()=>5500,id:()=>99};
+    const own=['City','City','Factory','Factory'].map((type,i)=>({
+      type:()=>type,isActive:()=>true,tile:()=>5501+i*21,id:()=>i+1,level:()=>1}));
+    x.me.units=()=>[...own,silo];
+    const enemyCity={type:()=> 'City',isActive:()=>true,owner:()=>x.weak,tile:()=>5};
+    x.game.units=()=>[enemyCity];
+    x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
+      type,canBuild:tile,canUpgrade:false,cost:750000n}))});
+    await x.b.nukeStep();
+    assert.equal(x.sent.length,1,'one nuclear launch intent');
+    assert.equal(x.sent[0].unit,'Atom Bomb');
+    assert.equal(x.b.state().nukeAttempts,1);
+    assert.equal(x.b.state().nukeShots,0);
+    assert(x.b.state().nukePending);
+    assert.equal(x.b.inspectNukeLaunch(x.me,2456),false);
+    assert.equal(x.b.state().nukeShots,0);
+    assert.equal(x.b.state().nukeUnconfirmed,1);
+    assert.equal(x.b.economicNeeds(x.me,x.me.units(),[]).saveForNuke,true);
+  });
+  await check('issue #2 a newly observed missile is confirmed exactly once', () => {
+    const x=boot();x.setTick(2400);
+    const old={type:()=> 'Atom Bomb',isActive:()=>true,owner:()=>x.me,
+      targetTile:()=>5,id:()=>10};
+    x.game.units=()=>[old];
+    x.b.setNukePending({tile:5,type:'Atom Bomb',tick:2400,
+      beforeIds:['10'],beforeMatches:1,attempt:1});
+    assert.equal(x.b.inspectNukeLaunch(x.me,2410),true);
+    assert.equal(x.b.state().nukeShots,0);
+    x.game.units=()=>[old,{type:()=> 'Atom Bomb',isActive:()=>true,owner:()=>x.me,
+      targetTile:()=>5,id:()=>11}];
+    assert.equal(x.b.inspectNukeLaunch(x.me,2411),false);
+    assert.equal(x.b.state().nukeShots,1);
+    assert.equal(x.b.inspectNukeLaunch(x.me,2412),false);
+    assert.equal(x.b.state().nukeShots,1);
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
