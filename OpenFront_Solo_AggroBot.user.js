@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.10.1
+// @version      1.10.2
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -11,10 +11,10 @@
 
 (() => {
   'use strict';
-  if (window.__ofSoloAggroBot1101) return;
-  window.__ofSoloAggroBot1101 = true;
+  if (window.__ofSoloAggroBot1102) return;
+  window.__ofSoloAggroBot1102 = true;
 
-  const VERSION = '1.10.1', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1101';
+  const VERSION = '1.10.2', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1102';
   const defaults = {enabled:false, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -24,7 +24,7 @@
   try { opts = {...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; }
   catch (_) {opts = {...defaults};}
   try {if(!localStorage.getItem(KEY)){
-    opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v1100')||localStorage.getItem('of-solo-aggrobot-v199')||localStorage.getItem('of-solo-aggrobot-v198')||localStorage.getItem('of-solo-aggrobot-v197')||localStorage.getItem('of-solo-aggrobot-v196')||localStorage.getItem('of-solo-aggrobot-v195')||localStorage.getItem('of-solo-aggrobot-v194')||localStorage.getItem('of-solo-aggrobot-v193')||localStorage.getItem('of-solo-aggrobot-v192')||localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
+    opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v1101')||localStorage.getItem('of-solo-aggrobot-v1100')||localStorage.getItem('of-solo-aggrobot-v199')||localStorage.getItem('of-solo-aggrobot-v198')||localStorage.getItem('of-solo-aggrobot-v197')||localStorage.getItem('of-solo-aggrobot-v196')||localStorage.getItem('of-solo-aggrobot-v195')||localStorage.getItem('of-solo-aggrobot-v194')||localStorage.getItem('of-solo-aggrobot-v193')||localStorage.getItem('of-solo-aggrobot-v192')||localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
     // Only import user-adjustable preferences, never a previously enabled bot.
   }}catch(_){}
   opts.enabled = false;                         // Never auto-start after reload.
@@ -67,7 +67,7 @@
   let nukeBusy=false, lastNuke=-Infinity, nukePending=null, nukeStatus='Warte auf Silo', nukeShots=0,nukeAttempts=0,nukeUnconfirmed=0;
   let nuclearCache=null, nuclearCacheTick=-Infinity;
   let warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};
-  let diagnostics=[],lastDiagnosticTick=-Infinity,combatAwaiting=null;
+  let diagnostics=[],lastDiagnosticTick=-Infinity,combatAwaiting=null,gameEnd=null;
   let pendingAttack=null,attackReceipts={confirmed:0,unconfirmed:0,territoryGained:0};
   let failedEconomyProbes=0,successfulEconomyTick=-Infinity,warWaitSince=-Infinity;
   let investmentStatus='Grundaufbau',lastWarReview=-Infinity;
@@ -78,15 +78,52 @@
   let autoTuning={aggressive:85,reserve:35,actionsPerMinute:72,maxTargets:16,
     mode:'INIT',reason:'Warte auf Spielzustand',tick:-Infinity};
   const hardMode=()=>opts.impossibleMode && game?.config?.().gameConfig?.().difficulty==='Impossible';
+  // Keep single-front coordination in Public/Medium as well as Impossible.
+  // Difficulty-specific troop ratios remain tied to actual difficulty.
+  const coordinatedWar=()=>opts.impossibleMode;
   const isWar=()=>warState.id!==null;
   function telemetry(kind,message,extra={}) {
     if(!opts.enabled || !permittedMatch(game))return;
     let m=myPlayer(),tick=number(()=>game.ticks(),0);
+    // Freeze each historical snapshot; otherwise shared mutable metrics can
+    // make every old record appear to contain the latest values.
+    let frozen=extra;
+    if(kind==='snapshot'){
+      try{frozen=JSON.parse(JSON.stringify(extra,(_,v)=>
+        typeof v==='bigint'?v.toString():v));}
+      catch(_){frozen={snapshotError:'Daten konnten nicht eingefroren werden'};}
+    }
     diagnostics.push({time:new Date().toISOString(),tick,kind,message,mode:strategic.mode,
       warTarget:warState.name,home:number(()=>m?.troops?.()),gold:number(()=>Number(m?.gold?.())),
       land:number(()=>m?.numTilesOwned?.()),committed:troopSnapshot.committed,
-      incoming:troopSnapshot.incoming,...extra});
+      incoming:troopSnapshot.incoming,...frozen});
     if(diagnostics.length>1400)diagnostics.splice(0,diagnostics.length-1400);
+  }
+  function gameOutcome(g,me){
+    const result={outcome:'unknown',source:'gameOver',tick:number(()=>g?.ticks?.(),-1),
+      alive:me?.isAlive?.()??null,land:number(()=>me?.numTilesOwned?.(),0),
+      progress:winStatus.progress,mode:winStatus.mode};
+    // The official GameView.gameOver() only says a WinUpdate was observed;
+    // the official winner tuple carries the actual player/team outcome.
+    try{
+      const updates=g?.updatesSinceLastTick?.();
+      const win=Object.values(updates||{}).flat().find(u=>
+        u && typeof u==='object' && Object.hasOwn(u,'winner') &&
+        Object.hasOwn(u,'allPlayersStats'));
+      if(win){
+        const winner=win.winner;
+        result.source='WinUpdate';
+        result.winnerType=Array.isArray(winner)?winner[0]:null;
+        result.winnerNames=Array.isArray(winner)&&winner[0]==='team'?
+          [String(winner[1])]:[];
+        if(winner===null||winner===undefined)result.outcome='incomplete';
+        else if(Array.isArray(winner)&&['player','team','nation'].includes(winner[0])){
+          const ids=winner.slice(winner[0]==='player'?1:2);
+          result.outcome=ids.includes(safeID(me))?'victory':'defeat';
+        }
+      }
+    }catch(_){}
+    return result;
   }
   function exportDiagnostics() {
     const details={bot:VERSION,gameType:game?.config?.().gameConfig?.().gameType,
@@ -95,13 +132,13 @@
         effective:{aggressive:setting('aggressive'),reserve:setting('reserve'),
           actionsPerMinute:setting('actionsPerMinute'),maxTargets:setting('maxTargets')}},attackReceipts, pendingAttack,
       construction:{pending:economicPending,blocked:[...economicBlocked.entries()],failedProbes:failedEconomyProbes,lastConfirmed:successfulEconomyTick,investment:investmentStatus},
-      war:{...warState},victory:winStatus,income:incomeStatus,fleet:fleetStatus,strategicTelemetry,military:troopSnapshot,
+      war:{...warState},gameEnd,victory:winStatus,income:incomeStatus,fleet:fleetStatus,strategicTelemetry,military:troopSnapshot,
       defense:{status:defenseStatus,stats:defenseStats,pendingRetreats:[...retreatRequests.values()]},
       rockets:{confirmed:nukeShots,attempts:nukeAttempts,unconfirmed:nukeUnconfirmed,pending:nukePending},
       diplomacy:{status:diplomacyStatus,stats:diplomacyStats,pending:[...diplomacyPending.values()]},records:diagnostics,createdAt:new Date().toISOString()};
     const blob=new Blob([JSON.stringify(details,null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download='OpenFront_AggroBot_1.10.1_Diagnose.json';document.body.append(a);a.click();a.remove();
+    a.href=url;a.download='OpenFront_AggroBot_1.10.2_Diagnose.json';document.body.append(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),2000);
   }
 
@@ -118,7 +155,7 @@
       ['Singleplayer','Public','Private'].includes(gameType(g));}
     catch(_){return false;}
   };
-  const conflicts = () => !!(window.__ofSoloAggroBot1 || window.__ofSoloAggroBot11 || window.__ofSoloAggroBot12 || window.__ofSoloAggroBot13 || window.__ofSoloAggroBot14 || window.__ofSoloAggroBot15 || window.__ofSoloAggroBot16 || window.__ofSoloAggroBot17 || window.__ofSoloAggroBot18 || window.__ofSoloAggroBot181 || window.__ofSoloAggroBot190 || window.__ofSoloAggroBot191 || window.__ofSoloAggroBot192 || window.__ofSoloAggroBot193 || window.__ofSoloAggroBot194 || window.__ofSoloAggroBot195 || window.__ofSoloAggroBot196 || window.__ofSoloAggroBot197 || window.__ofSoloAggroBot198 || window.__ofSoloAggroBot199 || window.__ofSoloAggroBot1100);
+  const conflicts = () => !!(window.__ofSoloAggroBot1 || window.__ofSoloAggroBot11 || window.__ofSoloAggroBot12 || window.__ofSoloAggroBot13 || window.__ofSoloAggroBot14 || window.__ofSoloAggroBot15 || window.__ofSoloAggroBot16 || window.__ofSoloAggroBot17 || window.__ofSoloAggroBot18 || window.__ofSoloAggroBot181 || window.__ofSoloAggroBot190 || window.__ofSoloAggroBot191 || window.__ofSoloAggroBot192 || window.__ofSoloAggroBot193 || window.__ofSoloAggroBot194 || window.__ofSoloAggroBot195 || window.__ofSoloAggroBot196 || window.__ofSoloAggroBot197 || window.__ofSoloAggroBot198 || window.__ofSoloAggroBot199 || window.__ofSoloAggroBot1100 || window.__ofSoloAggroBot1101);
   function advisorConflict() {
     if (!window.__openfrontSpawnAdvisorV104) return false;
     try {const s=JSON.parse(localStorage.getItem('openfront-spawn-advisor-10.4')||'{}');
@@ -231,7 +268,7 @@
     winStatus={mode:'FFA',progress:null,threshold:null,remaining:null,urgent:false};fleetStatus='Keine Marineaktivität';lastFleet=-Infinity;lastDonation=-Infinity;navalSweep=0;
     strategicTelemetry={favorableVictims:0,falloutSkipped:0,falloutFallback:0,afkTargets:0,assists:0,neutralLandings:0,forecastCount:0};
     nukeBusy=false;lastNuke=-Infinity;nukePending=null;nukeStatus='Warte auf Silo';nukeShots=0;nukeAttempts=0;nukeUnconfirmed=0;nuclearCache=null;nuclearCacheTick=-Infinity;
-    warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};diagnostics=[];lastDiagnosticTick=-Infinity;combatAwaiting=null;
+    warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};diagnostics=[];lastDiagnosticTick=-Infinity;combatAwaiting=null;gameEnd=null;
     investmentStatus='Grundaufbau';lastWarReview=-Infinity;
     defenseStatus='Keine Bedrohung';lastEmergencyRetreat=-Infinity;lastDefenseLog=-Infinity;
     retreatRequests.clear();defenseStats={retreatsOrdered:0,retreatsObserved:0,unknown:0,unconfirmed:0};
@@ -664,7 +701,7 @@
       if(p.id!==null){
         lastBattle={id:p.id,name:p.name,tick:p.tick,
           enemyLand:p.enemyLand,ownLand:p.ownLand};
-        if(hardMode()&&warState.id===null){
+        if(coordinatedWar()&&warState.id===null){
           warState={id:p.id,name:p.name,since:tick,blockedUntil:-Infinity};
           log('HAUPTKRIEGSZIEL BESTÄTIGT → '+p.name);
         }
@@ -698,7 +735,7 @@
   // in the first two minutes. All own outgoing attacks and incoming threats
   // are examined before committing to a new enemy.
   function manageWar(me,items,s,tick) {
-    if(!opts.impossibleMode)return;
+    if(!coordinatedWar())return;
     if(pendingAttack && pendingAttack.id!==null)return;
     const foes=items.filter(x=>x.id!==null && x.opponent?.isAlive?.());
     const active=s.out.filter(a=>a.targetID!==null&&a.targetID!==0 && !a.retreating);
@@ -903,7 +940,7 @@
     return items.flatMap(item=>{
       const enemy=item.opponent,key=item.id===null?'neutral':String(item.id);
       if(enemy && !enemy.isAlive?.())return [];
-      if(enemy && hardMode() && (
+      if(enemy && coordinatedWar() && (
         (pendingAttack?.id!==null && pendingAttack?.id!==undefined && pendingAttack.id!==item.id) ||
         (isWar() && item.id!==warState.id) || tick<warState.blockedUntil ||
         !context.readiness?.ready || !targetOpportunity(me,items,s,item) ||
@@ -928,7 +965,7 @@
         const minimumRatio=enemyOpportunityRatio(enemy,late,s.home,effectivePlan()==='Blitz');
         if(s.ratio<(late?.29:.40) || available<enemyTroops*minimumRatio ||
           s.home<enemyTroops*(hardMode()?(late?1.45:1.85):(late?1.24:1.45)) ||
-          (hardMode() && s.home-Math.min(available*.76,
+          (coordinatedWar() && s.home-Math.min(available*.76,
             Math.max(enemyTroops*1.57,available*.48))<otherThreat*.58) ||
           enemyTroops<=0 && enemyTiles<=0)return [];
       }
@@ -1082,22 +1119,33 @@
       try{attacker=game.playerBySmallID?.(a.attackerID);}catch(_){continue;}
       if(!attacker?.isPlayer?.()||friendly(attacker,me))continue;
       const id=safeID(attacker),key=String(id),their=number(()=>attacker.troops(),Infinity);
-      if(hardMode()&&isWar()&&id!==warState.id)continue;
+      if(coordinatedWar()&&isWar()&&id!==warState.id)continue;
       const spare=s.available;
       if(spare<Math.max(500,their*1.25)||
          tick-(cooldowns.get(key)??-Infinity)<160)continue;
       const candidate=groups.find(x=>x.id===id);
       if(!candidate||!await legalTarget(me,candidate,serial))continue;
       if(!live(serial))return false;
-      const amount=Math.floor(Math.min(spare*.42,s.home*.16));
+      // Alliances and troop numbers can change while me.actions() awaits.
+      const current=game.playerViews?.().find(p=>safeID(p)===id);
+      if(!current?.isAlive?.()||friendly(current,me)||
+        (coordinatedWar()&&isWar()&&warState.id!==id)){
+        telemetry('defense_allied_skip','Gegenangriff nach Allianz-/Frontwechsel verhindert',
+          {target:id,friendly:!!current&&friendly(current,me)});
+        continue;
+      }
+      const fresh=military(me,strategic.groups);
+      if(fresh.incoming>fresh.home*.24||fresh.activeEnemy||
+        fresh.available<Math.max(500,number(()=>current.troops(),Infinity)*1.25))continue;
+      const amount=Math.floor(Math.min(fresh.available*.42,fresh.home*.16));
       // This is an actual outgoing counterattack, not a retreat. Preserve
       // the dynamic home reserve as well as the incoming-defense floor.
-      if(amount<100||s.home-amount<
-        Math.max(threat.incoming*2.8,s.reserve))continue;
-      if(send('attack',[id,amount],'KONTROLLIERTER GEGENANGRIFF → '+nameOf(attacker))){
-        const out=s.out.filter(x=>x.targetID===id&&!x.retreating);
-        pendingAttack={id,name:nameOf(attacker),tick,amount,ownLand:number(()=>me.numTilesOwned()),
-          enemyLand:number(()=>attacker.numTilesOwned()),beforeIds:out.map(x=>x.id),
+      if(amount<100||fresh.home-amount<
+        Math.max(fresh.incoming*2.8,fresh.reserve))continue;
+      if(send('attack',[id,amount],'KONTROLLIERTER GEGENANGRIFF → '+nameOf(current))){
+        const out=fresh.out.filter(x=>x.targetID===id&&!x.retreating);
+        pendingAttack={id,name:nameOf(current),tick,amount,ownLand:number(()=>me.numTilesOwned()),
+          enemyLand:number(()=>current.numTilesOwned()),beforeIds:out.map(x=>x.id),
           beforeTroops:out.reduce((v,x)=>v+x.troops,0)};
         cooldowns.set(key,tick);lastEnemySend=tick;return true;
       }
@@ -1110,6 +1158,16 @@
       if(!live(serial)||!actionBudget('combat'))return false;
       const tile=await legalTarget(me,item,serial);
       if(tile===null){rejected.set(item.key,tick);continue;}
+      // Re-read the live relation after the async worker legality probe.
+      if(item.id!==null){
+        const current=game.playerViews?.().find(p=>safeID(p)===item.id);
+        if(!current?.isAlive?.()||friendly(current,me)||
+          (coordinatedWar()&&isWar()&&warState.id!==item.id)){
+          telemetry('attack_allied_skip','Angriff nach Allianz-/Frontwechsel verhindert',
+            {target:item.id,friendly:!!current&&friendly(current,me)});
+          continue;
+        }
+      }
       // The game state may advance during the async worker legality probe.
       const fresh=military(me,strategic.groups); // Never forget stronger OTHER neighbors on recheck.
       if(item.id!==null && (fresh.incoming>fresh.home*(lateGame(me)?.15:.04) ||
@@ -1119,7 +1177,7 @@
       if(item.fallout && (fresh.incoming>0 ||
         fresh.strongest>fresh.home*.65 || fresh.ratio<.60 ||
         fresh.available<fresh.home*.30))continue;
-      if(item.id!==null && hardMode() && (!warReadiness(me,strategic.groups,fresh,tick,item).ready ||
+      if(item.id!==null && coordinatedWar() && (!warReadiness(me,strategic.groups,fresh,tick,item).ready ||
         !targetOpportunity(me,strategic.groups,fresh,item) ||
         (isWar()&&warState.id!==item.id)))continue;
       const amount=Math.min(item.amount,fresh.available,
@@ -1235,8 +1293,9 @@
       const dx=x-game.x(a.tile()),dy=y-game.y(a.tile());return dx*dx+dy*dy<=r*r;
     };
     let score=0;
+    const radius=number(()=>game.config().samRange?.(1),70);
     for(const u of intel.assets){
-      if(!near(u,80))continue;
+      if(!near(u,radius))continue;
       const covered=intel.sams.some(s=>nearSAM(s,u));
       score+=assetValue(u.type?.())*(covered?0.22:2.25);
     }
@@ -1271,14 +1330,22 @@
     const immediate=troopSnapshot.incoming>troops*.18;
     const emergency=immediate||(troopSnapshot.strongest>troops*1.25&&
       (troopSnapshot.ratio<.75||hostileFronts>=2));
-    const wantedDefense=threatened&&(!startup||immediate)?Math.min(16,
-      Math.max(2,Math.ceil((tiles?.length||0)/165),hostileFronts*2)):0;
+    // The first Public game purchased 24 defense posts with little economy.
+    // Cap non-emergency posts separately from urgent defensive construction.
+    const wantedDefense=!threatened||(startup&&!immediate)?0:
+      immediate?Math.min(10,Math.max(3,Math.ceil((tiles?.length||0)/165),hostileFronts*2)):
+      Math.min(7,Math.max(2,Math.ceil((tiles?.length||0)/310),hostileFronts),
+        Math.max(2,(cities+factories)*2));
     const intel=nuclearIntel(me,units);
     const enemySilos=intel.enemySilos.length,enemyNukes=intel.incomingNukes.length;
-    const threat=!!(enemySilos||enemyNukes);
-    const wantedSAM=opts.antiNuke&&threat&&game.config().isUnitDisabled?.('SAM Launcher')!==true?Math.min(10,Math.max(1,
-      Math.ceil(intel.assets.length/3)+Math.ceil(intel.uncovered.length/3)+(enemyNukes?2:0))):0;
     const late=lateGame(me),siloCount=count('Missile Silo');
+    const proactiveSAM=!basic&&late&&hostileFronts>0&&
+      intel.assets.length>=3&&intel.uncovered.length>0&&gold>=700000;
+    const threat=!!(enemySilos||enemyNukes);
+    const wantedSAM=opts.antiNuke&&game.config().isUnitDisabled?.('SAM Launcher')!==true?
+      Math.min(7,threat?Math.max(1,Math.ceil(intel.assets.length/3)+
+        Math.ceil(intel.uncovered.length/3)+(enemyNukes?2:0)):
+        proactiveSAM?Math.min(2,Math.ceil(intel.uncovered.length/3)):0):0;
     const siloAllowed=opts.nukes && game.config().isUnitDisabled?.('Missile Silo')!==true &&
       ['Atom Bomb','Hydrogen Bomb','MIRV'].some(t=>game.config().isUnitDisabled?.(t)!==true);
     // Earlier requiring 1.8m *before* considering a silo caused endless
@@ -1293,12 +1360,13 @@
           (pressure>.80&&!immediate?30:0)+(cities===0?115:hardMode()&&cities<2?80:0)},
       {type:'Factory',desired:wantedFactory,score:91+econBoost+
           (factories===0?100:hardMode()&&factories<2?85:0)+
-          (gold<450000?15:0)+(pressure<.60&&factories>0?10:0)-
+          (gold<450000?15:0)+(pressure<.60&&factories>0?10:0)+
+          (factories<2&&cities>=2?24:0)-
           (incomeStatus.observed&&incomeStatus.train===0&&factories>=2?26:0)},
       {type:'Port',desired:wantedPort,score:59+econBoost/2+(ports===0&&wantedPort?12:0)+
         (incomeStatus.observed&&incomeStatus.trade===0&&ports===0?13:0)},
-      {type:'Defense Post',desired:wantedDefense,score:immediate?310+defBoost:threatened?(basic?70:119)+defBoost:20},
-      {type:'SAM Launcher',desired:wantedSAM,score:enemyNukes?165+defBoost:threat?116+defBoost:40},
+      {type:'Defense Post',desired:wantedDefense,score:immediate?310+defBoost:threatened?(basic?36:77)+defBoost:20},
+      {type:'SAM Launcher',desired:wantedSAM,score:enemyNukes?210+defBoost:threat?151+defBoost:proactiveSAM?118:40},
       {type:'Missile Silo',desired:wantedSilo,score:siloCount===0?305:opts.nukes?(late?131:94)+(gold>6000000?13:0):0}
     ];
     const value=list.filter(x=>x.desired>count(x.type)).map(x=>({...x,count:count(x.type),
@@ -1306,7 +1374,7 @@
     // Upgrades become useful when expansion is tight or troop cap is near.
     if(opts.upgrades){
       for(const x of list.filter(x=>['City','Factory','Port','SAM Launcher','Missile Silo'].includes(x.type)&&count(x.type)>0 &&
-        (x.type!=='SAM Launcher'||opts.antiNuke&&threat) && (x.type!=='Missile Silo'||opts.nukes))){
+        (x.type!=='SAM Launcher'||opts.antiNuke&&(threat||proactiveSAM)) && (x.type!=='Missile Silo'||opts.nukes))){
         const upgradeScore=x.score-(count(x.type)<x.desired?17:36)+
           (x.type==='City'&&pressure>.75?27:0)+(x.type==='SAM Launcher'&&threat?32:0)+
           (x.type==='Missile Silo'&&late&&opts.nukes?22:0);
@@ -1325,7 +1393,8 @@
     investmentStatus=startup?'Erste Stadt/Fabrik':basic?'Zwei Städte und zwei Fabriken':
       saveForSilo?'Silo-Fonds 1,15 Mio.':saveForNuke?'Raketen-Fonds '+firstRocketFund.toLocaleString():'Wirtschaft & Offensive';
     return {list:value,threatened,gold,cities,factories,mine,pressure,nuclearThreat:threat,incomingNukes:enemyNukes,intel,
-      startup,basic,emergency,immediate,savingsTarget,saveForSilo,saveForNuke,siloCount};
+      startup,basic,emergency,immediate,savingsTarget,saveForSilo,saveForNuke,siloCount,
+      enemySilos,proactiveSAM,wantedDefense,wantedSAM};
   }
   function economicAnchors(me,tiles,units,tick) {
     const w=game.width(),h=game.height(),anchors=[],seen=new Set();
@@ -1335,6 +1404,19 @@
       if(ownedTile(ref,me))anchors.push(ref);
     };
     const addXY=(x,y)=>{if(x>=0&&y>=0&&x<w&&y<h)add(game.ref(x,y));};
+    // Reserve early worker probes for SAMs around uncovered structures.
+    // This must happen BEFORE interior/front samples fill the anchor cap.
+    if(opts.antiNuke){
+      const intel=nuclearIntel(me,units);
+      for(const u of intel.uncovered.slice(0,8)){
+        const t=number(()=>u.tile(),NaN);
+        if(!Number.isInteger(t))continue;
+        const x=game.x(t),y=game.y(t);
+        for(const [dx,dy] of [[0,0],[25,0],[-25,0],[0,25],[0,-25],
+          [45,0],[-45,0],[0,45],[0,-45],[25,25],[-25,-25]])
+          addXY(x+dx,y+dy);
+      }
+    }
     // City/factory upgrades are anchored at existing units; relying on border
     // offsets makes these upgrades almost impossible on large maps.
     for(const u of units){const t=number(()=>u.tile(),NaN);if(!Number.isInteger(t))continue;
@@ -1493,6 +1575,7 @@
       if(!siteCache.has(key))siteCache.set(key,siteScore(entry.type,site.ref,fronts,units,0,site.coast,site.dist));
       return entry.urgency+siteCache.get(key);
     };
+    const recovery=failedEconomyProbes>=5;
     const slots=[];
     for(const entry of entries.slice(0,8)){
       if(entry.upgrade && !ctors.upgrade)continue;
@@ -1501,7 +1584,7 @@
       const valid=entry.upgrade?rankedAnchors.filter(a=>units.some(u=>u.type?.()===entry.type && number(()=>u.tile(),-1)===a.ref)):
         rankedAnchors.filter(a=>entry.type!=='Port'||a.coast);
       valid.sort((a,b)=>score(entry,b)-score(entry,a));
-      for(const site of valid.slice(0,entry.upgrade?4:6))slots.push({entry,site});
+      for(const site of valid.slice(0,entry.upgrade?4:recovery?12:6))slots.push({entry,site});
     }
     // Probe best geographic options across building types; never sequentially
     // spend the entire time budget on the first City anchor.
@@ -1511,9 +1594,9 @@
     const work=[];
     // A dozen City anchors must not evict every Factory / SAM / silo query.
     for(const slot of slots){
-      if(work.length>=15)break;
+      if(work.length>=(recovery?24:15))break;
       const kind=slot.entry.type+':'+!!slot.entry.upgrade;
-      if((perKind.get(kind)||0)>=3)continue;
+      if((perKind.get(kind)||0)>=(recovery?5:3))continue;
       const key=kind+':'+slot.site.ref;
       if(seen.has(key))continue;
       seen.add(key);work.push(slot);
@@ -1561,6 +1644,8 @@
           // Fund the first economic structures before buying defensive posts,
           // ports or upgrades. Emergency SAM / defense remain possible.
           if(requirements.startup && (!economicCore || isUpgrade) && !essential)continue;
+          if(item.type==='Defense Post' && !requirements.immediate &&
+            !requirements.incomingNukes && requirements.basic)continue;
           // While saving for a silo / first atomic strike, do not repeatedly
           // spend the whole treasury on expandable city/factory goals.
           if(!infinite && requirements.savingsTarget>0 && !requirements.immediate &&
@@ -1591,6 +1676,9 @@
       if(failedEconomyProbes===5 || failedEconomyProbes%10===0)
         telemetry('build_stalled',reason,{attempts:failedEconomyProbes,
           gold:requirements.gold,investment:investmentStatus,priorities:entries.slice(0,4).map(e=>e.type),
+          nuclear:{enemySilos:requirements.enemySilos,incomingNukes:requirements.incomingNukes,
+            uncovered:requirements.intel.uncovered.length,wantedSAM:requirements.wantedSAM,
+            proactiveSAM:requirements.proactiveSAM},
           queries:probe.queries,workerErrors:probe.errors,legal:probe.legal,
           unaffordable:probe.unaffordable,invalidSite:probe.invalidSite,
           lowestCost:Number.isFinite(probe.lowestCost)?probe.lowestCost:null});
@@ -2124,7 +2212,7 @@
     const foes=game.playerViews().filter(p=>safeID(p)!==safeID(me)&&p.isAlive?.()&&
       !friendly(p,me)&&Number.isInteger(p.state?.spawnTile)&&
       // The naval planner must obey the single-front war director as well.
-      (!hardMode() || !isWar() || safeID(p)===warState.id));
+      (!coordinatedWar() || !isWar() || safeID(p)===warState.id));
     foes.sort((a,b)=>number(()=>a.troops())-number(()=>b.troops()));
     for(const foe of foes.slice(0,6)){
       if(spare<number(()=>foe.troops(),Infinity)*1.9 ||
@@ -2189,8 +2277,11 @@
       paint();return;
     }
     if(game?.gameOver?.()){
-      if(opts.enabled){telemetry('game_over','Partie beendet · Bot automatisch gestoppt');
-        opts.enabled=false;generation++;persist();}
+      if(opts.enabled){
+        gameEnd=gameOutcome(game,myPlayer());
+        telemetry('game_over','Partie beendet · Bot automatisch gestoppt',{gameEnd});
+        opts.enabled=false;generation++;persist();
+      }
       status='Partie beendet · Bot AUS';paint();return;
     }
     if(!bus&&found.b){bus=found.b;ctors=recognize(bus);reportIntents();}
@@ -2239,7 +2330,11 @@
           borders:tiles.length,tuning:{...autoTuning,enabled:!!opts.fullAuto},defense:{status:defenseStatus,incoming:s.incoming,
             committed:s.committed,pendingRetreats:retreatRequests.size},enemies:groups.filter(g=>g.id!==null).map(g=>({name:nameOf(g.opponent),troops:number(()=>g.opponent.troops()),land:number(()=>g.opponent.numTilesOwned())})),
           readiness:context.readiness?.reason,ratio:s.ratio,maxTroops:s.max,growthPotential:s.growthPotential,
-          victory:winStatus,income:incomeStatus,strategicTelemetry,fleet:fleetStatus});}
+          victory:winStatus,income:incomeStatus,strategicTelemetry,fleet:fleetStatus,
+          nuclear:{enemySilos:nuclearIntel(me).enemySilos.length,
+            incomingNukes:nuclearIntel(me).incomingNukes.length,
+            uncovered:nuclearIntel(me).uncovered.length,
+            ownSAM:nuclearIntel(me).sams.filter(u=>safeID(u.owner?.())===safeID(me)).length}});}
 
       if(plan&&tick>=plan.until)plan=null;
       status='Strategie: '+context.wanted+' · Heim '+Math.round(s.home/10)+

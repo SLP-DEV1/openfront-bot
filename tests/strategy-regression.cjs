@@ -71,7 +71,7 @@ function boot() {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'military,warReadiness,targetOpportunity,targetEconomics,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,economy,economicNeeds,strategy,manageWar,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,',
+    'military,warReadiness,targetOpportunity,targetEconomics,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,economy,economicNeeds,economicAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'setWarWait:n=>warWaitSince=n,setEconFails:n=>failedEconomyProbes=n,',
     'setPending:p=>pendingAttack=p,',
@@ -82,7 +82,7 @@ function boot() {
     'setMode:m=>strategic.mode=m,setAllianceCtor:C=>ctors.alliance=C,',
     'setNukePending:p=>nukePending=p,',
     'setPerf:(combat,border,economy)=>runtime={...runtime,combatMs:combat,borderMs:border,economyMs:economy},',
-    'state:()=>({pendingAttack,attackReceipts,warState,economicStatus,failedEconomyProbes,investmentStatus,strategic,winStatus,incomeStatus,fleetStatus,strategicTelemetry,defenseStatus,defenseStats,autoTuning,nukeShots,nukeAttempts,nukeUnconfirmed,nukePending,lastProposalTick,diplomacyStatus,diplomacyPending:[...diplomacyPending.values()],retreatRequests:[...retreatRequests.values()]}),opts};'
+    'state:()=>({pendingAttack,attackReceipts,warState,gameEnd,diagnostics,economicStatus,failedEconomyProbes,investmentStatus,strategic,winStatus,incomeStatus,fleetStatus,strategicTelemetry,defenseStatus,defenseStats,autoTuning,nukeShots,nukeAttempts,nukeUnconfirmed,nukePending,lastProposalTick,diplomacyStatus,diplomacyPending:[...diplomacyPending.values()],retreatRequests:[...retreatRequests.values()]}),opts};'
   ].join('\n');
   vm.runInNewContext(source.replace(anchor, expose + '\n' + anchor), context, {timeout:2000});
   win.__test.setup(game, {emit:event=>sent.push(event)}, {attack:Attack, build:Build});
@@ -996,6 +996,113 @@ function boot() {
       [{type:'Transport',canBuild:9999,cost:0n}]:[]});
     assert.equal(await x.b.naval(x.me,500,0),false);
     assert.equal(x.sent.length,0,'neutral island must not open a second front');
+  });
+  await check('v1.10.2 Public Medium locks confirmed war target', () => {
+    const x=boot();x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Medium'});
+    x.b.setPending({id:'weak',name:'weak',tick:250,amount:12000,
+      ownLand:1200,enemyLand:900,beforeIds:[],beforeTroops:0});
+    x.out.push({id:'front',targetID:'weak',troops:12000,retreating:false});
+    x.b.confirmAttack(x.me,301);
+    assert.equal(x.b.coordinatedWar(),true);
+    assert.equal(x.b.state().warState.id,'weak');
+    const groups=[{id:'weak',opponent:x.weak,front:10,tiles:[5]},
+      {id:'strong',opponent:x.strong,front:10,tiles:[6]}];
+    const s=x.b.military(x.me,groups);
+    const ranked=x.b.rankedTargets(groups,x.me,303,s,{wanted:'ASSAULT',
+      readiness:{ready:true},rebuilding:false,underAttack:false});
+    assert(!ranked.some(t=>t.id==='strong'));
+  });
+  await check('v1.10.2 Public Medium war director adopts existing attack', () => {
+    const x=boot();x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Medium'});
+    x.out.push({id:'attack-1',targetID:'weak',troops:20000,retreating:false});
+    x.b.manageWar(x.me,[{id:'weak',opponent:x.weak}],
+      x.b.military(x.me,[]),300);
+    assert.equal(x.b.state().warState.id,'weak');
+  });
+  await check('v1.10.2 allied counterattack canceled after worker wait', async () => {
+    const x=boot();x.game.playerBySmallID=id=>id===2?x.weak:x.strong;
+    x.me.incomingAttacks=()=>[{id:'threat',attackerID:2,troops:5000,retreating:false}];
+    const groups=[{id:'weak',opponent:x.weak,front:10,tiles:[5]}];
+    let resolve;
+    x.me.actions=()=>new Promise(r=>{resolve=r});
+    const action=x.b.defense(x.me,300,0,groups,x.b.military(x.me,groups));
+    await Promise.resolve();
+    x.me.isFriendly=p=>p===x.weak;
+    resolve({canAttack:true,buildableUnits:[]});
+    assert.equal(await action,false);
+    assert.equal(x.sent.length,0);
+    assert(x.b.state().diagnostics.some(v=>v.kind==='defense_allied_skip'));
+  });
+  await check('v1.10.2 ordinary assault cancels on newly allied target', async () => {
+    const x=boot();let resolve;
+    x.me.actions=()=>new Promise(r=>{resolve=r});
+    const item={id:'weak',key:'weak',opponent:x.weak,
+      front:10,tiles:[5],amount:10000,score:90};
+    const groups=[item];x.b.setGroups(groups);
+    const action=x.b.attack(x.me,300,0,[item],x.b.military(x.me,groups));
+    await Promise.resolve();
+    x.me.isFriendly=p=>p===x.weak;
+    resolve({canAttack:true,buildableUnits:[]});
+    assert.equal(await action,false);
+    assert.equal(x.sent.length,0);
+    assert(x.b.state().diagnostics.some(v=>v.kind==='attack_allied_skip'));
+  });
+  await check('v1.10.2 calm defense posts capped separately from emergencies', () => {
+    const x=boot();x.setGold(2000000);x.setTick(2400);x.setLand(50000);
+    const units=['City','City','Factory','Factory'].map((type,i)=>({
+      type:()=>type,isActive:()=>true,tile:()=>5000+i*30}));
+    x.me.units=()=>units;
+    x.b.setGroups([{id:'weak',opponent:x.weak},{id:'strong',opponent:x.strong}]);
+    x.b.setTroopSnapshot({home:90000,max:100000,ratio:.9,incoming:0,
+      strongest:85000,committed:0,reserve:10000,available:80000});
+    const plan=x.b.economicNeeds(x.me,units,Array(3000).fill(5500));
+    assert(plan.wantedDefense<=7);
+    assert.equal(plan.immediate,false);
+    x.b.setTroopSnapshot({home:90000,max:100000,ratio:.9,incoming:50000,
+      strongest:85000,committed:0,reserve:10000,available:80000});
+    const urgent=x.b.economicNeeds(x.me,units,Array(3000).fill(5500));
+    assert(urgent.wantedDefense>plan.wantedDefense);
+  });
+  await check('v1.10.2 proactive SAM protects uncovered high-value buildings', () => {
+    const x=boot();x.setGold(2000000);x.setTick(2400);x.setLand(50000);
+    const units=['City','City','Factory','Factory'].map((type,i)=>({
+      type:()=>type,isActive:()=>true,tile:()=>5500+i*60}));
+    x.me.units=()=>units;
+    x.b.setGroups([{id:'weak',opponent:x.weak}]);
+    const plan=x.b.economicNeeds(x.me,units,[]);
+    assert.equal(plan.proactiveSAM,true);
+    assert(plan.wantedSAM>=1);
+    assert(plan.list.some(v=>v.type==='SAM Launcher'));
+    const points=x.b.economicAnchors(x.me,[],units,2400);
+    assert(points.includes(5525),'SAM sampling must include offset near City');
+  });
+  await check('v1.10.2 snapshots keep historic tuning and metric values', () => {
+    const x=boot(),metrics={counter:0,nested:{n:1}};
+    x.b.telemetry('snapshot','first',{metrics});
+    metrics.counter=4;metrics.nested.n=11;
+    x.b.telemetry('snapshot','second',{metrics});
+    const snaps=x.b.state().diagnostics.filter(v=>v.kind==='snapshot');
+    assert.equal(snaps.length,2);
+    assert.equal(snaps[0].metrics.counter,0);
+    assert.equal(snaps[0].metrics.nested.n,1);
+    assert.equal(snaps[1].metrics.nested.n,11);
+  });
+  await check('v1.10.2 game winner from official WinUpdate tuple', () => {
+    const x=boot();
+    x.game.updatesSinceLastTick=()=>({Win:[{winner:['player','me'],
+      allPlayersStats:{}}]});
+    assert.equal(x.b.gameOutcome(x.game,x.me).outcome,'victory');
+    x.game.updatesSinceLastTick=()=>({Win:[{winner:['team','blue','weak','me'],
+      allPlayersStats:{}}]});
+    assert.equal(x.b.gameOutcome(x.game,x.me).outcome,'victory');
+    x.game.updatesSinceLastTick=()=>({Win:[{winner:['player','weak'],
+      allPlayersStats:{}}]});
+    assert.equal(x.b.gameOutcome(x.game,x.me).outcome,'defeat');
+    x.game.updatesSinceLastTick=()=>({Win:[{winner:null,
+      allPlayersStats:{}}]});
+    assert.equal(x.b.gameOutcome(x.game,x.me).outcome,'incomplete');
+    x.game.updatesSinceLastTick=()=>null;
+    assert.equal(x.b.gameOutcome(x.game,x.me).outcome,'unknown');
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
