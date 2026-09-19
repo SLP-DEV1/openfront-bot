@@ -29,9 +29,12 @@ Strategie-, Wirtschafts-, Marine-, Diplomatie-, Nuke- und SAM-Planung sind vorha
 - **Kompatibilität:** Public/Private/Singleplayer bleiben ohne MP-Test-Schalter nutzbar; der Bot startet nach Seiten-/Match-Wechsel weiterhin AUS, Replays bleiben gesperrt. Diagnose-Version `OpenFront_AggroBot_1.10.0_Diagnose.json`.
 - **Validierung:** Unit-/VM-Regressionen decken die Heuristiken und asynchronen Events ab. Ein browserseitiger End-to-End-Match-Benchmark über verschiedene Maps und Seeds steht weiterhin aus. Es gibt keine garantierte Impossible- oder Multiplayer-Gewinnquote.
 
-### Änderung 1.9.9 – Intent-Diagnostik
+### Änderung 1.9.9 – Intent-Diagnose (Issue #9)
 
-- Erkennt fehlende Spiel-Intents sichtbar und versucht bei später Registrierung erneut zu erkennen; ursprünglich auf `main` vorhandene 1.9.9-Erweiterung bleibt in 1.10.0 erhalten.
+- Beim Erkennen des EventBus meldet der Bot **0–8 von 8 Intents** und nennt fehlende Event-Konstruktoren. Fehlen Spawn, Attack oder Build, erscheint im Bot-Menü eine rote Warnung **„KERNFUNKTION EINGESCHRÄNKT“**.
+- Fehlende Intents werden beim ersten blockierten Befehl im Log und Diagnoseexport gemeldet; wiederholte Versuche spammen die Warnung nicht. Wenn der EventBus erst später vollständig registriert wird, prüft der Bot die fehlenden Kern-Intents gelegentlich erneut.
+- Die bereits gelöschte 1.9.0-Datei wird **nicht** wieder eingecheckt. Das Upgrade-Intent verwendet bewusst alle drei Parameter: `unitId`, `unitType`, `amount = 1` (offizielle OpenFront-API).
+- Regressionstests für **0/8**, teilweise und vollständig erkannte Intents sowie geblockte Bauaktionen. Kein automatischer Spielstart; kein vollständiger Live-Test durch die Node-CI.
 
 ### Änderung 1.9.8 – Multiplayer ohne Zusatzsperre
 
