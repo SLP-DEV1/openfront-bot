@@ -2,7 +2,7 @@
 
 Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscript für [OpenFront](https://openfront.io/).
 
-**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.9.8**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
+**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.9.9**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
 
 ## Installation
 
@@ -16,6 +16,13 @@ Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscr
 ## Strategie & Diagnose
 
 Strategie-, Wirtschafts-, Marine-, Diplomatie-, Nuke- und SAM-Planung sind vorhanden. Der Bot kann Befehle senden; daraus folgt **keine garantierte Gewinnrate auf „Unmöglich“**. Ein vollständiger Live-Test ist noch nicht erfolgt. „Diagnose JSON“ im Bot-Menü zeichnet unter anderem Gebietsänderungen, Truppenlage, Bauaufträge und Allianzantworten auf. Bitte den Export vor dem Neuladen erstellen.
+
+### Änderung 1.9.9 – Intent-Diagnose (Issue #9)
+
+- Beim Erkennen des EventBus meldet der Bot **0–8 von 8 Intents** und nennt fehlende Event-Konstruktoren. Fehlen Spawn, Attack oder Build, erscheint im Bot-Menü eine rote Warnung **„KERNFUNKTION EINGESCHRÄNKT“**.
+- Fehlende Intents werden beim ersten blockierten Befehl im Log und Diagnoseexport gemeldet; wiederholte Versuche spammen die Warnung nicht. Wenn der EventBus erst später vollständig registriert wird, prüft der Bot die fehlenden Kern-Intents gelegentlich erneut.
+- Die bereits gelöschte 1.9.0-Datei wird **nicht** wieder eingecheckt. Das Upgrade-Intent verwendet bewusst alle drei Parameter: `unitId`, `unitType`, `amount = 1` (offizielle OpenFront-API).
+- Regressionstests für **0/8**, teilweise und vollständig erkannte Intents sowie geblockte Bauaktionen. Kein automatischer Spielstart; kein vollständiger Live-Test durch die Node-CI.
 
 ### Änderung 1.9.8 – Multiplayer ohne Zusatzsperre
 
