@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.9.1
+// @version      1.9.2
 // @description  Singleplayer autopilot: Impossible-focused singleplayer AI: one-front warfare, economy, nukes, SAM coverage, verified autonomous diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -11,10 +11,10 @@
 
 (() => {
   'use strict';
-  if (window.__ofSoloAggroBot191) return;
-  window.__ofSoloAggroBot191 = true;
+  if (window.__ofSoloAggroBot192) return;
+  window.__ofSoloAggroBot192 = true;
 
-  const VERSION = '1.9.1', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v191';
+  const VERSION = '1.9.2', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v192';
   const defaults = {enabled:false, aggressive:78, reserve:35, actionsPerMinute:72,
     economy:true, boats:false, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -24,7 +24,7 @@
   try { opts = {...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; }
   catch (_) {opts = {...defaults};}
   try {if(!localStorage.getItem(KEY)){
-    opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
+    opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
     // Only import user-adjustable preferences, never a previously enabled bot.
   }}catch(_){}
   opts.enabled = false;                         // Never auto-start after reload.
@@ -60,6 +60,7 @@
   let diagnostics=[],lastDiagnosticTick=-Infinity,combatAwaiting=null;
   let pendingAttack=null,attackReceipts={confirmed:0,unconfirmed:0,territoryGained:0};
   let failedEconomyProbes=0,successfulEconomyTick=-Infinity,warWaitSince=-Infinity;
+  let investmentStatus='Grundaufbau',lastWarReview=-Infinity;
   const hardMode=()=>opts.impossibleMode && game?.config?.().gameConfig?.().difficulty==='Impossible';
   const isWar=()=>warState.id!==null;
   function telemetry(kind,message,extra={}) {
@@ -72,14 +73,15 @@
     if(diagnostics.length>1400)diagnostics.splice(0,diagnostics.length-1400);
   }
   function exportDiagnostics() {
-    const details={bot:VERSION,difficulty:game?.config?.().gameConfig?.().difficulty,
+    const details={bot:VERSION,gameType:game?.config?.().gameConfig?.().gameType,
+      difficulty:game?.config?.().gameConfig?.().difficulty,
       options:{...opts,enabled:false},attackReceipts, pendingAttack,
-      construction:{pending:economicPending,blocked:[...economicBlocked.entries()],failedProbes:failedEconomyProbes,lastConfirmed:successfulEconomyTick},
+      construction:{pending:economicPending,blocked:[...economicBlocked.entries()],failedProbes:failedEconomyProbes,lastConfirmed:successfulEconomyTick,investment:investmentStatus},
       war:{...warState},military:troopSnapshot,
       diplomacy:{status:diplomacyStatus,stats:diplomacyStats,pending:[...diplomacyPending.values()]},records:diagnostics,createdAt:new Date().toISOString()};
     const blob=new Blob([JSON.stringify(details,null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download='OpenFront_AggroBot_1.9.1_Diagnose.json';document.body.append(a);a.click();a.remove();
+    a.href=url;a.download='OpenFront_AggroBot_1.9.2_Diagnose.json';document.body.append(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),2000);
   }
 
@@ -89,7 +91,7 @@
     try {return g?.config?.().gameConfig?.().gameType === 'Singleplayer' &&
       !g.config().isReplay?.();} catch (_) {return false;}
   };
-  const conflicts = () => !!(window.__ofSoloAggroBot1 || window.__ofSoloAggroBot11 || window.__ofSoloAggroBot12 || window.__ofSoloAggroBot13 || window.__ofSoloAggroBot14 || window.__ofSoloAggroBot15 || window.__ofSoloAggroBot16 || window.__ofSoloAggroBot17 || window.__ofSoloAggroBot18 || window.__ofSoloAggroBot181 || window.__ofSoloAggroBot190);
+  const conflicts = () => !!(window.__ofSoloAggroBot1 || window.__ofSoloAggroBot11 || window.__ofSoloAggroBot12 || window.__ofSoloAggroBot13 || window.__ofSoloAggroBot14 || window.__ofSoloAggroBot15 || window.__ofSoloAggroBot16 || window.__ofSoloAggroBot17 || window.__ofSoloAggroBot18 || window.__ofSoloAggroBot181 || window.__ofSoloAggroBot190 || window.__ofSoloAggroBot191);
   function advisorConflict() {
     if (!window.__openfrontSpawnAdvisorV104) return false;
     try {const s=JSON.parse(localStorage.getItem('openfront-spawn-advisor-10.4')||'{}');
@@ -160,6 +162,7 @@
     diplomacyStats={accepted:0,rejected:0,offered:0};goldSamples=[];
     nukeBusy=false;lastNuke=-Infinity;nukePending=null;nukeStatus='Warte auf Silo';nukeShots=0;nuclearCache=null;nuclearCacheTick=-Infinity;
     warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};diagnostics=[];lastDiagnosticTick=-Infinity;combatAwaiting=null;
+    investmentStatus='Grundaufbau';lastWarReview=-Infinity;
     opts.enabled=false;persist();
     status=single(g)?'Singleplayer erkannt · Bot starten':'Multiplayer/Replay · gesperrt';
     log(status);
@@ -438,9 +441,13 @@
         warState={id:null,name:'—',since:tick,blockedUntil:-Infinity};plan=null;
       } else if(tick<warState.blockedUntil) {
         strategic.reason='Front nach Verlusten stabilisieren';
-      } else if(tick-warState.since>550 && !active.some(a=>a.targetID===warState.id) &&
-        !foes.some(x=>x.id===warState.id)) {
-        log('KRIEGSZIEL NICHT MEHR ERREICHBAR: '+warState.name);
+      } else if(!active.some(a=>a.targetID===warState.id) &&
+        ((tick-warState.since>550 && !foes.some(x=>x.id===warState.id)) ||
+         (tick-warState.since>850 && tick-lastEnemySend>280 && s.incoming===0))) {
+        // A once-successful war lock must not paralyze the bot forever after
+        // its target becomes unreachable or too costly; allow a new front review.
+        log('KRIEGSZIEL NEU BEWERTEN: '+warState.name);
+        blockedTargets.set(warState.id,tick+200);lastWarReview=tick;
         warState={id:null,name:'—',since:tick,blockedUntil:-Infinity};plan=null;
       }
     }
@@ -499,6 +506,10 @@
       (losing&&(!late||s.incoming>s.home*.10)) || (s.incoming>s.home*.40);
     const readiness=warReadiness(me,items,s,tick);
     const weak=enemies.filter(x=>s.available>number(()=>x.opponent.troops(),Infinity)*(hardMode()?(late?1.42:1.8):(late?1.17:1.5)));
+    const fullLate=late&&s.ratio>.78&&!s.incoming&&enemies.length>0;
+    const nuclearReady=opts.nukes && game.config().isUnitDisabled?.('Missile Silo')!==true &&
+      game.config().isUnitDisabled?.('Atom Bomb')!==true;
+    const hasSilo=ownStructures(me).some(u=>u.type?.()==='Missile Silo');
 
     const seriousAttack=s.incoming>s.home*(late?.15:.05);
     let wanted,reason;
@@ -506,6 +517,9 @@
     else if(danger&&seriousAttack){wanted='DEFEND';reason='Erhebliche eingehende Angriffe';}
     else if(late && weak.length && s.ratio>.30 && !seriousAttack && readiness.ready){
       wanted='ASSAULT';reason='Late Game: günstige Offensivchance';
+    }
+    else if(fullLate && nuclearReady && (!hasSilo || s.strongest>s.available*.95)){
+      wanted='TECH';reason='Late Game: Silo/Raketen finanzieren, statt defensiv festzufahren';
     }
     else if(neutral&&(tiles<900||s.ratio<.60||enemies.length===0)){
       wanted='EXPAND';reason='Unbesetzte Gebiete und Platz für Wachstum';
@@ -532,7 +546,7 @@
       }
     } else strategic.reason=reason;
     strategic.buildStyle=(!opts.autoStrategy)?opts.buildStyle:
-      ['RECOVER','ECONOMY'].includes(strategic.mode)?'Wirtschaft':
+      ['RECOVER','ECONOMY','TECH'].includes(strategic.mode)?'Wirtschaft':
       strategic.mode==='DEFEND'?'Defensiv':'Ausgewogen';
     strategic.groups=items;
     lastRecoveryReason=rebuilding?'Truppen/Front stabilisieren':s.incoming?'Eingehende Angriffe abfangen':!readiness.ready?readiness.reason:'';
@@ -793,15 +807,24 @@
     const wantedFactory=hardMode()?Math.min(11,Math.max(2,2+Math.floor(mine/900))):Math.min(8,Math.max(1,1+Math.floor(mine/1350)));
     const wantedPort=opts.boats?Math.min(3,Math.max(1,Math.floor(mine/1800)+1)):
       (factories>=1 && mine>600?Math.min(2,Math.floor(mine/2700)+1):0);
-    const wantedDefense=threatened?Math.min(4,1+Math.floor(mine/2300)):0;
+    const startup=cities<1||factories<1;
+    const basic=cities<2||factories<2;
+    // Never buy decorative defense posts while the first city/factory are still
+    // unaffordable. Only a *real* incoming offensive can override the basics.
+    const emergency=troopSnapshot.incoming>troops*.18;
+    const wantedDefense=threatened && (!startup||emergency)?Math.min(4,1+Math.floor(mine/2300)):0;
     const intel=nuclearIntel(me,units);
     const enemySilos=intel.enemySilos.length,enemyNukes=intel.incomingNukes.length;
     const threat=!!(enemySilos||enemyNukes);
     const wantedSAM=opts.antiNuke&&threat?Math.min(10,Math.max(1,
       Math.ceil(intel.assets.length/3)+Math.ceil(intel.uncovered.length/3)+(enemyNukes?2:0))):0;
     const late=lateGame(me),siloCount=count('Missile Silo');
-    const wantedSilo=opts.nukes && cities>=2&&factories>=1 && (gold>1800000||game.config().infiniteGold?.()) && mine>900 ?
-      Math.min(late?5:3,Math.max(1,1+Math.floor(mine/2600))):0;
+    const siloAllowed=opts.nukes && game.config().isUnitDisabled?.('Missile Silo')!==true &&
+      game.config().isUnitDisabled?.('Atom Bomb')!==true;
+    // Earlier requiring 1.8m *before* considering a silo caused endless
+    // reinvestment in cheap upgrades. OpenFront silo costs start at 1m.
+    const wantedSilo=siloAllowed && cities>=2&&factories>=2 && late && mine>900 ?
+      (siloCount===0?1:nukeShots>0&&gold>2500000?Math.min(3,1+Math.floor(mine/18000)):1):0;
     const pressure=troops/cap;
     const style=effectiveBuildStyle() || 'Ausgewogen';
     const defBoost=style==='Defensiv'?22:0,econBoost=style==='Wirtschaft'?24:0;
@@ -809,9 +832,9 @@
       {type:'City',desired:wantedCity,score:92+econBoost/2+Math.max(0,pressure-.35)*75+(cities===0?115:hardMode()&&cities<2?80:0)},
       {type:'Factory',desired:wantedFactory,score:91+econBoost+(factories===0?100:hardMode()&&factories<2?85:0)+(gold<450000?15:0)},
       {type:'Port',desired:wantedPort,score:59+econBoost/2+(ports===0&&wantedPort?12:0)},
-      {type:'Defense Post',desired:wantedDefense,score:threatened?(hardMode()&&cities<2?91:119)+defBoost:20},
+      {type:'Defense Post',desired:wantedDefense,score:threatened?(basic?70:119)+defBoost:20},
       {type:'SAM Launcher',desired:wantedSAM,score:enemyNukes?165+defBoost:threat?116+defBoost:40},
-      {type:'Missile Silo',desired:wantedSilo,score:opts.nukes?(late?131:94)+(gold>6000000?13:0):0}
+      {type:'Missile Silo',desired:wantedSilo,score:siloCount===0?305:opts.nukes?(late?131:94)+(gold>6000000?13:0):0}
     ];
     const value=list.filter(x=>x.desired>count(x.type)).map(x=>({...x,count:count(x.type),
       urgency:x.score+Math.min(50,35*(x.desired-count(x.type))/x.desired)}));
@@ -827,7 +850,14 @@
     }
     // Deduplicate type list for game actions, but keep separate build/upgrade priorities.
     value.sort((a,b)=>b.urgency-a.urgency);
-    return {list:value,threatened,gold,cities,factories,mine,pressure,nuclearThreat:threat,incomingNukes:enemyNukes,intel};
+    const saveForSilo=siloAllowed && late && !basic && siloCount===0;
+    const saveForNuke=siloAllowed && late && siloCount>0 &&
+      intel.enemy.length>0 && nukeShots===0;
+    const savingsTarget=saveForSilo?1150000:saveForNuke?1100000:0;
+    investmentStatus=startup?'Erste Stadt/Fabrik':basic?'Zwei Städte und zwei Fabriken':
+      saveForSilo?'Silo-Fonds 1,15 Mio.':saveForNuke?'Atom-Fonds 1,1 Mio.':'Wirtschaft & Offensive';
+    return {list:value,threatened,gold,cities,factories,mine,pressure,nuclearThreat:threat,incomingNukes:enemyNukes,intel,
+      startup,basic,emergency,savingsTarget,saveForSilo,saveForNuke,siloCount};
   }
   function economicAnchors(me,tiles,units,tick) {
     const w=game.width(),h=game.height(),anchors=[],seen=new Set();
@@ -910,7 +940,15 @@
     for(const [k,expiry] of economicBlocked)if(tick>=expiry)economicBlocked.delete(k);
     const requirements=economicNeeds(me,units,tiles);
     const entries=requirements.list;
-    if(!entries.length){economicStatus='Gebäudeziele erreicht · Gold sparen';return false;}
+    // Do not waste worker queries or count failed builds while deliberately
+    // accumulating funds for the first silo / first atomic strike.
+    if(requirements.savingsTarget>0 && !requirements.emergency && requirements.incomingNukes===0 &&
+      !game.config().infiniteGold?.() && requirements.gold<requirements.savingsTarget){
+      economicStatus='Spare: '+investmentStatus+' ('+Math.floor(requirements.gold).toLocaleString()+
+        '/'+requirements.savingsTarget.toLocaleString()+' Gold)';
+      return false;
+    }
+    if(!entries.length){economicStatus='Gebäudeziele erreicht · '+investmentStatus;return false;}
     const types=[...new Set(entries.slice(0,8).map(x=>x.type))];
     const anchors=economicAnchors(me,tiles,units,tick);
     if(!anchors.length){economicStatus='Kein eigenes Bauland gefunden';return false;}
@@ -996,9 +1034,20 @@
           if(!infinite && (!Number.isFinite(cost)||cost>gold))continue;
           const essential=(item.type==='City'&&requirements.cities===0)||
             (item.type==='Factory'&&requirements.factories===0)||
-            (item.type==='Defense Post'&&requirements.threatened)||
-            (item.type==='SAM Launcher'&&requirements.nuclearThreat)||
+            (item.type==='Defense Post'&&requirements.emergency)||
+            (item.type==='SAM Launcher'&&requirements.incomingNukes>0)||
             (item.type==='Missile Silo'&&opts.nukes&&lateGame(me));
+          const economicCore=item.type==='City'||item.type==='Factory';
+          // Fund the first economic structures before buying defensive posts,
+          // ports or upgrades. Emergency SAM / defense remain possible.
+          if(requirements.startup && (!economicCore || isUpgrade) && !essential)continue;
+          // While saving for a silo / first atomic strike, do not repeatedly
+          // spend the whole treasury on expandable city/factory goals.
+          if(!infinite && requirements.savingsTarget>0 && !requirements.emergency &&
+            !(item.type==='SAM Launcher'&&requirements.incomingNukes>0) &&
+            !(item.type==='Defense Post'&&requirements.emergency) &&
+            !(item.type==='Missile Silo'&&requirements.saveForSilo) &&
+            gold-cost<requirements.savingsTarget)continue;
           const reserve=gold>650000?Math.min(220000,gold*.12):0;
           if(!infinite&&!essential&&gold-cost<reserve)continue;
           let siteValue=siteScore(item.type,tile,fronts,units,item.urgency);
@@ -1016,7 +1065,7 @@
     if(!proposals.length){failedEconomyProbes++;economicStatus='Spare Gold / suche gültigen Bauplatz';
       if(failedEconomyProbes===5 || failedEconomyProbes%10===0)
         telemetry('build_stalled','Bauplatz oder Gold fehlt',{attempts:failedEconomyProbes,
-          gold:requirements.gold,priorities:entries.slice(0,4).map(e=>e.type)});
+          gold:requirements.gold,investment:investmentStatus,priorities:entries.slice(0,4).map(e=>e.type)});
       economicLastPlan=entries.slice(0,3).map(x=>x.type).join(' › ');return false;}
     proposals.sort((a,b)=>b.siteValue-a.siteValue);
     const chosen=proposals[0];
@@ -1361,6 +1410,7 @@
       const context=strategy(me,groups,s);
       if(tick-lastDiagnosticTick>=80){lastDiagnosticTick=tick;
         telemetry('snapshot','Spielzustand',{difficulty:game.config().gameConfig().difficulty,
+          gameType:game.config().gameConfig().gameType,investment:investmentStatus,
           cities:ownStructures(me).filter(u=>u.type?.()==='City').length,
           factories:ownStructures(me).filter(u=>u.type?.()==='Factory').length,
           borders:tiles.length,enemies:groups.filter(g=>g.id!==null).map(g=>({name:nameOf(g.opponent),troops:number(()=>g.opponent.troops()),land:number(()=>g.opponent.numTilesOwned())})),
@@ -1452,7 +1502,7 @@
       <label>Reserve: ${opts.reserve}%<input type="range" data-option="reserve" min="5" max="65" value="${opts.reserve}" style="display:block;width:100%"></label>
       <label>Aktionen/Min.: ${opts.actionsPerMinute}<input type="range" data-option="actionsPerMinute" min="15" max="120" value="${opts.actionsPerMinute}" style="display:block;width:100%"></label>
       <label>Zielprüfungen: ${opts.maxTargets}<input type="range" data-option="maxTargets" min="4" max="25" value="${opts.maxTargets}" style="display:block;width:100%"></label>
-      <div style="color:#9bd0e4">Bau: ${escapeHTML(economicStatus)} · Prioritäten: ${escapeHTML(economicLastPlan)}</div>
+      <div style="color:#9bd0e4">Bau: ${escapeHTML(economicStatus)} · Sparziel: ${escapeHTML(investmentStatus)} · Prioritäten: ${escapeHTML(economicLastPlan)}</div>
       <div style="color:#9bd0e4">Tempo: Front ${runtime.borderMs}ms · Kampf ${runtime.combatMs}ms · Bau ${runtime.economyMs}ms · Worker-Checks ${runtime.attackProbes}/${runtime.buildProbes}</div>
       <div style="color:#9bd0e4">Events: ${escapeHTML(Object.keys(ctors).filter(k=>ctors[k]).join(', ')||'keine')}</div>
       <div style="color:#9bd0e4">Aktionsbudget: ${actions.length}/${opts.actionsPerMinute} · Gesendet: ${totalSent} · Fehlgeschlagen: ${totalFailed} · Fehler: ${errors}</div>
