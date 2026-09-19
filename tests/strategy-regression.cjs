@@ -13,7 +13,7 @@ async function check(name, test) {
 }
 function boot() {
   let tick = 300, land = 1200, gold = 1000000, home = 90000, enemyLand = 900, gameOver = false;
-  const out = [], incoming = [], sent = [];
+  const out = [], incoming = [], sent = [], warnings = [], infos = [];
   const me = {
     id: () => 'me', smallID: () => 1, troops: () => home, numTilesOwned: () => land,
     gold: () => BigInt(gold), isAlive: () => true, hasSpawned: () => true,
@@ -61,7 +61,8 @@ function boot() {
     window: win, document: {readyState: 'loading', body: null,
       addEventListener: () => {}, querySelector: () => null},
     localStorage: {getItem: () => null, setItem: () => {}},
-    Date: fixedDate, console: {info: () => {}, warn: () => {}, error: () => {}},
+    Date: fixedDate, console: {info: (...parts) => infos.push(parts.join(' ')),
+      warn: (...parts) => warnings.push(parts.join(' ')), error: () => {}},
     setInterval: () => 1, clearInterval: () => {}, setTimeout: () => 1,
     performance: {now: () => 0},
     URL: {createObjectURL: () => '', revokeObjectURL: () => {}},
@@ -70,7 +71,7 @@ function boot() {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'military,warReadiness,targetOpportunity,targetEconomics,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,economy,economicNeeds,strategy,manageWar,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,defenseAssessment,emergencyRetreat,siteScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,diplomacyScore,diplomacyTickSafe,',
+    'military,warReadiness,targetOpportunity,targetEconomics,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,economy,economicNeeds,strategy,manageWar,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,defenseAssessment,emergencyRetreat,siteScore,recognize,intentHealth,reportIntents,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,diplomacyScore,diplomacyTickSafe,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'setWarWait:n=>warWaitSince=n,setEconFails:n=>failedEconomyProbes=n,',
     'setPending:p=>pendingAttack=p,',
@@ -85,7 +86,7 @@ function boot() {
   ].join('\n');
   vm.runInNewContext(source.replace(anchor, expose + '\n' + anchor), context, {timeout:2000});
   win.__test.setup(game, {emit:event=>sent.push(event)}, {attack:Attack, build:Build});
-  return {b:win.__test,game,me,weak,strong,out,sent,
+  return {b:win.__test,game,me,weak,strong,out,sent,warnings,infos,
     setTick:v=>tick=v,setLand:v=>land=v,setEnemyLand:v=>enemyLand=v,
     setOver:v=>gameOver=v,setGold:v=>gold=v,setHome:v=>home=v};
 }
@@ -629,6 +630,66 @@ function boot() {
   await check('v1.9.8 consent button is completely removed from script', () => {
     assert.equal(source.includes('multiplayerTest'),false);
     assert.equal(source.includes('MP-TEST'),false);
+  });
+
+  await check('issue #9 empty EventBus reports 0/8 and all critical intents', () => {
+    const x=boot(),b={listeners:new Map(),emit:()=>{}};
+    x.b.reset(x.game,b);
+    const health=x.b.intentHealth();
+    assert.equal(health.found,0);assert.equal(health.total,8);
+    assert.deepEqual([...health.critical],['spawn','attack','build']);
+    assert(x.warnings.some(w=>w.includes('0/8 Intents erkannt')));
+    assert(x.warnings.some(w=>w.includes('spawn, attack, cancel, boat, build, upgrade, alliance, reject')));
+    assert.equal(x.b.opts.enabled,false,'reset must never start the bot');
+  });
+  await check('issue #9 partial EventBus lists exact missing intents only once', () => {
+    const x=boot();
+    class SendSpawnIntentEvent{constructor(tile){this.tile=tile;}}
+    class SendAttackIntentEvent{constructor(targetID,troops){this.targetID=targetID;this.troops=troops;}}
+    class BuildUnitIntentEvent{constructor(unit,tile){this.unit=unit;this.tile=tile;}}
+    const b={listeners:new Map([[SendSpawnIntentEvent,[]],[SendAttackIntentEvent,[]],[BuildUnitIntentEvent,[]]]),
+      emit:()=>{}};
+    x.b.reset(x.game,b);
+    const health=x.b.intentHealth();
+    assert.equal(health.found,3);
+    assert.equal(health.critical.length,0);
+    assert.deepEqual([...health.missing],['cancel','boat','upgrade','alliance','reject']);
+    assert(x.warnings.some(w=>w.includes('3/8 Intents erkannt')));
+    const warnings=x.warnings.length;
+    x.b.reportIntents();x.b.reportIntents();
+    assert.equal(x.warnings.length,warnings,'unchanged detection must not spam warnings');
+  });
+  await check('issue #9 all eight intents report 8/8 without warning', () => {
+    const x=boot();
+    const cls=[
+      class SendSpawnIntentEvent{},class SendAttackIntentEvent{},
+      class CancelAttackIntentEvent{},class SendBoatAttackIntentEvent{},
+      class BuildUnitIntentEvent{},class SendUpgradeStructureIntentEvent{},
+      class SendAllianceRequestIntentEvent{},class SendAllianceRejectIntentEvent{}
+    ];
+    x.b.reset(x.game,{listeners:new Map(cls.map(C=>[C,[]])),emit:()=>{}});
+    const health=x.b.intentHealth();
+    assert.equal(health.found,8);
+    assert.deepEqual([...health.missing],[]);
+    assert.equal(x.warnings.length,0);
+    assert(x.infos.some(i=>i.includes('8/8 Intents erkannt')));
+  });
+  await check('issue #9 missing Build intent blocks action with one visible warning', () => {
+    const x=boot();
+    class SendAttackIntentEvent{constructor(targetID,troops){this.targetID=targetID;this.troops=troops;}}
+    const b={listeners:new Map([[SendAttackIntentEvent,[]]]),emit:event=>x.sent.push(event)};
+    x.b.reset(x.game,b);x.b.opts.enabled=true;
+    assert.equal(x.b.send('build',['City',500],'BAU City'),false);
+    assert.equal(x.b.send('build',['City',500],'BAU City'),false);
+    assert.equal(x.sent.length,0);
+    assert.equal(x.warnings.filter(w=>w.includes('Intent build nicht erkannt')).length,1);
+    assert(x.b.state().strategic,'other game state preserved');
+  });
+  await check('issue #9 README does not claim deleted v1.9.0 exists', () => {
+    const readme=fs.readFileSync(path.join(__dirname,'..','README.md'),'utf8');
+    assert.match(readme,/1\.9\.9/);
+    assert.match(readme,/1\.9\.0\.js.{0,100}entfernt/);
+    assert.doesNotMatch(readme,/1\.9\.0\.js.{0,90}bleibt als/);
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
