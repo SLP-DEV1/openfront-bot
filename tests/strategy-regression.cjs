@@ -70,14 +70,15 @@ function boot() {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'military,warReadiness,confirmAttack,economy,economicNeeds,strategy,manageWar,actionBudget,connected,naval,',
+    'military,warReadiness,confirmAttack,economy,economicNeeds,strategy,manageWar,actionBudget,connected,naval,defenseAssessment,emergencyRetreat,siteScore,recognize,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'setWarWait:n=>warWaitSince=n,setEconFails:n=>failedEconomyProbes=n,',
     'setPending:p=>pendingAttack=p,',
     'setWar:(id,name)=>warState={id,name,since:game.ticks(),blockedUntil:-Infinity},',
     'setGroups:groups=>strategic.groups=groups,',
     'setBoats:yes=>opts.boats=yes,setBoatCtor:C=>ctors.boat=C,',
-    'state:()=>({pendingAttack,attackReceipts,warState,economicStatus,failedEconomyProbes,investmentStatus,strategic}),opts};'
+    'setCancelCtor:C=>ctors.cancel=C,setTroopSnapshot:t=>troopSnapshot=t,',
+    'state:()=>({pendingAttack,attackReceipts,warState,economicStatus,failedEconomyProbes,investmentStatus,strategic,defenseStatus,defenseStats,retreatRequests:[...retreatRequests.values()]}),opts};'
   ].join('\n');
   vm.runInNewContext(source.replace(anchor, expose + '\n' + anchor), context, {timeout:2000});
   win.__test.setup(game, {emit:event=>sent.push(event)}, {attack:Attack, build:Build});
@@ -194,6 +195,77 @@ function boot() {
   await check('Public game remains blocked regardless of bot options', () => {
     const x=boot();x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Medium'});
     assert.equal(x.b.connected(),false);
+  });
+
+  await check('emergency recalls committed neutral attack before worker scan', () => {
+    const x=boot();class Cancel{constructor(attackID){this.attackID=attackID;}}
+    x.b.setCancelCtor(Cancel);
+    x.out.push({id:'neutral-1',targetID:null,troops:24000,retreating:false});
+    x.me.incomingAttacks=()=>[{id:'enemy-1',attackerID:2,troops:44000,retreating:false}];
+    assert.equal(x.b.emergencyRetreat(x.me,300,x.b.military(x.me,[])),true);
+    assert.equal(x.sent.length,1);
+    assert.equal(x.sent[0].attackID,'neutral-1');
+    assert.equal(x.b.state().defenseStats.retreatsOrdered,1);
+  });
+  await check('emergency retreat is not spammed on the same stack', () => {
+    const x=boot();class Cancel{constructor(attackID){this.attackID=attackID;}}
+    x.b.setCancelCtor(Cancel);
+    x.out.push({id:'neutral-2',targetID:null,troops:24000,retreating:false});
+    x.me.incomingAttacks=()=>[{id:'enemy-1',attackerID:2,troops:44000,retreating:false}];
+    assert.equal(x.b.emergencyRetreat(x.me,300,x.b.military(x.me,[])),true);
+    assert.equal(x.b.emergencyRetreat(x.me,301,x.b.military(x.me,[])),false);
+    assert.equal(x.sent.length,1);
+    x.out[0].retreating=true;
+    x.b.emergencyRetreat(x.me,307,x.b.military(x.me,[]));
+    assert.equal(x.b.state().defenseStats.retreatsObserved,1);
+  });
+  await check('minor incoming attack does not trigger 25 percent retreat loss', () => {
+    const x=boot();class Cancel{constructor(attackID){this.attackID=attackID;}}
+    x.b.setCancelCtor(Cancel);
+    x.out.push({id:'valuable-war',targetID:'weak',troops:40000,retreating:false});
+    x.me.incomingAttacks=()=>[{id:'enemy-1',attackerID:2,troops:12000,retreating:false}];
+    assert.equal(x.b.emergencyRetreat(x.me,300,x.b.military(x.me,[])),false);
+    assert.equal(x.sent.length,0);
+  });
+  await check('emergency recalls attacks despite a full action budget', () => {
+    const x=boot();class Cancel{constructor(attackID){this.attackID=attackID;}}
+    x.b.setCancelCtor(Cancel);x.b.setBudget(72);
+    x.out.push({id:'front-1',targetID:'weak',troops:33000,retreating:false});
+    x.me.incomingAttacks=()=>[{id:'enemy-1',attackerID:2,troops:77000,retreating:false}];
+    assert.equal(x.b.emergencyRetreat(x.me,300,x.b.military(x.me,[])),true);
+    assert.equal(x.sent[0].attackID,'front-1');
+  });
+  await check('defense post inside thirty-tile range beats one outside', () => {
+    const x=boot(),inside=230,outside=283,fronts=[250];
+    const a=x.b.siteScore('Defense Post',inside,fronts,[],0,false);
+    const b=x.b.siteScore('Defense Post',outside,fronts,[],0,false);
+    assert(a>b+50,{inside:a,outside:b});
+  });
+  await check('large hostile frontier requests more than four defense posts', () => {
+    const x=boot();x.setLand(20000);
+    const groups=[{id:'weak',opponent:x.weak},{id:'strong',opponent:x.strong},
+      {id:'e3',opponent:x.weak},{id:'e4',opponent:x.strong},{id:'e5',opponent:x.weak}];
+    x.b.setGroups(groups);
+    x.b.setTroopSnapshot({home:90000,max:150000,ratio:.60,incoming:50000,
+      strongest:180000,committed:0,reserve:0,available:0});
+    const needs=x.b.economicNeeds(x.me,[],Array(1200).fill(230));
+    const dp=needs.list.find(x=>x.type==='Defense Post');
+    assert(dp&&dp.desired>=10,dp?.desired);
+    assert.equal(needs.immediate,true);
+  });
+  await check('public match cannot dispatch emergency retreat', () => {
+    const x=boot();class Cancel{constructor(attackID){this.attackID=attackID;}}
+    x.b.setCancelCtor(Cancel);
+    x.out.push({id:'front',targetID:null,troops:50000,retreating:false});
+    x.me.incomingAttacks=()=>[{id:'enemy',attackerID:2,troops:90000,retreating:false}];
+    x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Medium'});
+    assert.equal(x.b.emergencyRetreat(x.me,300,x.b.military(x.me,[])),false);
+    assert.equal(x.sent.length,0);
+  });
+  await check('cancel intent constructor recognized without reliable class name', () => {
+    const x=boot();const C=class Minified{constructor(attackID){this.attackID=attackID;}};
+    const constructors=x.b.recognize({listeners:new Map([[C,[()=>{}]]])});
+    assert.equal(constructors.cancel,C);
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
