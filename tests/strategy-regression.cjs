@@ -4,7 +4,7 @@ const vm = require('node:vm');
 const path = require('node:path');
 const assert = require('node:assert/strict');
 const source = fs.readFileSync(path.join(__dirname, '..', 'OpenFront_Solo_AggroBot.user.js'), 'utf8');
-const anchor = "  console.info(PREFIX,'v'+VERSION,'ready; singleplayer only, OFF by default');";
+const anchor = "  console.info(PREFIX,'v'+VERSION,'ready; multiplayer requires explicit opt-in, OFF by default');";
 assert(source.includes(anchor), 'bot test injection anchor missing');
 let pass = 0, fail = 0;
 async function check(name, test) {
@@ -70,7 +70,7 @@ function boot() {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'military,warReadiness,targetOpportunity,targetEconomics,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,economy,economicNeeds,strategy,manageWar,actionBudget,connected,naval,defenseAssessment,emergencyRetreat,siteScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,diplomacyScore,diplomacyTickSafe,',
+    'military,warReadiness,targetOpportunity,targetEconomics,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,economy,economicNeeds,strategy,manageWar,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,defenseAssessment,emergencyRetreat,siteScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,diplomacyScore,diplomacyTickSafe,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'setWarWait:n=>warWaitSince=n,setEconFails:n=>failedEconomyProbes=n,',
     'setPending:p=>pendingAttack=p,',
@@ -573,6 +573,63 @@ function boot() {
     const result=x.b.nukeTargets(x.me,intel,'Atom Bomb');
     assert(result.length>0,JSON.stringify(result));
     assert.equal(result[0].owner,x.strong);
+  });
+  await check('v1.9.7 Public multiplayer is blocked by default', () => {
+    const x=boot();
+    x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Impossible'});
+    assert.equal(x.b.opts.multiplayerTest,false);
+    assert.equal(x.b.connected(),false);
+    assert.equal(x.b.send('attack',['weak',500]),false);
+    assert.equal(x.sent.length,0);
+  });
+  await check('v1.9.7 explicit Public opt-in enables normal action dispatch', () => {
+    const x=boot();
+    x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Impossible'});
+    x.b.opts.multiplayerTest=true;
+    assert.equal(x.b.permittedMatch(x.game),true);
+    assert.equal(x.b.connected(),true);
+    assert.equal(x.b.send('attack',['weak',500]),true);
+    assert.equal(x.sent[0].targetID,'weak');
+    assert.equal(x.sent[0].troops,500);
+  });
+  await check('v1.9.7 explicit Private opt-in enables match', () => {
+    const x=boot();x.game.config().gameConfig=()=>({gameType:'Private',difficulty:'Medium'});
+    assert.equal(x.b.connected(),false);
+    x.b.opts.multiplayerTest=true;
+    assert.equal(x.b.connected(),true);
+  });
+  await check('v1.9.7 replay stays blocked even with MP opt-in', () => {
+    const x=boot();
+    x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Impossible'});
+    x.game.config().isReplay=()=>true;
+    x.b.opts.multiplayerTest=true;
+    assert.equal(x.b.connected(),false);
+    assert.equal(x.b.send('attack',['weak',500]),false);
+    assert.equal(x.sent.length,0);
+  });
+  await check('v1.9.7 unknown game mode stays blocked', () => {
+    const x=boot();x.game.config().gameConfig=()=>({gameType:'Tournament',difficulty:'Impossible'});
+    x.b.opts.multiplayerTest=true;
+    assert.equal(x.b.connected(),false);
+    assert.equal(x.b.multiplayerMatch(x.game),false);
+  });
+  await check('v1.9.7 disabling consent prevents subsequent multiplayer actions', () => {
+    const x=boot();x.game.config().gameConfig=()=>({gameType:'Private',difficulty:'Medium'});
+    x.b.opts.multiplayerTest=true;
+    assert.equal(x.b.connected(),true);
+    x.b.opts.multiplayerTest=false;
+    assert.equal(x.b.connected(),false);
+    assert.equal(x.b.send('attack',['weak',500],undefined,true),false);
+    assert.equal(x.sent.length,0);
+  });
+  await check('v1.9.7 new match revokes earlier multiplayer consent and stops bot', () => {
+    const x=boot();x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Impossible'});
+    x.b.opts.multiplayerTest=true;
+    assert.equal(x.b.connected(),true);
+    x.b.reset(x.game,{emit:()=>{}});
+    assert.equal(x.b.opts.multiplayerTest,false);
+    assert.equal(x.b.opts.enabled,false);
+    assert.equal(x.b.connected(),false);
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
