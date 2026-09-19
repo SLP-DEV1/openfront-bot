@@ -2,7 +2,7 @@
 
 Autonomer **Singleplayer**-Bot als Tampermonkey-Userscript für [OpenFront](https://openfront.io/).
 
-**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.9.4**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
+**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.9.5**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
 
 ## Installation
 
@@ -16,6 +16,15 @@ Autonomer **Singleplayer**-Bot als Tampermonkey-Userscript für [OpenFront](http
 ## Strategie & Diagnose
 
 Strategie-, Wirtschafts-, Marine-, Diplomatie-, Nuke- und SAM-Planung sind vorhanden. Der Bot kann Befehle senden; daraus folgt **keine garantierte Gewinnrate auf „Unmöglich“**. Ein vollständiger Live-Test ist noch nicht erfolgt. „Diagnose JSON“ im Bot-Menü zeichnet unter anderem Gebietsänderungen, Truppenlage, Bauaufträge und Allianzantworten auf. Bitte den Export vor dem Neuladen erstellen.
+
+### Änderung 1.9.5 – PR #1 und Issues #2–#5
+
+- **PR #1:** Eine schwache Grenznation kann auch neben einem stärkeren Gegner als Ziel dienen, wenn nach dem Angriff die nötige **unbegrenzte, gegnerabhängige Heimreserve** verbleibt. Kein Angriff bei gefährlichem eingehendem Angriff. Baufehlersuche unterscheidet unzureichendes Gold, ungültiges Bauland, illegale Bauoptionen und Prioritäts-/Reservesperren.
+- **Issue #2:** `nukeAttempts` zählt nur abgegebene Startbefehle, `nukeShots` nur im Spielzustand beobachtete Raketen. Nicht bestätigte Befehle halten den Fonds für die erste Bombe weiterhin aktiv.
+- **Issue #3:** Ein Rückzug gilt erst bei `retreating:true` als beobachtet. Ein verschwundener Angriff wird als **unklar** erfasst, nicht als zurückgewonnene Truppen; Timeouts bleiben separat.
+- **Issue #4:** Marineabfragen verwenden den tatsächlichen OpenFront-Einheitentyp `Transport` statt `Transport Ship`. Marine-Fixtures prüfen die echte Worker-Antwort.
+- **Issue #5:** Ein lediglich starker Nachbar ohne aktuellen Angriff gibt Silo-/Bomben-Ersparnisse nicht mehr zur allgemeinen Ausgabe frei. Akute Angriffe und eingehende Raketen behalten Vorrang.
+- 43 simulierte Regressionstests beim PR-Review; sie beweisen **keine garantierte Live-Gewinnrate auf „Unmöglich“**.
 
 ### Änderung 1.9.4
 
