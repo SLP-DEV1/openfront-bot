@@ -1332,9 +1332,10 @@
       (troopSnapshot.ratio<.75||hostileFronts>=2));
     // The first Public game purchased 24 defense posts with little economy.
     // Cap non-emergency posts separately from urgent defensive construction.
-    const wantedDefense=threatened&&(!startup||immediate)?Math.min(
-      immediate?10:7,Math.max(2,Math.ceil((tiles?.length||0)/310),hostileFronts),
-      Math.max(immediate?3:2,(cities+factories)*2)):0;
+    const wantedDefense=!threatened||(startup&&!immediate)?0:
+      immediate?Math.min(10,Math.max(3,Math.ceil((tiles?.length||0)/165),hostileFronts*2)):
+      Math.min(7,Math.max(2,Math.ceil((tiles?.length||0)/310),hostileFronts),
+        Math.max(2,(cities+factories)*2));
     const intel=nuclearIntel(me,units);
     const enemySilos=intel.enemySilos.length,enemyNukes=intel.incomingNukes.length;
     const late=lateGame(me),siloCount=count('Missile Silo');
