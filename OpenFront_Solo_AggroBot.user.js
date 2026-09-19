@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.9.6
-// @description  Singleplayer autopilot: Impossible-focused singleplayer AI: one-front warfare, economy, nukes, SAM coverage, verified autonomous diplomacy.
+// @version      1.9.7
+// @description  Singleplayer autopilot with explicit opt-in multiplayer TEST mode; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
 // @run-at       document-start
@@ -11,11 +11,11 @@
 
 (() => {
   'use strict';
-  if (window.__ofSoloAggroBot196) return;
-  window.__ofSoloAggroBot196 = true;
+  if (window.__ofSoloAggroBot197) return;
+  window.__ofSoloAggroBot197 = true;
 
-  const VERSION = '1.9.6', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v196';
-  const defaults = {enabled:false, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
+  const VERSION = '1.9.7', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v197';
+  const defaults = {enabled:false, multiplayerTest:false, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:false, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
     autoStrategy:true, diplomacy:true, offerAlliances:true, nukes:true, antiNuke:true, lateOffense:true,
@@ -24,12 +24,13 @@
   try { opts = {...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; }
   catch (_) {opts = {...defaults};}
   try {if(!localStorage.getItem(KEY)){
-    opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v195')||localStorage.getItem('of-solo-aggrobot-v194')||localStorage.getItem('of-solo-aggrobot-v193')||localStorage.getItem('of-solo-aggrobot-v192')||localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
+    opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v196')||localStorage.getItem('of-solo-aggrobot-v195')||localStorage.getItem('of-solo-aggrobot-v194')||localStorage.getItem('of-solo-aggrobot-v193')||localStorage.getItem('of-solo-aggrobot-v192')||localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
     // Only import user-adjustable preferences, never a previously enabled bot.
   }}catch(_){}
   opts.enabled = false;                         // Never auto-start after reload.
+  opts.multiplayerTest = false;                  // Explicit opt-in for EACH live match/session.
   if(opts.fullAuto)opts.autoStrategy=true;     // Full autonomy includes strategy selection.
-  const persist = () => {try {localStorage.setItem(KEY,JSON.stringify(opts));} catch (_) {}};
+  const persist = () => {try {localStorage.setItem(KEY,JSON.stringify({...opts,multiplayerTest:false}));} catch (_) {}};
   const escapeHTML = v => String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const clamp = (n,a,b) => Math.min(b,Math.max(a,Number.isFinite(+n)?+n:a));
   const number = (fn, fallback=0) => {try {const n=Number(fn());return Number.isFinite(n)?n:fallback;}catch(_){return fallback;}};
@@ -71,7 +72,7 @@
   const hardMode=()=>opts.impossibleMode && game?.config?.().gameConfig?.().difficulty==='Impossible';
   const isWar=()=>warState.id!==null;
   function telemetry(kind,message,extra={}) {
-    if(!opts.enabled || !single(game))return;
+    if(!opts.enabled || !permittedMatch(game))return;
     let m=myPlayer(),tick=number(()=>game.ticks(),0);
     diagnostics.push({time:new Date().toISOString(),tick,kind,message,mode:strategic.mode,
       warTarget:warState.name,home:number(()=>m?.troops?.()),gold:number(()=>Number(m?.gold?.())),
@@ -92,24 +93,32 @@
       diplomacy:{status:diplomacyStatus,stats:diplomacyStats,pending:[...diplomacyPending.values()]},records:diagnostics,createdAt:new Date().toISOString()};
     const blob=new Blob([JSON.stringify(details,null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download='OpenFront_AggroBot_1.9.6_Diagnose.json';document.body.append(a);a.click();a.remove();
+    a.href=url;a.download='OpenFront_AggroBot_1.9.7_Diagnose.json';document.body.append(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),2000);
   }
 
 
   const log = message => {recent.unshift(message);recent=recent.slice(0,7);console.info(PREFIX,message);telemetry('decision',message);};
-  const single = g => {
-    try {return g?.config?.().gameConfig?.().gameType === 'Singleplayer' &&
-      !g.config().isReplay?.();} catch (_) {return false;}
+  const gameType = g => {
+    try{return g?.config?.().gameConfig?.().gameType ?? null;}catch(_){return null;}
   };
-  const conflicts = () => !!(window.__ofSoloAggroBot1 || window.__ofSoloAggroBot11 || window.__ofSoloAggroBot12 || window.__ofSoloAggroBot13 || window.__ofSoloAggroBot14 || window.__ofSoloAggroBot15 || window.__ofSoloAggroBot16 || window.__ofSoloAggroBot17 || window.__ofSoloAggroBot18 || window.__ofSoloAggroBot181 || window.__ofSoloAggroBot190 || window.__ofSoloAggroBot191 || window.__ofSoloAggroBot192 || window.__ofSoloAggroBot193 || window.__ofSoloAggroBot194 || window.__ofSoloAggroBot195);
+  const multiplayerMatch = g => ['Public','Private'].includes(gameType(g));
+  // Multiplayer is never inferred from "not Singleplayer": require a known
+  // official game type, a current-session opt-in, and never allow replays.
+  const permittedMatch = g => {
+    try{return !!g && !g.config().isReplay?.() &&
+      (gameType(g)==='Singleplayer' ||
+        (opts.multiplayerTest===true && multiplayerMatch(g)));}
+    catch(_){return false;}
+  };
+  const conflicts = () => !!(window.__ofSoloAggroBot1 || window.__ofSoloAggroBot11 || window.__ofSoloAggroBot12 || window.__ofSoloAggroBot13 || window.__ofSoloAggroBot14 || window.__ofSoloAggroBot15 || window.__ofSoloAggroBot16 || window.__ofSoloAggroBot17 || window.__ofSoloAggroBot18 || window.__ofSoloAggroBot181 || window.__ofSoloAggroBot190 || window.__ofSoloAggroBot191 || window.__ofSoloAggroBot192 || window.__ofSoloAggroBot193 || window.__ofSoloAggroBot194 || window.__ofSoloAggroBot195 || window.__ofSoloAggroBot196);
   function advisorConflict() {
     if (!window.__openfrontSpawnAdvisorV104) return false;
     try {const s=JSON.parse(localStorage.getItem('openfront-spawn-advisor-10.4')||'{}');
       return s.auto!==false || s.smart===true || s.accept===true;
     } catch (_) {return true;}
   }
-  const connected = () => single(game) && !game?.gameOver?.() && !conflicts() && !advisorConflict() && bus && typeof bus.emit==='function';
+  const connected = () => permittedMatch(game) && !game?.gameOver?.() && !conflicts() && !advisorConflict() && bus && typeof bus.emit==='function';
   const myPlayer = () => {try{return game?.myPlayer?.() || null;}catch(_){return null;}};
   const live = serial => serial===generation && opts.enabled && connected();
   function discover() {
@@ -181,8 +190,12 @@
     retreatRequests.clear();defenseStats={retreatsOrdered:0,retreatsObserved:0,unknown:0,unconfirmed:0};
     autoTuning={aggressive:85,reserve:35,actionsPerMinute:72,maxTargets:16,
       mode:'INIT',reason:'Warte auf Spielzustand',tick:-Infinity};
-    opts.enabled=false;persist();
-    status=single(g)?'Singleplayer erkannt · Bot starten':'Multiplayer/Replay · gesperrt';
+    // A different game/bus must never inherit multiplayer consent.
+    opts.enabled=false;opts.multiplayerTest=false;persist();
+    status=gameType(g)==='Singleplayer'?'Singleplayer erkannt · Bot starten':
+      multiplayerMatch(g)?'Multiplayer erkannt · ⚠ MP-TEST manuell aktivieren':
+      'Replay/unbekannter Spieltyp · gesperrt';
+    if(g?.config?.().isReplay?.())status='Replay · BOT GESPERRT';
     log(status);
   }
   // Never overwrite manually selected slider values. Auto settings are
@@ -262,7 +275,7 @@
     // burst limiter so it never floods the game transport even at 60/min.
     if(!priority && Date.now()-lastEmission < 410)return false;
     // A final fail-closed check: do not emit if we switched to MP or replay.
-    if(!single(game))return false;
+    if(!permittedMatch(game))return false;
     try {
       const event=new ctors[kind](...args);
       bus.emit(event);actions.push(Date.now());lastEmission=Date.now();totalSent++;
@@ -291,7 +304,7 @@
     let x=r,y=r,best=null;
     spawnJob={serial};
     function chunk() {
-      if(serial!==generation || game!==g || !opts.enabled || !single(g) || !g.inSpawnPhase?.()){
+      if(serial!==generation || game!==g || !opts.enabled || !permittedMatch(g) || !g.inSpawnPhase?.()){
         spawnJob=null;return;
       }
       const start=performance.now();
@@ -1547,7 +1560,7 @@
   // Diplomacy is a priority channel. The normal minute and attack-burst limits
   // must not prevent a timely reply; a separate 700-ms limiter prevents spam.
   function answerAlliance(me,p,accept,card,tick,reason,tryCount) {
-    if(!opts.enabled || !opts.diplomacy || !connected() || !single(game) ||
+    if(!opts.enabled || !opts.diplomacy || !connected() || !permittedMatch(game) ||
       Date.now()-lastDiplomaticEmit<700)return false;
     const label=nameOf(p),key=accept?'alliance':'reject';
     let path='';
@@ -1709,9 +1722,12 @@
     const found=discover();
     if(!found){if(game){generation++;game=null;bus=null;opts.enabled=false;persist();status='Warte auf Spiel';}paint();return;}
     if(found.g!==game||(found.b&&found.b!==bus))reset(found.g,found.b);
-    if(!single(game)){
+    if(!permittedMatch(game)){
       if(opts.enabled){opts.enabled=false;generation++;persist();}
-      status='Multiplayer/Replay: BOT GESPERRT';paint();return;
+      status=game?.config?.().isReplay?.()?'Replay: BOT GESPERRT':
+        multiplayerMatch(game)?'Multiplayer: ⚠ MP-TEST AUS – im Menü freischalten':
+        'Unbekannter Spieltyp: BOT GESPERRT';
+      paint();return;
     }
     if(game?.gameOver?.()){
       if(opts.enabled){telemetry('game_over','Partie beendet · Bot automatisch gestoppt');
@@ -1803,8 +1819,18 @@
     panel.addEventListener('click',e=>{
       const key=e.target.closest('button[data-key]')?.dataset.key;if(!key)return;
       if(key==='export'){exportDiagnostics();return;}
-      if(key==='enabled'){
-        if(!connected())status=conflicts()?'Alte Bot-Version deaktivieren':advisorConflict()?'Spawn Advisor Auto/Smart/Auto-Accept ausschalten':'Nur in laufender Singleplayer-Partie mit EventBus';
+      if(key==='multiplayerTest'){
+        const eligible=multiplayerMatch(game)&&!game?.config?.().isReplay?.();
+        opts.multiplayerTest=eligible?!opts.multiplayerTest:false;
+        // Disabling consent immediately blocks every asynchronous send().
+        if(!opts.multiplayerTest){opts.enabled=false;generation++;}
+        status=opts.multiplayerTest?'⚠ MP-TEST FREIGESCHALTET · BOT separat starten':
+          eligible?'MP-TEST AUS · Bot gestoppt':'MP-TEST nur in laufender Public/Private-Partie, nie Replay';
+        log(status);
+      }else if(key==='enabled'){
+        if(!connected())status=conflicts()?'Alte Bot-Version deaktivieren':
+          advisorConflict()?'Spawn Advisor Auto/Smart/Auto-Accept ausschalten':
+          'Nur in Singleplayer oder explizit freigeschaltetem MP-Test mit EventBus';
         else {opts.enabled=!opts.enabled;generation++;log(opts.enabled?'BOT START':'BOT PAUSE');}
       }else if(key==='fullAuto'){
         opts.fullAuto=!opts.fullAuto;
@@ -1832,9 +1858,10 @@
     if(panel.contains(document.activeElement)&&document.activeElement?.matches('input'))return;
     lastPaint=Date.now();actionBudget();
     const b=(key,label)=>`<button data-key="${key}" style="border:1px solid #779;border-radius:5px;color:#fff;background:${opts[key]?'#167247':'#344157'};padding:5px 7px;margin:2px;cursor:pointer">${label}</button>`;
-    panel.innerHTML=`<b style="font-size:15px;color:#83dcff">Solo AggroBot ${VERSION}</b> ${single(game)?'🟢':'🔒'}
+    panel.innerHTML=`<b style="font-size:15px;color:#83dcff">Solo AggroBot ${VERSION}</b> ${permittedMatch(game)?'🟢':'🔒'}
       <div style="color:#bed5e8;margin:6px 0">${escapeHTML(status)}</div>
-      <div>${b('enabled',opts.enabled?'⏸ PAUSE':'▶ BOT STARTEN')}</div>
+      <div>${b('enabled',opts.enabled?'⏸ PAUSE':'▶ BOT STARTEN')} ${b('multiplayerTest','⚠ MP-TEST '+(opts.multiplayerTest?'AN':'AUS'))}</div>
+      ${multiplayerMatch(game)?'<div style="color:#ffcd73;font-weight:600">⚠ Multiplayer-Test: nur nach ausdrücklichem Einschalten; bei Moduswechsel/Reload wieder AUS.</div>':''}
       <div>${b('autoSpawn','Spawn')} ${b('defense','Gegenangriff')} ${b('economy','Wirtschaft')} ${b('boats','Marine')}</div>
       <div>${b('upgrades','Upgrades')} ${b('safeMode','Not-Aus')} ${b('autoStrategy','Auto-Strategie '+(opts.autoStrategy?'AN':'AUS'))} ${b('fullAuto','Vollautonom '+(opts.fullAuto?'AN':'AUS'))}</div>
       <div>${b('diplomacy','Diplomatie')} ${b('offerAlliances','Bündnisse anbieten')}</div>
@@ -1858,7 +1885,7 @@
       <div style="color:#9bd0e4">Heim: ${Math.floor(troopSnapshot.home/10)} · Reserve: ${Math.floor(troopSnapshot.reserve/10)} · Laufende Angriffe: ${Math.floor(troopSnapshot.committed/10)} · Einkommen/Reserve: ${(troopSnapshot.ratio*100).toFixed(0)}% Kapazität</div>
       <div style="color:#9bd0e4">Eingehend: ${Math.floor(troopSnapshot.incoming/10)} · Stärkster Grenznachbar: ${Math.floor(troopSnapshot.strongest/10)} · Ziel: ${escapeHTML(lastSelection||plan?.name||'Suche')} · ${borderCache?.length||0} Grenzfelder</div>
       <div style="border-top:1px solid #527;margin-top:7px;padding-top:5px"><b>Letzte Entscheidungen</b>${recent.map(s=>`<div>• ${escapeHTML(s)}</div>`).join('')}</div>
-      <div style="color:#97a8be;font-size:10px;margin-top:8px">Nur Singleplayer · Start nach Seitenwechsel AUS · Alt+Shift+P Pause/Start · Alt+Shift+X NOT-AUS.<br>Bei parallelem Spawn Advisor: Auto-Spawn, Smart Attack und Auto-Accept Alliances dort ausschalten.</div>`;
+      <div style="color:#97a8be;font-size:10px;margin-top:8px">Singleplayer standardmäßig · Multiplayer nur mit MP-TEST-Opt-in pro Partie · Replays gesperrt · nach Reload AUS · Alt+Shift+P Start/Pause · Alt+Shift+X NOT-AUS.<br>Bei parallelem Spawn Advisor: Auto-Spawn, Smart Attack und Auto-Accept Alliances dort ausschalten.</div>`;
   }
   document.addEventListener('keydown',e=>{
     if(!e.altKey||!e.shiftKey||!['p','x'].includes(e.key.toLowerCase())||e.repeat||e.target?.isContentEditable||
@@ -1868,7 +1895,7 @@
       opts.enabled=false;generation++;log('NOT-AUS über Hotkey');
     }else if(connected()){
       opts.enabled=!opts.enabled;generation++;log(opts.enabled?'BOT START':'BOT PAUSE');
-    } else status='Bot nur in Singleplayer verfügbar';
+    } else status='Bot nur in Singleplayer oder mit aktivem MP-Test verfügbar';
     persist();lastPaint=0;paint();
   });
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',paint,{once:true});
@@ -1877,5 +1904,5 @@
   const diplomacyInterval=setInterval(diplomacyTick,950);
   const nukeInterval=setInterval(nukeStep,1100);
   window.addEventListener('beforeunload',()=>{clearInterval(interval);clearInterval(economyInterval);clearInterval(diplomacyInterval);clearInterval(nukeInterval);});
-  console.info(PREFIX,'v'+VERSION,'ready; singleplayer only, OFF by default');
+  console.info(PREFIX,'v'+VERSION,'ready; multiplayer requires explicit opt-in, OFF by default');
 })();
