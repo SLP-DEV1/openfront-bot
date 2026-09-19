@@ -71,7 +71,7 @@ function boot() {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'military,warReadiness,targetOpportunity,targetEconomics,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,economy,economicNeeds,economicAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
+    'military,warReadiness,targetOpportunity,targetEconomics,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,economy,economicNeeds,economicAnchors,portCoastalAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'setWarWait:n=>warWaitSince=n,setEconFails:n=>failedEconomyProbes=n,',
     'setPending:p=>pendingAttack=p,',
@@ -82,7 +82,7 @@ function boot() {
     'setMode:m=>strategic.mode=m,setAllianceCtor:C=>ctors.alliance=C,',
     'setNukePending:p=>nukePending=p,',
     'setPerf:(combat,border,economy)=>runtime={...runtime,combatMs:combat,borderMs:border,economyMs:economy},',
-    'state:()=>({pendingAttack,attackReceipts,warState,gameEnd,diagnostics,spawnState,spawnCache,spawnJob,economicStatus,failedEconomyProbes,investmentStatus,strategic,winStatus,incomeStatus,fleetStatus,strategicTelemetry,defenseStatus,defenseStats,autoTuning,nukeShots,nukeAttempts,nukeUnconfirmed,nukePending,lastProposalTick,diplomacyStatus,diplomacyPending:[...diplomacyPending.values()],retreatRequests:[...retreatRequests.values()]}),opts};'
+    'state:()=>({pendingAttack,attackReceipts,warState,gameEnd,diagnostics,spawnState,spawnCache,spawnJob,economicStatus,failedEconomyProbes,investmentStatus,pendingBoat,pendingWarship,marineStats,portProbeFailures,strategic,winStatus,incomeStatus,fleetStatus,strategicTelemetry,defenseStatus,defenseStats,autoTuning,nukeShots,nukeAttempts,nukeUnconfirmed,nukePending,lastProposalTick,diplomacyStatus,diplomacyPending:[...diplomacyPending.values()],retreatRequests:[...retreatRequests.values()]}),opts};'
   ].join('\n');
   vm.runInNewContext(source.replace(anchor, expose + '\n' + anchor), context, {timeout:2000});
   win.__test.setup(game, {emit:event=>sent.push(event)}, {attack:Attack, build:Build});
@@ -1240,6 +1240,127 @@ function boot() {
     x.b.doSpawn(190);
     assert.equal(x.sent.length,1);
     assert.equal(x.b.state().spawnState.attempts,1);
+  });
+  await check('v1.10.5 first Port beats upgrades after basic City/Factory', async () => {
+    const x=boot();x.setTick(2400);x.setGold(500000);
+    x.game.isShore=t=>t===5500;
+    const units=['City','Factory'].map((type,i)=>({
+      type:()=>type,isActive:()=>true,tile:()=>5000+i*20,
+      id:()=>i+1,level:()=>1}));
+    x.me.units=()=>units;
+    x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
+      type,canBuild:tile,canUpgrade:false,cost:250000n}))});
+    const needs=x.b.economicNeeds(x.me,units,[5500]);
+    assert.equal(needs.portMilestone,true);
+    assert(x.b.portCoastalAnchors(x.me,[5500],2400).length>0);
+    assert.equal(await x.b.economy(x.me,2400,0,[5500]),true);
+    assert.equal(x.sent[0].unit,'Port');
+    assert(x.b.state().diagnostics.some(e=>e.kind==='port_intent'));
+  });
+  await check('v1.10.5 first Port not indefinitely blocked by silo savings', async () => {
+    const x=boot();x.setTick(2400);x.setGold(900000);x.setLand(52000);
+    x.game.isShore=t=>t===5500;
+    const units=['City','City','Factory','Factory'].map((type,i)=>({
+      type:()=>type,isActive:()=>true,tile:()=>5000+i*20,
+      id:()=>i+1,level:()=>1}));
+    x.me.units=()=>units;
+    x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
+      type,canBuild:tile,canUpgrade:false,cost:type==='Missile Silo'?1000000n:250000n}))});
+    const plan=x.b.economicNeeds(x.me,units,[5500]);
+    assert.equal(plan.saveForSilo,true);
+    assert.equal(plan.portMilestone,true);
+    assert.equal(plan.savingsTarget,0);
+    assert.equal(await x.b.economy(x.me,2400,0,[5500]),true);
+    assert.equal(x.sent[0].unit,'Port');
+  });
+  await check('v1.10.5 missing Port worker site does not block silo forever', async () => {
+    const x=boot();x.setTick(2400);x.setLand(52000);x.setGold(900000);
+    x.game.isShore=t=>t===5500;
+    const units=['City','City','Factory','Factory'].map((type,i)=>({
+      type:()=>type,isActive:()=>true,tile:()=>5000+i*20,
+      id:()=>i+1,level:()=>1}));
+    x.me.units=()=>units;
+    x.me.actions=async(tile,types)=>({buildableUnits:(types||[])
+      .filter(type=>type!=='Port').map(type=>({
+        type,canBuild:tile,canUpgrade:false,cost:250000n}))});
+    for(let k=0;k<8;k++){
+      x.setTick(2400+k*22);
+      assert.equal(await x.b.economy(x.me,2400+k*22,0,[5500]),false);
+    }
+    assert.equal(x.b.state().portProbeFailures,8);
+    assert.equal(x.b.economicNeeds(x.me,units,[5500]).portMilestone,false);
+    assert.equal(x.b.economicNeeds(x.me,units,[5500]).savingsTarget,1150000);
+  });
+  await check('v1.10.5 own Port is confirmed from actual unit view', async () => {
+    const x=boot();x.setTick(300);x.setGold(500000);x.game.isShore=t=>t===5500;
+    const city={type:()=> 'City',isActive:()=>true,tile:()=>5000};
+    const factory={type:()=> 'Factory',isActive:()=>true,tile:()=>5020};
+    let units=[city,factory];
+    x.me.units=()=>units;
+    x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
+      type,canBuild:tile,canUpgrade:false,cost:125000n}))});
+    assert.equal(await x.b.economy(x.me,300,0,[5500]),true);
+    assert.equal(x.sent[0].unit,'Port','the receipt test must first request a Port');
+    const location=x.sent[0].tile;
+    units=[...units,{type:()=> 'Port',isActive:()=>true,tile:()=>location}];
+    x.setTick(341);
+    await x.b.economy(x.me,341,0,[5500]);
+    assert(x.b.state().diagnostics.some(e=>e.kind==='port_confirmed'),
+      JSON.stringify(x.b.state().diagnostics.slice(-6).map(e=>({kind:e.kind,
+        message:e.message,type:e.type,tile:e.tile}))));
+  });
+  await check('v1.10.5 proactive Warship requires completed Port and water', async () => {
+    const x=boot();x.setGold(600000);x.setLand(16000);
+    assert.equal(await x.b.fleetDefense(x.me,300,0),false);
+    x.me.units=()=>[{type:()=> 'Port',tile:()=>5500,
+      isActive:()=>true,isUnderConstruction:()=>false}];
+    x.game.isWater=()=>true;
+    x.me.actions=async tile=>({buildableUnits:[{type:'Warship',
+      canBuild:tile,cost:250000n}]});
+    assert.equal(await x.b.fleetDefense(x.me,300,0),true);
+    assert.equal(x.sent[0].unit,'Warship');
+    assert.equal(x.b.state().marineStats.warshipSent,1);
+    assert.equal(await x.b.fleetDefense(x.me,460,0),false,
+      'do not construct another hull before the first receipt');
+    x.game.units=()=>[{id:()=>88,type:()=> 'Warship',
+      owner:()=>x.me,tile:()=>x.sent[0].tile,isActive:()=>true}];
+    x.b.inspectMarine(x.me,463);
+    assert.equal(x.b.state().marineStats.warshipConfirmed,1);
+    assert(x.b.state().diagnostics.some(e=>e.kind==='warship_confirmed'));
+  });
+  await check('v1.10.5 Transport intent requires visible ship and owned destination', async () => {
+    const x=boot();x.setTick(300);x.strong.troops=()=>5000;
+    x.b.setWar('strong','strong');
+    x.b.setGroups([{id:'strong',opponent:x.strong}]);
+    x.me.actions=async()=>({buildableUnits:[{type:'Transport',canBuild:1,cost:0n}]});
+    x.game.ownerID=t=>t===6?3:1;
+    class Boat{constructor(dst,troops){this.dst=dst;this.troops=troops;}}
+    x.b.setBoatCtor(Boat);
+    assert.equal(await x.b.naval(x.me,300,0),true);
+    assert.equal(x.b.state().marineStats.transportSent,1);
+    assert.equal(await x.b.naval(x.me,450,0),false,
+      'no second landing while the previous transport is pending');
+    x.game.units=()=>[{id:()=>71,type:()=> 'Transport',owner:()=>x.me,
+      targetTile:()=>6,isActive:()=>true}];
+    x.b.inspectMarine(x.me,310);
+    assert.equal(x.b.state().marineStats.transportConfirmed,1);
+    x.game.ownerID=()=>1;
+    x.b.inspectMarine(x.me,320);
+    assert.equal(x.b.state().marineStats.transportArrived,1);
+    assert.equal(x.b.state().pendingBoat,null);
+  });
+  await check('v1.10.5 unobserved Transport is not counted as landing', async () => {
+    const x=boot();x.strong.troops=()=>5000;x.b.setWar('strong','strong');
+    x.b.setGroups([{id:'strong',opponent:x.strong}]);
+    x.me.actions=async()=>({buildableUnits:[{type:'Transport',canBuild:1,cost:0n}]});
+    class Boat{constructor(dst,troops){this.dst=dst;this.troops=troops;}}
+    x.b.setBoatCtor(Boat);
+    assert.equal(await x.b.naval(x.me,300,0),true);
+    x.b.inspectMarine(x.me,401);
+    assert.equal(x.b.state().marineStats.transportUnconfirmed,1);
+    assert.equal(x.b.state().marineStats.transportArrived,0);
+    assert.equal(await x.b.naval(x.me,500,0),false,
+      'target cooldown prevents blind 100-tick retry');
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;

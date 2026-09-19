@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.10.4
+// @version      1.10.5
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -11,10 +11,10 @@
 
 (() => {
   'use strict';
-  if (window.__ofSoloAggroBot1104) return;
-  window.__ofSoloAggroBot1104 = true;
+  if (window.__ofSoloAggroBot1105) return;
+  window.__ofSoloAggroBot1105 = true;
 
-  const VERSION = '1.10.4', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1104';
+  const VERSION = '1.10.5', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1105';
   const defaults = {enabled:false, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -24,7 +24,7 @@
   try { opts = {...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; }
   catch (_) {opts = {...defaults};}
   try {if(!localStorage.getItem(KEY)){
-    opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v1103')||localStorage.getItem('of-solo-aggrobot-v1102')||localStorage.getItem('of-solo-aggrobot-v1101')||localStorage.getItem('of-solo-aggrobot-v1100')||localStorage.getItem('of-solo-aggrobot-v199')||localStorage.getItem('of-solo-aggrobot-v198')||localStorage.getItem('of-solo-aggrobot-v197')||localStorage.getItem('of-solo-aggrobot-v196')||localStorage.getItem('of-solo-aggrobot-v195')||localStorage.getItem('of-solo-aggrobot-v194')||localStorage.getItem('of-solo-aggrobot-v193')||localStorage.getItem('of-solo-aggrobot-v192')||localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
+    opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v1104')||localStorage.getItem('of-solo-aggrobot-v1103')||localStorage.getItem('of-solo-aggrobot-v1102')||localStorage.getItem('of-solo-aggrobot-v1101')||localStorage.getItem('of-solo-aggrobot-v1100')||localStorage.getItem('of-solo-aggrobot-v199')||localStorage.getItem('of-solo-aggrobot-v198')||localStorage.getItem('of-solo-aggrobot-v197')||localStorage.getItem('of-solo-aggrobot-v196')||localStorage.getItem('of-solo-aggrobot-v195')||localStorage.getItem('of-solo-aggrobot-v194')||localStorage.getItem('of-solo-aggrobot-v193')||localStorage.getItem('of-solo-aggrobot-v192')||localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
     // Only import user-adjustable preferences, never a previously enabled bot.
   }}catch(_){}
   opts.enabled = false;                         // Never auto-start after reload.
@@ -63,6 +63,10 @@
   let goldSamples=[],incomeStatus={train:null,trade:null,gold:null,observed:false};
   let winStatus={mode:'FFA',progress:null,threshold:null,remaining:null,urgent:false};
   let fleetStatus='Keine Marineaktivität',lastFleet=-Infinity,lastDonation=-Infinity,navalSweep=0;
+  let pendingBoat=null,pendingWarship=null,navalCooldown=new Map(),portProbeFailures=0;
+  let marineStats={transportSent:0,transportConfirmed:0,transportArrived:0,
+    transportUnconfirmed:0,transportUnresolved:0,warshipSent:0,
+    warshipConfirmed:0,warshipUnconfirmed:0};
   let strategicTelemetry={favorableVictims:0,falloutSkipped:0,falloutFallback:0,afkTargets:0,assists:0,neutralLandings:0,forecastCount:0};
   let nukeBusy=false, lastNuke=-Infinity, nukePending=null, nukeStatus='Warte auf Silo', nukeShots=0,nukeAttempts=0,nukeUnconfirmed=0;
   let nuclearCache=null, nuclearCacheTick=-Infinity;
@@ -132,13 +136,13 @@
         effective:{aggressive:setting('aggressive'),reserve:setting('reserve'),
           actionsPerMinute:setting('actionsPerMinute'),maxTargets:setting('maxTargets')}},attackReceipts, pendingAttack,
       construction:{pending:economicPending,blocked:[...economicBlocked.entries()],failedProbes:failedEconomyProbes,lastConfirmed:successfulEconomyTick,investment:investmentStatus},
-      war:{...warState},gameEnd,spawn:{...spawnState,best:spawnCache?{...spawnCache}:null},victory:winStatus,income:incomeStatus,fleet:fleetStatus,strategicTelemetry,military:troopSnapshot,
+      war:{...warState},gameEnd,spawn:{...spawnState,best:spawnCache?{...spawnCache}:null},victory:winStatus,income:incomeStatus,fleet:fleetStatus,marine:{stats:marineStats,pendingBoat,pendingWarship,portProbeFailures},strategicTelemetry,military:troopSnapshot,
       defense:{status:defenseStatus,stats:defenseStats,pendingRetreats:[...retreatRequests.values()]},
       rockets:{confirmed:nukeShots,attempts:nukeAttempts,unconfirmed:nukeUnconfirmed,pending:nukePending},
       diplomacy:{status:diplomacyStatus,stats:diplomacyStats,pending:[...diplomacyPending.values()]},records:diagnostics,createdAt:new Date().toISOString()};
     const blob=new Blob([JSON.stringify(details,null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download='OpenFront_AggroBot_1.10.4_Diagnose.json';document.body.append(a);a.click();a.remove();
+    a.href=url;a.download='OpenFront_AggroBot_1.10.5_Diagnose.json';document.body.append(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),2000);
   }
 
@@ -155,7 +159,7 @@
       ['Singleplayer','Public','Private'].includes(gameType(g));}
     catch(_){return false;}
   };
-  const conflicts = () => !!(window.__ofSoloAggroBot1 || window.__ofSoloAggroBot11 || window.__ofSoloAggroBot12 || window.__ofSoloAggroBot13 || window.__ofSoloAggroBot14 || window.__ofSoloAggroBot15 || window.__ofSoloAggroBot16 || window.__ofSoloAggroBot17 || window.__ofSoloAggroBot18 || window.__ofSoloAggroBot181 || window.__ofSoloAggroBot190 || window.__ofSoloAggroBot191 || window.__ofSoloAggroBot192 || window.__ofSoloAggroBot193 || window.__ofSoloAggroBot194 || window.__ofSoloAggroBot195 || window.__ofSoloAggroBot196 || window.__ofSoloAggroBot197 || window.__ofSoloAggroBot198 || window.__ofSoloAggroBot199 || window.__ofSoloAggroBot1100 || window.__ofSoloAggroBot1101 || window.__ofSoloAggroBot1102 || window.__ofSoloAggroBot1103);
+  const conflicts = () => !!(window.__ofSoloAggroBot1 || window.__ofSoloAggroBot11 || window.__ofSoloAggroBot12 || window.__ofSoloAggroBot13 || window.__ofSoloAggroBot14 || window.__ofSoloAggroBot15 || window.__ofSoloAggroBot16 || window.__ofSoloAggroBot17 || window.__ofSoloAggroBot18 || window.__ofSoloAggroBot181 || window.__ofSoloAggroBot190 || window.__ofSoloAggroBot191 || window.__ofSoloAggroBot192 || window.__ofSoloAggroBot193 || window.__ofSoloAggroBot194 || window.__ofSoloAggroBot195 || window.__ofSoloAggroBot196 || window.__ofSoloAggroBot197 || window.__ofSoloAggroBot198 || window.__ofSoloAggroBot199 || window.__ofSoloAggroBot1100 || window.__ofSoloAggroBot1101 || window.__ofSoloAggroBot1102 || window.__ofSoloAggroBot1103 || window.__ofSoloAggroBot1104);
   function advisorConflict() {
     if (!window.__openfrontSpawnAdvisorV104) return false;
     try {const s=JSON.parse(localStorage.getItem('openfront-spawn-advisor-10.4')||'{}');
@@ -266,6 +270,10 @@
     lastDiplomacyTick=-Infinity;lastProposalTick=-Infinity;diplomacyStatus='Noch keine Anfrage';
     diplomacyStats={accepted:0,rejected:0,offered:0};goldSamples=[];incomeStatus={train:null,trade:null,gold:null,observed:false};
     winStatus={mode:'FFA',progress:null,threshold:null,remaining:null,urgent:false};fleetStatus='Keine Marineaktivität';lastFleet=-Infinity;lastDonation=-Infinity;navalSweep=0;
+    pendingBoat=null;pendingWarship=null;navalCooldown.clear();portProbeFailures=0;
+    marineStats={transportSent:0,transportConfirmed:0,transportArrived:0,
+      transportUnconfirmed:0,transportUnresolved:0,warshipSent:0,
+      warshipConfirmed:0,warshipUnconfirmed:0};
     strategicTelemetry={favorableVictims:0,falloutSkipped:0,falloutFallback:0,afkTargets:0,assists:0,neutralLandings:0,forecastCount:0};
     nukeBusy=false;lastNuke=-Infinity;nukePending=null;nukeStatus='Warte auf Silo';nukeShots=0;nukeAttempts=0;nukeUnconfirmed=0;nuclearCache=null;nuclearCacheTick=-Infinity;
     warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};diagnostics=[];lastDiagnosticTick=-Infinity;combatAwaiting=null;gameEnd=null;
@@ -1419,6 +1427,8 @@
       economicStatus='Bestätigt: '+economicPending.type;
       successfulEconomyTick=tick;failedEconomyProbes=0;
       telemetry('build_confirmed',economicStatus,{type:economicPending.type,kind:economicPending.kind});
+      if(economicPending.type==='Port')telemetry('port_confirmed','Hafen im Spielzustand bestätigt',
+        {tile:economicPending.tile,buildKind:economicPending.kind});
       economicPending=null;
       return false;
     }
@@ -1492,6 +1502,47 @@
     const dx=game.x(asset.tile())-game.x(sam.tile()),dy=game.y(asset.tile())-game.y(sam.tile());
     return dx*dx+dy*dy<=r*r;
   }
+  // Dedicated coast discovery, independent from the 190 generic inland
+  // anchors. The worker remains the authority for an actual Port build tile.
+  function portCoastalAnchors(me,tiles,tick,limit=40){
+    if(!game?.isShore || !opts.boats)return [];
+    const result=[],seen=new Set(),w=game.width(),h=game.height();
+    const add=t=>{
+      if(result.length>=limit || seen.has(t))return;
+      seen.add(t);
+      if(ownedTile(t,me)&&shoreNear(t))result.push(t);
+    };
+    const addNear=t=>{
+      if(!Number.isInteger(t) || result.length>=limit)return;
+      add(t);
+      const x=game.x(t),y=game.y(t);
+      for(const [dx,dy] of [[5,0],[-5,0],[0,5],[0,-5],
+        [10,0],[-10,0],[0,10],[0,-10]]){
+        if(result.length>=limit)break;
+        if(x+dx>=0&&x+dx<w&&y+dy>=0&&y+dy<h)add(game.ref(x+dx,y+dy));
+      }
+    };
+    const coastTiles=tiles||[];
+    const stride=Math.max(1,Math.ceil(coastTiles.length/650));
+    const phase=Math.floor(tick/40)%stride;
+    for(let i=phase;i<coastTiles.length&&result.length<limit;i+=stride){
+      const t=coastTiles[i];
+      if(ownedTile(t,me) && shoreNear(t))addNear(t);
+    }
+    // A long inland/hostile front need not contain a coastline: rotate a
+    // second bounded grid through the whole map as a fallback.
+    if(result.length<8){
+      const spacing=Math.max(9,Math.ceil(Math.sqrt(w*h/420)));
+      const phase2=Math.floor(tick/60)%4,dx=phase2%2?Math.floor(spacing/2):0,
+        dy=phase2>=2?Math.floor(spacing/2):0;
+      for(let y=Math.floor(spacing/2)+dy;y<h&&result.length<limit;y+=spacing)
+        for(let x=Math.floor(spacing/2)+dx;x<w&&result.length<limit;x+=spacing){
+          const t=game.ref(x,y);
+          if(ownedTile(t,me)&&shoreNear(t))addNear(t);
+        }
+    }
+    return result;
+  }
   function economicNeeds(me,units,tiles) {
     const mine=number(()=>me.numTilesOwned(),0);
     const gold=number(()=>Number(me.gold()),0);
@@ -1509,6 +1560,10 @@
     const wantedPort=!portEnabled?0:opts.boats?Math.min(3,Math.max(1,Math.floor(mine/1800)+1)):
       (factories>=1 && mine>600?Math.min(2,Math.floor(mine/2700)+1):0);
     const startup=(cityEnabled&&cities<1)||(factoryEnabled&&factories<1);
+    const coastSites=ports===0&&opts.boats?
+      portCoastalAnchors(me,tiles,number(()=>game.ticks(),0),8):[];
+    const portMilestone=!!(opts.boats&&portEnabled&&ports===0&&!startup&&
+      coastSites.length&&portProbeFailures<8);
     const basic=(cityEnabled&&cities<2)||(factoryEnabled&&factories<2);
     // Never buy decorative defense posts while the first city/factory are still
     // unaffordable. Only a *real* incoming offensive can override the basics.
@@ -1548,7 +1603,8 @@
           (gold<450000?15:0)+(pressure<.60&&factories>0?10:0)+
           (factories<2&&cities>=2?24:0)-
           (incomeStatus.observed&&incomeStatus.train===0&&factories>=2?26:0)},
-      {type:'Port',desired:wantedPort,score:59+econBoost/2+(ports===0&&wantedPort?12:0)+
+      {type:'Port',desired:wantedPort,score:portMilestone?345:
+        59+econBoost/2+(ports===0&&wantedPort?12:0)+
         (incomeStatus.observed&&incomeStatus.trade===0&&ports===0?13:0)},
       {type:'Defense Post',desired:wantedDefense,score:immediate?310+defBoost:threatened?(basic?36:77)+defBoost:20},
       {type:'SAM Launcher',desired:wantedSAM,score:enemyNukes?210+defBoost:threat?151+defBoost:proactiveSAM?118:40},
@@ -1574,12 +1630,12 @@
     const firstRocketFund=game.config().isUnitDisabled?.('Atom Bomb')===true?
       (game.config().isUnitDisabled?.('Hydrogen Bomb')===true?
         (game.config().isUnitDisabled?.('MIRV')===true?0:26000000):6400000):1100000;
-    const savingsTarget=saveForSilo?1150000:saveForNuke?firstRocketFund:0;
-    investmentStatus=startup?'Erste Stadt/Fabrik':basic?'Zwei Städte und zwei Fabriken':
+    const savingsTarget=portMilestone?0:saveForSilo?1150000:saveForNuke?firstRocketFund:0;
+    investmentStatus=startup?'Erste Stadt/Fabrik':portMilestone?'Hafen vor Silo':basic?'Zwei Städte und zwei Fabriken':
       saveForSilo?'Silo-Fonds 1,15 Mio.':saveForNuke?'Raketen-Fonds '+firstRocketFund.toLocaleString():'Wirtschaft & Offensive';
     return {list:value,threatened,gold,cities,factories,mine,pressure,nuclearThreat:threat,incomingNukes:enemyNukes,intel,
       startup,basic,emergency,immediate,savingsTarget,saveForSilo,saveForNuke,siloCount,
-      enemySilos,proactiveSAM,wantedDefense,wantedSAM};
+      enemySilos,proactiveSAM,wantedDefense,wantedSAM,portMilestone,coastSites:coastSites.length,portProbeFailures};
   }
   function economicAnchors(me,tiles,units,tick) {
     const w=game.width(),h=game.height(),anchors=[],seen=new Set();
@@ -1734,7 +1790,11 @@
     if(!entries.length){economicStatus='Gebäudeziele erreicht · '+investmentStatus;return false;}
     const types=[...new Set(entries.slice(0,8).map(x=>x.type))];
     const anchors=economicAnchors(me,tiles,units,tick);
-    if(!anchors.length){economicStatus='Kein eigenes Bauland gefunden';return false;}
+    const coastal=opts.boats&&entries.some(e=>e.type==='Port'&&!e.upgrade)?
+      portCoastalAnchors(me,tiles,tick,72):[];
+    if(!anchors.length && !coastal.length){
+      economicStatus='Kein eigenes Bauland gefunden';return false;
+    }
     const meID=safeID(me),all=game.playerViews?.()||[];
     const fronts=[];
     const borderStride=Math.max(1,Math.floor((tiles?.length||0)/220));
@@ -1754,6 +1814,8 @@
       for(let i=0;i<tiles.length&&fronts.length<60;i+=stride)fronts.push(tiles[i]);
     }
     const rankedAnchors=anchors.map(ref=>({ref,coast:shoreNear(ref),dist:frontDistance(ref,fronts)}));
+    const rankedCoast=coastal.map(ref=>({
+      ref,coast:true,dist:frontDistance(ref,fronts)}));
     const siteCache=new Map();
     const score=(entry,site)=>{
       const key=entry.type+':'+site.ref;
@@ -1767,7 +1829,7 @@
       if(!entry.upgrade && !ctors.build)continue;
       // Upgrades must probe existing structures, whereas new buildings probe free land.
       const valid=entry.upgrade?rankedAnchors.filter(a=>units.some(u=>u.type?.()===entry.type && number(()=>u.tile(),-1)===a.ref)):
-        rankedAnchors.filter(a=>entry.type!=='Port'||a.coast);
+        entry.type==='Port'?rankedCoast:rankedAnchors;
       valid.sort((a,b)=>score(entry,b)-score(entry,a));
       for(const site of valid.slice(0,entry.upgrade?4:recovery?12:6))slots.push({entry,site});
     }
@@ -1775,7 +1837,7 @@
     // spend the entire time budget on the first City anchor.
     slots.sort((a,b)=>score(b.entry,b.site)-score(a.entry,a.site));
     const seen=new Set(), proposals=[],perKind=new Map();
-    const probe={queries:0,errors:0,legal:0,unaffordable:0,invalidSite:0,lowestCost:Infinity};
+    const probe={queries:0,errors:0,legal:0,unaffordable:0,invalidSite:0,lowestCost:Infinity,portQueries:0,portLegal:0};
     const work=[];
     // A dozen City anchors must not evict every Factory / SAM / silo query.
     for(const slot of slots){
@@ -1794,6 +1856,7 @@
       const batch=work.slice(offset,offset+3);
       const answers=await Promise.all(batch.map(async slot=>{
         runtime.buildProbes++;probe.queries++;
+        if(slot.entry.type==='Port')probe.portQueries++;
         try{return {slot,legal:await me.actions(slot.site.ref,types)};}
         catch(_){probe.errors++;return {slot,legal:null};}
       }));
@@ -1811,6 +1874,7 @@
           if(isUpgrade&&!ctors.upgrade || !isUpgrade&&!ctors.build)continue;
           if(isUpgrade ? (b.canUpgrade===false || b.canUpgrade===undefined) : (b.canBuild===false || (b.canUpgrade!==false && b.canUpgrade!==undefined)))continue;
           probe.legal++;
+          if(item.type==='Port')probe.portLegal++;
           const tile=isUpgrade?site.ref:b.canBuild;
           if(!Number.isInteger(tile) || !ownedTile(tile,me)){probe.invalidSite++;continue;}
           const key=(isUpgrade?'upgrade':'build')+':'+item.type+':'+tile;
@@ -1829,6 +1893,10 @@
           // Fund the first economic structures before buying defensive posts,
           // ports or upgrades. Emergency SAM / defense remain possible.
           if(requirements.startup && (!economicCore || isUpgrade) && !essential)continue;
+          if(requirements.portMilestone&&!requirements.immediate&&
+            item.type!=='Port' &&
+            !(item.type==='SAM Launcher'&&requirements.incomingNukes>0))
+            continue;
           if(item.type==='Defense Post' && !requirements.immediate &&
             !requirements.incomingNukes && requirements.basic)continue;
           // While saving for a silo / first atomic strike, do not repeatedly
@@ -1853,6 +1921,14 @@
       if(proposals.length)break;
     }
     if(!proposals.length){failedEconomyProbes++;
+      if(requirements.portMilestone && probe.portQueries>0 &&
+        probe.portLegal===0)portProbeFailures++;
+      if(requirements.portMilestone && probe.portQueries>0 &&
+        (portProbeFailures===1||portProbeFailures===4||portProbeFailures===8))
+        telemetry('port_probe','Hafen-Bauplätze im Worker geprüft',
+          {coastCandidates:coastal.length,queries:probe.portQueries,
+            legal:probe.portLegal,unaffordable:probe.unaffordable,
+            failures:portProbeFailures});
       const reason=probe.unaffordable>0&&probe.legal===probe.unaffordable?
         'Gold für gültige Bauoption fehlt':probe.invalidSite>0?
         'Bauplatz-Eigentum/Referenz ungültig':probe.legal===0?
@@ -1865,6 +1941,8 @@
             uncovered:requirements.intel.uncovered.length,wantedSAM:requirements.wantedSAM,
             proactiveSAM:requirements.proactiveSAM},
           queries:probe.queries,workerErrors:probe.errors,legal:probe.legal,
+          port:{coastCandidates:coastal.length,queries:probe.portQueries,
+            legal:probe.portLegal,failures:portProbeFailures},
           unaffordable:probe.unaffordable,invalidSite:probe.invalidSite,
           lowestCost:Number.isFinite(probe.lowestCost)?probe.lowestCost:null});
       economicLastPlan=entries.slice(0,3).map(x=>x.type).join(' › ');return false;}
@@ -1874,6 +1952,12 @@
     const args=chosen.kind==='upgrade'?[chosen.unitId,chosen.type,1]:[chosen.type,chosen.tile];
     if(send(chosen.kind,args,`${chosen.kind==='upgrade'?'UPGRADE':'BAU'} ${chosen.type} · ${chosen.cost.toLocaleString()} Gold`)){
       economicPending={...chosen,tick};failedEconomyProbes=0;lastEconomy=tick;lastEconomicAction=tick;
+      if(chosen.type==='Port'){
+        portProbeFailures=0;
+        telemetry('port_intent','Hafenbau angefordert',
+          {tile:chosen.tile,gold:requirements.gold,cost:chosen.cost,
+            coastCandidates:coastal.length});
+      }
       economicStatus='Anfrage: '+chosen.type+(chosen.kind==='upgrade'?' (Upgrade)':'');
       economicLastPlan=entries.slice(0,3).map(x=>x.type).join(' › ');
       return true;
@@ -2260,12 +2344,92 @@
       }
     }).catch(e=>{diplomacyStatus='Allianzangebot fehlgeschlagen: '+String(e.message);});
   }
+  function inspectMarine(me,tick){
+    const units=(()=>{try{return game.units?.()||[];}catch(_){return [];}})();
+    const mine=safeID(me),own=type=>units.filter(u=>
+      u.type?.()===type&&safeID(u.owner?.())===mine&&u.isActive?.());
+    if(pendingBoat){
+      const boat=pendingBoat,ships=own('Transport');
+      const observed=ships.find(u=>{
+        const id=u.id?.();
+        if(id===undefined||boat.beforeIds.includes(id))return false;
+        return Number.isInteger(u.targetTile?.())&&u.targetTile()===boat.dest;
+      });
+      if(observed){
+        const id=observed.id?.();
+        if(!boat.shipIds.includes(id))boat.shipIds.push(id);
+        if(!boat.seen){
+          boat.seen=true;marineStats.transportConfirmed++;
+          fleetStatus='Transport im Spiel sichtbar';
+          telemetry('boat_confirmed','Transport im Spielzustand beobachtet',
+            {dest:boat.dest,target:boat.target,ship:id,troops:boat.troops});
+        }
+      }
+      if(boat.seen && ownedTile(boat.dest,me)){
+        marineStats.transportArrived++;
+        fleetStatus='Landung / Gebiet am Ziel bestätigt';
+        telemetry('boat_arrived','Transportziel nach bestätigtem Schiff übernommen',
+          {dest:boat.dest,target:boat.target,shipIds:boat.shipIds});
+        navalCooldown.set(boat.key,tick+140);
+        pendingBoat=null;
+      }else if(boat.seen && tick-boat.tick>40 &&
+        !ships.some(u=>boat.shipIds.includes(u.id?.()))){
+        marineStats.transportUnresolved++;
+        fleetStatus='Transport verschwunden – Landung nicht bestätigt';
+        telemetry('boat_unresolved','Transport nicht mehr sichtbar; kein eigener Zielbesitz',
+          {dest:boat.dest,target:boat.target,shipIds:boat.shipIds});
+        navalCooldown.set(boat.key,tick+320);pendingBoat=null;
+      }else if(tick-boat.tick>(boat.seen?650:90)){
+        if(boat.seen)marineStats.transportUnresolved++;
+        else marineStats.transportUnconfirmed++;
+        fleetStatus=boat.seen?'Transport ohne Landungsbestätigung':
+          'Transport nach Intent nicht im Spiel beobachtet';
+        telemetry(boat.seen?'boat_unresolved':'boat_unconfirmed',fleetStatus,
+          {dest:boat.dest,target:boat.target,troops:boat.troops});
+        navalCooldown.set(boat.key,tick+400);pendingBoat=null;
+      }
+    }
+    if(pendingWarship){
+      const pending=pendingWarship,ships=own('Warship');
+      const observed=ships.find(u=>!pending.beforeIds.includes(u.id?.()));
+      if(observed){
+        marineStats.warshipConfirmed++;
+        fleetStatus='Kriegsschiff im Spiel bestätigt';
+        telemetry('warship_confirmed','Kriegsschiff im Spielzustand sichtbar',
+          {tile:observed.tile?.(),unitId:observed.id?.(),cost:pending.cost});
+        pendingWarship=null;
+      }else if(tick-pending.tick>110){
+        marineStats.warshipUnconfirmed++;
+        fleetStatus='Kriegsschiff-Befehl nicht bestätigt';
+        telemetry('warship_unconfirmed',fleetStatus,
+          {tile:pending.tile,cost:pending.cost});
+        pendingWarship=null;
+      }
+    }
+  }
+  function sendMarineTransport(me,dest,troops,tick,label,targetKey){
+    if(pendingBoat || (navalCooldown.get(targetKey)||0)>tick)return false;
+    if(!Number.isInteger(dest)||!(troops>=1000))return false;
+    const beforeIds=(()=>{try{return (game.units?.()||[]).filter(u=>
+      u.type?.()==='Transport'&&safeID(u.owner?.())===safeID(me))
+      .map(u=>u.id?.());}catch(_){return [];}})();
+    if(!send('boat',[dest,troops],label))return false;
+    pendingBoat={dest,tick,troops,key:targetKey,target:label,
+      beforeIds,shipIds:[],seen:false};
+    marineStats.transportSent++;
+    navalCooldown.set(targetKey,tick+160);
+    fleetStatus='Transport angefordert · Bestätigung ausstehend';
+    telemetry('boat_intent','Transport angefordert; wartet auf Spielzustand',
+      {dest,troops,target:targetKey});
+    return true;
+  }
   // Protect real owned shores from visible incoming transports. BuildUnitIntentEvent
   // for Warship uses an actual WATER tile checked through the worker.
   async function fleetDefense(me,tick,serial){
     if(!opts.boats||tick-lastFleet<120||!game.units)return false;
     const all=game.units()||[],ourID=safeID(me);
-    const ownWarships=all.filter(u=>u.type?.()==='Warship'&&safeID(u.owner?.())===ourID&&u.isActive?.());
+    const ownWarships=all.filter(u=>u.type?.()==='Warship'&&
+      safeID(u.owner?.())===ourID&&u.isActive?.());
     if(ctors.cancelBoat){
       const unsafe=all.find(u=>u.type?.()==='Transport'&&u.isActive?.() &&
         safeID(u.owner?.())===ourID&&Number.isInteger(u.targetTile?.())&&
@@ -2281,9 +2445,8 @@
       safeID(u.owner?.())!==ourID&&!friendly(u.owner?.(),me)&&
       Number.isInteger(u.targetTile?.())&&ownedTile(u.targetTile(),me));
     const active=targets.find(u=>!u.transportShipState?.().isRetreating);
-    if(!active)return false;
-    const water=active.tile?.();
-    if(ctors.warship&&Number.isInteger(water)&&game.isWater?.(water)){
+    const water=active?.tile?.();
+    if(active&&ctors.warship&&Number.isInteger(water)&&game.isWater?.(water)){
       const ship=ownWarships.find(u=>Number.isInteger(u.id?.()) &&
         game.euclideanDistSquared?.(u.tile(),water)<300*300);
       if(ship&&send('warship',[[ship.id()],water],
@@ -2291,28 +2454,62 @@
         lastFleet=tick;fleetStatus='Transporter abfangen';return true;
       }
     }
-    if(!ctors.build || game.config().isUnitDisabled?.('Warship')===true ||
-      ownWarships.length>=3)return false;
-    const ports=ownStructures(me).filter(u=>u.type?.()==='Port'&&!u.isUnderConstruction?.());
+    if(pendingWarship||!ctors.build ||
+      game.config().isUnitDisabled?.('Warship')===true)return false;
+    const ports=ownStructures(me).filter(u=>u.type?.()==='Port'&&
+      !u.isUnderConstruction?.());
+    if(!ports.length){
+      if(active)fleetStatus='Küstenschutz: Hafen fehlt';
+      return false;
+    }
+    // Build one escort before the silo fund, a second only after the first
+    // has appeared in the game. More hulls require a real incoming landing.
+    const desired=active?Math.min(3,ports.length+1):
+      number(()=>me.numTilesOwned(),0)>=15000?2:1;
+    if(ownWarships.length>=desired)return false;
+    const gold=number(()=>Number(me.gold()),0);
+    if(!active && gold<450000 && !game.config().infiniteGold?.())return false;
+    let probes=0,legalFound=0;
     for(const port of ports.slice(0,3)){
       const x=game.x(port.tile()),y=game.y(port.tile());
-      for(const [dx,dy] of [[0,8],[8,0],[0,-8],[-8,0],[12,12],[-12,-12]]){
-        if(!valid(x+dx,y+dy))continue;
-        const tile=game.ref(x+dx,y+dy);
-        if(!game.isWater?.(tile))continue;
-        let legal;
-        try{legal=await me.actions(tile,['Warship']);}catch(_){continue;}
-        if(!live(serial))return false;
-        const ship=legal?.buildableUnits?.find(u=>u.type==='Warship'&&
-          Number.isInteger(u.canBuild));
-        if(!ship)continue;
-        const gold=number(()=>Number(me.gold()),0),cost=Number(ship.cost);
-        if(!game.config().infiniteGold?.() &&
-          (!Number.isFinite(cost)||gold<cost))continue;
-        if(send('build',['Warship',ship.canBuild],'KÜSTENSCHUTZ → Kriegsschiff')){
-          lastFleet=tick;fleetStatus='Kriegsschiff angefordert';return true;
+      for(const radius of [3,6,10,15,20]){
+        for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1],
+          [1,1],[-1,1],[1,-1],[-1,-1]]){
+          const xx=x+dx*radius,yy=y+dy*radius;
+          if(!valid(xx,yy))continue;
+          const tile=game.ref(xx,yy);
+          if(!game.isWater?.(tile))continue;
+          let response;
+          try{response=await me.actions(tile,['Warship']);probes++;}
+          catch(_){continue;}
+          if(!live(serial))return false;
+          const ship=response?.buildableUnits?.find(u=>u.type==='Warship'&&
+            Number.isInteger(u.canBuild));
+          if(!ship)continue;
+          legalFound++;
+          const cost=Number(ship.cost);
+          if(!game.config().infiniteGold?.() &&
+            (!Number.isFinite(cost)||gold<cost))continue;
+          if(send('build',['Warship',ship.canBuild],
+            (active?'KÜSTENSCHUTZ':'FLOTTENAUFBAU')+' → Kriegsschiff')){
+            pendingWarship={tick,tile:ship.canBuild,cost,
+              beforeIds:ownWarships.map(u=>u.id?.())};
+            marineStats.warshipSent++;lastFleet=tick;
+            fleetStatus='Kriegsschiff angefordert · Bestätigung ausstehend';
+            telemetry('warship_intent','Kriegsschiff-Bau angefordert',
+              {tile:ship.canBuild,cost,ports:ports.length,
+                priorWarships:ownWarships.length,emergency:!!active});
+            return true;
+          }
         }
       }
+    }
+    if(probes){
+      lastFleet=tick;
+      fleetStatus=legalFound?'Kriegsschiff: Gold/Budget fehlt':
+        'Kriegsschiff: kein legaler Wasser-Bauplatz';
+      telemetry('warship_probe',fleetStatus,{probes,legalFound,
+        ports:ports.length,gold,warships:ownWarships.length});
     }
     return false;
   }
@@ -2388,7 +2585,7 @@
     return result.slice(0,limit).map(x=>x.tile);
   }
   async function naval(me,tick,serial) {
-    if(!opts.boats||!ctors.boat||tick-lastBoat<100||pendingAttack)return false;
+    if(!opts.boats||!ctors.boat||tick-lastBoat<100||pendingAttack||pendingBoat)return false;
     lastBoat=tick;
     // Use the SAME complete threat snapshot as ground combat. Using military(me)
     // without front groups underestimates the reserve near stronger neighbors.
@@ -2400,6 +2597,7 @@
       (!coordinatedWar() || !isWar() || safeID(p)===warState.id));
     foes.sort((a,b)=>number(()=>a.troops())-number(()=>b.troops()));
     for(const foe of foes.slice(0,6)){
+      if((navalCooldown.get('player:'+safeID(foe))||0)>tick)continue;
       if(spare<number(()=>foe.troops(),Infinity)*1.9 ||
         number(()=>me.troops())<number(()=>game.config().maxTroops(me),1)*.47)continue;
       const points=[foe.state.spawnTile];
@@ -2417,8 +2615,8 @@
         const ship=legal?.buildableUnits?.find(x=>x.type==='Transport'&&Number.isInteger(x.canBuild));
         if(!ship || (Number(me.gold())<Number(ship.cost)&&!game.config().infiniteGold?.()))continue;
         const amount=Math.min(spare,Math.floor(number(()=>me.troops())*.58));
-        if(send('boat',[dest,Math.min(amount,Math.floor(spare*.60))],
-          'LANDUNG → '+nameOf(foe)))return true;
+        if(sendMarineTransport(me,dest,Math.min(amount,Math.floor(spare*.60)),
+          tick,'LANDUNG → '+nameOf(foe),'player:'+safeID(foe)))return true;
       }
     }
     // No separate war: transport a safe neutral-expansion force to verified
@@ -2442,9 +2640,10 @@
           Number(me.gold())<Number(ship.cost))continue;
         const amount=Math.floor(Math.min(spare*.32,navyState.home*.16));
         if(amount<1000 || navyState.home-amount<navyState.reserve)continue;
-        if(send('boat',[dest,amount],'INSEL-EXPANSION → neutrales Küstenland')){
+        if(sendMarineTransport(me,dest,amount,tick,
+          'INSEL-EXPANSION → neutrales Küstenland','neutral:'+dest)){
           strategicTelemetry.neutralLandings++;
-          fleetStatus='Neutrale Insellandung angefordert';
+          fleetStatus='Neutrale Insellandung angefordert · Bestätigung ausstehend';
           return true;
         }
       }
@@ -2518,7 +2717,7 @@
       }
       const me=myPlayer();
       if(!me?.isAlive?.()||!me.hasSpawned?.()){status='Warte auf Spawn';return;}
-      sampleTroops(tick,me);sampleIncome(me,tick);victoryPlan(me);confirmAttack(me,tick);evaluateLastBattle(tick,me);
+      sampleTroops(tick,me);sampleIncome(me,tick);inspectMarine(me,tick);victoryPlan(me);confirmAttack(me,tick);evaluateLastBattle(tick,me);
       let immediateState=military(me,strategic.groups);
       // Tune immediately even if emergencyRetreat returns before the normal
       // strategy pass: a dangerous invasion must override ASSAULT right now.
@@ -2544,6 +2743,12 @@
             committed:s.committed,pendingRetreats:retreatRequests.size},enemies:groups.filter(g=>g.id!==null).map(g=>({name:nameOf(g.opponent),troops:number(()=>g.opponent.troops()),land:number(()=>g.opponent.numTilesOwned())})),
           readiness:context.readiness?.reason,ratio:s.ratio,maxTroops:s.max,growthPotential:s.growthPotential,
           victory:winStatus,income:incomeStatus,strategicTelemetry,fleet:fleetStatus,
+          marine:{stats:{...marineStats},pendingBoat:pendingBoat?{...pendingBoat}:null,
+            pendingWarship:pendingWarship?{...pendingWarship}:null,
+            ports:ownStructures(me).filter(u=>u.type?.()==='Port').length,
+            warships:(game.units?.()||[]).filter(u=>u.type?.()==='Warship'&&
+              safeID(u.owner?.())===safeID(me)&&u.isActive?.()).length,
+            portProbeFailures},
           nuclear:{enemySilos:nuclearIntel(me).enemySilos.length,
             incomingNukes:nuclearIntel(me).incomingNukes.length,
             uncovered:nuclearIntel(me).uncovered.length,

@@ -2,7 +2,7 @@
 
 Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscript für [OpenFront](https://openfront.io/).
 
-**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.10.4**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
+**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.10.5**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
 
 ## Installation
 
@@ -16,6 +16,15 @@ Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscr
 ## Strategie & Diagnose
 
 Strategie-, Wirtschafts-, Marine-, Diplomatie-, Nuke- und SAM-Planung sind vorhanden. Der Bot kann Befehle senden; daraus folgt **keine garantierte Gewinnrate auf „Unmöglich“**. Ein vollständiger Live-Test ist noch nicht erfolgt. „Diagnose JSON“ im Bot-Menü zeichnet unter anderem Gebietsänderungen, Truppenlage, Bauaufträge und Allianzantworten auf. Bitte den Export vor dem Neuladen erstellen.
+
+### Änderung 1.10.5 – Hafen, Schiffe und echte Marine-Nachweise
+
+- **Erster Hafen:** Nach mindestens einer City und Factory sucht ein eigenständiger, rotierender Küsten-Scan auf **eigenem Land** bis zu 72 Hafen-Kandidaten; der OpenFront-Worker bestimmt den tatsächlich legalen Bauplatz. Die Ersthafen-Priorität liegt vor dem Silo-Sparziel. Reale eingehende Angriffe und unmittelbarer SAM-Bedarf bleiben ausgenommen. Nach acht gezielt gescheiterten Worker-Suchen blockiert der Hafen-Meilenstein den Silo-Fonds nicht mehr auf Dauer; weitere normale Hafenversuche bleiben möglich.
+- **Kriegsschiffe:** Mit fertiggestelltem Hafen werden bis zu zwei eigene Kriegsschiffe für Küstenschutz planmäßig geprüft, statt ausschließlich auf einen bereits eingehenden Feindtransport zu reagieren. Bei akuter Landung sind bis zu drei möglich. Der Bot prüft Wasserfelder um eigene Häfen (Worker + Gold + Reglement), statt nur sechs starre Offsets.
+- **Transport-Nachweise:** Ein ausgehender Transport wartet auf ein tatsächlich sichtbares Schiff. Nur bei danach eigenem Zielgebiet wird die Landung als beobachtet markiert; ohne neues Schiff beziehungsweise bei verschollenem Schiff lautet die Diagnose `unconfirmed`/`unresolved`, nicht Erfolg. Ein offener Transport und Gegner-Cooldowns verhindern die wiederholten Blindlandungen aus dem Live-Log.
+- **Marine-Diagnose:** `port_probe`, `port_intent`, `port_confirmed`, `warship_intent`, `warship_confirmed`, `warship_unconfirmed`, `boat_intent`, `boat_confirmed`, `boat_arrived`, `boat_unconfirmed`/`boat_unresolved` plus Zähler und eigene Hafen-/Schiffsanzahl im Snapshot.
+- **Handel:** OpenFront spawnt Handelsschiffe über aktive Häfen automatisch, wenn ein passender, per Wasser erreichbarer Handelspartner einen Hafen hat; der Bot verspricht keinen direkten Handelsschiff-Bau-Intent. Kein Hafen ohne geeignete Küste bedeutet weiterhin keine sichere marine Infrastruktur.
+- Vollständige Live-Partien und tatsächliche Marine-Kampf-/Handelserfolge müssen nach dem Merge anhand eines neuen Diagnoseexports überprüft werden.
 
 ### Änderung 1.10.4 – Multiplayer-Spawn startet nicht (Live-Fix)
 
