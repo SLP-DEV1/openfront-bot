@@ -542,7 +542,7 @@
           doSpawn(tick);
         setTimeout(chunk,0);return;
       }
-      spawnJob=null;spawnState.phase='Fertig';
+      spawnJob=null;if(!spawnState.lastSent)spawnState.phase='Fertig';
       spawnAlternatives=[...candidates.values()].sort((a,b)=>b.score-a.score).slice(0,18);
       if(candidates.size){
         // Refine only the top candidates in a bounded local neighborhood.
@@ -591,7 +591,7 @@
     spawnState.blocked=null;
     if(!spawnCache){
       if(spawnRemaining(game)<=110)spawnCache=emergencySpawnSearch(game,me);
-      if(!spawnCache){startSpawnSearch();return;}
+      if(!spawnCache){spawnBlock('Kein gültiges Land im Spawn-Suchraster');startSpawnSearch();return;}
     }
     if(spawnJob && spawnRemaining(game)>110 &&
       (spawnState.scanned<120 || spawnCache.score<.62))return;
@@ -609,11 +609,11 @@
     }
     if(!best && urgent)best=emergencySpawnSearch(game,me);
     if(!best){
-      spawnCache=null;spawnState.phase='Standort neu prüfen';
+      spawnCache=null;spawnBlock('Alle Kandidaten belegt/ungültig; suche neu');
       if(!spawnJob)startSpawnSearch();
       return;
     }
-    spawnCache=best;
+    spawnCache=best;spawnState.blocked=null;
     if(send('spawn',[best.tile],
       'SPAWN → strategischer Standort ('+best.x+','+best.y+
       ') · Land '+Math.round(best.density*100)+'% · Score '+best.score.toFixed(3),
