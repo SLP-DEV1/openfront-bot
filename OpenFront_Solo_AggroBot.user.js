@@ -1564,7 +1564,8 @@
   // Launcher uses the SAME BuildUnitIntentEvent the game's build menu uses.
   // For nukes, tile is the ENEMY TARGET, not the launching silo location.
   function nukeTargets(me,intel,kind) {
-    const radius=kind==='Hydrogen Bomb'?100:30;
+    const radius=number(()=>game.config().nukeMagnitudes?.(kind).outer,
+      kind==='Hydrogen Bomb'||kind==='MIRV'?100:30);
     const players=game.playerViews?.().filter(p=>p?.isAlive?.() && safeID(p)!==safeID(me) && !friendly(p,me))||[];
     const targets=new Set();
     for(const u of intel.enemy){const t=number(()=>u.tile?.(),NaN);if(Number.isInteger(t))targets.add(t);}
@@ -1583,8 +1584,23 @@
       if(!owner?.isPlayer?.() || friendly(owner,me))continue;
       const tx=game.x(tile),ty=game.y(tile);
       const distance=u=>Math.hypot(tx-game.x(u.tile()),ty-game.y(u.tile()));
-      // Never splash our own or an ally's structures.
+      // Protect own/allied structures and conservatively sample friendly
+      // territory within the blast, not only tiles carrying structures.
       if(ownAssets.some(u=>distance(u)<radius+5))continue;
+      let collateral=false;
+      if(typeof game.isValidCoord==='function'){
+        for(const rr of [radius*.5,radius*.88]){
+          for(let angle=0;angle<8;angle++){
+            const x=Math.round(tx+Math.cos(angle*Math.PI/4)*rr),
+              y=Math.round(ty+Math.sin(angle*Math.PI/4)*rr);
+            if(!game.isValidCoord(x,y))continue;
+            const p=game.owner(game.ref(x,y));
+            if(p?.isPlayer?.()&&friendly(p,me)){collateral=true;break;}
+          }
+          if(collateral)break;
+        }
+      }
+      if(collateral)continue;
       if(already.some(u=>Number.isInteger(u.targetTile?.()) &&
         Math.hypot(tx-game.x(u.targetTile()),ty-game.y(u.targetTile()))<radius*.9))continue;
       if(nukePending && Math.hypot(tx-game.x(nukePending.tile),ty-game.y(nukePending.tile))<radius)continue;
@@ -1597,19 +1613,59 @@
       value+=Math.min(8,troops/tiles/1000);
       if(plan?.id===safeID(owner))value+=7;
       if(isWar())value+=safeID(owner)===warState.id?18:-9;
+      if(kind==='MIRV' && number(()=>owner.numTilesOwned(),0)>
+        Math.max(900,number(()=>game.numLandTiles?.(),0)*.30))value+=25;
       if(hit===0)value-=18;
       const sams=intel.enemySAM.filter(s=>distance(s)<number(()=>game.config().samRange(s.level?.()||1),70));
       // Launching blindly into a SAM bubble wastes expensive rockets.
       value-=sams.reduce((sum,u)=>sum+9+number(()=>u.level?.(),1)*2,0);
       if(sams.length && kind==='Hydrogen Bomb')value-=9;
-      if(value>=(kind==='Hydrogen Bomb'?(lateGame(me)?11:13):(lateGame(me)?5:8)))
+      if(value>=(kind==='Hydrogen Bomb'||kind==='MIRV'?(lateGame(me)?11:13):(lateGame(me)?5:8)))
         proposed.push({tile,value,hit,sams:sams.length,owner});
     }
     return proposed.sort((a,b)=>b.value-a.value).slice(0,10);
   }
+  // Official paths are parabolic. A straight chord is a conservative risk
+  // indicator, NEVER proof that a real trajectory is intercepted/safe.
+  function nukeTrajectoryRisk(spawn,target,sams){
+    if(!Number.isInteger(spawn)||!Number.isInteger(target))return 0;
+    const ax=game.x(spawn),ay=game.y(spawn),bx=game.x(target),by=game.y(target);
+    return sams.filter(s=>{
+      if(!s.isActive?.() || s.isUnderConstruction?.())return false;
+      const x=game.x(s.tile()),y=game.y(s.tile());
+      const rad=number(()=>game.config().samRange(s.level?.()||1),70);
+      for(let i=0;i<=16;i++){
+        const t=i/16,dx=x-ax-(bx-ax)*t,dy=y-ay-(by-ay)*t;
+        if(dx*dx+dy*dy<=rad*rad)return true;
+      }
+      return false;
+    }).length;
+  }
+  function rocketReadiness(silos,me){
+    const observed=number(()=>me.readyMissileCount?.(),NaN);
+    if(Number.isFinite(observed))return Math.max(0,Math.floor(observed));
+    return silos.reduce((n,u)=>n+Math.max(0,number(()=>u.level?.(),1)-
+      number(()=>u.missileTimerQueue?.().length,0)),0);
+  }
+  function nukeSalvoPlan(kind,candidate,silos,me,cost,gold,infinite){
+    const ready=rocketReadiness(silos,me);
+    if(kind!=='Atom Bomb'||candidate.sams===0||
+      candidate.hit<2||candidate.value<20 || ready<2)
+      return {amount:1,ready};
+    const x=game.x(candidate.tile),y=game.y(candidate.tile);
+    const covering=nuclearIntel(me).enemySAM.filter(u=>{
+      const dx=x-game.x(u.tile()),dy=y-game.y(u.tile());
+      const r=number(()=>game.config().samRange(u.level?.()||1),70);
+      return dx*dx+dy*dy<=r*r;
+    });
+    const amount=Math.min(6,covering.reduce((n,u)=>
+      n+Math.max(1,number(()=>u.level?.(),1)),0)+1);
+    const affordable=infinite||gold-cost*amount>=250000;
+    return {amount:ready>=amount&&affordable?amount:0,ready};
+  }
   function ownMissiles(me) {
     try{return game.units().filter(u=>safeID(u.owner?.())===safeID(me) &&
-      ['Atom Bomb','Hydrogen Bomb'].includes(u.type?.()));}
+      ['Atom Bomb','Hydrogen Bomb','MIRV'].includes(u.type?.()));}
     catch(_){return [];}
   }
   function inspectNukeLaunch(me,tick) {
