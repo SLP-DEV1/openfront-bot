@@ -70,20 +70,20 @@ function boot() {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'military,warReadiness,confirmAttack,economy,actionBudget,connected,naval,',
+    'military,warReadiness,confirmAttack,economy,economicNeeds,strategy,manageWar,actionBudget,connected,naval,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'setWarWait:n=>warWaitSince=n,setEconFails:n=>failedEconomyProbes=n,',
     'setPending:p=>pendingAttack=p,',
     'setWar:(id,name)=>warState={id,name,since:game.ticks(),blockedUntil:-Infinity},',
     'setGroups:groups=>strategic.groups=groups,',
     'setBoats:yes=>opts.boats=yes,setBoatCtor:C=>ctors.boat=C,',
-    'state:()=>({pendingAttack,attackReceipts,warState}),opts};'
+    'state:()=>({pendingAttack,attackReceipts,warState,economicStatus,failedEconomyProbes,investmentStatus,strategic}),opts};'
   ].join('\n');
   vm.runInNewContext(source.replace(anchor, expose + '\n' + anchor), context, {timeout:2000});
   win.__test.setup(game, {emit:event=>sent.push(event)}, {attack:Attack, build:Build});
   return {b:win.__test,game,me,weak,strong,out,sent,
     setTick:v=>tick=v,setLand:v=>land=v,setEnemyLand:v=>enemyLand=v,
-    setOver:v=>gameOver=v};
+    setOver:v=>gameOver=v,setGold:v=>gold=v,setHome:v=>home=v};
 }
 (async () => {
   await check('reserve includes stronger second neighbor', () => {
@@ -143,6 +143,57 @@ function boot() {
   });
   await check('no orders after match ended', () => {
     const x=boot();x.setOver(true);assert.equal(x.b.connected(),false);
+  });
+
+  await check('startup saves for first city/factory instead of defense post', async () => {
+    const x=boot(); x.setGold(55000);
+    x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
+      type,canBuild:tile,canUpgrade:false,cost:BigInt(type==='Defense Post'?50000:125000)}))});
+    assert.equal(await x.b.economy(x.me,300,0,[]),false);
+    assert.equal(x.sent.length,0);
+  });
+  await check('startup spends first 125k on City or Factory', async () => {
+    const x=boot();x.setGold(125000);
+    x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
+      type,canBuild:tile,canUpgrade:false,cost:BigInt(type==='Defense Post'?50000:125000)}))});
+    assert.equal(await x.b.economy(x.me,300,0,[]),true);
+    assert(['City','Factory'].includes(x.sent[0].unit),x.sent[0].unit);
+  });
+  await check('late game accumulates funds without treating saving as failed construction', async () => {
+    const x=boot();x.setTick(2400);x.setLand(51613);x.setGold(900000);
+    const units=['City','City','Factory','Factory'].map((type,i)=>({
+      type:()=>type,isActive:()=>true,tile:()=>100+i*20,id:()=>i+1,level:()=>1}));
+    x.me.units=()=>units;
+    const needs=x.b.economicNeeds(x.me,units,[]);
+    assert.equal(needs.saveForSilo,true);assert.equal(needs.savingsTarget,1150000);
+    assert.equal(await x.b.economy(x.me,2400,0,[]),false);
+    assert.equal(x.sent.length,0);
+    assert.equal(x.b.state().failedEconomyProbes,0);
+  });
+  await check('first silo is funded and built at threshold', async () => {
+    const x=boot();x.setTick(2400);x.setLand(51613);x.setGold(1200000);
+    const units=['City','City','Factory','Factory'].map((type,i)=>({
+      type:()=>type,isActive:()=>true,tile:()=>100+i*20,id:()=>i+1,level:()=>1}));
+    x.me.units=()=>units;
+    x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
+      type,canBuild:tile,canUpgrade:false,cost:BigInt(type==='Missile Silo'?1000000:250000)}))});
+    assert.equal(await x.b.economy(x.me,2400,0,[]),true);
+    assert.equal(x.sent[0].unit,'Missile Silo');
+  });
+  await check('full late army selects technology, not permanent defense', () => {
+    const x=boot();x.setTick(2400);x.setLand(51613);x.strong.troops=()=>200000;
+    const groups=[{id:'weak',opponent:x.weak},{id:'strong',opponent:x.strong}];
+    assert.equal(x.b.strategy(x.me,groups,x.b.military(x.me,groups)).wanted,'TECH');
+  });
+  await check('stale war target can be reassessed', () => {
+    const x=boot();x.setTick(1400);x.b.setWar('strong','strong');x.setTick(2400);
+    const groups=[{id:'weak',opponent:x.weak},{id:'strong',opponent:x.strong}];
+    x.b.manageWar(x.me,groups,x.b.military(x.me,groups),2400);
+    assert.equal(x.b.state().warState.id,null);
+  });
+  await check('Public game remains blocked regardless of bot options', () => {
+    const x=boot();x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Medium'});
+    assert.equal(x.b.connected(),false);
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
