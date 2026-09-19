@@ -2,7 +2,7 @@
 
 Autonomer **Singleplayer**-Bot als Tampermonkey-Userscript für [OpenFront](https://openfront.io/).
 
-**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.9.5**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
+**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.9.6**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
 
 ## Installation
 
@@ -16,6 +16,16 @@ Autonomer **Singleplayer**-Bot als Tampermonkey-Userscript für [OpenFront](http
 ## Strategie & Diagnose
 
 Strategie-, Wirtschafts-, Marine-, Diplomatie-, Nuke- und SAM-Planung sind vorhanden. Der Bot kann Befehle senden; daraus folgt **keine garantierte Gewinnrate auf „Unmöglich“**. Ein vollständiger Live-Test ist noch nicht erfolgt. „Diagnose JSON“ im Bot-Menü zeichnet unter anderem Gebietsänderungen, Truppenlage, Bauaufträge und Allianzantworten auf. Bitte den Export vor dem Neuladen erstellen.
+
+### Änderung 1.9.6 – strategische Planung
+
+- **Wachstumsorientierte neutrale Expansion:** Wenn die Truppen nahe dem Cap stehen, keine feindlichen Angriffe eingehen und kein großer Grenznachbar droht, setzt der Bot kontrolliert mehr freie Truppen zur Landnahme ein. Die Reserve für wirkliche Bedrohungen bleibt erhalten. Diagnose: `growthPotential` als theoretischer Rekrutierungswert.
+- **Lokale Zielbewertung:** Erreichbare Cities, Factories und Ports steigern den Wert eines gegnerischen Grenzziels. Nahe Defense Posts und hohe gegnerische Truppendichte senken den Wert. Das ist eine Heuristik; der Worker bestätigt weiterhin die Legalität.
+- **Wirtschaftlicher Engpass:** Hohe Truppenauslastung erhöht die Priorität von Cities. Factories werden bevorzugt in Reichweite eigener City-/Port-Infrastruktur platziert; tatsächliche Bahnverbindungen werden nicht behauptet oder automatisch gebaut.
+- **Proaktive Diplomatie:** Bei EXPAND und ASSAULT sind Angebote an ausreichend starke, nicht bekämpfte Grenznachbarn möglich, um die andere Front zu stabilisieren.
+- **Nukes:** Wertvolle Ziele des aktiven Kriegspartners werden gegenüber unbeteiligten Gegnern bevorzugt, die bestehenden SAM- und Freundschutzfilter bleiben bestehen.
+- **Spawn:** Eine nutzbare Küste gibt einen kleinen Bonus, während Landdichte und Abstand zu anderen Spawns wichtiger bleiben.
+- Neue Simulationstests für Expansion, Reserve, Infrastruktur-Bewertung, Diplomatie und Atomzielwahl. Die Berechnungen sind noch kein Beleg für Live-Siege auf „Unmöglich“.
 
 ### Änderung 1.9.5 – PR #1 und Issues #2–#5
 

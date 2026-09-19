@@ -70,7 +70,7 @@ function boot() {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'military,warReadiness,targetOpportunity,rankedTargets,confirmAttack,economy,economicNeeds,strategy,manageWar,actionBudget,connected,naval,defenseAssessment,emergencyRetreat,siteScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,',
+    'military,warReadiness,targetOpportunity,targetEconomics,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,economy,economicNeeds,strategy,manageWar,actionBudget,connected,naval,defenseAssessment,emergencyRetreat,siteScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,diplomacyScore,diplomacyTickSafe,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'setWarWait:n=>warWaitSince=n,setEconFails:n=>failedEconomyProbes=n,',
     'setPending:p=>pendingAttack=p,',
@@ -78,9 +78,10 @@ function boot() {
     'setGroups:groups=>strategic.groups=groups,',
     'setBoats:yes=>opts.boats=yes,setBoatCtor:C=>ctors.boat=C,',
     'setCancelCtor:C=>ctors.cancel=C,setTroopSnapshot:t=>troopSnapshot=t,',
+    'setMode:m=>strategic.mode=m,setAllianceCtor:C=>ctors.alliance=C,',
     'setNukePending:p=>nukePending=p,',
     'setPerf:(combat,border,economy)=>runtime={...runtime,combatMs:combat,borderMs:border,economyMs:economy},',
-    'state:()=>({pendingAttack,attackReceipts,warState,economicStatus,failedEconomyProbes,investmentStatus,strategic,defenseStatus,defenseStats,autoTuning,nukeShots,nukeAttempts,nukeUnconfirmed,nukePending,retreatRequests:[...retreatRequests.values()]}),opts};'
+    'state:()=>({pendingAttack,attackReceipts,warState,economicStatus,failedEconomyProbes,investmentStatus,strategic,defenseStatus,defenseStats,autoTuning,nukeShots,nukeAttempts,nukeUnconfirmed,nukePending,lastProposalTick,diplomacyStatus,diplomacyPending:[...diplomacyPending.values()],retreatRequests:[...retreatRequests.values()]}),opts};'
   ].join('\n');
   vm.runInNewContext(source.replace(anchor, expose + '\n' + anchor), context, {timeout:2000});
   win.__test.setup(game, {emit:event=>sent.push(event)}, {attack:Attack, build:Build});
@@ -486,6 +487,92 @@ function boot() {
     assert.equal(x.b.state().nukeShots,1);
     assert.equal(x.b.inspectNukeLaunch(x.me,2412),false);
     assert.equal(x.b.state().nukeShots,1);
+  });
+  await check('v1.9.6 near-cap expansion spends surplus without hostile border', () => {
+    const x=boot();x.setHome(90000);
+    const s=x.b.military(x.me,[]);
+    assert.equal(x.b.growthPressure(s),true);
+    assert(x.b.neutralAttackAmount(s,.85)>14000, x.b.neutralAttackAmount(s,.85));
+    assert(s.growthPotential>0);
+  });
+  await check('v1.9.6 strong neighbor disables extra growth spending', () => {
+    const x=boot(),groups=[{id:'strong',opponent:x.strong,front:9,tiles:[6]}];
+    const s=x.b.military(x.me,groups);
+    assert.equal(x.b.growthPressure(s),false);
+    assert(x.b.neutralAttackAmount(s,.85)<10000,x.b.neutralAttackAmount(s,.85));
+    x.me.incomingAttacks().push({id:'in',troops:33000,retreating:false,attackerID:3});
+    assert.equal(x.b.growthPressure(x.b.military(x.me,[])),false);
+  });
+  await check('v1.9.6 accessible city favors a weak target', () => {
+    const groups=x=>[{id:'weak',opponent:x.weak,front:10,tiles:[5]},
+      {id:'strong',opponent:x.strong,front:10,tiles:[6]}];
+    const a=boot(),aGroups=groups(a),aState=a.b.military(a.me,aGroups);
+    const aRank=a.b.rankedTargets(aGroups,a.me,300,aState,a.b.strategy(a.me,aGroups,aState));
+    const ordinary=aRank.find(x=>x.id==='weak')?.score;
+    const b=boot(),bGroups=groups(b);
+    b.weak.units=()=>[{type:()=> 'City',tile:()=>5,level:()=>2,isActive:()=>true}];
+    const bState=b.b.military(b.me,bGroups);
+    const bRank=b.b.rankedTargets(bGroups,b.me,300,bState,b.b.strategy(b.me,bGroups,bState));
+    assert(Number.isFinite(ordinary),ordinary);
+    assert(bRank.find(x=>x.id==='weak')?.score>ordinary+20,
+      'reachable infrastructure should improve the expected prize');
+  });
+  await check('v1.9.6 defended frontier scores below undefended frontier', () => {
+    const x=boot();
+    const item={id:'weak',opponent:x.weak,front:10,tiles:[5]};
+    x.weak.units=()=>[{type:()=> 'Defense Post',tile:()=>5,isActive:()=>true}];
+    assert.equal(x.b.targetEconomics(item).posts,1);
+    assert.equal(x.b.targetEconomics(item).prize,0);
+  });
+  await check('v1.9.6 city priority increases near troop cap', () => {
+    const x=boot();x.setLand(2800);
+    const units=['City','City','Factory','Factory'].map((type,i)=>({
+      type:()=>type,isActive:()=>true,id:()=>i,tile:()=>220+i*40,level:()=>1}));
+    x.me.units=()=>units;
+    x.b.setTroopSnapshot({home:90000,max:100000,ratio:.90,incoming:0,strongest:0});
+    const high=x.b.economicNeeds(x.me,units,[]).list.find(x=>x.type==='City'&&!x.upgrade).score;
+    x.setHome(50000);
+    x.b.setTroopSnapshot({home:50000,max:100000,ratio:.50,incoming:0,strongest:0});
+    const low=x.b.economicNeeds(x.me,units,[]).list.find(x=>x.type==='City'&&!x.upgrade).score;
+    assert(high>low+50,{high,low});
+  });
+  await check('v1.9.6 factory site favors city/port proximity', () => {
+    const x=boot();x.game.x=t=>t;x.game.y=()=>0;
+    const city={type:()=> 'City',tile:()=>30,isUnderConstruction:()=>false};
+    const near=x.b.siteScore('Factory',75,[],[city],0,false);
+    const far=x.b.siteScore('Factory',300,[],[city],0,false);
+    assert(near>far+30,{near,far});
+  });
+  await check('v1.9.6 proactive diplomacy scores strong non-war border', () => {
+    const x=boot();x.b.setMode('EXPAND');
+    const groups=[{id:'weak',opponent:x.weak,front:10,tiles:[5]},
+      {id:'strong',opponent:x.strong,front:10,tiles:[6]}];
+    const s=x.b.military(x.me,groups);
+    assert(x.b.diplomacyScore(x.me,x.strong,s,true).score>=80);
+    assert(x.b.diplomacyScore(x.me,x.weak,s,true).score<80);
+    x.b.setWar('strong','strong');
+    assert(x.b.diplomacyScore(x.me,x.strong,s,true).score<80);
+  });
+  await check('v1.9.6 proactive diplomacy sends offer while expanding', async () => {
+    const x=boot();x.b.setMode('EXPAND');
+    class Alliance{constructor(requestor,recipient){this.requestor=requestor;this.recipient=recipient;}}
+    x.b.setAllianceCtor(Alliance);
+    x.b.setGroups([{id:'strong',opponent:x.strong,front:10,tiles:[6]}]);
+    x.me.actions=async()=>({interaction:{canSendAllianceRequest:true}});
+    x.b.diplomacyTickSafe();
+    // The userscript VM owns a separate Promise job queue; flush an event loop turn.
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(x.sent.length,1,JSON.stringify({state:x.b.state(),score:x.b.diplomacyScore(x.me,x.strong,x.b.military(x.me,x.b.state().strategic.groups),true),connected:x.b.connected()}));
+    assert.equal(x.sent[0].recipient,x.strong);
+  });
+  await check('v1.9.6 war-focused nuclear planner favors locked enemy', () => {
+    const x=boot();x.b.setWar('strong','strong');
+    const city=(owner,tile)=>({type:()=> 'City',tile:()=>tile,owner:()=>owner});
+    const intel={enemy:[city(x.weak,5),city(x.strong,6)],enemySAM:[],
+      protectedUnits:[]};
+    const result=x.b.nukeTargets(x.me,intel,'Atom Bomb');
+    assert(result.length>0,JSON.stringify(result));
+    assert.equal(result[0].owner,x.strong);
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
