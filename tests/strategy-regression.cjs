@@ -71,18 +71,18 @@ function boot() {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'military,warReadiness,targetOpportunity,targetEconomics,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,economy,economicNeeds,strategy,manageWar,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,defenseAssessment,emergencyRetreat,siteScore,recognize,intentHealth,reportIntents,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,diplomacyScore,diplomacyTickSafe,',
+    'military,warReadiness,targetOpportunity,targetEconomics,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,economy,economicNeeds,strategy,manageWar,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'setWarWait:n=>warWaitSince=n,setEconFails:n=>failedEconomyProbes=n,',
     'setPending:p=>pendingAttack=p,',
     'setWar:(id,name)=>warState={id,name,since:game.ticks(),blockedUntil:-Infinity},',
     'setGroups:groups=>strategic.groups=groups,',
     'setBoats:yes=>opts.boats=yes,setBoatCtor:C=>ctors.boat=C,',
-    'setCancelCtor:C=>ctors.cancel=C,setTroopSnapshot:t=>troopSnapshot=t,',
+    'setCancelCtor:C=>ctors.cancel=C,setTroopSnapshot:t=>troopSnapshot=t,setCtor:(key,C)=>ctors[key]=C,',
     'setMode:m=>strategic.mode=m,setAllianceCtor:C=>ctors.alliance=C,',
     'setNukePending:p=>nukePending=p,',
     'setPerf:(combat,border,economy)=>runtime={...runtime,combatMs:combat,borderMs:border,economyMs:economy},',
-    'state:()=>({pendingAttack,attackReceipts,warState,economicStatus,failedEconomyProbes,investmentStatus,strategic,defenseStatus,defenseStats,autoTuning,nukeShots,nukeAttempts,nukeUnconfirmed,nukePending,lastProposalTick,diplomacyStatus,diplomacyPending:[...diplomacyPending.values()],retreatRequests:[...retreatRequests.values()]}),opts};'
+    'state:()=>({pendingAttack,attackReceipts,warState,economicStatus,failedEconomyProbes,investmentStatus,strategic,winStatus,incomeStatus,fleetStatus,strategicTelemetry,defenseStatus,defenseStats,autoTuning,nukeShots,nukeAttempts,nukeUnconfirmed,nukePending,lastProposalTick,diplomacyStatus,diplomacyPending:[...diplomacyPending.values()],retreatRequests:[...retreatRequests.values()]}),opts};'
   ].join('\n');
   vm.runInNewContext(source.replace(anchor, expose + '\n' + anchor), context, {timeout:2000});
   win.__test.setup(game, {emit:event=>sent.push(event)}, {attack:Attack, build:Build});
@@ -631,7 +631,192 @@ function boot() {
     assert.equal(source.includes('multiplayerTest'),false);
     assert.equal(source.includes('MP-TEST'),false);
   });
-
+  await check('v1.10.0 team victory uses combined allied land and real threshold', () => {
+    const x=boot();x.me.team=()=>1;x.weak.team=()=>1;x.strong.team=()=>2;
+    x.game.config().gameConfig=()=>({gameType:'Public',gameMode:'Team',
+      difficulty:'Impossible',maxTimerValue:4});
+    x.game.numLandTiles=()=>4000;x.game.numTilesWithFallout=()=>500;
+    x.game.config().percentageTilesOwnedToWin=()=>50;
+    x.game.elapsedGameSeconds=()=>100;
+    const p=x.b.victoryPlan(x.me);
+    assert.equal(p.mode,'Team');assert.equal(p.teamTiles,2100);
+    assert.equal(p.threshold,50);assert(p.progress>.59&&p.urgent);
+    assert.equal(p.remaining,140);
+  });
+  await check('v1.10.0 unknown win threshold stays unknown', () => {
+    const x=boot();const p=x.b.victoryPlan(x.me);
+    assert.equal(p.threshold,null);assert.equal(p.progress,null);
+    assert.equal(p.urgent,false);
+  });
+  await check('v1.10.0 doomsday forces endgame urgency', () => {
+    const x=boot();x.me.inDoomsdayClock=()=>true;
+    const p=x.b.victoryPlan(x.me);
+    assert.equal(p.doomsday,true);assert.equal(p.urgent,true);
+  });
+  await check('v1.10.0 uses official attackLogic on defended mountain tile', () => {
+    const x=boot();let used=null;
+    x.game.terrainType=()=>2;
+    x.game.config().defensePostRange=()=>30;
+    x.game.config().attackLogic=(data)=>{used=data;
+      return {attackerTroopLoss:100,tickFraction:.4};};
+    x.weak.units=()=>[{type:()=> 'Defense Post',tile:()=>5,
+      isUnderConstruction:()=>false}];
+    const f=x.b.attackForecast(x.me,{opponent:x.weak,front:10,tiles:[5]},40000);
+    assert.equal(used.terrain,2);
+    assert.equal(used.defenderHasDefensePost,true);
+    assert.equal(used.borderSize,10);
+    assert.equal(f.engine,true);
+    assert(f.loss>7000,f.loss);
+  });
+  await check('v1.10.0 heavily attacked enemy identified by incoming stacks', () => {
+    const x=boot();x.weak.incomingAttacks=()=>[{troops:12000,retreating:false}];
+    assert.equal(x.b.enemyUnderAttack(x.weak),true);
+    x.weak.incomingAttacks=()=>[{troops:2000,retreating:false}];
+    assert.equal(x.b.enemyUnderAttack(x.weak),false);
+  });
+  await check('v1.10.0 neutral fallout tiles are skipped in border discovery', () => {
+    const x=boot(),neutral={id:()=>null,isPlayer:()=>false};
+    x.game.neighbors4=(_,scratch)=>{scratch.push(50,51);return 2;};
+    x.game.owner=t=>t===50||t===51?neutral:x.me;
+    x.game.hasFallout=t=>t===50;
+    const groups=x.b.targetsFromBorder(x.me,[10]);
+    assert.equal(groups.length,1);
+    assert.deepEqual(Array.from(groups[0].tiles),[51]);
+    assert.equal(x.b.state().strategicTelemetry.falloutSkipped,1);
+  });
+  await check('v1.10.0 samples actual train/ship revenue rather than inventory', () => {
+    const x=boot();let train=0,trade=0;x.me.trainGold=()=>train;
+    x.me.tradeGold=()=>trade;
+    x.b.sampleIncome(x.me,300);
+    x.setTick(400);train=500;trade=200;x.setGold(1001000);
+    x.b.sampleIncome(x.me,400);
+    assert.equal(x.b.state().incomeStatus.train,3000);
+    assert.equal(x.b.state().incomeStatus.trade,1200);
+    assert.equal(x.b.state().incomeStatus.observed,true);
+  });
+  await check('v1.10.0 factory site favors reachable active train stations', () => {
+    const x=boot();x.game.x=t=>t;x.game.y=()=>0;
+    x.game.config().trainStationMinRange=()=>15;
+    x.game.config().trainStationMaxRange=()=>100;
+    const units=[30,220].map(tile=>({type:()=> 'City',tile:()=>tile,
+      hasTrainStation:()=>true,isUnderConstruction:()=>false}));
+    const near=x.b.railStationScore(80,units);
+    const far=x.b.railStationScore(350,units);
+    assert.equal(near.reachable,1);assert(near.score>far.score+30);
+  });
+  await check('v1.10.0 disabled City is omitted from structure plan', () => {
+    const x=boot();x.game.config().isUnitDisabled=t=>t==='City';
+    const p=x.b.economicNeeds(x.me,[],[]);
+    assert.equal(p.list.some(e=>e.type==='City'),false);
+  });
+  await check('v1.10.0 MIRV-only game saves a MIRV-sized fund', () => {
+    const x=boot();x.setTick(2400);x.setLand(5000);
+    x.game.config().isUnitDisabled=t=>t==='Atom Bomb'||t==='Hydrogen Bomb';
+    const units=['City','City','Factory','Factory','Missile Silo'].map((type,i)=>({
+      type:()=>type,isActive:()=>true,level:()=>1,tile:()=>200+i*50}));
+    x.me.units=()=>units;
+    x.game.units=()=>[{type:()=> 'City',isActive:()=>true,owner:()=>x.weak,tile:()=>5}];
+    const p=x.b.economicNeeds(x.me,units,[]);
+    assert.equal(p.savingsTarget,26000000);
+  });
+  await check('v1.10.0 warship intercepts visible enemy boat at our shore', async () => {
+    const x=boot();
+    class Move{constructor(unitIds,tile){this.unitIds=unitIds;this.tile=tile;}}
+    x.b.setCtor('warship',Move);
+    x.game.isWater=()=>true;x.game.euclideanDistSquared=()=>1;
+    const own={type:()=> 'Warship',owner:()=>x.me,isActive:()=>true,
+      tile:()=>2,id:()=>88};
+    const enemy={type:()=> 'Transport',owner:()=>x.weak,isActive:()=>true,
+      targetTile:()=>505,tile:()=>1,transportShipState:()=>({isRetreating:false})};
+    x.game.units=()=>[own,enemy];
+    assert.equal(await x.b.fleetDefense(x.me,300,0),true);
+    assert.deepEqual(Array.from(x.sent[0].unitIds),[88]);
+    assert.equal(x.sent[0].tile,1);
+  });
+  await check('v1.10.0 fleet builds warship only after legal water probe', async () => {
+    const x=boot();x.game.isWater=()=>true;
+    x.me.units=()=>[{type:()=> 'Port',tile:()=>5500,
+      isActive:()=>true,isUnderConstruction:()=>false}];
+    x.game.units=()=>[{type:()=> 'Transport',owner:()=>x.weak,
+      isActive:()=>true,targetTile:()=>505,tile:()=>1}];
+    x.me.actions=async tile=>({buildableUnits:[{type:'Warship',
+      canBuild:tile,cost:250000n}]});
+    assert.equal(await x.b.fleetDefense(x.me,300,0),true);
+    assert.equal(x.sent[0].unit,'Warship');
+  });
+  await check('v1.10.0 cancels landing if target becomes friendly', async () => {
+    const x=boot();class Cancel{constructor(unitID){this.unitID=unitID;}}
+    x.b.setCtor('cancelBoat',Cancel);x.me.isFriendly=p=>p===x.weak;
+    x.game.units=()=>[{type:()=> 'Transport',owner:()=>x.me,
+      isActive:()=>true,targetTile:()=>5,id:()=>92}];
+    assert.equal(await x.b.fleetDefense(x.me,300,0),true);
+    assert.equal(x.sent[0].unitID,92);
+  });
+  await check('v1.10.0 helps endangered teammate while retaining homeland', () => {
+    const x=boot();class Donate{constructor(recipient,troops){
+      this.recipient=recipient;this.troops=troops;}}
+    x.b.setCtor('donateTroops',Donate);
+    x.game.config().gameConfig=()=>({gameType:'Public',gameMode:'Team',difficulty:'Impossible'});
+    x.me.team=()=>1;x.weak.team=()=>1;x.strong.team=()=>2;
+    x.me.isOnSameTeam=p=>p===x.weak;
+    x.weak.incomingAttacks=()=>[{troops:16000,retreating:false}];
+    x.b.victoryPlan(x.me);
+    const s=x.b.military(x.me,[]);
+    assert.equal(x.b.teamSupport(x.me,300,s),true);
+    assert.equal(x.sent[0].recipient,x.weak);
+    assert(x.sent[0].troops>=1000&&x.sent[0].troops<10000);
+  });
+  await check('v1.10.0 renews expiring alliance once per cooldown', () => {
+    const x=boot();class Extend{constructor(recipient){this.recipient=recipient;}}
+    x.b.setCtor('extend',Extend);
+    x.me.alliances=()=>[{id:13,other:'weak',expiresAt:320,hasExtensionRequest:true}];
+    x.me.isFriendly=p=>p===x.weak;
+    assert.equal(x.b.renewAlliances(x.me,300),true);
+    assert.equal(x.sent[0].recipient,x.weak);
+    assert.equal(x.b.renewAlliances(x.me,310),false);
+  });
+  await check('v1.10.0 SAM chord risk detects a SAM along the flight proxy', () => {
+    const x=boot();x.game.x=t=>t;x.game.y=()=>0;
+    x.game.config().samRange=()=>10;
+    const sam={tile:()=>50,isActive:()=>true};
+    assert.equal(x.b.nukeTrajectoryRisk(0,100,[sam]),1);
+    assert.equal(x.b.nukeTrajectoryRisk(0,100,[{...sam,tile:()=>200}]),0);
+  });
+  await check('v1.10.0 SAM saturation requires enough ready silo tubes', () => {
+    const x=boot();x.game.units=()=>[{type:()=> 'SAM Launcher',
+      isActive:()=>true,owner:()=>x.weak,tile:()=>5,level:()=>1}];
+    x.me.readyMissileCount=()=>4;
+    const c={tile:5,sams:1,hit:2,value:30};
+    assert.equal(x.b.nukeSalvoPlan('Atom Bomb',c,[],x.me,750000,5000000,false).amount,2);
+    x.me.readyMissileCount=()=>1;
+    assert.equal(x.b.nukeSalvoPlan('Atom Bomb',c,[],x.me,750000,5000000,false).amount,0);
+  });
+  await check('v1.10.0 partially observed salvo stays pending and counts each missile once', () => {
+    const x=boot();x.setTick(2400);
+    const a={type:()=> 'Atom Bomb',isActive:()=>true,owner:()=>x.me,
+      targetTile:()=>5,id:()=>10};
+    const b={...a,id:()=>11};
+    x.b.setNukePending({tile:5,type:'Atom Bomb',tick:2400,
+      beforeIds:[],beforeMatches:0,attempt:1,amount:2});
+    x.game.units=()=>[a];
+    assert.equal(x.b.inspectNukeLaunch(x.me,2410),true);
+    assert.equal(x.b.state().nukeShots,1);
+    x.game.units=()=>[a,b];
+    assert.equal(x.b.inspectNukeLaunch(x.me,2411),false);
+    assert.equal(x.b.state().nukeShots,2);
+    assert.equal(x.b.inspectNukeLaunch(x.me,2412),false);
+    assert.equal(x.b.state().nukeShots,2);
+  });
+  await check('v1.10.0 naval transport can cross more than 100 tiles', async () => {
+    const x=boot();x.b.setWar('strong','strong');x.strong.troops=()=>5000;
+    x.b.setGroups([{id:'strong',opponent:x.strong}]);
+    x.game.euclideanDistSquared=()=>1e8;
+    x.me.actions=async()=>({buildableUnits:[{type:'Transport',canBuild:9000,cost:0n}]});
+    class Boat{constructor(dst,troops){this.dst=dst;this.troops=troops;}}
+    x.b.setBoatCtor(Boat);
+    assert.equal(await x.b.naval(x.me,300,0),true);
+    assert.equal(x.sent[0].dst,6);
+  });
   await check('issue #9 empty EventBus reports 0/8 and all critical intents', () => {
     const x=boot(),b={listeners:new Map(),emit:()=>{}};
     x.b.reset(x.game,b);

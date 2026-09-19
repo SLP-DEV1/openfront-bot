@@ -2,7 +2,7 @@
 
 Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscript für [OpenFront](https://openfront.io/).
 
-**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.9.9**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
+**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.10.0**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
 
 ## Installation
 
@@ -16,6 +16,18 @@ Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscr
 ## Strategie & Diagnose
 
 Strategie-, Wirtschafts-, Marine-, Diplomatie-, Nuke- und SAM-Planung sind vorhanden. Der Bot kann Befehle senden; daraus folgt **keine garantierte Gewinnrate auf „Unmöglich“**. Ein vollständiger Live-Test ist noch nicht erfolgt. „Diagnose JSON“ im Bot-Menü zeichnet unter anderem Gebietsänderungen, Truppenlage, Bauaufträge und Allianzantworten auf. Bitte den Export vor dem Neuladen erstellen.
+
+### Änderung 1.10.0 – Engine-nahe Autonomie (experimentell)
+
+- **Kampfkosten:** Probeweise `config.attackLogic()` für erreichbare Frontier-Tiles statt reiner Truppenverhältnis-Heuristik. Wenn die Engine-Methode im Client fehlt, nur konservative Gelände-/Defense-Post-Abschätzung. Keine Zusage, dass die simulierten Zukunftstiles exakt der echten Front entsprechen.
+- **Spielmodus/Ziel:** FFA/Team, Team-Landanteil, mögliche Siegschwelle, Lobby-Timer und Doomsday werden – sofern der Client sie liefert – gemessen. Fehlende Werte bleiben in Diagnose/Panel ausdrücklich *unbekannt*.
+- **Neutraler Fallout:** Verstrahlte neutrale Randfelder werden nicht als gewöhnliche Expansionsziele eingeplant; stark angegriffene Gegner erhalten nur einen Zielbonus unter den bestehenden Reserveschranken.
+- **Marine:** Bei erster Aktivierung der 1.10-Serie schaltet Vollautomatik auch `boats` ein; manuell lässt es sich weiterhin ausschalten. Marine prüft mehrere Zielpunkte eines Inselgegners. Beobachtete feindliche Transporte lösen Kriegsschiff-Bewegungen bzw. worker-validierte Kriegsschiff-Bauversuche aus; eigene Transporte zu nun verbündeten Zielen können abgebrochen werden, sofern die Event-Konstruktoren erkannt werden.
+- **Handel/Bahnbau:** Der Client liefert kumulatives `trainGold()` und `tradeGold()`; der Bot misst deren Differenz je 60 Sekunden. Gebäude erhalten einen Reichweiten-Score mit `trainStationMinRange()`/`trainStationMaxRange()`. Dies beweist weder eine reale Zugroute noch garantiert es künftigen Ertrag; unproduktive zusätzliche Factories werden weniger priorisiert.
+- **Nukes:** Echte `nukeMagnitudes` für Atom/Hydrogen, MIRV-Kandidaten, begrenzte SAM-Flugweg-Proxy-Bewertung, Worker-Kosten und vorberechnete Bulk-Atombomben zur SAM-Überlastung nur bei genügenden Abschussröhren und Rücklagen; mehrteilige Starts werden einzeln bestätigt. Der Proxy ist **keine** genaue parabelförmige Flugbahnsimulation.
+- **Teams/Bündnisse:** Gemeinsamer Landstand, transitive Zielhinweise, begrenzte Truppenspende an tatsächlich bedrängte Teammitglieder, optionaler Goldtransfer und Allianzverlängerung bei vorhandenem Spiel-Event. Kein blindes Spenden an beliebige Allianzpartner.
+- **Kompatibilität:** Public/Private/Singleplayer bleiben ohne MP-Test-Schalter nutzbar; der Bot startet nach Seiten-/Match-Wechsel weiterhin AUS, Replays bleiben gesperrt. Diagnose-Version `OpenFront_AggroBot_1.10.0_Diagnose.json`.
+- **Validierung:** Unit-/VM-Regressionen decken die Heuristiken und asynchronen Events ab. Ein browserseitiger End-to-End-Match-Benchmark über verschiedene Maps und Seeds steht weiterhin aus. Es gibt keine garantierte Impossible- oder Multiplayer-Gewinnquote.
 
 ### Änderung 1.9.9 – Intent-Diagnose (Issue #9)
 
