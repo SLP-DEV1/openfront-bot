@@ -2,7 +2,7 @@
 
 Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscript für [OpenFront](https://openfront.io/).
 
-**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.10.3**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
+**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.10.4**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
 
 ## Installation
 
@@ -16,6 +16,14 @@ Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscr
 ## Strategie & Diagnose
 
 Strategie-, Wirtschafts-, Marine-, Diplomatie-, Nuke- und SAM-Planung sind vorhanden. Der Bot kann Befehle senden; daraus folgt **keine garantierte Gewinnrate auf „Unmöglich“**. Ein vollständiger Live-Test ist noch nicht erfolgt. „Diagnose JSON“ im Bot-Menü zeichnet unter anderem Gebietsänderungen, Truppenlage, Bauaufträge und Allianzantworten auf. Bitte den Export vor dem Neuladen erstellen.
+
+### Änderung 1.10.4 – Multiplayer-Spawn startet nicht (Live-Fix)
+
+- **EventBus im selben Match:** Neue Listener/EventBus-Instanzen dürfen nicht mehr den Game-Reset auslösen. Der Reset schaltet den Bot normalerweise absichtlich AUS; bei gleicher GameView werden jetzt nur EventBus und Konstruktoren aktualisiert.
+- **PlayerView beim Spawn ausstehend:** Der Standort darf schon gesucht und der Spawn-Intent gesendet werden, auch wenn `myPlayer()` noch `null` ist. Sobald der Spielerzustand vorhanden ist, wird die Spawn-Auswahl bestätigt.
+- **Früher senden:** Wenn ein guter gültiger Standort gefunden ist, wartet der Bot nicht mehr bis zum Abschluss der gesamten Kartensuche. Ab 110 Rest-Ticks sendet er den besten bisher verfügbaren Standort, auch wenn noch geprüft wird. Spawn-Befehle sind während der Spawnphase nicht am gewöhnlichen Kampf-Aktionsbudget gesperrt.
+- **Reale Fehlerdiagnose:** `spawn_blocked` benennt fehlenden EventBus/Spawn-Intent, ausgeschalteten Auto-Spawn, Zufallsspawn, veraltete/belegte Position oder einen fehlgeschlagenen Befehl. `spawn_bus_rebind` und `spawn_intent` trennen Bot-Stopp, Intent-Ausgabe und bestätigte Spawn-Übernahme.
+- Die Auswahlheuristik aus v1.10.3 bleibt erhalten. Ohne eine neue Multiplayer-Spawn-Diagnose ist nicht bekannt, welcher Fehlerzweig in deiner konkreten Partie ausgelöst wurde.
 
 ### Änderung 1.10.3 – Strategischer Auto-Spawn im Multiplayer
 

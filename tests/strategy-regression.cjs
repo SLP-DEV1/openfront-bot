@@ -71,7 +71,7 @@ function boot() {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'military,warReadiness,targetOpportunity,targetEconomics,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,economy,economicNeeds,economicAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,',
+    'military,warReadiness,targetOpportunity,targetEconomics,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,economy,economicNeeds,economicAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'setWarWait:n=>warWaitSince=n,setEconFails:n=>failedEconomyProbes=n,',
     'setPending:p=>pendingAttack=p,',
@@ -86,7 +86,7 @@ function boot() {
   ].join('\n');
   vm.runInNewContext(source.replace(anchor, expose + '\n' + anchor), context, {timeout:2000});
   win.__test.setup(game, {emit:event=>sent.push(event)}, {attack:Attack, build:Build});
-  return {b:win.__test,game,me,weak,strong,out,sent,warnings,infos,
+  return {b:win.__test,game,me,weak,strong,out,sent,warnings,infos,doc:context.document,
     flushTimers:(limit=40)=>{for(let i=0;i<limit&&timers.length;i++)timers.shift()();return timers.length;},
     setTick:v=>tick=v,setLand:v=>land=v,setEnemyLand:v=>enemyLand=v,
     setOver:v=>gameOver=v,setGold:v=>gold=v,setHome:v=>home=v};
@@ -1204,6 +1204,42 @@ function boot() {
     x.flushTimers();
     assert.equal(x.sent.length,0);
     assert.equal(x.b.state().spawnJob,null);
+  });
+  await check('v1.10.4 missing myPlayer during spawn still sends a legal tile', () => {
+    const x=boot();spawnFixture(x,20);
+    x.game.myPlayer=()=>null;
+    x.b.startSpawnSearch();x.flushTimers();
+    assert.equal(x.sent.length,1,'PlayerView is not required to request a spawn');
+    assert(x.b.spawnTileValid(x.game,x.sent[0].tile));
+    assert(x.b.state().diagnostics.some(v=>v.kind==='spawn_intent' &&
+      v.withoutPlayerView===true));
+  });
+  await check('v1.10.4 same-match EventBus rebind does not disable bot', async () => {
+    const x=boot();spawnFixture(x,20);
+    class SendSpawnIntentEvent{constructor(tile){this.tile=tile;}}
+    const newBus={listeners:{keys:()=>[SendSpawnIntentEvent]},
+      emit:event=>x.sent.push(event)};
+    x.doc.querySelector=()=>({game:x.game,eventBus:newBus});
+    assert.equal(x.b.opts.enabled,true);
+    await x.b.step();
+    assert.equal(x.b.opts.enabled,true,
+      'replacing EventBus for the same GameView must not reset');
+    assert(x.b.state().diagnostics.some(v=>v.kind==='spawn_bus_rebind'));
+    x.flushTimers();
+    assert.equal(x.sent.length,1);
+  });
+  await check('v1.10.4 missing spawn constructor exposes exact blocker', () => {
+    const x=boot();spawnFixture(x,20);
+    x.b.setCtor('spawn',null);x.b.doSpawn(20);
+    assert.equal(x.sent.length,0);
+    assert.equal(x.b.state().spawnState.blocked,'Spawn-Intent nicht erkannt');
+    assert(x.b.state().diagnostics.some(v=>v.kind==='spawn_blocked'));
+  });
+  await check('v1.10.4 late spawn bypasses normal combat burst budget', () => {
+    const x=boot();spawnFixture(x,190);x.b.setBudget(120);
+    x.b.doSpawn(190);
+    assert.equal(x.sent.length,1);
+    assert.equal(x.b.state().spawnState.attempts,1);
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
