@@ -1578,7 +1578,12 @@
       const me=myPlayer();
       if(!me?.isAlive?.()||!me.hasSpawned?.()){status='Warte auf Spawn';return;}
       sampleTroops(tick,me);confirmAttack(me,tick);evaluateLastBattle(tick,me);
-      const immediateState=military(me,strategic.groups);
+      let immediateState=military(me,strategic.groups);
+      // Tune immediately even if emergencyRetreat returns before the normal
+      // strategy pass: a dangerous invasion must override ASSAULT right now.
+      if(opts.fullAuto && immediateState.incoming>Math.max(1,immediateState.home)*.18)
+        immediateState=tuneAutonomously(me,strategic.groups,immediateState,tick,
+          {wanted:'DEFEND',rebuilding:true});
       // Save committed troops BEFORE any asynchronous worker border request.
       if(emergencyRetreat(me,tick,immediateState))return;
       const tiles=await borders(me,tick);
@@ -1652,8 +1657,8 @@
         if(opts.fullAuto){opts.autoStrategy=true;autoTuning.tick=-Infinity;}
       }else if(key==='autoStrategy'&&opts.fullAuto){opts.fullAuto=false;opts.autoStrategy=false;}
       else if(['economy','boats','autoSpawn','defense','stopOnError','upgrades','safeMode','autoStrategy','diplomacy','offerAlliances','nukes','antiNuke','lateOffense','impossibleMode'].includes(key))opts[key]=!opts[key];
-      else if(key==='plan'){opts.autoStrategy=false;opts.plan=opts.plan==='Blitz'?'Adaptiv':opts.plan==='Adaptiv'?'Ökonomie':'Blitz';}
-      else if(key==='buildStyle'){opts.autoStrategy=false;opts.buildStyle=opts.buildStyle==='Ausgewogen'?'Wirtschaft':opts.buildStyle==='Wirtschaft'?'Defensiv':'Ausgewogen';}
+      else if(key==='plan'){opts.fullAuto=false;opts.autoStrategy=false;opts.plan=opts.plan==='Blitz'?'Adaptiv':opts.plan==='Adaptiv'?'Ökonomie':'Blitz';}
+      else if(key==='buildStyle'){opts.fullAuto=false;opts.autoStrategy=false;opts.buildStyle=opts.buildStyle==='Ausgewogen'?'Wirtschaft':opts.buildStyle==='Wirtschaft'?'Defensiv':'Ausgewogen';}
       persist();lastPaint=0;paint();
     });
     panel.addEventListener('change',e=>{
