@@ -1,0 +1,17 @@
+name: Verify AggroBot
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check userscript syntax
+        run: node --check OpenFront_Solo_AggroBot.user.js
+      - name: Check regression test syntax
+        run: node --check tests/strategy-regression.cjs
+      - name: Test bot strategy
+        run: node tests/strategy-regression.cjs
