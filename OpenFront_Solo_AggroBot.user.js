@@ -1126,15 +1126,26 @@
       const candidate=groups.find(x=>x.id===id);
       if(!candidate||!await legalTarget(me,candidate,serial))continue;
       if(!live(serial))return false;
-      const amount=Math.floor(Math.min(spare*.42,s.home*.16));
+      // Alliances and troop numbers can change while me.actions() awaits.
+      const current=game.playerViews?.().find(p=>safeID(p)===id);
+      if(!current?.isAlive?.()||friendly(current,me)||
+        (coordinatedWar()&&isWar()&&warState.id!==id)){
+        telemetry('defense_allied_skip','Gegenangriff nach Allianz-/Frontwechsel verhindert',
+          {target:id,friendly:!!current&&friendly(current,me)});
+        continue;
+      }
+      const fresh=military(me,strategic.groups);
+      if(fresh.incoming>fresh.home*.24||fresh.activeEnemy||
+        fresh.available<Math.max(500,number(()=>current.troops(),Infinity)*1.25))continue;
+      const amount=Math.floor(Math.min(fresh.available*.42,fresh.home*.16));
       // This is an actual outgoing counterattack, not a retreat. Preserve
       // the dynamic home reserve as well as the incoming-defense floor.
-      if(amount<100||s.home-amount<
-        Math.max(threat.incoming*2.8,s.reserve))continue;
-      if(send('attack',[id,amount],'KONTROLLIERTER GEGENANGRIFF → '+nameOf(attacker))){
-        const out=s.out.filter(x=>x.targetID===id&&!x.retreating);
-        pendingAttack={id,name:nameOf(attacker),tick,amount,ownLand:number(()=>me.numTilesOwned()),
-          enemyLand:number(()=>attacker.numTilesOwned()),beforeIds:out.map(x=>x.id),
+      if(amount<100||fresh.home-amount<
+        Math.max(fresh.incoming*2.8,fresh.reserve))continue;
+      if(send('attack',[id,amount],'KONTROLLIERTER GEGENANGRIFF → '+nameOf(current))){
+        const out=fresh.out.filter(x=>x.targetID===id&&!x.retreating);
+        pendingAttack={id,name:nameOf(current),tick,amount,ownLand:number(()=>me.numTilesOwned()),
+          enemyLand:number(()=>current.numTilesOwned()),beforeIds:out.map(x=>x.id),
           beforeTroops:out.reduce((v,x)=>v+x.troops,0)};
         cooldowns.set(key,tick);lastEnemySend=tick;return true;
       }
