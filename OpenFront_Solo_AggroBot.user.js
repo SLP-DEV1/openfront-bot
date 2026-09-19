@@ -44,7 +44,7 @@
   let lastIntentHealth=null,lastIntentProbe=-Infinity,missingIntentLogged=new Set();
   let lastTick=-1, lastSpawn=-Infinity, lastEconomy=-Infinity, lastEconomyProbe=-Infinity;
   let lastBoat=-Infinity, lastBorderTick=-Infinity, borderCache=null, borderPlayer=null;
-  let buildCursor=0, spawnCache=null, spawnJob=null, spawnRetryAt=0, spawnState={scanned:0,phase:'idle',lastSent:null}, status='Warte auf Spiel';
+  let buildCursor=0, spawnCache=null, spawnJob=null, spawnRetryAt=0, spawnAlternatives=[], spawnState={scanned:0,phase:'idle',lastSent:null,attempts:0}, status='Warte auf Spiel';
   let plan=null, rejected=new Map(), lastEmission=0, lastSelection='';
   let totalSent=0, totalFailed=0;
   let borderOffset=0, lastBorderRefresh=0, lastPlanTick=-Infinity;
@@ -252,7 +252,7 @@
     lastIntentHealth=null;lastIntentProbe=-Infinity;missingIntentLogged.clear();
     lastTick=-1;lastSpawn=-Infinity;lastEconomy=-Infinity;lastEconomyProbe=-Infinity;
     lastBoat=-Infinity;lastBorderTick=-Infinity;borderCache=null;borderPlayer=null;
-    buildCursor=0;spawnCache=null;spawnJob=null;spawnRetryAt=0;spawnState={scanned:0,phase:'idle',lastSent:null};cooldowns.clear();rejected.clear();
+    buildCursor=0;spawnCache=null;spawnJob=null;spawnRetryAt=0;spawnAlternatives=[];spawnState={scanned:0,phase:'idle',lastSent:null,attempts:0};cooldowns.clear();rejected.clear();
     plan=null;lastSelection='';lastEmission=0;borderOffset=0;lastBorderRefresh=0;
     totalSent=0;totalFailed=0;actions=[];errors=0;troopSamples=[];
     lastRecoveryReason='';lastBattle=null;pendingAttack=null;targetIntelCache.clear();
@@ -494,6 +494,7 @@
           jobs.push([x,y]);
     }
     let index=0;
+    spawnAlternatives=[];
     spawnJob={serial,started:number(()=>g.ticks(),0),total:jobs.length,candidates};
     spawnState.phase='Suche';spawnState.scanned=0;
     function chunk(){
@@ -529,6 +530,7 @@
         setTimeout(chunk,0);return;
       }
       spawnJob=null;spawnState.phase='Fertig';
+      spawnAlternatives=[...candidates.values()].sort((a,b)=>b.score-a.score).slice(0,18);
       if(candidates.size){
         // Refine only the top candidates in a bounded local neighborhood.
         for(const top of [...candidates.values()].sort((a,b)=>b.score-a.score).slice(0,6)){
@@ -575,11 +577,16 @@
     }
     if(spawnJob && spawnRemaining(game)>55)return;
     const rivals=spawnRivals(game,me),urgent=spawnRemaining(game)<=55;
-    const candidates=[spawnCache,...(spawnJob?.candidates?.values()||[])];
+    const candidates=[spawnCache,...spawnAlternatives,...(spawnJob?.candidates?.values()||[])];
     let best=null;
     for(const candidate of candidates){
       const current=spawnScore(game,candidate.tile,rivals,urgent);
-      if(current && (!best||current.score>best.score))best=current;
+      if(!current)continue;
+      // A selected tile that has not appeared in the game state after a
+      // full retry interval should not monopolize the last multiplayer ticks.
+      if(spawnState.lastSent?.tile===current.tile &&
+        tick-spawnState.lastSent.tick>=30 && candidates.length>1)continue;
+      if(!best||current.score>best.score)best=current;
     }
     if(!best && urgent)best=emergencySpawnSearch(game,me);
     if(!best){
@@ -592,7 +599,7 @@
       'SPAWN → strategischer Standort ('+best.x+','+best.y+
       ') · Land '+Math.round(best.density*100)+'% · Score '+best.score.toFixed(3),
       spawnRemaining(game)<=55)){
-      lastSpawn=tick;spawnState.phase='Auswahl gesendet';
+      lastSpawn=tick;spawnState.phase='Auswahl gesendet';spawnState.attempts++;
       spawnState.lastSent={tile:best.tile,tick,score:best.score,
         density:best.density,enemy:best.enemy,teammate:best.teammate};
       telemetry('spawn_intent','Strategischer Spawn angefordert',
@@ -2461,7 +2468,20 @@
     if(tick<0||tick===lastTick){paint();return;}
     lastTick=tick;busy=true;const serial=generation,t0=performance.now();
     try {
-      if(game.inSpawnPhase?.()){status='Auto-Spawn';doSpawn(tick);return;}
+      const spawnMe=myPlayer();
+      if(spawnState.lastSent && spawnMe?.hasSpawned?.() &&
+        spawnState.phase!=='Bestätigt'){
+        spawnState.phase='Bestätigt';
+        const actual=spawnMe.state?.spawnTile;
+        telemetry('spawn_confirmed','Spawn im Spielzustand bestätigt',
+          {spawn:{...spawnState.lastSent,actualTile:Number.isInteger(actual)?actual:null,
+            moved:Number.isInteger(actual)&&actual!==spawnState.lastSent.tile}});
+      }
+      if(game.inSpawnPhase?.()){
+        status=game.config().isRandomSpawn?.()?'Zufallsspawn durch Spielserver':
+          'Auto-Spawn · '+spawnState.phase;
+        doSpawn(tick);return;
+      }
       const me=myPlayer();
       if(!me?.isAlive?.()||!me.hasSpawned?.()){status='Warte auf Spawn';return;}
       sampleTroops(tick,me);sampleIncome(me,tick);victoryPlan(me);confirmAttack(me,tick);evaluateLastBattle(tick,me);
@@ -2578,6 +2598,10 @@
     const b=(key,label)=>`<button data-key="${key}" style="border:1px solid #779;border-radius:5px;color:#fff;background:${opts[key]?'#167247':'#344157'};padding:5px 7px;margin:2px;cursor:pointer">${label}</button>`;
     panel.innerHTML=`<b style="font-size:15px;color:#83dcff">Solo AggroBot ${VERSION}</b> ${permittedMatch(game)?'🟢':'🔒'}
       <div style="color:#bed5e8;margin:6px 0">${escapeHTML(status)}</div>
+      ${game?.inSpawnPhase?.()?'<div style="color:#9bd0e4">Strategischer Spawn: '+
+        escapeHTML(spawnState.phase)+' · geprüft '+spawnState.scanned+
+        ' · Versuche '+spawnState.attempts+' · Rest '+
+        spawnRemaining(game)+' Ticks</div>':''}
       <div>${b('enabled',opts.enabled?'⏸ PAUSE':'▶ BOT STARTEN')}</div>
       <div>${b('autoSpawn','Spawn')} ${b('defense','Gegenangriff')} ${b('economy','Wirtschaft')} ${b('boats','Marine')}</div>
       <div>${b('upgrades','Upgrades')} ${b('safeMode','Not-Aus')} ${b('autoStrategy','Auto-Strategie '+(opts.autoStrategy?'AN':'AUS'))} ${b('fullAuto','Vollautonom '+(opts.fullAuto?'AN':'AUS'))}</div>
