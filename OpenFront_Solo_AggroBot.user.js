@@ -2585,7 +2585,7 @@
     return result.slice(0,limit).map(x=>x.tile);
   }
   async function naval(me,tick,serial) {
-    if(!opts.boats||!ctors.boat||tick-lastBoat<100||pendingAttack)return false;
+    if(!opts.boats||!ctors.boat||tick-lastBoat<100||pendingAttack||pendingBoat)return false;
     lastBoat=tick;
     // Use the SAME complete threat snapshot as ground combat. Using military(me)
     // without front groups underestimates the reserve near stronger neighbors.
@@ -2597,6 +2597,7 @@
       (!coordinatedWar() || !isWar() || safeID(p)===warState.id));
     foes.sort((a,b)=>number(()=>a.troops())-number(()=>b.troops()));
     for(const foe of foes.slice(0,6)){
+      if((navalCooldown.get('player:'+safeID(foe))||0)>tick)continue;
       if(spare<number(()=>foe.troops(),Infinity)*1.9 ||
         number(()=>me.troops())<number(()=>game.config().maxTroops(me),1)*.47)continue;
       const points=[foe.state.spawnTile];
@@ -2614,8 +2615,8 @@
         const ship=legal?.buildableUnits?.find(x=>x.type==='Transport'&&Number.isInteger(x.canBuild));
         if(!ship || (Number(me.gold())<Number(ship.cost)&&!game.config().infiniteGold?.()))continue;
         const amount=Math.min(spare,Math.floor(number(()=>me.troops())*.58));
-        if(send('boat',[dest,Math.min(amount,Math.floor(spare*.60))],
-          'LANDUNG → '+nameOf(foe)))return true;
+        if(sendMarineTransport(me,dest,Math.min(amount,Math.floor(spare*.60)),
+          tick,'LANDUNG → '+nameOf(foe),'player:'+safeID(foe)))return true;
       }
     }
     // No separate war: transport a safe neutral-expansion force to verified
@@ -2639,9 +2640,10 @@
           Number(me.gold())<Number(ship.cost))continue;
         const amount=Math.floor(Math.min(spare*.32,navyState.home*.16));
         if(amount<1000 || navyState.home-amount<navyState.reserve)continue;
-        if(send('boat',[dest,amount],'INSEL-EXPANSION → neutrales Küstenland')){
+        if(sendMarineTransport(me,dest,amount,tick,
+          'INSEL-EXPANSION → neutrales Küstenland','neutral:'+dest)){
           strategicTelemetry.neutralLandings++;
-          fleetStatus='Neutrale Insellandung angefordert';
+          fleetStatus='Neutrale Insellandung angefordert · Bestätigung ausstehend';
           return true;
         }
       }
