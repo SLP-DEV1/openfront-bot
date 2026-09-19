@@ -70,7 +70,7 @@ function boot() {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'military,warReadiness,confirmAttack,economy,economicNeeds,strategy,manageWar,actionBudget,connected,naval,defenseAssessment,emergencyRetreat,siteScore,recognize,tuneAutonomously,setting,',
+    'military,warReadiness,targetOpportunity,rankedTargets,confirmAttack,economy,economicNeeds,strategy,manageWar,actionBudget,connected,naval,defenseAssessment,emergencyRetreat,siteScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'setWarWait:n=>warWaitSince=n,setEconFails:n=>failedEconomyProbes=n,',
     'setPending:p=>pendingAttack=p,',
@@ -78,8 +78,9 @@ function boot() {
     'setGroups:groups=>strategic.groups=groups,',
     'setBoats:yes=>opts.boats=yes,setBoatCtor:C=>ctors.boat=C,',
     'setCancelCtor:C=>ctors.cancel=C,setTroopSnapshot:t=>troopSnapshot=t,',
+    'setNukePending:p=>nukePending=p,',
     'setPerf:(combat,border,economy)=>runtime={...runtime,combatMs:combat,borderMs:border,economyMs:economy},',
-    'state:()=>({pendingAttack,attackReceipts,warState,economicStatus,failedEconomyProbes,investmentStatus,strategic,defenseStatus,defenseStats,autoTuning,retreatRequests:[...retreatRequests.values()]}),opts};'
+    'state:()=>({pendingAttack,attackReceipts,warState,economicStatus,failedEconomyProbes,investmentStatus,strategic,defenseStatus,defenseStats,autoTuning,nukeShots,nukeAttempts,nukeUnconfirmed,nukePending,retreatRequests:[...retreatRequests.values()]}),opts};'
   ].join('\n');
   vm.runInNewContext(source.replace(anchor, expose + '\n' + anchor), context, {timeout:2000});
   win.__test.setup(game, {emit:event=>sent.push(event)}, {attack:Attack, build:Build});
@@ -127,7 +128,7 @@ function boot() {
     const x=boot();x.b.setBoats(true);x.b.setWar('strong','strong');
     x.strong.troops=()=>5000;
     x.b.setGroups([{id:'weak',opponent:x.weak},{id:'strong',opponent:x.strong}]);
-    x.me.actions=async()=>({buildableUnits:[{type:'Transport Ship',canBuild:1,cost:0n}]});
+    x.me.actions=async()=>({buildableUnits:[{type:'Transport',canBuild:1,cost:0n}]});
     class Boat{constructor(dst,troops){this.dst=dst;this.troops=troops;}}
     x.b.setBoatCtor(Boat);
     assert.equal(await x.b.naval(x.me,300,0),true);
@@ -136,7 +137,7 @@ function boot() {
   await check('navy keeps reserves against all border enemies', async () => {
     const x=boot();x.b.setBoats(true);x.b.setWar('weak','weak');
     x.b.setGroups([{id:'weak',opponent:x.weak},{id:'strong',opponent:x.strong}]);
-    x.me.actions=async()=>({buildableUnits:[{type:'Transport Ship',canBuild:1,cost:0n}]});
+    x.me.actions=async()=>({buildableUnits:[{type:'Transport',canBuild:1,cost:0n}]});
     class Boat{constructor(dst,troops){this.dst=dst;this.troops=troops;}}
     x.b.setBoatCtor(Boat);
     assert.equal(await x.b.naval(x.me,300,0),true);
