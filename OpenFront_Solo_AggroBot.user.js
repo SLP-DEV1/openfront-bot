@@ -1293,8 +1293,9 @@
       const dx=x-game.x(a.tile()),dy=y-game.y(a.tile());return dx*dx+dy*dy<=r*r;
     };
     let score=0;
+    const radius=number(()=>game.config().samRange?.(1),70);
     for(const u of intel.assets){
-      if(!near(u,80))continue;
+      if(!near(u,radius))continue;
       const covered=intel.sams.some(s=>nearSAM(s,u));
       score+=assetValue(u.type?.())*(covered?0.22:2.25);
     }
@@ -1402,6 +1403,19 @@
       if(ownedTile(ref,me))anchors.push(ref);
     };
     const addXY=(x,y)=>{if(x>=0&&y>=0&&x<w&&y<h)add(game.ref(x,y));};
+    // Reserve early worker probes for SAMs around uncovered structures.
+    // This must happen BEFORE interior/front samples fill the anchor cap.
+    if(opts.antiNuke){
+      const intel=nuclearIntel(me,units);
+      for(const u of intel.uncovered.slice(0,8)){
+        const t=number(()=>u.tile(),NaN);
+        if(!Number.isInteger(t))continue;
+        const x=game.x(t),y=game.y(t);
+        for(const [dx,dy] of [[0,0],[25,0],[-25,0],[0,25],[0,-25],
+          [45,0],[-45,0],[0,45],[0,-45],[25,25],[-25,-25]])
+          addXY(x+dx,y+dy);
+      }
+    }
     // City/factory upgrades are anchored at existing units; relying on border
     // offsets makes these upgrades almost impossible on large maps.
     for(const u of units){const t=number(()=>u.tile(),NaN);if(!Number.isInteger(t))continue;
@@ -1560,6 +1574,7 @@
       if(!siteCache.has(key))siteCache.set(key,siteScore(entry.type,site.ref,fronts,units,0,site.coast,site.dist));
       return entry.urgency+siteCache.get(key);
     };
+    const recovery=failedEconomyProbes>=5;
     const slots=[];
     for(const entry of entries.slice(0,8)){
       if(entry.upgrade && !ctors.upgrade)continue;
@@ -1568,7 +1583,7 @@
       const valid=entry.upgrade?rankedAnchors.filter(a=>units.some(u=>u.type?.()===entry.type && number(()=>u.tile(),-1)===a.ref)):
         rankedAnchors.filter(a=>entry.type!=='Port'||a.coast);
       valid.sort((a,b)=>score(entry,b)-score(entry,a));
-      for(const site of valid.slice(0,entry.upgrade?4:6))slots.push({entry,site});
+      for(const site of valid.slice(0,entry.upgrade?4:recovery?12:6))slots.push({entry,site});
     }
     // Probe best geographic options across building types; never sequentially
     // spend the entire time budget on the first City anchor.
@@ -1578,9 +1593,9 @@
     const work=[];
     // A dozen City anchors must not evict every Factory / SAM / silo query.
     for(const slot of slots){
-      if(work.length>=15)break;
+      if(work.length>=(recovery?24:15))break;
       const kind=slot.entry.type+':'+!!slot.entry.upgrade;
-      if((perKind.get(kind)||0)>=3)continue;
+      if((perKind.get(kind)||0)>=(recovery?5:3))continue;
       const key=kind+':'+slot.site.ref;
       if(seen.has(key))continue;
       seen.add(key);work.push(slot);
@@ -1628,6 +1643,8 @@
           // Fund the first economic structures before buying defensive posts,
           // ports or upgrades. Emergency SAM / defense remain possible.
           if(requirements.startup && (!economicCore || isUpgrade) && !essential)continue;
+          if(item.type==='Defense Post' && !requirements.immediate &&
+            !requirements.incomingNukes && requirements.basic)continue;
           // While saving for a silo / first atomic strike, do not repeatedly
           // spend the whole treasury on expandable city/factory goals.
           if(!infinite && requirements.savingsTarget>0 && !requirements.immediate &&
@@ -1658,6 +1675,9 @@
       if(failedEconomyProbes===5 || failedEconomyProbes%10===0)
         telemetry('build_stalled',reason,{attempts:failedEconomyProbes,
           gold:requirements.gold,investment:investmentStatus,priorities:entries.slice(0,4).map(e=>e.type),
+          nuclear:{enemySilos:requirements.enemySilos,incomingNukes:requirements.incomingNukes,
+            uncovered:requirements.intel.uncovered.length,wantedSAM:requirements.wantedSAM,
+            proactiveSAM:requirements.proactiveSAM},
           queries:probe.queries,workerErrors:probe.errors,legal:probe.legal,
           unaffordable:probe.unaffordable,invalidSite:probe.invalidSite,
           lowestCost:Number.isFinite(probe.lowestCost)?probe.lowestCost:null});
@@ -2309,7 +2329,11 @@
           borders:tiles.length,tuning:{...autoTuning,enabled:!!opts.fullAuto},defense:{status:defenseStatus,incoming:s.incoming,
             committed:s.committed,pendingRetreats:retreatRequests.size},enemies:groups.filter(g=>g.id!==null).map(g=>({name:nameOf(g.opponent),troops:number(()=>g.opponent.troops()),land:number(()=>g.opponent.numTilesOwned())})),
           readiness:context.readiness?.reason,ratio:s.ratio,maxTroops:s.max,growthPotential:s.growthPotential,
-          victory:winStatus,income:incomeStatus,strategicTelemetry,fleet:fleetStatus});}
+          victory:winStatus,income:incomeStatus,strategicTelemetry,fleet:fleetStatus,
+          nuclear:{enemySilos:nuclearIntel(me).enemySilos.length,
+            incomingNukes:nuclearIntel(me).incomingNukes.length,
+            uncovered:nuclearIntel(me).uncovered.length,
+            ownSAM:nuclearIntel(me).sams.filter(u=>safeID(u.owner?.())===safeID(me)).length}});}
 
       if(plan&&tick>=plan.until)plan=null;
       status='Strategie: '+context.wanted+' · Heim '+Math.round(s.home/10)+
