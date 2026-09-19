@@ -399,7 +399,7 @@ function boot() {
     x.b.setTroopSnapshot({home:90000,max:100000,ratio:.90,incoming:50000,
       strongest:85000,committed:0,reserve:0,available:0});
     x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
-      type,canBuild:tile,canUpgrade:false,cost:BigInt(type==='Defense Post'?50000:250000)}))});
+      type,canBuild:tile,canUpgrade:false,cost:BigInt(type==='Defense Post'?50000:type==='Missile Silo'?1000000:250000)}))});
     const needs=x.b.economicNeeds(x.me,units,[5500]);
     assert.equal(needs.immediate,true);
     assert.equal(await x.b.economy(x.me,2400,0,[5500]),true);
