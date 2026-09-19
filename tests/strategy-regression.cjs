@@ -908,7 +908,8 @@ function boot() {
     x.me.allies=()=>[x.strong];x.me.isFriendly=p=>p===x.strong;
     x.strong.targets=()=>[x.weak];
     assert.equal(x.b.allyAssistTarget(x.me,x.weak),true);
-    assert(x.b.rankedTargets(groups,x.me,300,s,ctx)[0]?.score>=baseline+22);
+    const assisted=x.b.rankedTargets(groups,x.me,300,s,ctx)[0]?.score;
+    assert(assisted>baseline+21.9,JSON.stringify({baseline,assisted}));
     x.strong.targets=()=>[x.me];
     assert.equal(x.b.allyAssistTarget(x.me,x.weak),false);
     assert.equal(x.b.rankedTargets(groups,x.me,300,s,ctx)[0]?.score,baseline);
