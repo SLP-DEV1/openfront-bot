@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.10.1
+// @version      1.10.2
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -11,10 +11,10 @@
 
 (() => {
   'use strict';
-  if (window.__ofSoloAggroBot1101) return;
-  window.__ofSoloAggroBot1101 = true;
+  if (window.__ofSoloAggroBot1102) return;
+  window.__ofSoloAggroBot1102 = true;
 
-  const VERSION = '1.10.1', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1101';
+  const VERSION = '1.10.2', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1102';
   const defaults = {enabled:false, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -24,7 +24,7 @@
   try { opts = {...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; }
   catch (_) {opts = {...defaults};}
   try {if(!localStorage.getItem(KEY)){
-    opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v1100')||localStorage.getItem('of-solo-aggrobot-v199')||localStorage.getItem('of-solo-aggrobot-v198')||localStorage.getItem('of-solo-aggrobot-v197')||localStorage.getItem('of-solo-aggrobot-v196')||localStorage.getItem('of-solo-aggrobot-v195')||localStorage.getItem('of-solo-aggrobot-v194')||localStorage.getItem('of-solo-aggrobot-v193')||localStorage.getItem('of-solo-aggrobot-v192')||localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
+    opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v1101')||localStorage.getItem('of-solo-aggrobot-v1100')||localStorage.getItem('of-solo-aggrobot-v199')||localStorage.getItem('of-solo-aggrobot-v198')||localStorage.getItem('of-solo-aggrobot-v197')||localStorage.getItem('of-solo-aggrobot-v196')||localStorage.getItem('of-solo-aggrobot-v195')||localStorage.getItem('of-solo-aggrobot-v194')||localStorage.getItem('of-solo-aggrobot-v193')||localStorage.getItem('of-solo-aggrobot-v192')||localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
     // Only import user-adjustable preferences, never a previously enabled bot.
   }}catch(_){}
   opts.enabled = false;                         // Never auto-start after reload.
@@ -67,7 +67,7 @@
   let nukeBusy=false, lastNuke=-Infinity, nukePending=null, nukeStatus='Warte auf Silo', nukeShots=0,nukeAttempts=0,nukeUnconfirmed=0;
   let nuclearCache=null, nuclearCacheTick=-Infinity;
   let warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};
-  let diagnostics=[],lastDiagnosticTick=-Infinity,combatAwaiting=null;
+  let diagnostics=[],lastDiagnosticTick=-Infinity,combatAwaiting=null,gameEnd=null;
   let pendingAttack=null,attackReceipts={confirmed:0,unconfirmed:0,territoryGained:0};
   let failedEconomyProbes=0,successfulEconomyTick=-Infinity,warWaitSince=-Infinity;
   let investmentStatus='Grundaufbau',lastWarReview=-Infinity;
@@ -78,15 +78,52 @@
   let autoTuning={aggressive:85,reserve:35,actionsPerMinute:72,maxTargets:16,
     mode:'INIT',reason:'Warte auf Spielzustand',tick:-Infinity};
   const hardMode=()=>opts.impossibleMode && game?.config?.().gameConfig?.().difficulty==='Impossible';
+  // Keep single-front coordination in Public/Medium as well as Impossible.
+  // Difficulty-specific troop ratios remain tied to actual difficulty.
+  const coordinatedWar=()=>opts.impossibleMode;
   const isWar=()=>warState.id!==null;
   function telemetry(kind,message,extra={}) {
     if(!opts.enabled || !permittedMatch(game))return;
     let m=myPlayer(),tick=number(()=>game.ticks(),0);
+    // Freeze each historical snapshot; otherwise shared mutable metrics can
+    // make every old record appear to contain the latest values.
+    let frozen=extra;
+    if(kind==='snapshot'){
+      try{frozen=JSON.parse(JSON.stringify(extra,(_,v)=>
+        typeof v==='bigint'?v.toString():v));}
+      catch(_){frozen={snapshotError:'Daten konnten nicht eingefroren werden'};}
+    }
     diagnostics.push({time:new Date().toISOString(),tick,kind,message,mode:strategic.mode,
       warTarget:warState.name,home:number(()=>m?.troops?.()),gold:number(()=>Number(m?.gold?.())),
       land:number(()=>m?.numTilesOwned?.()),committed:troopSnapshot.committed,
-      incoming:troopSnapshot.incoming,...extra});
+      incoming:troopSnapshot.incoming,...frozen});
     if(diagnostics.length>1400)diagnostics.splice(0,diagnostics.length-1400);
+  }
+  function gameOutcome(g,me){
+    const result={outcome:'unknown',source:'gameOver',tick:number(()=>g?.ticks?.(),-1),
+      alive:me?.isAlive?.()??null,land:number(()=>me?.numTilesOwned?.(),0),
+      progress:winStatus.progress,mode:winStatus.mode};
+    // The official GameView.gameOver() only says a WinUpdate was observed;
+    // the official winner tuple carries the actual player/team outcome.
+    try{
+      const updates=g?.updatesSinceLastTick?.();
+      const win=Object.values(updates||{}).flat().find(u=>
+        u && typeof u==='object' && Object.hasOwn(u,'winner') &&
+        Object.hasOwn(u,'allPlayersStats'));
+      if(win){
+        const winner=win.winner;
+        result.source='WinUpdate';
+        result.winnerType=Array.isArray(winner)?winner[0]:null;
+        result.winnerNames=Array.isArray(winner)&&winner[0]==='team'?
+          [String(winner[1])]:[];
+        if(winner===null||winner===undefined)result.outcome='incomplete';
+        else if(Array.isArray(winner)&&['player','team','nation'].includes(winner[0])){
+          const ids=winner.slice(winner[0]==='player'?1:2);
+          result.outcome=ids.includes(safeID(me))?'victory':'defeat';
+        }
+      }
+    }catch(_){}
+    return result;
   }
   function exportDiagnostics() {
     const details={bot:VERSION,gameType:game?.config?.().gameConfig?.().gameType,
@@ -95,13 +132,13 @@
         effective:{aggressive:setting('aggressive'),reserve:setting('reserve'),
           actionsPerMinute:setting('actionsPerMinute'),maxTargets:setting('maxTargets')}},attackReceipts, pendingAttack,
       construction:{pending:economicPending,blocked:[...economicBlocked.entries()],failedProbes:failedEconomyProbes,lastConfirmed:successfulEconomyTick,investment:investmentStatus},
-      war:{...warState},victory:winStatus,income:incomeStatus,fleet:fleetStatus,strategicTelemetry,military:troopSnapshot,
+      war:{...warState},gameEnd,victory:winStatus,income:incomeStatus,fleet:fleetStatus,strategicTelemetry,military:troopSnapshot,
       defense:{status:defenseStatus,stats:defenseStats,pendingRetreats:[...retreatRequests.values()]},
       rockets:{confirmed:nukeShots,attempts:nukeAttempts,unconfirmed:nukeUnconfirmed,pending:nukePending},
       diplomacy:{status:diplomacyStatus,stats:diplomacyStats,pending:[...diplomacyPending.values()]},records:diagnostics,createdAt:new Date().toISOString()};
     const blob=new Blob([JSON.stringify(details,null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download='OpenFront_AggroBot_1.10.1_Diagnose.json';document.body.append(a);a.click();a.remove();
+    a.href=url;a.download='OpenFront_AggroBot_1.10.2_Diagnose.json';document.body.append(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),2000);
   }
 
@@ -118,7 +155,7 @@
       ['Singleplayer','Public','Private'].includes(gameType(g));}
     catch(_){return false;}
   };
-  const conflicts = () => !!(window.__ofSoloAggroBot1 || window.__ofSoloAggroBot11 || window.__ofSoloAggroBot12 || window.__ofSoloAggroBot13 || window.__ofSoloAggroBot14 || window.__ofSoloAggroBot15 || window.__ofSoloAggroBot16 || window.__ofSoloAggroBot17 || window.__ofSoloAggroBot18 || window.__ofSoloAggroBot181 || window.__ofSoloAggroBot190 || window.__ofSoloAggroBot191 || window.__ofSoloAggroBot192 || window.__ofSoloAggroBot193 || window.__ofSoloAggroBot194 || window.__ofSoloAggroBot195 || window.__ofSoloAggroBot196 || window.__ofSoloAggroBot197 || window.__ofSoloAggroBot198 || window.__ofSoloAggroBot199 || window.__ofSoloAggroBot1100);
+  const conflicts = () => !!(window.__ofSoloAggroBot1 || window.__ofSoloAggroBot11 || window.__ofSoloAggroBot12 || window.__ofSoloAggroBot13 || window.__ofSoloAggroBot14 || window.__ofSoloAggroBot15 || window.__ofSoloAggroBot16 || window.__ofSoloAggroBot17 || window.__ofSoloAggroBot18 || window.__ofSoloAggroBot181 || window.__ofSoloAggroBot190 || window.__ofSoloAggroBot191 || window.__ofSoloAggroBot192 || window.__ofSoloAggroBot193 || window.__ofSoloAggroBot194 || window.__ofSoloAggroBot195 || window.__ofSoloAggroBot196 || window.__ofSoloAggroBot197 || window.__ofSoloAggroBot198 || window.__ofSoloAggroBot199 || window.__ofSoloAggroBot1100 || window.__ofSoloAggroBot1101);
   function advisorConflict() {
     if (!window.__openfrontSpawnAdvisorV104) return false;
     try {const s=JSON.parse(localStorage.getItem('openfront-spawn-advisor-10.4')||'{}');
@@ -231,7 +268,7 @@
     winStatus={mode:'FFA',progress:null,threshold:null,remaining:null,urgent:false};fleetStatus='Keine Marineaktivität';lastFleet=-Infinity;lastDonation=-Infinity;navalSweep=0;
     strategicTelemetry={favorableVictims:0,falloutSkipped:0,falloutFallback:0,afkTargets:0,assists:0,neutralLandings:0,forecastCount:0};
     nukeBusy=false;lastNuke=-Infinity;nukePending=null;nukeStatus='Warte auf Silo';nukeShots=0;nukeAttempts=0;nukeUnconfirmed=0;nuclearCache=null;nuclearCacheTick=-Infinity;
-    warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};diagnostics=[];lastDiagnosticTick=-Infinity;combatAwaiting=null;
+    warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};diagnostics=[];lastDiagnosticTick=-Infinity;combatAwaiting=null;gameEnd=null;
     investmentStatus='Grundaufbau';lastWarReview=-Infinity;
     defenseStatus='Keine Bedrohung';lastEmergencyRetreat=-Infinity;lastDefenseLog=-Infinity;
     retreatRequests.clear();defenseStats={retreatsOrdered:0,retreatsObserved:0,unknown:0,unconfirmed:0};
@@ -2189,8 +2226,11 @@
       paint();return;
     }
     if(game?.gameOver?.()){
-      if(opts.enabled){telemetry('game_over','Partie beendet · Bot automatisch gestoppt');
-        opts.enabled=false;generation++;persist();}
+      if(opts.enabled){
+        gameEnd=gameOutcome(game,myPlayer());
+        telemetry('game_over','Partie beendet · Bot automatisch gestoppt',{gameEnd});
+        opts.enabled=false;generation++;persist();
+      }
       status='Partie beendet · Bot AUS';paint();return;
     }
     if(!bus&&found.b){bus=found.b;ctors=recognize(bus);reportIntents();}
