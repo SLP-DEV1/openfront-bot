@@ -1158,6 +1158,16 @@
       if(!live(serial)||!actionBudget('combat'))return false;
       const tile=await legalTarget(me,item,serial);
       if(tile===null){rejected.set(item.key,tick);continue;}
+      // Re-read the live relation after the async worker legality probe.
+      if(item.id!==null){
+        const current=game.playerViews?.().find(p=>safeID(p)===item.id);
+        if(!current?.isAlive?.()||friendly(current,me)||
+          (coordinatedWar()&&isWar()&&warState.id!==item.id)){
+          telemetry('attack_allied_skip','Angriff nach Allianz-/Frontwechsel verhindert',
+            {target:item.id,friendly:!!current&&friendly(current,me)});
+          continue;
+        }
+      }
       // The game state may advance during the async worker legality probe.
       const fresh=military(me,strategic.groups); // Never forget stronger OTHER neighbors on recheck.
       if(item.id!==null && (fresh.incoming>fresh.home*(lateGame(me)?.15:.04) ||
@@ -1170,16 +1180,6 @@
       if(item.id!==null && coordinatedWar() && (!warReadiness(me,strategic.groups,fresh,tick,item).ready ||
         !targetOpportunity(me,strategic.groups,fresh,item) ||
         (isWar()&&warState.id!==item.id)))continue;
-      // Re-read the live relation after the async worker legality probe.
-      if(item.id!==null){
-        const current=game.playerViews?.().find(p=>safeID(p)===item.id);
-        if(!current?.isAlive?.()||friendly(current,me)||
-          (coordinatedWar()&&isWar()&&warState.id!==item.id)){
-          telemetry('attack_allied_skip','Angriff nach Allianz-/Frontwechsel verhindert',
-            {target:item.id,friendly:!!current&&friendly(current,me)});
-          continue;
-        }
-      }
       const amount=Math.min(item.amount,fresh.available,
         item.id===null ? neutralAttackAmount(fresh,clamp(setting('aggressive'),40,100)/100) : Math.floor(fresh.available*(hardMode()?.76:.8)));
       if(amount<100)continue;
