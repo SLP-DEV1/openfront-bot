@@ -1198,6 +1198,7 @@
     // spend the entire time budget on the first City anchor.
     slots.sort((a,b)=>score(b.entry,b.site)-score(a.entry,a.site));
     const seen=new Set(), proposals=[],perKind=new Map();
+    const probe={queries:0,errors:0,legal:0,unaffordable:0,invalidSite:0,lowestCost:Infinity};
     const work=[];
     // A dozen City anchors must not evict every Factory / SAM / silo query.
     for(const slot of slots){
@@ -1215,9 +1216,9 @@
       if(!live(serial))return false;
       const batch=work.slice(offset,offset+3);
       const answers=await Promise.all(batch.map(async slot=>{
-        runtime.buildProbes++;
+        runtime.buildProbes++;probe.queries++;
         try{return {slot,legal:await me.actions(slot.site.ref,types)};}
-        catch(_){return {slot,legal:null};}
+        catch(_){probe.errors++;return {slot,legal:null};}
       }));
       if(!live(serial))return false;
       for(const {slot,legal} of answers){
@@ -1232,14 +1233,16 @@
           const isUpgrade=!!item.upgrade;
           if(isUpgrade&&!ctors.upgrade || !isUpgrade&&!ctors.build)continue;
           if(isUpgrade ? (b.canUpgrade===false || b.canUpgrade===undefined) : (b.canBuild===false || (b.canUpgrade!==false && b.canUpgrade!==undefined)))continue;
+          probe.legal++;
           const tile=isUpgrade?site.ref:b.canBuild;
-          if(!Number.isInteger(tile) || !ownedTile(tile,me))continue;
+          if(!Number.isInteger(tile) || !ownedTile(tile,me)){probe.invalidSite++;continue;}
           const key=(isUpgrade?'upgrade':'build')+':'+item.type+':'+tile;
           if((economicBlocked.get(key)??0)>tick)continue;
           const cost=Number(isUpgrade?(b.upgradeCosts?.[0]??b.cost):b.cost);
           const gold=number(()=>Number(me.gold()),0);
           const infinite=game.config().infiniteGold?.()===true;
-          if(!infinite && (!Number.isFinite(cost)||cost>gold))continue;
+          if(Number.isFinite(cost))probe.lowestCost=Math.min(probe.lowestCost,cost);
+          if(!infinite && (!Number.isFinite(cost)||cost>gold)){probe.unaffordable++;continue;}
           const essential=(item.type==='City'&&requirements.cities===0)||
             (item.type==='Factory'&&requirements.factories===0)||
             (item.type==='Defense Post'&&requirements.immediate)||
@@ -1270,10 +1273,18 @@
       }
       if(proposals.length)break;
     }
-    if(!proposals.length){failedEconomyProbes++;economicStatus='Spare Gold / suche gültigen Bauplatz';
+    if(!proposals.length){failedEconomyProbes++;
+      const reason=probe.unaffordable>0&&probe.legal===probe.unaffordable?
+        'Gold für gültige Bauoption fehlt':probe.invalidSite>0?
+        'Bauplatz-Eigentum/Referenz ungültig':probe.legal===0?
+        'Keine legalen Bauoptionen im geprüften Gebiet':'Baukandidaten durch Priorität oder Reserve gesperrt';
+      economicStatus=reason;
       if(failedEconomyProbes===5 || failedEconomyProbes%10===0)
-        telemetry('build_stalled','Bauplatz oder Gold fehlt',{attempts:failedEconomyProbes,
-          gold:requirements.gold,investment:investmentStatus,priorities:entries.slice(0,4).map(e=>e.type)});
+        telemetry('build_stalled',reason,{attempts:failedEconomyProbes,
+          gold:requirements.gold,investment:investmentStatus,priorities:entries.slice(0,4).map(e=>e.type),
+          queries:probe.queries,workerErrors:probe.errors,legal:probe.legal,
+          unaffordable:probe.unaffordable,invalidSite:probe.invalidSite,
+          lowestCost:Number.isFinite(probe.lowestCost)?probe.lowestCost:null});
       economicLastPlan=entries.slice(0,3).map(x=>x.type).join(' › ');return false;}
     proposals.sort((a,b)=>b.siteValue-a.siteValue);
     const chosen=proposals[0];
