@@ -590,7 +590,7 @@
     if(me?.hasSpawned?.()||Number.isInteger(me?.state?.spawnTile))return;
     spawnState.blocked=null;
     if(!spawnCache){
-      if(spawnRemaining(game)<=55)spawnCache=emergencySpawnSearch(game,me);
+      if(spawnRemaining(game)<=110)spawnCache=emergencySpawnSearch(game,me);
       if(!spawnCache){startSpawnSearch();return;}
     }
     if(spawnJob && spawnRemaining(game)>110 &&
@@ -2454,7 +2454,16 @@
   async function step() {
     const found=discover();
     if(!found){if(game){generation++;game=null;bus=null;opts.enabled=false;persist();status='Warte auf Spiel';}paint();return;}
-    if(found.g!==game||(found.b&&found.b!==bus))reset(found.g,found.b);
+    if(found.g!==game)reset(found.g,found.b);
+    else if(found.b && found.b!==bus){
+      // Rebinding listeners on the SAME match is not a new match.
+      // reset() deliberately disables the bot, so never call it here.
+      bus=found.b;ctors=recognize(bus);lastIntentProbe=-Infinity;
+      reportIntents();
+      if(opts.enabled && game.inSpawnPhase?.())
+        telemetry('spawn_bus_rebind','Spawnphase: EventBus gewechselt, Bot bleibt aktiv',
+          {intents:intentHealth()});
+    }
     if(!permittedMatch(game)){
       if(opts.enabled){opts.enabled=false;generation++;persist();}
       status=game?.config?.().isReplay?.()?'Replay: BOT GESPERRT':
@@ -2472,14 +2481,20 @@
     if(!bus&&found.b){bus=found.b;ctors=recognize(bus);reportIntents();}
     // EventBus listeners may register after initial discovery. Retry at a
     // bounded interval while a core intent is missing; never emit probe events.
-    if(bus && intentHealth().critical.length){
+    if(bus && (intentHealth().critical.length ||
+      (opts.enabled&&opts.autoSpawn&&game.inSpawnPhase?.()&&!ctors.spawn))){
       const probeTick=number(()=>game.ticks(),-1);
-      if(probeTick>=0 && probeTick-lastIntentProbe>=120){
+      const interval=game.inSpawnPhase?.()?6:120;
+      if(probeTick>=0 && probeTick-lastIntentProbe>=interval){
         lastIntentProbe=probeTick;ctors=recognize(bus);reportIntents();
       }
     }
     if(conflicts()){opts.enabled=false;status='Andere AggroBot-Version aktiv – alte Skripte deaktivieren';paint();return;}
     if(advisorConflict()){opts.enabled=false;status='Spawn Advisor: Auto-Spawn/Smart Attack/Auto-Accept ausschalten';paint();return;}
+    if(opts.enabled&&game.inSpawnPhase?.()&&opts.autoSpawn){
+      if(!bus?.emit)spawnBlock('EventBus noch nicht verfügbar');
+      else if(!ctors.spawn)spawnBlock('Spawn-Intent nicht erkannt');
+    }
     if(!opts.enabled||busy||!connected()){paint();return;}
     // Keep observing confirmations and refreshing strategy even when the
     // combat-specific action budget is exhausted. send() enforces the cap.
