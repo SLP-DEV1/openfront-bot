@@ -2,7 +2,7 @@
 
 Autonomer **Singleplayer**-Bot als Tampermonkey-Userscript für [OpenFront](https://openfront.io/).
 
-**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.9.2**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
+**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.9.3**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
 
 ## Installation
 
@@ -16,6 +16,14 @@ Autonomer **Singleplayer**-Bot als Tampermonkey-Userscript für [OpenFront](http
 ## Strategie & Diagnose
 
 Strategie-, Wirtschafts-, Marine-, Diplomatie-, Nuke- und SAM-Planung sind vorhanden. Der Bot kann Befehle senden; daraus folgt **keine garantierte Gewinnrate auf „Unmöglich“**. Ein vollständiger Live-Test ist noch nicht erfolgt. „Diagnose JSON“ im Bot-Menü zeichnet unter anderem Gebietsänderungen, Truppenlage, Bauaufträge und Allianzantworten auf. Bitte den Export vor dem Neuladen erstellen.
+
+### Änderung 1.9.3
+
+- **Notverteidigung:** Bei gefährlichen eingehenden Angriffen werden bereits gebundene eigene Truppen gezielt zurückgerufen, bevor auf die Grenzberechnung gewartet wird. Neutrale Angriffe haben Vorrang, damit nicht unnötig der Rückzugsverlust von **25 %** bei Angriffen gegen Spieler anfällt. Rückrufe sind begrenzt und werden im Diagnose-JSON geprüft.
+- **Keine Selbstschwächung:** Gegen starke Angriffswellen schickt der Bot nicht blind neue Gegentruppen los, sondern hält seine Heimtruppen und schützt die Verteidigungsboni.
+- **Defense Posts:** Bauplätze werden innerhalb der tatsächlichen Schutzreichweite von **30 Kartenfeldern** bewertet; bevorzugt werden noch ungeschützte gegnerische Grenzabschnitte. Auf großen gefährdeten Fronten sind mehr als vier Posts möglich.
+- **Event-Erkennung:** Rückzugs-Events werden auch erkannt, wenn die Event-Liste aus einer anderen JavaScript-Umgebung stammt.
+- **Regressionen:** zusätzliche Tests für Rückzüge, Aktionslimit, Nicht-Spam, Bauabdeckung und Multiplayer-Sperre. Die Simulation ersetzt keinen Live-Sieg.
 
 ### Änderung 1.9.2
 
