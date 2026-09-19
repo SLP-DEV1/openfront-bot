@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.9.8
+// @version      1.9.9
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -11,10 +11,10 @@
 
 (() => {
   'use strict';
-  if (window.__ofSoloAggroBot198) return;
-  window.__ofSoloAggroBot198 = true;
+  if (window.__ofSoloAggroBot199) return;
+  window.__ofSoloAggroBot199 = true;
 
-  const VERSION = '1.9.8', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v198';
+  const VERSION = '1.9.9', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v199';
   const defaults = {enabled:false, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:false, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -24,7 +24,7 @@
   try { opts = {...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; }
   catch (_) {opts = {...defaults};}
   try {if(!localStorage.getItem(KEY)){
-    opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v197')||localStorage.getItem('of-solo-aggrobot-v196')||localStorage.getItem('of-solo-aggrobot-v195')||localStorage.getItem('of-solo-aggrobot-v194')||localStorage.getItem('of-solo-aggrobot-v193')||localStorage.getItem('of-solo-aggrobot-v192')||localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
+    opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v198')||localStorage.getItem('of-solo-aggrobot-v197')||localStorage.getItem('of-solo-aggrobot-v196')||localStorage.getItem('of-solo-aggrobot-v195')||localStorage.getItem('of-solo-aggrobot-v194')||localStorage.getItem('of-solo-aggrobot-v193')||localStorage.getItem('of-solo-aggrobot-v192')||localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
     // Only import user-adjustable preferences, never a previously enabled bot.
   }}catch(_){}
   opts.enabled = false;                         // Never auto-start after reload.
@@ -36,6 +36,9 @@
   const nameOf = p => {try{return p.displayName?.() || p.name?.() || String(p.id());}catch(_){return '?';}};
   const safeID = p => {try{return p.id();}catch(_){return null;}};
   let game=null, bus=null, ctors={}, panel=null, busy=false, generation=0;
+  const INTENT_KINDS=['spawn','attack','cancel','boat','build','upgrade','alliance','reject'];
+  const CORE_INTENTS=['spawn','attack','build'];
+  let lastIntentHealth='',lastIntentProbe=-Infinity,missingIntentLogged=new Set();
   let lastTick=-1, lastSpawn=-Infinity, lastEconomy=-Infinity, lastEconomyProbe=-Infinity;
   let lastBoat=-Infinity, lastBorderTick=-Infinity, borderCache=null, borderPlayer=null;
   let buildCursor=0, spawnCache=null, spawnJob=null, spawnRetryAt=0, status='Warte auf Singleplayer';
@@ -82,7 +85,7 @@
   function exportDiagnostics() {
     const details={bot:VERSION,gameType:game?.config?.().gameConfig?.().gameType,
       difficulty:game?.config?.().gameConfig?.().difficulty,
-      options:{...opts,enabled:false},tuning:{...autoTuning,enabled:!!opts.fullAuto,
+      options:{...opts,enabled:false},intents:intentHealth(),tuning:{...autoTuning,enabled:!!opts.fullAuto,
         effective:{aggressive:setting('aggressive'),reserve:setting('reserve'),
           actionsPerMinute:setting('actionsPerMinute'),maxTargets:setting('maxTargets')}},attackReceipts, pendingAttack,
       construction:{pending:economicPending,blocked:[...economicBlocked.entries()],failedProbes:failedEconomyProbes,lastConfirmed:successfulEconomyTick,investment:investmentStatus},
@@ -92,7 +95,7 @@
       diplomacy:{status:diplomacyStatus,stats:diplomacyStats,pending:[...diplomacyPending.values()]},records:diagnostics,createdAt:new Date().toISOString()};
     const blob=new Blob([JSON.stringify(details,null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download='OpenFront_AggroBot_1.9.8_Diagnose.json';document.body.append(a);a.click();a.remove();
+    a.href=url;a.download='OpenFront_AggroBot_1.9.9_Diagnose.json';document.body.append(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),2000);
   }
 
@@ -109,7 +112,7 @@
       ['Singleplayer','Public','Private'].includes(gameType(g));}
     catch(_){return false;}
   };
-  const conflicts = () => !!(window.__ofSoloAggroBot1 || window.__ofSoloAggroBot11 || window.__ofSoloAggroBot12 || window.__ofSoloAggroBot13 || window.__ofSoloAggroBot14 || window.__ofSoloAggroBot15 || window.__ofSoloAggroBot16 || window.__ofSoloAggroBot17 || window.__ofSoloAggroBot18 || window.__ofSoloAggroBot181 || window.__ofSoloAggroBot190 || window.__ofSoloAggroBot191 || window.__ofSoloAggroBot192 || window.__ofSoloAggroBot193 || window.__ofSoloAggroBot194 || window.__ofSoloAggroBot195 || window.__ofSoloAggroBot196 || window.__ofSoloAggroBot197);
+  const conflicts = () => !!(window.__ofSoloAggroBot1 || window.__ofSoloAggroBot11 || window.__ofSoloAggroBot12 || window.__ofSoloAggroBot13 || window.__ofSoloAggroBot14 || window.__ofSoloAggroBot15 || window.__ofSoloAggroBot16 || window.__ofSoloAggroBot17 || window.__ofSoloAggroBot18 || window.__ofSoloAggroBot181 || window.__ofSoloAggroBot190 || window.__ofSoloAggroBot191 || window.__ofSoloAggroBot192 || window.__ofSoloAggroBot193 || window.__ofSoloAggroBot194 || window.__ofSoloAggroBot195 || window.__ofSoloAggroBot196 || window.__ofSoloAggroBot197 || window.__ofSoloAggroBot198);
   function advisorConflict() {
     if (!window.__openfrontSpawnAdvisorV104) return false;
     try {const s=JSON.parse(localStorage.getItem('openfront-spawn-advisor-10.4')||'{}');
@@ -164,8 +167,33 @@
       result[k]=possibilities[k][0];
     return result;
   }
+  function intentHealth() {
+    const missing=INTENT_KINDS.filter(kind=>typeof ctors[kind]!=='function');
+    return {found:INTENT_KINDS.length-missing.length,total:INTENT_KINDS.length,
+      missing,critical:missing.filter(kind=>CORE_INTENTS.includes(kind)),
+      eventBus:!!bus};
+  }
+  // Report only when detection changes or the user explicitly starts.
+  function reportIntents(force=false) {
+    if(!bus)return intentHealth();
+    const health=intentHealth(),signature=health.missing.join(',');
+    if(force||signature!==lastIntentHealth){
+      lastIntentHealth=signature;
+      const message=health.found+'/'+health.total+' Intents erkannt'+
+        (health.missing.length?' · fehlen: '+health.missing.join(', '):' · vollständig');
+      if(health.missing.length)console.warn(PREFIX,'INTENT-WARNUNG: '+message);
+      else console.info(PREFIX,message);
+      if(opts.enabled){
+        telemetry(health.missing.length?'intent_missing':'intent_ready',message,
+          {intents:health});
+        if(health.critical.length)log('ACHTUNG: Pflicht-Intents fehlen: '+health.critical.join(', '));
+      }
+    }
+    return health;
+  }
   function reset(g,b) {
     generation++; game=g;bus=b;ctors=recognize(b);busy=false;
+    lastIntentHealth='';lastIntentProbe=-Infinity;missingIntentLogged.clear();
     lastTick=-1;lastSpawn=-Infinity;lastEconomy=-Infinity;lastEconomyProbe=-Infinity;
     lastBoat=-Infinity;lastBorderTick=-Infinity;borderCache=null;borderPlayer=null;
     buildCursor=0;spawnCache=null;spawnJob=null;spawnRetryAt=0;cooldowns.clear();rejected.clear();
@@ -195,6 +223,7 @@
       'Replay/unbekannter Spieltyp · gesperrt';
     if(g?.config?.().isReplay?.())status='Replay · BOT GESPERRT';
     log(status);
+    reportIntents();
   }
   // Never overwrite manually selected slider values. Auto settings are
   // recomputed from current troops, threats, strategy and worker latency.
@@ -268,7 +297,18 @@
     return actions.length<cap-reserve;
   }
   function send(kind,args,description,priority=false) {
-    if(!opts.enabled || !connected() || !ctors[kind] || (!priority && !actionBudget(['attack','boat'].includes(kind)?'combat':'general'))) return false;
+    if(!opts.enabled || !connected())return false;
+    if(!ctors[kind]){
+      if(!missingIntentLogged.has(kind)){
+        missingIntentLogged.add(kind);
+        const message='Intent '+kind+' nicht erkannt – '+(CORE_INTENTS.includes(kind)?'Kernfunktion ausgefallen':'Funktion derzeit nicht verfügbar');
+        console.warn(PREFIX,message);
+        log('WARNUNG: '+message);
+        telemetry('intent_send_blocked',message,{intent:kind,intents:intentHealth()});
+      }
+      return false;
+    }
+    if(!priority && !actionBudget(['attack','boat'].includes(kind)?'combat':'general'))return false;
     // The bot can make multiple decisions per cycle. Keep an independent
     // burst limiter so it never floods the game transport even at 60/min.
     if(!priority && Date.now()-lastEmission < 410)return false;
@@ -1731,7 +1771,15 @@
         opts.enabled=false;generation++;persist();}
       status='Partie beendet · Bot AUS';paint();return;
     }
-    if(!bus&&found.b){bus=found.b;ctors=recognize(bus);}
+    if(!bus&&found.b){bus=found.b;ctors=recognize(bus);reportIntents();}
+    // EventBus listeners may register after initial discovery. Retry at a
+    // bounded interval while a core intent is missing; never emit probe events.
+    if(bus && intentHealth().critical.length){
+      const probeTick=number(()=>game.ticks(),-1);
+      if(probeTick>=0 && probeTick-lastIntentProbe>=120){
+        lastIntentProbe=probeTick;ctors=recognize(bus);reportIntents();
+      }
+    }
     if(conflicts()){opts.enabled=false;status='Andere AggroBot-Version aktiv – alte Skripte deaktivieren';paint();return;}
     if(advisorConflict()){opts.enabled=false;status='Spawn Advisor: Auto-Spawn/Smart Attack/Auto-Accept ausschalten';paint();return;}
     if(!opts.enabled||busy||!connected()){paint();return;}
@@ -1820,7 +1868,8 @@
         if(!connected())status=conflicts()?'Alte Bot-Version deaktivieren':
           advisorConflict()?'Spawn Advisor Auto/Smart/Auto-Accept ausschalten':
           'Nur in laufender Singleplayer-, Public- oder Private-Partie mit EventBus';
-        else {opts.enabled=!opts.enabled;generation++;log(opts.enabled?'BOT START':'BOT PAUSE');}
+        else {opts.enabled=!opts.enabled;generation++;log(opts.enabled?'BOT START':'BOT PAUSE');
+          if(opts.enabled)reportIntents(true);}
       }else if(key==='fullAuto'){
         opts.fullAuto=!opts.fullAuto;
         if(opts.fullAuto){opts.autoStrategy=true;autoTuning.tick=-Infinity;}
@@ -1868,7 +1917,7 @@
       <label>Zielprüfungen: ${setting('maxTargets')}${opts.fullAuto?' (Auto)':''}<input type="range" data-option="maxTargets" min="4" max="25" value="${setting('maxTargets')}" ${opts.fullAuto?'disabled':''} style="display:block;width:100%"></label>
       <div style="color:#9bd0e4">Bau: ${escapeHTML(economicStatus)} · Sparziel: ${escapeHTML(investmentStatus)} · Prioritäten: ${escapeHTML(economicLastPlan)}</div>
       <div style="color:#9bd0e4">Tempo: Front ${runtime.borderMs}ms · Kampf ${runtime.combatMs}ms · Bau ${runtime.economyMs}ms · Worker-Checks ${runtime.attackProbes}/${runtime.buildProbes}</div>
-      <div style="color:#9bd0e4">Events: ${escapeHTML(Object.keys(ctors).filter(k=>ctors[k]).join(', ')||'keine')}</div>
+      <div style="color:${intentHealth().critical.length?'#ff8181':intentHealth().missing.length?'#ffd480':'#a9efc9'}">Intents: ${intentHealth().eventBus?intentHealth().found+'/'+intentHealth().total:'EventBus ausstehend'} · ${intentHealth().missing.length?'Fehlen: '+escapeHTML(intentHealth().missing.join(', ')):'alle erkannt'}${intentHealth().critical.length?' · KERNFUNKTION EINGESCHRÄNKT':''}</div>
       <div style="color:#9bd0e4">Aktionsbudget: ${actions.length}/${setting('actionsPerMinute')} · Gesendet: ${totalSent} · Fehlgeschlagen: ${totalFailed} · Fehler: ${errors}</div>
       <div style="color:#9bd0e4">Heim: ${Math.floor(troopSnapshot.home/10)} · Reserve: ${Math.floor(troopSnapshot.reserve/10)} · Laufende Angriffe: ${Math.floor(troopSnapshot.committed/10)} · Einkommen/Reserve: ${(troopSnapshot.ratio*100).toFixed(0)}% Kapazität</div>
       <div style="color:#9bd0e4">Eingehend: ${Math.floor(troopSnapshot.incoming/10)} · Stärkster Grenznachbar: ${Math.floor(troopSnapshot.strongest/10)} · Ziel: ${escapeHTML(lastSelection||plan?.name||'Suche')} · ${borderCache?.length||0} Grenzfelder</div>
@@ -1883,6 +1932,7 @@
       opts.enabled=false;generation++;log('NOT-AUS über Hotkey');
     }else if(connected()){
       opts.enabled=!opts.enabled;generation++;log(opts.enabled?'BOT START':'BOT PAUSE');
+      if(opts.enabled)reportIntents(true);
     } else status='Bot nur in laufender Singleplayer-, Public- oder Private-Partie verfügbar';
     persist();lastPaint=0;paint();
   });
