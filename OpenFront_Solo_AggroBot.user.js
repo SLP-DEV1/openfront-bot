@@ -1428,7 +1428,7 @@
       successfulEconomyTick=tick;failedEconomyProbes=0;
       telemetry('build_confirmed',economicStatus,{type:economicPending.type,kind:economicPending.kind});
       if(economicPending.type==='Port')telemetry('port_confirmed','Hafen im Spielzustand bestätigt',
-        {tile:economicPending.tile,kind:economicPending.kind});
+        {tile:economicPending.tile,buildKind:economicPending.kind});
       economicPending=null;
       return false;
     }
