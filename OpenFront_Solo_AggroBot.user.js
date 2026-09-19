@@ -1500,6 +1500,47 @@
     const dx=game.x(asset.tile())-game.x(sam.tile()),dy=game.y(asset.tile())-game.y(sam.tile());
     return dx*dx+dy*dy<=r*r;
   }
+  // Dedicated coast discovery, independent from the 190 generic inland
+  // anchors. The worker remains the authority for an actual Port build tile.
+  function portCoastalAnchors(me,tiles,tick,limit=40){
+    if(!game?.isShore || !opts.boats)return [];
+    const result=[],seen=new Set(),w=game.width(),h=game.height();
+    const add=t=>{
+      if(result.length>=limit || seen.has(t))return;
+      seen.add(t);
+      if(ownedTile(t,me)&&shoreNear(t))result.push(t);
+    };
+    const addNear=t=>{
+      if(!Number.isInteger(t) || result.length>=limit)return;
+      add(t);
+      const x=game.x(t),y=game.y(t);
+      for(const [dx,dy] of [[5,0],[-5,0],[0,5],[0,-5],
+        [10,0],[-10,0],[0,10],[0,-10]]){
+        if(result.length>=limit)break;
+        if(x+dx>=0&&x+dx<w&&y+dy>=0&&y+dy<h)add(game.ref(x+dx,y+dy));
+      }
+    };
+    const coastTiles=tiles||[];
+    const stride=Math.max(1,Math.ceil(coastTiles.length/650));
+    const phase=Math.floor(tick/40)%stride;
+    for(let i=phase;i<coastTiles.length&&result.length<limit;i+=stride){
+      const t=coastTiles[i];
+      if(ownedTile(t,me) && shoreNear(t))addNear(t);
+    }
+    // A long inland/hostile front need not contain a coastline: rotate a
+    // second bounded grid through the whole map as a fallback.
+    if(result.length<8){
+      const spacing=Math.max(9,Math.ceil(Math.sqrt(w*h/420)));
+      const phase2=Math.floor(tick/60)%4,dx=phase2%2?Math.floor(spacing/2):0,
+        dy=phase2>=2?Math.floor(spacing/2):0;
+      for(let y=Math.floor(spacing/2)+dy;y<h&&result.length<limit;y+=spacing)
+        for(let x=Math.floor(spacing/2)+dx;x<w&&result.length<limit;x+=spacing){
+          const t=game.ref(x,y);
+          if(ownedTile(t,me)&&shoreNear(t))addNear(t);
+        }
+    }
+    return result;
+  }
   function economicNeeds(me,units,tiles) {
     const mine=number(()=>me.numTilesOwned(),0);
     const gold=number(()=>Number(me.gold()),0);
@@ -1517,6 +1558,10 @@
     const wantedPort=!portEnabled?0:opts.boats?Math.min(3,Math.max(1,Math.floor(mine/1800)+1)):
       (factories>=1 && mine>600?Math.min(2,Math.floor(mine/2700)+1):0);
     const startup=(cityEnabled&&cities<1)||(factoryEnabled&&factories<1);
+    const coastSites=ports===0&&opts.boats?
+      portCoastalAnchors(me,tiles,number(()=>game.ticks(),0),8):[];
+    const portMilestone=!!(opts.boats&&portEnabled&&ports===0&&!startup&&
+      coastSites.length&&portProbeFailures<8);
     const basic=(cityEnabled&&cities<2)||(factoryEnabled&&factories<2);
     // Never buy decorative defense posts while the first city/factory are still
     // unaffordable. Only a *real* incoming offensive can override the basics.
@@ -1556,7 +1601,8 @@
           (gold<450000?15:0)+(pressure<.60&&factories>0?10:0)+
           (factories<2&&cities>=2?24:0)-
           (incomeStatus.observed&&incomeStatus.train===0&&factories>=2?26:0)},
-      {type:'Port',desired:wantedPort,score:59+econBoost/2+(ports===0&&wantedPort?12:0)+
+      {type:'Port',desired:wantedPort,score:portMilestone?345:
+        59+econBoost/2+(ports===0&&wantedPort?12:0)+
         (incomeStatus.observed&&incomeStatus.trade===0&&ports===0?13:0)},
       {type:'Defense Post',desired:wantedDefense,score:immediate?310+defBoost:threatened?(basic?36:77)+defBoost:20},
       {type:'SAM Launcher',desired:wantedSAM,score:enemyNukes?210+defBoost:threat?151+defBoost:proactiveSAM?118:40},
@@ -1582,12 +1628,12 @@
     const firstRocketFund=game.config().isUnitDisabled?.('Atom Bomb')===true?
       (game.config().isUnitDisabled?.('Hydrogen Bomb')===true?
         (game.config().isUnitDisabled?.('MIRV')===true?0:26000000):6400000):1100000;
-    const savingsTarget=saveForSilo?1150000:saveForNuke?firstRocketFund:0;
-    investmentStatus=startup?'Erste Stadt/Fabrik':basic?'Zwei Städte und zwei Fabriken':
+    const savingsTarget=portMilestone?0:saveForSilo?1150000:saveForNuke?firstRocketFund:0;
+    investmentStatus=startup?'Erste Stadt/Fabrik':portMilestone?'Hafen vor Silo':basic?'Zwei Städte und zwei Fabriken':
       saveForSilo?'Silo-Fonds 1,15 Mio.':saveForNuke?'Raketen-Fonds '+firstRocketFund.toLocaleString():'Wirtschaft & Offensive';
     return {list:value,threatened,gold,cities,factories,mine,pressure,nuclearThreat:threat,incomingNukes:enemyNukes,intel,
       startup,basic,emergency,immediate,savingsTarget,saveForSilo,saveForNuke,siloCount,
-      enemySilos,proactiveSAM,wantedDefense,wantedSAM};
+      enemySilos,proactiveSAM,wantedDefense,wantedSAM,portMilestone,coastSites:coastSites.length,portProbeFailures};
   }
   function economicAnchors(me,tiles,units,tick) {
     const w=game.width(),h=game.height(),anchors=[],seen=new Set();
