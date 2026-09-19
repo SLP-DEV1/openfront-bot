@@ -1270,7 +1270,7 @@
     }
     // Deduplicate type list for game actions, but keep separate build/upgrade priorities.
     value.sort((a,b)=>b.urgency-a.urgency);
-    const saveForSilo=siloAllowed && late && !basic && siloCount===0;
+    const saveForSilo=siloAllowed && late && !basic && siloCount===0 && !winStatus.urgent;
     const saveForNuke=siloAllowed && late && siloCount>0 &&
       intel.enemy.length>0 && nukeShots===0;
     const firstRocketFund=game.config().isUnitDisabled?.('Atom Bomb')===true?
@@ -1631,7 +1631,7 @@
     if(!Number.isInteger(spawn)||!Number.isInteger(target))return 0;
     const ax=game.x(spawn),ay=game.y(spawn),bx=game.x(target),by=game.y(target);
     return sams.filter(s=>{
-      if(!s.isActive?.() || s.isUnderConstruction?.())return false;
+      if(s.isActive?.()===false || s.isUnderConstruction?.())return false;
       const x=game.x(s.tile()),y=game.y(s.tile());
       const rad=number(()=>game.config().samRange(s.level?.()||1),70);
       for(let i=0;i<=16;i++){
@@ -1649,6 +1649,7 @@
   }
   function nukeSalvoPlan(kind,candidate,silos,me,cost,gold,infinite){
     const ready=rocketReadiness(silos,me);
+    if(ready<1)return {amount:0,ready};
     if(kind!=='Atom Bomb'||candidate.sams===0||
       candidate.hit<2||candidate.value<20 || ready<2)
       return {amount:1,ready};
@@ -1942,6 +1943,17 @@
     if(!opts.boats||tick-lastFleet<120||!game.units)return false;
     const all=game.units()||[],ourID=safeID(me);
     const ownWarships=all.filter(u=>u.type?.()==='Warship'&&safeID(u.owner?.())===ourID&&u.isActive?.());
+    if(ctors.cancelBoat){
+      const unsafe=all.find(u=>u.type?.()==='Transport'&&u.isActive?.() &&
+        safeID(u.owner?.())===ourID&&Number.isInteger(u.targetTile?.())&&
+        game.owner(u.targetTile())?.isPlayer?.() &&
+        friendly(game.owner(u.targetTile()),me) &&
+        !u.transportShipState?.().isRetreating);
+      if(unsafe&&Number.isInteger(unsafe.id?.())&&send('cancelBoat',[unsafe.id()],
+        'LANDUNG ABBRECHEN: Ziel jetzt verbündet',true)){
+        lastFleet=tick;fleetStatus='Landung abgebrochen';return true;
+      }
+    }
     const targets=all.filter(u=>u.type?.()==='Transport'&&u.isActive?.() &&
       safeID(u.owner?.())!==ourID&&!friendly(u.owner?.(),me)&&
       Number.isInteger(u.targetTile?.())&&ownedTile(u.targetTile(),me));
@@ -2119,7 +2131,8 @@
           factories:ownStructures(me).filter(u=>u.type?.()==='Factory').length,
           borders:tiles.length,tuning:{...autoTuning,enabled:!!opts.fullAuto},defense:{status:defenseStatus,incoming:s.incoming,
             committed:s.committed,pendingRetreats:retreatRequests.size},enemies:groups.filter(g=>g.id!==null).map(g=>({name:nameOf(g.opponent),troops:number(()=>g.opponent.troops()),land:number(()=>g.opponent.numTilesOwned())})),
-          readiness:context.readiness?.reason,ratio:s.ratio,maxTroops:s.max,growthPotential:s.growthPotential});}
+          readiness:context.readiness?.reason,ratio:s.ratio,maxTroops:s.max,growthPotential:s.growthPotential,
+          victory:winStatus,income:incomeStatus,strategicTelemetry,fleet:fleetStatus});}
 
       if(plan&&tick>=plan.until)plan=null;
       status='Strategie: '+context.wanted+' · Heim '+Math.round(s.home/10)+
@@ -2214,6 +2227,8 @@
       <div>${b('plan','Manuell: '+opts.plan)}<br>${b('buildStyle','Manueller Baufokus: '+opts.buildStyle)}</div>
       <div style="color:#a9efc9">KI-Strategie: ${escapeHTML(strategic.mode)} · ${escapeHTML(strategic.reason)} · Bau: ${escapeHTML(effectiveBuildStyle())}</div>
       <div style="color:#9bd0e4">Verteidigung: ${escapeHTML(defenseStatus)} · Rückzüge ${defenseStats.retreatsOrdered}/${defenseStats.retreatsObserved} beobachtet · unklar ${defenseStats.unknown} · unbestätigt ${defenseStats.unconfirmed}</div>
+      <div style="color:#9bd0e4">Spielmodus: ${escapeHTML(winStatus.mode)} · Siegfortschritt: ${winStatus.progress===null?'unbekannt':(winStatus.progress*100).toFixed(1)+'%'} · Siegschwelle: ${winStatus.threshold===null?'unbekannt':winStatus.threshold+'%'} · Zeit: ${winStatus.remaining===null?'ohne Timer':Math.round(winStatus.remaining)+'s'} · Doomsday: ${winStatus.doomsday?'JA':'NEIN'}</div>
+      <div style="color:#9bd0e4">Handel / 60s: Bahn ${incomeStatus.train===null?'unbekannt':Math.round(incomeStatus.train)} · Schiff ${incomeStatus.trade===null?'unbekannt':Math.round(incomeStatus.trade)} · Marine: ${escapeHTML(fleetStatus)}</div>
       <div style="color:#9bd0e4">Nukes: ${escapeHTML(nukeStatus)} · bestätigt ${nukeShots} / Versuche ${nukeAttempts} / unbestätigt ${nukeUnconfirmed} · SAM-Schutz ${nuclearCache?.assets?.length - nuclearCache?.uncovered?.length||0}/${nuclearCache?.assets?.length||0}</div>
       <div style="color:#9bd0e4">Allianzen: ${escapeHTML(diplomacyStatus)} · Bestätigt: ${diplomacyStats.accepted} angenommen, ${diplomacyStats.rejected} abgelehnt · ${diplomacyPending.size} ausstehend · ${diplomacyStats.offered} angeboten</div>
       <div style="color:#a9efc9">Parameter: ${opts.fullAuto?'AUTONOM '+escapeHTML(autoTuning.mode)+' · '+escapeHTML(autoTuning.reason):'MANUELL'}</div>
