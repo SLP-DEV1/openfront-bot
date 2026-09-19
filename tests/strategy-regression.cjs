@@ -1300,10 +1300,14 @@ function boot() {
     x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
       type,canBuild:tile,canUpgrade:false,cost:125000n}))});
     assert.equal(await x.b.economy(x.me,300,0,[5500]),true);
+    assert.equal(x.sent[0].unit,'Port','the receipt test must first request a Port');
     const location=x.sent[0].tile;
     units=[...units,{type:()=> 'Port',isActive:()=>true,tile:()=>location}];
-    x.b.economy(x.me,341,0,[5500]);
-    assert(x.b.state().diagnostics.some(e=>e.kind==='port_confirmed'));
+    x.setTick(341);
+    await x.b.economy(x.me,341,0,[5500]);
+    assert(x.b.state().diagnostics.some(e=>e.kind==='port_confirmed'),
+      JSON.stringify(x.b.state().diagnostics.slice(-6).map(e=>({kind:e.kind,
+        message:e.message,type:e.type,tile:e.tile}))));
   });
   await check('v1.10.5 proactive Warship requires completed Port and water', async () => {
     const x=boot();x.setGold(600000);x.setLand(16000);
