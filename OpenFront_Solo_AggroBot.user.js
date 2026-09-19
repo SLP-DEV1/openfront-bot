@@ -152,8 +152,11 @@
     const names={spawn:'SendSpawnIntentEvent',attack:'SendAttackIntentEvent',cancel:'CancelAttackIntentEvent',
       boat:'SendBoatAttackIntentEvent',build:'BuildUnitIntentEvent',
       upgrade:'SendUpgradeStructureIntentEvent',
-      alliance:'SendAllianceRequestIntentEvent',reject:'SendAllianceRejectIntentEvent'};
-    const possibilities={spawn:[],attack:[],cancel:[],boat:[],build:[],upgrade:[],alliance:[],reject:[]};
+      alliance:'SendAllianceRequestIntentEvent',reject:'SendAllianceRejectIntentEvent',
+      warship:'MoveWarshipIntentEvent',cancelBoat:'CancelBoatIntentEvent',
+      donateTroops:'SendDonateTroopsIntentEvent',donateGold:'SendDonateGoldIntentEvent',
+      extend:'SendAllianceExtensionIntentEvent'};
+    const possibilities=Object.fromEntries(Object.keys(names).map(k=>[k,[]]));
     for(const C of b.listeners.keys()) {
       if(typeof C!=='function') continue;
       for(const [key,n] of Object.entries(names)) if(C.name===n) result[key]=C;
@@ -168,6 +171,16 @@
         Object.keys(o).length===2)possibilities.alliance.push(C);}catch(_){}
       try {const o=new C(probeA);if(o?.requestor===probeA && Object.keys(o).length===1)
         possibilities.reject.push(C);}catch(_){}
+      try {const o=new C([4812],1824);if(o?.tile===1824&&o?.unitIds?.[0]===4812)
+        possibilities.warship.push(C);}catch(_){}
+      try {const o=new C(4812);if(o?.unitID===4812&&Object.keys(o).length===1)
+        possibilities.cancelBoat.push(C);}catch(_){}
+      try {const o=new C(probeA,4812);if(o?.recipient===probeA&&o?.troops===4812)
+        possibilities.donateTroops.push(C);}catch(_){}
+      try {const o=new C(probeA,4812n);if(o?.recipient===probeA&&o?.gold===4812n)
+        possibilities.donateGold.push(C);}catch(_){}
+      try {const o=new C(probeB);if(o?.recipient===probeB&&Object.keys(o).length===1)
+        possibilities.extend.push(C);}catch(_){}
     }
     for(const k of Object.keys(possibilities)) if(!result[k] && possibilities[k].length===1)
       result[k]=possibilities[k][0];
@@ -1856,6 +1869,90 @@
       }
     }).catch(e=>{diplomacyStatus='Allianzangebot fehlgeschlagen: '+String(e.message);});
   }
+  // Protect real owned shores from visible incoming transports. BuildUnitIntentEvent
+  // for Warship uses an actual WATER tile checked through the worker.
+  async function fleetDefense(me,tick,serial){
+    if(!opts.boats||tick-lastFleet<120||!game.units)return false;
+    const all=game.units()||[],ourID=safeID(me);
+    const ownWarships=all.filter(u=>u.type?.()==='Warship'&&safeID(u.owner?.())===ourID&&u.isActive?.());
+    const targets=all.filter(u=>u.type?.()==='Transport'&&u.isActive?.() &&
+      safeID(u.owner?.())!==ourID&&!friendly(u.owner?.(),me)&&
+      Number.isInteger(u.targetTile?.())&&ownedTile(u.targetTile(),me));
+    const active=targets.find(u=>!u.transportShipState?.().isRetreating);
+    if(!active)return false;
+    const water=active.tile?.();
+    if(ctors.warship&&Number.isInteger(water)&&game.isWater?.(water)){
+      const ship=ownWarships.find(u=>Number.isInteger(u.id?.()) &&
+        game.euclideanDistSquared?.(u.tile(),water)<300*300);
+      if(ship&&send('warship',[[ship.id()],water],
+        'KRIEGSSCHIFF → feindlichen Transporter abfangen')){
+        lastFleet=tick;fleetStatus='Transporter abfangen';return true;
+      }
+    }
+    if(!ctors.build || game.config().isUnitDisabled?.('Warship')===true ||
+      ownWarships.length>=3)return false;
+    const ports=ownStructures(me).filter(u=>u.type?.()==='Port'&&!u.isUnderConstruction?.());
+    for(const port of ports.slice(0,3)){
+      const x=game.x(port.tile()),y=game.y(port.tile());
+      for(const [dx,dy] of [[0,8],[8,0],[0,-8],[-8,0],[12,12],[-12,-12]]){
+        if(!valid(x+dx,y+dy))continue;
+        const tile=game.ref(x+dx,y+dy);
+        if(!game.isWater?.(tile))continue;
+        let legal;
+        try{legal=await me.actions(tile,['Warship']);}catch(_){continue;}
+        if(!live(serial))return false;
+        const ship=legal?.buildableUnits?.find(u=>u.type==='Warship'&&
+          Number.isInteger(u.canBuild));
+        if(!ship)continue;
+        const gold=number(()=>Number(me.gold()),0),cost=Number(ship.cost);
+        if(!game.config().infiniteGold?.() &&
+          (!Number.isFinite(cost)||gold<cost))continue;
+        if(send('build',['Warship',ship.canBuild],'KÜSTENSCHUTZ → Kriegsschiff')){
+          lastFleet=tick;fleetStatus='Kriegsschiff angefordert';return true;
+        }
+      }
+    }
+    return false;
+  }
+  // Team aid is guarded by same-team identity, real incoming threats,
+  // available HOME troops, and the silo fund. No speculative allied donations.
+  function teamSupport(me,tick,s){
+    if(winStatus.mode!=='Team'||tick-lastDonation<300 || !actionBudget())return false;
+    const team=me.team?.();if(team===null||team===undefined)return false;
+    const partners=(game.playerViews?.()||[]).filter(p=>
+      p!==me&&p.isAlive?.()&&p.team?.()===team&&me.isOnSameTeam?.(p));
+    if(!partners.length)return false;
+    const needy=partners.map(p=>({p,incoming:(p.incomingAttacks?.()||[])
+      .filter(a=>!a.retreating).reduce((n,a)=>n+number(()=>a.troops,0),0)}))
+      .sort((a,b)=>b.incoming-a.incoming)[0];
+    if(!needy || needy.incoming<number(()=>needy.p.troops(),1)*.35 ||
+      s.incoming>0 || s.strongest>=s.home*.85)return false;
+    const amount=Math.floor(Math.min(s.available*.18,s.home*.08));
+    if(ctors.donateTroops && amount>=1000 &&
+      s.home-amount>Math.max(s.home*.35,s.strongest*.6) &&
+      send('donateTroops',[needy.p,amount],'TEAMHILFE → '+nameOf(needy.p))){
+      lastDonation=tick;return true;
+    }
+    const gold=number(()=>Number(me.gold()),0);
+    const reserve=economicNeeds(me,ownStructures(me),[]).savingsTarget;
+    const amountGold=Math.floor(Math.min(gold*.06,250000));
+    if(ctors.donateGold && gold>1200000 && amountGold>=50000 &&
+      gold-amountGold>=Math.max(reserve,750000) &&
+      send('donateGold',[needy.p,BigInt(amountGold)],'TEAMGOLD → '+nameOf(needy.p))){
+      lastDonation=tick;return true;
+    }
+    return false;
+  }
+  function renewAlliances(me,tick){
+    if(!opts.diplomacy||!ctors.extend)return false;
+    for(const a of me.alliances?.()||[]){
+      if(!a.hasExtensionRequest||a.expiresAt-tick>250||a.expiresAt<=tick)continue;
+      const partner=game.playerViews().find(p=>safeID(p)===a.other);
+      if(partner&&friendly(partner,me)&&send('extend',[partner],
+        'ALLIANZ VERLÄNGERN → '+nameOf(partner),true))return true;
+    }
+    return false;
+  }
   async function naval(me,tick,serial) {
     if(!opts.boats||!ctors.boat||tick-lastBoat<100||pendingAttack)return false;
     lastBoat=tick;
@@ -1951,8 +2048,11 @@
       const ranked=rankedTargets(groups,me,tick,s,context);
       // Do not open a new front while the homeland is under heavy assault.
       const dangerNow=defenseAssessment(me,s,tick);
-      if(dangerNow.severe){status='NOTVERTEIDIGUNG · Heimtruppen halten / Angriffe zurückrufen';return;}
+      if(dangerNow.severe){await fleetDefense(me,tick,serial);
+        status='NOTVERTEIDIGUNG · Heimtruppen halten / Angriffe zurückrufen';return;}
       if(await defense(me,tick,serial,groups,s))return;
+      if(await fleetDefense(me,tick,serial))return;
+      if(teamSupport(me,tick,s))return;
       // Economy has its own scheduler and cannot block the combat planner.
       if(context.wanted==='RECOVER') {
         status='AUFBAU · Truppen regenerieren / Verteidigung halten';
