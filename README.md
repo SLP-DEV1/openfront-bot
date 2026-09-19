@@ -2,7 +2,7 @@
 
 Autonomer **Singleplayer**-Bot als Tampermonkey-Userscript für [OpenFront](https://openfront.io/).
 
-**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.9.2**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
+**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.9.3**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
 
 ## Installation
 
@@ -16,6 +16,15 @@ Autonomer **Singleplayer**-Bot als Tampermonkey-Userscript für [OpenFront](http
 ## Strategie & Diagnose
 
 Strategie-, Wirtschafts-, Marine-, Diplomatie-, Nuke- und SAM-Planung sind vorhanden. Der Bot kann Befehle senden; daraus folgt **keine garantierte Gewinnrate auf „Unmöglich“**. Ein vollständiger Live-Test ist noch nicht erfolgt. „Diagnose JSON“ im Bot-Menü zeichnet unter anderem Gebietsänderungen, Truppenlage, Bauaufträge und Allianzantworten auf. Bitte den Export vor dem Neuladen erstellen.
+
+### Änderung 1.9.3
+
+- Bewertet im Impossible-Modus **konkrete schwächere Grenzgegner** separat vom stärksten Nachbarn: keine globale Kriegsblockade allein wegen eines großen Drittgegners.
+- Bewahrt eine angemessene Heimreserve und unterbindet neue Offensiven bei erheblichen eingehenden Angriffen.
+- Der Diagnoseexport unterscheidet fehlendes Gold, illegale Bauplätze, ungültige Eigentumsreferenzen und Prioritäts-/Reservesperren; er enthält Probe-Zahlen und günstigste gefundene Bauoption.
+- Regressionstest für den beobachteten Spielzustand bei Tick 184 und für Abwehr bei laufendem Angriff.
+
+**Hinweis:** Das ist eine Korrektur an der Planung und kein nachgewiesener Live-Sieg auf „Unmöglich“.
 
 ### Änderung 1.9.2
 
