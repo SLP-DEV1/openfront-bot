@@ -38,7 +38,7 @@
   let game=null, bus=null, ctors={}, panel=null, busy=false, generation=0;
   const INTENT_KINDS=['spawn','attack','cancel','boat','build','upgrade','alliance','reject'];
   const CORE_INTENTS=['spawn','attack','build'];
-  let lastIntentHealth='',lastIntentProbe=-Infinity,missingIntentLogged=new Set();
+  let lastIntentHealth=null,lastIntentProbe=-Infinity,missingIntentLogged=new Set();
   let lastTick=-1, lastSpawn=-Infinity, lastEconomy=-Infinity, lastEconomyProbe=-Infinity;
   let lastBoat=-Infinity, lastBorderTick=-Infinity, borderCache=null, borderPlayer=null;
   let buildCursor=0, spawnCache=null, spawnJob=null, spawnRetryAt=0, status='Warte auf Singleplayer';
@@ -193,7 +193,7 @@
   }
   function reset(g,b) {
     generation++; game=g;bus=b;ctors=recognize(b);busy=false;
-    lastIntentHealth='';lastIntentProbe=-Infinity;missingIntentLogged.clear();
+    lastIntentHealth=null;lastIntentProbe=-Infinity;missingIntentLogged.clear();
     lastTick=-1;lastSpawn=-Infinity;lastEconomy=-Infinity;lastEconomyProbe=-Infinity;
     lastBoat=-Infinity;lastBorderTick=-Infinity;borderCache=null;borderPlayer=null;
     buildCursor=0;spawnCache=null;spawnJob=null;spawnRetryAt=0;cooldowns.clear();rejected.clear();
