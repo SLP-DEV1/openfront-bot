@@ -1453,8 +1453,8 @@ function boot() {
       retreating:false}];
     assert.equal(x.b.diplomacyScore(x.me,x.weak,state).reason,
       'Aktiver Konflikt');
-    assert.equal(x.b.diplomacyScore(x.me,x.strong,state).reason,
-      'Aktiver Konflikt', 'only incoming/outgoing against same target should be blocked');
+    assert.notEqual(x.b.diplomacyScore(x.me,x.strong,state).reason,
+      'Aktiver Konflikt', 'unrelated player is not the active target');
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
