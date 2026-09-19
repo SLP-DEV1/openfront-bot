@@ -1308,19 +1308,41 @@
     }
     return proposed.sort((a,b)=>b.value-a.value).slice(0,10);
   }
+  function ownMissiles(me) {
+    try{return game.units().filter(u=>safeID(u.owner?.())===safeID(me) &&
+      ['Atom Bomb','Hydrogen Bomb'].includes(u.type?.()));}
+    catch(_){return [];}
+  }
+  function inspectNukeLaunch(me,tick) {
+    if(!nukePending)return false;
+    const p=nukePending;
+    const matches=ownMissiles(me).filter(u=>u.type?.()===p.type && Number.isInteger(u.targetTile?.()) &&
+      Math.hypot(game.x(u.targetTile())-game.x(p.tile),game.y(u.targetTile())-game.y(p.tile))<15);
+    // An existing missile at the same destination must NOT confirm a second
+    // launch. Prefer stable unit IDs, falling back to target-matched counts.
+    const observed=matches.some(u=>{
+      const id=u.id?.();
+      return id!==undefined && id!==null && !p.beforeIds.includes(String(id));
+    }) || matches.length>p.beforeMatches;
+    if(observed){
+      nukeShots++;
+      nukeStatus='Raketenstart bestätigt: '+p.type;
+      telemetry('nuke_confirmed',nukeStatus,{tile:p.tile,attempt:p.attempt,confirmed:nukeShots});
+      nukePending=null;return false;
+    }
+    if(tick-p.tick>=55){
+      nukeUnconfirmed++;
+      nukeStatus='Raketenstart NICHT bestätigt – weiter sparen';
+      telemetry('nuke_unconfirmed',nukeStatus,{tile:p.tile,type:p.type,attempt:p.attempt});
+      nukePending=null;return false;
+    }
+    return true;
+  }
   async function nukeStep() {
     if(nukeBusy||!opts.enabled||!opts.nukes||!connected()||!ctors.build)return;
     const me=myPlayer(),tick=number(()=>game.ticks(),-1);
     if(!me?.isAlive?.()||!me.hasSpawned?.()||game.inSpawnPhase?.()||tick<0)return;
-    if(nukePending){
-      const own=(()=>{try{return game.units().filter(u=>safeID(u.owner?.())===safeID(me) &&
-        ['Atom Bomb','Hydrogen Bomb'].includes(u.type?.()));}catch(_){return [];}})();
-      const confirmed=own.some(u=>u.type?.()===nukePending.type && Number.isInteger(u.targetTile?.()) &&
-        Math.hypot(game.x(u.targetTile())-game.x(nukePending.tile),game.y(u.targetTile())-game.y(nukePending.tile))<15);
-      if(confirmed){nukeStatus='Rakete gestartet: '+nukePending.type;nukePending=null;}
-      else if(tick-nukePending.tick<55)return;
-      else{nukeStatus='Start nicht bestätigt – Ziel neu prüfen';nukePending=null;}
-    }
+    if(inspectNukeLaunch(me,tick))return;
     if(tick-lastNuke<65 || !actionBudget())return;
     const intel=nuclearIntel(me),silos=ownStructures(me).filter(u=>u.type?.()==='Missile Silo' &&
       !u.isUnderConstruction?.() && !u.isInCooldown?.());
@@ -1346,9 +1368,18 @@
           // Target may have changed owner while worker checked its legality.
           const o=game.owner(candidate.tile);
           if(!o?.isPlayer?.() || friendly(o,me))continue;
+          const prior=ownMissiles(me).filter(u=>u.type?.()===kind &&
+            Number.isInteger(u.targetTile?.()) &&
+            Math.hypot(game.x(u.targetTile())-game.x(candidate.tile),
+              game.y(u.targetTile())-game.y(candidate.tile))<15);
+          const beforeIds=prior.map(u=>u.id?.()).filter(id=>id!==undefined&&id!==null).map(String);
           if(send('build',[kind,candidate.tile],`NUKE ${kind} → ${nameOf(o)} (${candidate.hit} Gebäude · ${candidate.value.toFixed(0)} Punkte)`)){
-            lastNuke=tick;nukeShots++;nukePending={tile:candidate.tile,type:kind,tick};
-            nukeStatus=kind+' auf '+nameOf(o)+' · '+candidate.hit+' Strukturen';return;
+            lastNuke=tick;nukeAttempts++;
+            nukePending={tile:candidate.tile,type:kind,tick,beforeIds,
+              beforeMatches:prior.length,attempt:nukeAttempts};
+            telemetry('nuke_attempt','Raketen-Befehl abgesendet, noch nicht bestätigt',
+              {tile:candidate.tile,type:kind,attempt:nukeAttempts});
+            nukeStatus='Start angefordert: '+kind+' · wartet auf Bestätigung';return;
           }
         }
       }
