@@ -881,6 +881,7 @@
     const cap=Math.max(1,troopSnapshot.max||number(()=>game.config().maxTroops(me),1));
     const troops=number(()=>me.troops(),0);
     const threatened=troopSnapshot.incoming>0 || troopSnapshot.strongest>troops*.6;
+    const hostileFronts=strategic.groups.filter(g=>g.id!==null&&g.opponent?.isAlive?.()).length;
     const count=type=>economicUnitsByType(units,type).length;
     const cities=count('City'),factories=count('Factory'),ports=count('Port');
     const wantedCity=hardMode()?Math.min(13,Math.max(2,2+Math.floor(mine/600))):Math.min(9,Math.max(1,1+Math.floor(mine/900)));
@@ -891,8 +892,11 @@
     const basic=cities<2||factories<2;
     // Never buy decorative defense posts while the first city/factory are still
     // unaffordable. Only a *real* incoming offensive can override the basics.
-    const emergency=troopSnapshot.incoming>troops*.18;
-    const wantedDefense=threatened && (!startup||emergency)?Math.min(4,1+Math.floor(mine/2300)):0;
+    const immediate=troopSnapshot.incoming>troops*.18;
+    const emergency=immediate||(troopSnapshot.strongest>troops*1.25&&
+      (troopSnapshot.ratio<.75||hostileFronts>=2));
+    const wantedDefense=threatened&&(!startup||immediate)?Math.min(16,
+      Math.max(2,Math.ceil((tiles?.length||0)/165),hostileFronts*2)):0;
     const intel=nuclearIntel(me,units);
     const enemySilos=intel.enemySilos.length,enemyNukes=intel.incomingNukes.length;
     const threat=!!(enemySilos||enemyNukes);
@@ -912,7 +916,7 @@
       {type:'City',desired:wantedCity,score:92+econBoost/2+Math.max(0,pressure-.35)*75+(cities===0?115:hardMode()&&cities<2?80:0)},
       {type:'Factory',desired:wantedFactory,score:91+econBoost+(factories===0?100:hardMode()&&factories<2?85:0)+(gold<450000?15:0)},
       {type:'Port',desired:wantedPort,score:59+econBoost/2+(ports===0&&wantedPort?12:0)},
-      {type:'Defense Post',desired:wantedDefense,score:threatened?(basic?70:119)+defBoost:20},
+      {type:'Defense Post',desired:wantedDefense,score:immediate?310+defBoost:threatened?(basic?70:119)+defBoost:20},
       {type:'SAM Launcher',desired:wantedSAM,score:enemyNukes?165+defBoost:threat?116+defBoost:40},
       {type:'Missile Silo',desired:wantedSilo,score:siloCount===0?305:opts.nukes?(late?131:94)+(gold>6000000?13:0):0}
     ];
@@ -937,7 +941,7 @@
     investmentStatus=startup?'Erste Stadt/Fabrik':basic?'Zwei Städte und zwei Fabriken':
       saveForSilo?'Silo-Fonds 1,15 Mio.':saveForNuke?'Atom-Fonds 1,1 Mio.':'Wirtschaft & Offensive';
     return {list:value,threatened,gold,cities,factories,mine,pressure,nuclearThreat:threat,incomingNukes:enemyNukes,intel,
-      startup,basic,emergency,savingsTarget,saveForSilo,saveForNuke,siloCount};
+      startup,basic,emergency,immediate,savingsTarget,saveForSilo,saveForNuke,siloCount};
   }
   function economicAnchors(me,tiles,units,tick) {
     const w=game.width(),h=game.height(),anchors=[],seen=new Set();
@@ -995,7 +999,25 @@
     const coast=alreadyCoastal ?? shoreNear(ref);
     if(type==='Port'&&!coast)return -Infinity;
     let value=priority;
-    if(type==='Defense Post')value+=fronts.length?Math.max(-70,52-Math.abs(distance-32)*.8):-65;
+    if(type==='Defense Post'){
+      const range=number(()=>game.config().defensePostRange?.(),30);
+      // A post protects WITHIN its range; 32 cells was outside the 30-cell circle.
+      if(!fronts.length)value-=75;
+      else if(distance>range-3)value-=95+(distance-range)*3;
+      else {
+        let covered=0,uncovered=0;
+        const x=game.x(ref),y=game.y(ref);
+        const posts=units.filter(u=>u.type?.()==='Defense Post'&&!u.isUnderConstruction?.());
+        for(const ft of fronts){const fx=game.x(ft),fy=game.y(ft);
+          if((fx-x)**2+(fy-y)**2>(range-2)**2)continue;
+          if(posts.some(p=>{const px=game.x(p.tile()),py=game.y(p.tile());
+            return (fx-px)**2+(fy-py)**2<=range**2;}))covered++;
+          else uncovered++;
+        }
+        value+=Math.min(95,uncovered*8)+Math.min(12,covered)-Math.abs(distance-range*.55)*.55;
+        if(uncovered===0)value-=75;
+      }
+    }
     else if(type==='SAM Launcher'){
       // Overlapping bubbles waste gold; protect multiple high-value assets with one SAM.
       const intel=nuclearIntel(myPlayer(),units);
@@ -1034,8 +1056,9 @@
     if(!anchors.length){economicStatus='Kein eigenes Bauland gefunden';return false;}
     const meID=safeID(me),all=game.playerViews?.()||[];
     const fronts=[];
-    for(const tile of tiles||[]){
-      if(fronts.length>=80)break;
+    const borderStride=Math.max(1,Math.floor((tiles?.length||0)/220));
+    for(let i=0;i<(tiles?.length||0);i+=borderStride){
+      const tile=tiles[i];if(fronts.length>=160)break;
       const scratch=[];const count=game.neighbors4(tile,scratch);
       for(let n=0;n<count;n++){const owner=game.owner(scratch[n]);
         if(safeID(owner)!==null&&safeID(owner)!==meID&&!friendly(owner,me)){
@@ -1114,7 +1137,7 @@
           if(!infinite && (!Number.isFinite(cost)||cost>gold))continue;
           const essential=(item.type==='City'&&requirements.cities===0)||
             (item.type==='Factory'&&requirements.factories===0)||
-            (item.type==='Defense Post'&&requirements.emergency)||
+            (item.type==='Defense Post'&&requirements.immediate)||
             (item.type==='SAM Launcher'&&requirements.incomingNukes>0)||
             (item.type==='Missile Silo'&&opts.nukes&&lateGame(me));
           const economicCore=item.type==='City'||item.type==='Factory';
@@ -1125,7 +1148,7 @@
           // spend the whole treasury on expandable city/factory goals.
           if(!infinite && requirements.savingsTarget>0 && !requirements.emergency &&
             !(item.type==='SAM Launcher'&&requirements.incomingNukes>0) &&
-            !(item.type==='Defense Post'&&requirements.emergency) &&
+            !(item.type==='Defense Post'&&requirements.immediate) &&
             !(item.type==='Missile Silo'&&requirements.saveForSilo) &&
             gold-cost<requirements.savingsTarget)continue;
           const reserve=gold>650000?Math.min(220000,gold*.12):0;
@@ -1482,6 +1505,9 @@
       const me=myPlayer();
       if(!me?.isAlive?.()||!me.hasSpawned?.()){status='Warte auf Spawn';return;}
       sampleTroops(tick,me);confirmAttack(me,tick);evaluateLastBattle(tick,me);
+      const immediateState=military(me,strategic.groups);
+      // Save committed troops BEFORE any asynchronous worker border request.
+      if(emergencyRetreat(me,tick,immediateState))return;
       const tiles=await borders(me,tick);
       if(!live(serial))return;
       const groups=targetsFromBorder(me,tiles);
@@ -1493,14 +1519,17 @@
           gameType:game.config().gameConfig().gameType,investment:investmentStatus,
           cities:ownStructures(me).filter(u=>u.type?.()==='City').length,
           factories:ownStructures(me).filter(u=>u.type?.()==='Factory').length,
-          borders:tiles.length,enemies:groups.filter(g=>g.id!==null).map(g=>({name:nameOf(g.opponent),troops:number(()=>g.opponent.troops()),land:number(()=>g.opponent.numTilesOwned())})),
+          borders:tiles.length,defense:{status:defenseStatus,incoming:s.incoming,
+            committed:s.committed,pendingRetreats:retreatRequests.size},enemies:groups.filter(g=>g.id!==null).map(g=>({name:nameOf(g.opponent),troops:number(()=>g.opponent.troops()),land:number(()=>g.opponent.numTilesOwned())})),
           readiness:context.readiness?.reason,ratio:s.ratio,maxTroops:s.max});}
 
       if(plan&&tick>=plan.until)plan=null;
       status='Strategie: '+context.wanted+' · Heim '+Math.round(s.home/10)+
         ' · Reserve '+Math.round(s.reserve/10)+' · Front '+Math.round(s.committed/10);
       const ranked=rankedTargets(groups,me,tick,s,context);
-      // Defensive posture does NOT forcibly counterattack into superior opponents.
+      // Do not open a new front while the homeland is under heavy assault.
+      const dangerNow=defenseAssessment(me,s,tick);
+      if(dangerNow.severe){status='NOTVERTEIDIGUNG · Heimtruppen halten / Angriffe zurückrufen';return;}
       if(await defense(me,tick,serial,groups,s))return;
       // Economy has its own scheduler and cannot block the combat planner.
       if(context.wanted==='RECOVER') {
@@ -1576,6 +1605,7 @@
       <div style="color:#a9efc9">Hauptfront: ${escapeHTML(warState.name)} · Krieg ${isWar()?'aktiv':'frei'} · ${escapeHTML(lastRecoveryReason||'bereit')}</div>
       <div>${b('plan','Manuell: '+opts.plan)}<br>${b('buildStyle','Manueller Baufokus: '+opts.buildStyle)}</div>
       <div style="color:#a9efc9">KI-Strategie: ${escapeHTML(strategic.mode)} · ${escapeHTML(strategic.reason)} · Bau: ${escapeHTML(effectiveBuildStyle())}</div>
+      <div style="color:#9bd0e4">Verteidigung: ${escapeHTML(defenseStatus)} · Rückzüge ${defenseStats.retreatsOrdered}/${defenseStats.retreatsObserved} beobachtet · unbestätigt ${defenseStats.unconfirmed}</div>
       <div style="color:#9bd0e4">Nukes: ${escapeHTML(nukeStatus)} · Startbefehle ${nukeShots} · SAM-Schutz ${nuclearCache?.assets?.length - nuclearCache?.uncovered?.length||0}/${nuclearCache?.assets?.length||0}</div>
       <div style="color:#9bd0e4">Allianzen: ${escapeHTML(diplomacyStatus)} · Bestätigt: ${diplomacyStats.accepted} angenommen, ${diplomacyStats.rejected} abgelehnt · ${diplomacyPending.size} ausstehend · ${diplomacyStats.offered} angeboten</div>
       <label>Aggressivität: ${opts.aggressive}%<input type="range" data-option="aggressive" min="40" max="100" value="${opts.aggressive}" style="display:block;width:100%"></label>
