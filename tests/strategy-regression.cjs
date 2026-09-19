@@ -4,7 +4,7 @@ const vm = require('node:vm');
 const path = require('node:path');
 const assert = require('node:assert/strict');
 const source = fs.readFileSync(path.join(__dirname, '..', 'OpenFront_Solo_AggroBot.user.js'), 'utf8');
-const anchor = "  console.info(PREFIX,'v'+VERSION,'ready; multiplayer requires explicit opt-in, OFF by default');";
+const anchor = "  console.info(PREFIX,'v'+VERSION,'ready; Singleplayer/Public/Private, OFF by default');";
 assert(source.includes(anchor), 'bot test injection anchor missing');
 let pass = 0, fail = 0;
 async function check(name, test) {
@@ -195,9 +195,9 @@ function boot() {
     x.b.manageWar(x.me,groups,x.b.military(x.me,groups),2400);
     assert.equal(x.b.state().warState.id,null);
   });
-  await check('Public game remains blocked regardless of bot options', () => {
+  await check('Public mode is playable without an extra test-mode opt-in', () => {
     const x=boot();x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Medium'});
-    assert.equal(x.b.connected(),false);
+    assert.equal(x.b.connected(),true);
   });
 
   await check('emergency recalls committed neutral attack before worker scan', () => {
@@ -256,14 +256,15 @@ function boot() {
     assert(dp&&dp.desired>=10,dp?.desired);
     assert.equal(needs.immediate,true);
   });
-  await check('public match cannot dispatch emergency retreat', () => {
+  await check('Public mode supports emergency retreat when enabled', () => {
     const x=boot();class Cancel{constructor(attackID){this.attackID=attackID;}}
     x.b.setCancelCtor(Cancel);
     x.out.push({id:'front',targetID:null,troops:50000,retreating:false});
     x.me.incomingAttacks=()=>[{id:'enemy',attackerID:2,troops:90000,retreating:false}];
     x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Medium'});
-    assert.equal(x.b.emergencyRetreat(x.me,300,x.b.military(x.me,[])),false);
-    assert.equal(x.sent.length,0);
+    assert.equal(x.b.emergencyRetreat(x.me,300,x.b.military(x.me,[])),true);
+    assert.equal(x.sent.length,1);
+    assert.equal(x.sent[0].attackID,'front');
   });
   await check('cancel intent constructor recognized without reliable class name', () => {
     const x=boot();const C=class Minified{constructor(attackID){this.attackID=attackID;}};
@@ -330,10 +331,10 @@ function boot() {
     x.b.opts.fullAuto=false;x.b.opts.actionsPerMinute=72;
     assert.equal(x.b.actionBudget('combat'),false);
   });
-  await check('full autonomy still cannot run in Public mode', () => {
+  await check('full autonomy can run in a manually started Public game', () => {
     const x=boot();x.b.opts.fullAuto=true;
     x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Impossible'});
-    assert.equal(x.b.connected(),false);
+    assert.equal(x.b.connected(),true);
   });
 
   await check('PR #1 weak border target remains viable beside larger neighbor', () => {
@@ -574,62 +575,60 @@ function boot() {
     assert(result.length>0,JSON.stringify(result));
     assert.equal(result[0].owner,x.strong);
   });
-  await check('v1.9.7 Public multiplayer is blocked by default', () => {
+  await check('v1.9.8 Public allows regular attack without an extra switch', () => {
     const x=boot();
     x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Impossible'});
-    assert.equal(x.b.opts.multiplayerTest,false);
-    assert.equal(x.b.connected(),false);
-    assert.equal(x.b.send('attack',['weak',500]),false);
-    assert.equal(x.sent.length,0);
-  });
-  await check('v1.9.7 explicit Public opt-in enables normal action dispatch', () => {
-    const x=boot();
-    x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Impossible'});
-    x.b.opts.multiplayerTest=true;
+    assert.equal(Object.hasOwn(x.b.opts,'multiplayerTest'),false);
     assert.equal(x.b.permittedMatch(x.game),true);
     assert.equal(x.b.connected(),true);
     assert.equal(x.b.send('attack',['weak',500]),true);
     assert.equal(x.sent[0].targetID,'weak');
     assert.equal(x.sent[0].troops,500);
   });
-  await check('v1.9.7 explicit Private opt-in enables match', () => {
-    const x=boot();x.game.config().gameConfig=()=>({gameType:'Private',difficulty:'Medium'});
-    assert.equal(x.b.connected(),false);
-    x.b.opts.multiplayerTest=true;
-    assert.equal(x.b.connected(),true);
-  });
-  await check('v1.9.7 replay stays blocked even with MP opt-in', () => {
+  await check('v1.9.8 Private game is available immediately after manual start', () => {
     const x=boot();
-    x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Impossible'});
-    x.game.config().isReplay=()=>true;
-    x.b.opts.multiplayerTest=true;
-    assert.equal(x.b.connected(),false);
-    assert.equal(x.b.send('attack',['weak',500]),false);
-    assert.equal(x.sent.length,0);
-  });
-  await check('v1.9.7 unknown game mode stays blocked', () => {
-    const x=boot();x.game.config().gameConfig=()=>({gameType:'Tournament',difficulty:'Impossible'});
-    x.b.opts.multiplayerTest=true;
-    assert.equal(x.b.connected(),false);
-    assert.equal(x.b.multiplayerMatch(x.game),false);
-  });
-  await check('v1.9.7 disabling consent prevents subsequent multiplayer actions', () => {
-    const x=boot();x.game.config().gameConfig=()=>({gameType:'Private',difficulty:'Medium'});
-    x.b.opts.multiplayerTest=true;
+    x.game.config().gameConfig=()=>({gameType:'Private',difficulty:'Medium'});
+    assert.equal(x.b.multiplayerMatch(x.game),true);
     assert.equal(x.b.connected(),true);
-    x.b.opts.multiplayerTest=false;
+    assert.equal(x.b.send('attack',['weak',500]),true);
+    assert.equal(x.sent.length,1);
+  });
+  await check('v1.9.8 Public replay remains blocked for every action channel', () => {
+    const x=boot();x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Impossible'});
+    x.game.config().isReplay=()=>true;
     assert.equal(x.b.connected(),false);
     assert.equal(x.b.send('attack',['weak',500],undefined,true),false);
     assert.equal(x.sent.length,0);
   });
-  await check('v1.9.7 new match revokes earlier multiplayer consent and stops bot', () => {
+  await check('v1.9.8 Singleplayer replay also remains blocked', () => {
+    const x=boot();x.game.config().isReplay=()=>true;
+    assert.equal(x.b.permittedMatch(x.game),false);
+    assert.equal(x.b.connected(),false);
+  });
+  await check('v1.9.8 unknown game mode remains blocked', () => {
+    const x=boot();x.game.config().gameConfig=()=>({gameType:'Tournament',difficulty:'Impossible'});
+    assert.equal(x.b.connected(),false);
+    assert.equal(x.b.multiplayerMatch(x.game),false);
+    assert.equal(x.b.send('attack',['weak',500]),false);
+  });
+  await check('v1.9.8 manual pause stops subsequent multiplayer actions', () => {
+    const x=boot();x.game.config().gameConfig=()=>({gameType:'Private',difficulty:'Medium'});
+    assert.equal(x.b.connected(),true);
+    x.b.opts.enabled=false;
+    assert.equal(x.b.send('attack',['weak',500],undefined,true),false);
+    assert.equal(x.sent.length,0);
+  });
+  await check('v1.9.8 new multiplayer match stops bot but does not require consent', () => {
     const x=boot();x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Impossible'});
-    x.b.opts.multiplayerTest=true;
     assert.equal(x.b.connected(),true);
     x.b.reset(x.game,{emit:()=>{}});
-    assert.equal(x.b.opts.multiplayerTest,false);
     assert.equal(x.b.opts.enabled,false);
-    assert.equal(x.b.connected(),false);
+    assert.equal(x.b.connected(),true);
+    assert.equal(x.b.send('attack',['weak',500]),false);
+  });
+  await check('v1.9.8 consent button is completely removed from script', () => {
+    assert.equal(source.includes('multiplayerTest'),false);
+    assert.equal(source.includes('MP-TEST'),false);
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;

@@ -1,29 +1,33 @@
 # OpenFront Solo AggroBot
 
-Autonomer **Singleplayer**-Bot mit manuell aktivierbarem **Multiplayer-Testmodus** als Tampermonkey-Userscript für [OpenFront](https://openfront.io/).
+Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscript für [OpenFront](https://openfront.io/).
 
-**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.9.7**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
+**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.9.8**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
 
 ## Installation
 
 1. In Tampermonkey ein **neues Skript** erstellen und den gesamten Inhalt von `OpenFront_Solo_AggroBot.user.js` einfügen. In einem privaten GitHub-Repository darf man sich nicht darauf verlassen, dass Tampermonkey einen GitHub-Raw-Link ohne Anmeldung automatisch aktualisieren kann.
 2. Alle älteren Solo-AggroBot-Skripte deaktivieren.
 3. Wenn der Spawn Advisor 10.4.0 parallel läuft, dort **Auto-Spawn**, **Smart Attack** und **Auto-Accept Alliances** ausschalten.
-4. OpenFront neu laden, eine Partie starten und den Bot im Menü **manuell** einschalten. In Public/Private-Partien zuerst **⚠ MP-TEST AUS** auf **AN** stellen, danach **▶ BOT STARTEN** drücken. Die Aktivierung gilt nur für diese Spielsitzung.
+4. OpenFront neu laden, eine Singleplayer-, Public- oder Private-Partie starten und den Bot im Menü **manuell** einschalten. Ein zusätzlicher Multiplayer-Schalter ist nicht mehr erforderlich.
 
-**Not-Aus:** `Alt+Shift+X`. **Start/Pause:** `Alt+Shift+P`. Nach jedem Seitenladen bleiben Bot und MP-Testmodus aus. **Public/Private-Multiplayer** erfordert jeweils eine separate manuelle Freigabe; beim Wechsel in ein neues Match wird sie zurückgesetzt. **Replays bleiben gesperrt.** Beachte die Regeln der jeweiligen Lobby bzw. des Servers; der Testmodus ist keine Zusage, dass Automatisierung dort erlaubt ist.
+**Not-Aus:** `Alt+Shift+X`. **Start/Pause:** `Alt+Shift+P`. Nach jedem Seitenladen und beim Wechsel in ein neues Match bleibt der Bot aus, bis du ihn startest. **Public/Private-Multiplayer benötigt keinen separaten Testschalter mehr; Replays und unbekannte Spieltypen bleiben gesperrt.** Beachte vor dem Einsatz die Regeln der jeweiligen Lobby bzw. des Servers.
 
 ## Strategie & Diagnose
 
 Strategie-, Wirtschafts-, Marine-, Diplomatie-, Nuke- und SAM-Planung sind vorhanden. Der Bot kann Befehle senden; daraus folgt **keine garantierte Gewinnrate auf „Unmöglich“**. Ein vollständiger Live-Test ist noch nicht erfolgt. „Diagnose JSON“ im Bot-Menü zeichnet unter anderem Gebietsänderungen, Truppenlage, Bauaufträge und Allianzantworten auf. Bitte den Export vor dem Neuladen erstellen.
 
-### Änderung 1.9.7 – expliziter Multiplayer-Test
+### Änderung 1.9.8 – Multiplayer ohne Zusatzsperre
 
-- **Public/Private** sind nur nach aktivem Klick auf **⚠ MP-TEST AN** nutzbar. Das Einschalten des Modus startet den Bot **nicht** automatisch.
-- Beim Deaktivieren der MP-Freigabe stoppt der Bot; die nachfolgenden asynchronen Worker-/EventBus-Aktionen werden von `connected()` und `permittedMatch()` blockiert.
-- Bei neuer Partie, nach Reload und im Replay gilt der Multiplayer-Modus wieder als gesperrt. Unbekannte Spieltypen sind ausdrücklich nicht freigegeben.
-- Singleplayer bleibt ohne MP-Freigabe nutzbar. Neue Regressionstests prüfen Public/Private-Opt-in, Replay-Sperre, unbekannte Spieltypen, Abschalten und Moduswechsel.
-- **Experimentell:** Die Singleplayer-Strategie ist nicht für faire Multiplayer-Matches optimiert oder live verifiziert. Prüfe vor dem Einsatz die Spiel-/Lobbyregeln.
+- **Public und Private** funktionieren nach einem Klick auf **▶ BOT STARTEN** direkt, ohne vorheriges MP-TEST-Opt-in.
+- Der MP-TEST-Schalter und alle zugehörigen Konsent-/Persistenzpfade wurden entfernt. Der Spieltyp wird weiter geprüft; Replays und unbekannte Spieltypen bleiben gesperrt.
+- Der Bot startet nach Reload oder Spielwechsel nicht automatisch. **Alt+Shift+X** beendet ihn jederzeit.
+- Regressionstests umfassen Public-/Private-Befehle, Notrückzüge, Replay-Sperre, unbekannte Spieltypen und manuelles Stoppen.
+- Der Bot ist weiterhin nicht als Live-Multiplayer-Sieger verifiziert. Beachte die Spiel-/Lobbyregeln.
+
+### Änderung 1.9.7 – bisheriger Multiplayer-Test
+
+- Ursprünglich wurde Multiplayer nur nach zusätzlichem Opt-in aktiviert; dieser Schalter ist seit v1.9.8 entfernt. Replays sind weiterhin gesperrt.
 
 ### Änderung 1.9.6 – strategische Planung
 
