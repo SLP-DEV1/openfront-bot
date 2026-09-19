@@ -122,7 +122,9 @@
   // We only inspect event constructors; no test event is emitted into the game.
   function recognize(b) {
     const result={};
-    if(!(b?.listeners instanceof Map)) return result;
+    // EventBus may come from another JS realm; instanceof Map is unreliable
+    // for Tampermonkey / VM-wrapped constructors. Inspect its interface instead.
+    if(!b?.listeners || typeof b.listeners.keys!=='function')return result;
     const names={spawn:'SendSpawnIntentEvent',attack:'SendAttackIntentEvent',cancel:'CancelAttackIntentEvent',
       boat:'SendBoatAttackIntentEvent',build:'BuildUnitIntentEvent',
       upgrade:'SendUpgradeStructureIntentEvent',
