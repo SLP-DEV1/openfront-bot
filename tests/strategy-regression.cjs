@@ -70,7 +70,7 @@ function boot() {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'military,warReadiness,confirmAttack,economy,economicNeeds,strategy,manageWar,actionBudget,connected,naval,',
+    'military,warReadiness,targetOpportunity,rankedTargets,confirmAttack,economy,economicNeeds,strategy,manageWar,actionBudget,connected,naval,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'setWarWait:n=>warWaitSince=n,setEconFails:n=>failedEconomyProbes=n,',
     'setPending:p=>pendingAttack=p,',
@@ -190,6 +190,38 @@ function boot() {
     const groups=[{id:'weak',opponent:x.weak},{id:'strong',opponent:x.strong}];
     x.b.manageWar(x.me,groups,x.b.military(x.me,groups),2400);
     assert.equal(x.b.state().warState.id,null);
+  });
+  await check('diagnosed Impossible opening can attack weaker border neighbor', () => {
+    const x=boot();
+    x.setTick(184);x.setLand(440);x.setHome(93198);x.setGold(16300);
+    x.weak.troops=()=>17594;x.strong.troops=()=>102839;
+    const groups=[{id:'weak',opponent:x.weak,front:10,tiles:[5]},
+      {id:'strong',opponent:x.strong,front:10,tiles:[6]}];
+    const s=x.b.military(x.me,groups);
+    assert(s.home<x.strong.troops()*1.48);
+    assert.equal(x.b.warReadiness(x.me,groups,s,184).ready,true);
+    const context=x.b.strategy(x.me,groups,s);
+    const ranked=x.b.rankedTargets(groups,x.me,184,s,context);
+    assert(ranked.some(t=>t.id==='weak'),JSON.stringify(ranked));
+    assert(!ranked.some(t=>t.id==='strong'));
+  });
+  await check('significant incoming attacks suppress new weak-neighbor offensives', () => {
+    const x=boot();
+    x.setTick(184);x.setLand(440);x.setHome(93198);
+    x.weak.troops=()=>17594;x.strong.troops=()=>102839;
+    const groups=[{id:'weak',opponent:x.weak,front:10,tiles:[5]},
+      {id:'strong',opponent:x.strong,front:10,tiles:[6]}];
+    x.me.incomingAttacks().push({id:'in',attackerID:3,targetID:1,troops:20000,retreating:false});
+    const s=x.b.military(x.me,groups);
+    assert.equal(x.b.targetOpportunity(x.me,groups,s,groups[0]),false);
+    assert.equal(x.b.warReadiness(x.me,groups,s,184).ready,false);
+  });
+  await check('construction diagnosis separates affordable-site failure from missing gold', async () => {
+    const x=boot();x.setGold(55000);
+    x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
+      type,canBuild:tile,canUpgrade:false,cost:125000n}))});
+    assert.equal(await x.b.economy(x.me,300,0,[]),false);
+    assert.match(x.b.state().economicStatus,/Gold für gültige Bauoption fehlt/);
   });
   await check('Public game remains blocked regardless of bot options', () => {
     const x=boot();x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Medium'});
