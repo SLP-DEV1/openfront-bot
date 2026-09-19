@@ -764,12 +764,33 @@
   // Compare the specific attack target with the OTHER neighboring threats.
   // A larger unrelated neighbor alone must not freeze every weak-front attack;
   // however the home force after the strike still must cover that neighbor.
+  // AFK players can reconnect. Adjust only the opportunity ratio; the home
+  // floor, other-front reserve and worker legality checks stay mandatory.
+  function enemyOpportunityRatio(enemy,late,home,blitz=false){
+    const normal=hardMode()?(late?1.34:1.75):
+      (late?1.18:blitz?1.30:1.55);
+    if(enemyUnderAttack(enemy))return hardMode()?(late?1.12:1.24):1.12;
+    if(enemy?.isDisconnected?.()===true &&
+      number(()=>enemy.troops(),Infinity)<home*1.2)
+      return Math.max(1.15,normal*.86);
+    return normal;
+  }
+  // Ally-target marking is a preference, not an attack authorization.
+  function allyAssistTarget(me,enemy){
+    if(!enemy || friendly(enemy,me))return false;
+    const allies=[...(me.allies?.()||[])];
+    for(const teammate of game.playerViews?.()||[]){
+      if(teammate!==me && me.isOnSameTeam?.(teammate) &&
+        !allies.includes(teammate))allies.push(teammate);
+    }
+    return allies.some(ally=>ally?.isAlive?.() && friendly(ally,me) &&
+      (ally.targets?.()||[]).some(target=>safeID(target)===safeID(enemy)));
+  }
   function targetOpportunity(me,items,s,item) {
     if(!item?.opponent?.isAlive?.()||friendly(item.opponent,me))return false;
     const late=lateGame(me),troops=number(()=>item.opponent.troops(),Infinity);
     if(!(troops>0)||s.incoming>s.home*(late?.15:.04)||s.ratio<(late?.29:.40))return false;
-    const victim=enemyUnderAttack(item.opponent);
-    const minRatio=victim?(hardMode()?(late?1.12:1.24):1.12):hardMode()?(late?1.34:1.75):(late?1.18:1.55);
+    const minRatio=enemyOpportunityRatio(item.opponent,late,s.home);
     if(s.available<troops*minRatio ||
       s.home<troops*(hardMode()?(late?1.45:1.85):(late?1.24:1.45)))return false;
     const otherThreat=items.filter(x=>x.id!==null&&x.id!==item.id&&x.opponent?.isAlive?.())
@@ -904,8 +925,7 @@
         .reduce((v,x)=>Math.max(v,number(()=>x.opponent?.troops(),0)),0):0;
       const enemyTiles=enemy?number(()=>enemy.numTilesOwned(),0):0;
       if(!isNeutral) {
-        const victim=enemyUnderAttack(enemy);
-        const minimumRatio=victim?(hardMode()?(late?1.12:1.24):1.12):hardMode()?(late?1.34:1.75):(late?1.18:effectivePlan()==='Blitz'?1.30:1.55);
+        const minimumRatio=enemyOpportunityRatio(enemy,late,s.home,effectivePlan()==='Blitz');
         if(s.ratio<(late?.29:.40) || available<enemyTroops*minimumRatio ||
           s.home<enemyTroops*(hardMode()?(late?1.45:1.85):(late?1.24:1.45)) ||
           (hardMode() && s.home-Math.min(available*.76,
@@ -915,7 +935,10 @@
       let score=isNeutral?75:52;
       score+=Math.min(20,Math.log2(item.front+1)*4.5);
       if(isNeutral) {
+        if(item.fallout && (s.incoming>0 || s.strongest>s.home*.65 ||
+          s.ratio<.60 || available<s.home*.30))return [];
         score+=Math.max(0,45-s.ratio*40)+(ownTiles<600?26:0);
+        if(item.fallout)score-=36;
         if(context.wanted==='EXPAND')score+=18;
         if(growthPressure(s))score+=Math.min(22,(s.ratio-.70)*90);
         if(late&&context.foes)score-=38;
@@ -927,6 +950,8 @@
           Math.min(45,local.posts*12+Math.max(0,local.density-32)*.20);
         if(enemyTiles<300 && enemyTroops<available*.55)score+=14;
         if(enemyUnderAttack(enemy) && (!isWar()||warState.id===item.id))score+=23;
+        if(enemy.isDisconnected?.()===true)score+=18;
+        if(allyAssistTarget(me,enemy))score+=22;
         if(winStatus.urgent)score+=18;
         if(me.hasTransitiveTarget?.(enemy.smallID?.()))score+=12;
         if(plan?.id===item.id && tick<plan.until)score+=23;
@@ -934,7 +959,7 @@
         if(late)score+=33;
       }
       const amount=isNeutral ?
-        neutralAttackAmount(s,aggression) :
+        Math.floor(neutralAttackAmount(s,aggression)*(item.fallout?.48:1)) :
         Math.min(available*(hardMode()?.76:.80),Math.max(enemyTroops*(hardMode()?1.57:(1.25+aggression*.20)),available*.48));
       const forecast=!isNeutral?attackForecast(me,item,Math.floor(amount)):null;
       if(forecast){
@@ -1065,7 +1090,10 @@
       if(!candidate||!await legalTarget(me,candidate,serial))continue;
       if(!live(serial))return false;
       const amount=Math.floor(Math.min(spare*.42,s.home*.16));
-      if(amount<100||s.home-amount<threat.incoming*2.8)continue;
+      // This is an actual outgoing counterattack, not a retreat. Preserve
+      // the dynamic home reserve as well as the incoming-defense floor.
+      if(amount<100||s.home-amount<
+        Math.max(threat.incoming*2.8,s.reserve))continue;
       if(send('attack',[id,amount],'KONTROLLIERTER GEGENANGRIFF → '+nameOf(attacker))){
         const out=s.out.filter(x=>x.targetID===id&&!x.retreating);
         pendingAttack={id,name:nameOf(attacker),tick,amount,ownLand:number(()=>me.numTilesOwned()),
@@ -1088,6 +1116,9 @@
         fresh.activeEnemy>=(lateGame(me)&&fresh.strongest<fresh.home*.55?2:1) ||
         fresh.available<Math.max(100,number(()=>item.opponent.troops(),Infinity)*(lateGame(me)?1.15:1.3))))continue;
       if(item.id===null && fresh.activeNeutral>=1)continue;
+      if(item.fallout && (fresh.incoming>0 ||
+        fresh.strongest>fresh.home*.65 || fresh.ratio<.60 ||
+        fresh.available<fresh.home*.30))continue;
       if(item.id!==null && hardMode() && (!warReadiness(me,strategic.groups,fresh,tick,item).ready ||
         !targetOpportunity(me,strategic.groups,fresh,item) ||
         (isWar()&&warState.id!==item.id)))continue;
@@ -1106,7 +1137,10 @@
         pendingAttack={id:item.id,name:label,tick,amount,ownLand:number(()=>me.numTilesOwned()),
           enemyLand:item.opponent?number(()=>item.opponent.numTilesOwned()):0,
           beforeIds:before.map(a=>a.id),beforeTroops:before.reduce((v,a)=>v+a.troops,0)};
-        lastSelection=label+' · score '+item.score.toFixed(0);
+        if(item.opponent?.isDisconnected?.()===true)strategicTelemetry.afkTargets++;
+        if(item.opponent&&allyAssistTarget(me,item.opponent))strategicTelemetry.assists++;
+        lastSelection=label+' · score '+item.score.toFixed(0)+
+          (item.fallout?' · Fallout-Fallback':'');
         telemetry('attack_intent','Angriff angefordert – wartet auf Bestätigung',
           {target:item.id,troops:amount});
         return true;
