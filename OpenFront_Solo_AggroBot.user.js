@@ -1274,7 +1274,8 @@
     const saveForNuke=siloAllowed && late && siloCount>0 &&
       intel.enemy.length>0 && nukeShots===0;
     const firstRocketFund=game.config().isUnitDisabled?.('Atom Bomb')===true?
-      (game.config().isUnitDisabled?.('Hydrogen Bomb')===true?0:6400000):1100000;
+      (game.config().isUnitDisabled?.('Hydrogen Bomb')===true?
+        (game.config().isUnitDisabled?.('MIRV')===true?0:26000000):6400000):1100000;
     const savingsTarget=saveForSilo?1150000:saveForNuke?firstRocketFund:0;
     investmentStatus=startup?'Erste Stadt/Fabrik':basic?'Zwei Städte und zwei Fabriken':
       saveForSilo?'Silo-Fonds 1,15 Mio.':saveForNuke?'Raketen-Fonds '+firstRocketFund.toLocaleString():'Wirtschaft & Offensive';
@@ -1651,8 +1652,9 @@
     const ready=rocketReadiness(silos,me);
     if(ready<1)return {amount:0,ready};
     if(kind!=='Atom Bomb'||candidate.sams===0||
-      candidate.hit<2||candidate.value<20 || ready<2)
+      candidate.hit<2||candidate.value<20)
       return {amount:1,ready};
+    if(ready<2)return {amount:0,ready};
     const x=game.x(candidate.tile),y=game.y(candidate.tile);
     const covering=nuclearIntel(me).enemySAM.filter(u=>{
       const dx=x-game.x(u.tile()),dy=y-game.y(u.tile());
@@ -1681,12 +1683,15 @@
       return id!==undefined && id!==null && !p.beforeIds.includes(String(id));
     }).length;
     const confirmed=Math.min(p.amount||1,Math.max(unseen,
-      matches.length-p.beforeMatches));
-    if(confirmed>0){
-      nukeShots+=confirmed;
-      nukeStatus='Raketenstart bestätigt: '+p.type;
-      telemetry('nuke_confirmed',nukeStatus,{tile:p.tile,attempt:p.attempt,confirmed:nukeShots});
-      nukePending=null;return false;
+      matches.length-(p.beforeMatches||0)));
+    const added=confirmed-(p.confirmed||0);
+    if(added>0){
+      nukeShots+=added;p.confirmed=confirmed;
+      nukeStatus='Raketenstart bestätigt: '+p.type+' '+confirmed+'/'+(p.amount||1);
+      telemetry('nuke_confirmed',nukeStatus,{tile:p.tile,attempt:p.attempt,
+        confirmed:nukeShots,partial:confirmed<(p.amount||1)});
+      if(confirmed>=(p.amount||1)){nukePending=null;return false;}
+      return true;
     }
     if(tick-p.tick>=55){
       nukeUnconfirmed++;
