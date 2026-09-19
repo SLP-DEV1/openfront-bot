@@ -2,7 +2,7 @@
 
 Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscript für [OpenFront](https://openfront.io/).
 
-**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.10.0**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
+**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.10.1**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
 
 ## Installation
 
@@ -16,6 +16,15 @@ Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscr
 ## Strategie & Diagnose
 
 Strategie-, Wirtschafts-, Marine-, Diplomatie-, Nuke- und SAM-Planung sind vorhanden. Der Bot kann Befehle senden; daraus folgt **keine garantierte Gewinnrate auf „Unmöglich“**. Ein vollständiger Live-Test ist noch nicht erfolgt. „Diagnose JSON“ im Bot-Menü zeichnet unter anderem Gebietsänderungen, Truppenlage, Bauaufträge und Allianzantworten auf. Bitte den Export vor dem Neuladen erstellen.
+
+### Änderung 1.10.1 – Restpunkte aus Issue #10
+
+- **AFK-Targeting:** Offen als disconnected gemeldete Gegner erhalten einen Zielbonus und eine moderat angepasste Angriffsquote. Ein starker AFK-Gegner bleibt durch die Mindest-Heimreserve und die Zweitfront-Prüfung geschützt; Wiederverbindung ist möglich.
+- **Kontrollierter Gegenangriff:** Bei tatsächlich eingehendem Angriff greift der Bot über den vorhandenen `defense()`-Pfad nur bei ausreichenden Truppen zurück an. Die dynamische Heimreserve wird jetzt explizit nach dem Gegenschlag geprüft. `emergencyRetreat()` ist eine andere Funktion: Sie ruft eigene Verbände zurück.
+- **Verbündeten-Assistenz:** Ausdrückliche `ally.targets()` und Team-Zielmarkierungen erhalten einen Bonus, sofern das Ziel feindlich ist. Weder Zielmarkierungen noch AFK heben den War-Director, die Reserve- oder die workerseitige Angriffsprüfung auf.
+- **Fallout:** Saubere neutrale Grenzflächen zuerst; nur wenn keine saubere neutrale Grenze im geprüften Batch liegt, wird Fallout als Fallback angezeigt. Dieser benötigt einen hohen Heimtruppenstand, keine eingehenden Angriffe, keinen starken Zweitnachbarn und eine kleinere Angriffssumme. Verstrahlung wird **nicht** pauschal als günstiger bewertet.
+- **Neutrale Insel-Expansion:** Rotierender, begrenzter Küstenscan für unbesetztes, nicht verstrahltes Land. Landungen werden erst nach Worker-Prüfung des Transport-Ziels und bei ausreichendem Heimvorrat ausgelöst; laufender Krieg und gewöhnliche neutrale Landgrenzen haben Vorrang. Die Stichprobe kann kleine Inseln in einem Durchlauf verpassen.
+- **Prüfung:** Mock-Regressionen für AFK, Zielmarkierungen, Reserve, clean/Fallout-Auswahl, Insel-Suche und worker-verifizierte neutrale Landung. Der vollständige Browser-/Impossible-Match-Test aus Issue #12 bleibt nötig.
 
 ### Änderung 1.10.0 – Engine-nahe Autonomie (experimentell)
 
