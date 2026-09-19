@@ -307,8 +307,13 @@
           const density=land/samples.length;if(density<.62)continue;
           const distance=rivals.length?Math.min(...rivals.map(([px,py])=>Math.hypot(cx-px,cy-py))):r*7;
           const edge=Math.min(cx,cy,w-1-cx,h-1-cy);
-          const score=density*.46 + plain/Math.max(1,land)*.20 +
-            Math.min(1,distance/(r*5))*.24 + Math.min(1,edge/(r*3))*.10;
+          // A useful port coastline is a bonus, never a reason to spawn on
+          // a cramped island; the land-density gate remains mandatory.
+          const coast=typeof g.isShore==='function' && [[0,0],[r,0],[-r,0],[0,r],[0,-r]]
+            .some(([dx,dy])=>{try{return g.isShore(g.ref(cx+dx,cy+dy));}catch(_){return false;}});
+          const score=density*.44 + plain/Math.max(1,land)*.20 +
+            Math.min(1,distance/(r*5))*.23 + Math.min(1,edge/(r*3))*.09 +
+            (coast?.04:0);
           if(!best||score>best.score)best={tile:t,x:cx,y:cy,score};
         }
       }catch(e){spawnJob=null;status='Spawn-Analyse: '+e.message;spawnRetryAt=Date.now()+15000;return;}
@@ -1068,8 +1073,11 @@
     const style=effectiveBuildStyle() || 'Ausgewogen';
     const defBoost=style==='Defensiv'?22:0,econBoost=style==='Wirtschaft'?24:0;
     const list=[
-      {type:'City',desired:wantedCity,score:92+econBoost/2+Math.max(0,pressure-.35)*75+(cities===0?115:hardMode()&&cities<2?80:0)},
-      {type:'Factory',desired:wantedFactory,score:91+econBoost+(factories===0?100:hardMode()&&factories<2?85:0)+(gold<450000?15:0)},
+      {type:'City',desired:wantedCity,score:92+econBoost/2+Math.max(0,pressure-.35)*75+
+          (pressure>.80&&!immediate?30:0)+(cities===0?115:hardMode()&&cities<2?80:0)},
+      {type:'Factory',desired:wantedFactory,score:91+econBoost+
+          (factories===0?100:hardMode()&&factories<2?85:0)+
+          (gold<450000?15:0)+(pressure<.60&&factories>0?10:0)},
       {type:'Port',desired:wantedPort,score:59+econBoost/2+(ports===0&&wantedPort?12:0)},
       {type:'Defense Post',desired:wantedDefense,score:immediate?310+defBoost:threatened?(basic?70:119)+defBoost:20},
       {type:'SAM Launcher',desired:wantedSAM,score:enemyNukes?165+defBoost:threat?116+defBoost:40},
@@ -1178,7 +1186,20 @@
       const intel=nuclearIntel(myPlayer(),units);
       value+=samCoverageValue(ref,units,intel)+Math.min(10,distance*.05);
     }
-    else value+=Number.isFinite(distance)?Math.min(38,distance*.18)-Math.max(0,60-distance)*1.05:25;
+    else {
+      value+=Number.isFinite(distance)?Math.min(38,distance*.18)-Math.max(0,60-distance)*1.05:25;
+      if(type==='Factory'){
+        // Favor nearby City/Port infrastructure. This improves placement;
+        // it does NOT claim a connected rail route or guaranteed income.
+        const hubs=units.filter(u=>['City','Port'].includes(u.type?.()) &&
+          u.isUnderConstruction?.()!==true);
+        if(hubs.length){
+          const x=game.x(ref),y=game.y(ref);
+          const nearest=Math.min(...hubs.map(u=>Math.hypot(x-game.x(u.tile()),y-game.y(u.tile()))));
+          value+=nearest>=18&&nearest<=105?22:nearest>160?-20:0;
+        }
+      }
+    }
     const same=units.filter(u=>u.type?.()===type).map(u=>number(()=>u.tile(),-1)).filter(t=>t>=0);
     if(same.length){const x=game.x(ref),y=game.y(ref);
       let nearest=Infinity;
@@ -1383,6 +1404,7 @@
       const troops=number(()=>owner.troops?.(),0),tiles=Math.max(1,number(()=>owner.numTilesOwned?.(),1));
       value+=Math.min(8,troops/tiles/1000);
       if(plan?.id===safeID(owner))value+=7;
+      if(isWar())value+=safeID(owner)===warState.id?18:-9;
       if(hit===0)value-=18;
       const sams=intel.enemySAM.filter(s=>distance(s)<number(()=>game.config().samRange(s.level?.()||1),70));
       // Launching blindly into a SAM bubble wastes expensive rockets.
@@ -1515,7 +1537,11 @@
     if(safeID(p)===plan?.id)score-=70;
     const alliances=number(()=>me.alliances?.().length);
     if(alliances>=3)score-=36;
-    if(offered && strategic.mode==='ASSAULT')score-=18;
+    if(offered && strategic.mode==='ASSAULT' && their<own*.75)score-=18;
+    // Strategic offers can secure a major border before/while fighting a
+    // different nation. Never reward alliance with our active war target.
+    if(offered && their>=own*.85 && !hostileIncoming && !hostileOutgoing &&
+      warState.id!==safeID(p))score+=22;
     return {score,reason:score>=58?'Schutz/Kooperation nützlich':'Strategischer Nutzen gering'};
   }
   // Diplomacy is a priority channel. The normal minute and attack-burst limits
@@ -1625,17 +1651,21 @@
       return;
     }
     if(!opts.offerAlliances || !ctors.alliance || !actionBudget() ||
-      tick-lastProposalTick<850 || ['ASSAULT','EXPAND'].includes(strategic.mode))return;
+      tick-lastProposalTick<850)return;
     const s=military(me,strategic.groups);
     const candidates=strategic.groups.filter(g=>g.id!==null&&g.opponent &&
       !diplomacyHandled.has(g.id)&&!diplomacyPending.has(g.id)&&
+      (warState.id===null||g.id!==warState.id)&&
+      (!['ASSAULT','EXPAND'].includes(strategic.mode) ||
+        number(()=>g.opponent.troops(),0)>=number(()=>me.troops(),1)*.85)&&
       !me.isRequestingAllianceWith?.(g.opponent))
       .map(g=>({g,...diplomacyScore(me,g.opponent,s,true)}))
       .filter(x=>x.score>=80).sort((a,b)=>b.score-a.score);
     if(!candidates.length)return;
-    const chosen=candidates[0];lastProposalTick=tick;
+    const chosen=candidates[0];
     const target=chosen.g.opponent,serial=generation,anchor=chosen.g.tiles?.[0];
     if(!Number.isInteger(anchor))return;
+    lastProposalTick=tick;
     Promise.resolve(me.actions(anchor,null)).then(a=>{
       if(!live(serial)||game.inSpawnPhase?.()||!opts.diplomacy||!opts.offerAlliances)return;
       if(!a?.interaction?.canSendAllianceRequest||safeID(game.owner(anchor))!==safeID(target) ||
