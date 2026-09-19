@@ -382,63 +382,199 @@
   function friendly(p,me) {
     try {return p?.id?.()===me.id() || p.isFriendly?.(me) || me.isFriendly?.(p);}catch(_){return false;}
   }
+  function spawnRemaining(g) {
+    const fallback=multiplayerMatch(g)?200:100;
+    const turns=number(()=>g.config().numSpawnPhaseTurns?.(),fallback);
+    return Math.max(0,turns-number(()=>g.ticks(),0));
+  }
+  function spawnTileValid(g,tile) {
+    try{return Number.isInteger(tile)&&
+      (typeof g.isValidRef!=='function'||g.isValidRef(tile))&&
+      g.isLand(tile)&&!g.isImpassable(tile)&&
+      !g.hasOwner(tile)&&!g.isBorder?.(tile);}
+    catch(_){return false;}
+  }
+  function spawnRivals(g,me) {
+    const ownTeam=me?.team?.();
+    return (g.playerViews?.()||[]).filter(p=>safeID(p)!==safeID(me))
+      .map(p=>{
+        const tile=p.state?.spawnTile;
+        if(!Number.isInteger(tile)||!g.isValidRef?.(tile))return null;
+        return {x:g.x(tile),y:g.y(tile),
+          teammate:ownTeam!==null&&ownTeam!==undefined &&
+            p.team?.()===ownTeam};
+      }).filter(Boolean);
+  }
+  // Use the actual 4-tile spawn footprint and three additional land rings.
+  // Nearby free plains provide opening growth, while the outer rings penalize
+  // islands/peninsulas and distant teammates do not count as enemy threats.
+  function spawnScore(g,tile,rivals=spawnRivals(g,myPlayer())) {
+    if(!spawnTileValid(g,tile))return null;
+    const x=g.x(tile),y=g.y(tile),w=g.width(),h=g.height();
+    const good=(xx,yy)=>{
+      if(xx<0||yy<0||xx>=w||yy>=h)return null;
+      const t=g.ref(xx,yy);
+      if(!g.isLand(t)||g.isImpassable(t)||g.hasOwner(t))return null;
+      const magnitude=number(()=>g.magnitude?.(t),
+        number(()=>g.terrainByte?.(t)&31,10));
+      return {plain:magnitude<10,high:magnitude<20};
+    };
+    let core=0,coreTotal=0,plain=0;
+    for(let dy=-4;dy<=4;dy++)for(let dx=-4;dx<=4;dx++){
+      if(dx*dx+dy*dy>16)continue;
+      coreTotal++;
+      const v=good(x+dx,y+dy);
+      if(v){core++;plain+=v.plain?1:0;}
+    }
+    if(core<coreTotal*.83)return null;
+    const minSide=Math.min(w,h),scale=Math.min(70,Math.max(15,minSide/7));
+    const rings=[Math.max(8,scale*.27),Math.max(13,scale*.57),scale];
+    let accessible=0,weight=0,plains=0,coastal=0;
+    const angles=16;
+    for(let i=0;i<rings.length;i++){
+      const rr=rings[i],importance=i===0?1:i===1?1.25:1.5;
+      for(let j=0;j<angles;j++){
+        const t=2*Math.PI*j/angles;
+        const xx=Math.round(x+rr*Math.cos(t)),yy=Math.round(y+rr*Math.sin(t));
+        const v=good(xx,yy);
+        weight+=importance;
+        if(v){accessible+=importance;plains+=v.plain?importance:v.high?importance*.38:0;}
+        try{
+          if(xx>=0&&yy>=0&&xx<w&&yy<h&&
+            (g.isOceanShore?.(g.ref(xx,yy))||
+             (!g.isOceanShore&&g.isShore?.(g.ref(xx,yy)))))
+            coastal+=importance;
+        }catch(_){}
+      }
+    }
+    const density=accessible/Math.max(1,weight);
+    if(density<.48)return null;
+    const enemy=rivals.filter(p=>!p.teammate)
+      .map(p=>Math.abs(p.x-x)+Math.abs(p.y-y));
+    const ally=rivals.filter(p=>p.teammate)
+      .map(p=>Math.abs(p.x-x)+Math.abs(p.y-y));
+    const nearestEnemy=enemy.length?Math.min(...enemy):Infinity;
+    const nearestAlly=ally.length?Math.min(...ally):Infinity;
+    const minimum=number(()=>g.config().minDistanceBetweenPlayers?.(),30);
+    if(nearestEnemy<minimum+4)return null;
+    // Too many people in one shared territory prevents both players growing.
+    if(nearestAlly<Math.max(22,minimum*.8))return null;
+    const enemyScore=!enemy.length?.75:
+      Math.min(1,Math.max(0,(nearestEnemy-minimum)/(minimum*2.5)));
+    const teamScore=!ally.length?0:
+      Math.min(1,Math.max(0,(nearestAlly-minimum)/(minimum*2.5)))*
+        Math.min(1,190/Math.max(60,nearestAlly));
+    const openScore=core/coreTotal;
+    const edge=Math.min(x,y,w-1-x,h-1-y);
+    const edgeScore=Math.min(1,edge/Math.max(22,scale));
+    // Coast is helpful for ports, not a reason to prefer a tiny island.
+    const coastScore=Math.min(1,coastal/Math.max(1,weight)*3);
+    const score=openScore*.19+density*.32+
+      (plain/Math.max(1,core)*.45+plains/Math.max(1,weight)*.55)*.18+
+      enemyScore*.16+edgeScore*.05+coastScore*.04+
+      (ally.length?teamScore*.06:0);
+    return {tile,x,y,score,density,core:openScore,
+      coast:coastScore,enemy:Number.isFinite(nearestEnemy)?nearestEnemy:null,
+      teammate:Number.isFinite(nearestAlly)?nearestAlly:null};
+  }
   function startSpawnSearch() {
-    if(spawnJob || spawnCache || !game || Date.now()<spawnRetryAt)return;
-    const g=game, serial=generation;
-    const w=g.width(),h=g.height(),r=Math.max(6,Math.min(27,Math.floor(Math.min(w,h)/20)));
-    const stride=Math.max(17,Math.floor(Math.min(w,h)/15));
-    const rivals=[];
-    try {for(const p of g.playerViews()) {
-      if(p.id?.()===myPlayer()?.id?.()) continue;
-      const t=p.state?.spawnTile;
-      if(Number.isInteger(t)&&t>=0) rivals.push([g.x(t),g.y(t)]);
-    }}catch(_){}
-    const samples=[];
-    for(let dy=-r;dy<=r;dy+=Math.max(3,Math.floor(r/4)))
-      for(let dx=-r;dx<=r;dx+=Math.max(3,Math.floor(r/4)))
-        if(dx*dx+dy*dy<=r*r)samples.push([dx,dy]);
-    let x=r,y=r,best=null;
-    spawnJob={serial};
-    function chunk() {
-      if(serial!==generation || game!==g || !opts.enabled || !permittedMatch(g) || !g.inSpawnPhase?.()){
+    if(spawnJob||!game||!opts.enabled||Date.now()<spawnRetryAt||
+      !game.inSpawnPhase?.()||game.config().isRandomSpawn?.())return;
+    const g=game,serial=generation,me=myPlayer();
+    if(!me||me.hasSpawned?.()||Number.isInteger(me.state?.spawnTile))return;
+    const w=g.width(),h=g.height(),margin=6;
+    if(w<=margin*2||h<=margin*2)return;
+    const stride=Math.max(11,Math.floor(Math.min(w,h)/19));
+    const rivals=spawnRivals(g,me),candidates=new Map();
+    const offsets=[0,.5].map(f=>Math.floor(stride*f));
+    const jobs=[];
+    for(const offset of offsets){
+      for(let y=margin+offset;y<h-margin;y+=stride)
+        for(let x=margin+offset;x<w-margin;x+=stride)
+          jobs.push([x,y]);
+    }
+    let index=0;
+    spawnJob={serial,started:number(()=>g.ticks(),0),total:jobs.length};
+    spawnState.phase='Suche';spawnState.scanned=0;
+    function chunk(){
+      if(serial!==generation||g!==game||!opts.enabled||!permittedMatch(g)||
+        !g.inSpawnPhase?.()||me.hasSpawned?.()||
+        Number.isInteger(me.state?.spawnTile)){
         spawnJob=null;return;
       }
       const start=performance.now();
-      try {
-        while(y<h-r && performance.now()-start<8) {
-          if(x>=w-r){x=r;y+=stride;continue;}
-          const cx=x,cy=y;x+=stride;
-          const t=g.ref(cx,cy);
-          if(!g.isLand(t)||g.isImpassable(t)||g.hasOwner(t))continue;
-          let land=0,plain=0;
-          for(const [dx,dy] of samples){const byte=g.terrainByte(g.ref(cx+dx,cy+dy));
-            if(byte&128){land++;if((byte&31)<10)plain++;}}
-          const density=land/samples.length;if(density<.62)continue;
-          const distance=rivals.length?Math.min(...rivals.map(([px,py])=>Math.hypot(cx-px,cy-py))):r*7;
-          const edge=Math.min(cx,cy,w-1-cx,h-1-cy);
-          // A useful port coastline is a bonus, never a reason to spawn on
-          // a cramped island; the land-density gate remains mandatory.
-          const coast=typeof g.isShore==='function' && [[0,0],[r,0],[-r,0],[0,r],[0,-r]]
-            .some(([dx,dy])=>{try{return g.isShore(g.ref(cx+dx,cy+dy));}catch(_){return false;}});
-          const score=density*.44 + plain/Math.max(1,land)*.20 +
-            Math.min(1,distance/(r*5))*.23 + Math.min(1,edge/(r*3))*.09 +
-            (coast?.04:0);
-          if(!best||score>best.score)best={tile:t,x:cx,y:cy,score};
+      try{
+        while(index<jobs.length && performance.now()-start<8){
+          const [x,y]=jobs[index++],tile=g.ref(x,y);
+          const candidate=spawnScore(g,tile,rivals);
+          if(!candidate)continue;
+          candidates.set(tile,candidate);
+          if(candidates.size>18){
+            const worst=[...candidates.values()].sort((a,b)=>a.score-b.score)[0];
+            candidates.delete(worst.tile);
+          }
+          if(!spawnCache || candidate.score>spawnCache.score)
+            spawnCache=candidate;
         }
-      }catch(e){spawnJob=null;status='Spawn-Analyse: '+e.message;spawnRetryAt=Date.now()+15000;return;}
-      if(y<h-r){setTimeout(chunk,0);return;}
-      spawnJob=null;spawnCache=best;
-      if(!best){status='Keine geeignete Startposition';spawnRetryAt=Date.now()+12000;return;}
+        spawnState.scanned=index;
+      }catch(e){
+        spawnJob=null;spawnState.phase='Fehler';
+        status='Spawn-Analyse: '+String(e?.message||e).slice(0,90);
+        spawnRetryAt=Date.now()+600;return;
+      }
+      if(index<jobs.length){
+        // Near deadline, send the best VALID candidate found so far while
+        // the grid continues. Do not wait out the last spawn-phase tick.
+        if(spawnRemaining(g)<=55 && spawnCache)doSpawn(number(()=>g.ticks(),0));
+        setTimeout(chunk,0);return;
+      }
+      spawnJob=null;spawnState.phase='Fertig';
+      if(candidates.size){
+        // Refine only the top candidates in a bounded local neighborhood.
+        for(const top of [...candidates.values()].sort((a,b)=>b.score-a.score).slice(0,6)){
+          for(const [dx,dy] of [[0,0],[stride/3,0],[-stride/3,0],
+            [0,stride/3],[0,-stride/3],[stride/3,stride/3],
+            [-stride/3,-stride/3]]){
+            const x=Math.round(top.x+dx),y=Math.round(top.y+dy);
+            if(x<margin||y<margin||x>=w-margin||y>=h-margin)continue;
+            const v=spawnScore(g,g.ref(x,y),rivals);
+            if(v&&(!spawnCache||v.score>spawnCache.score))spawnCache=v;
+          }
+        }
+      }
+      if(!spawnCache){
+        status='Spawn: kein sicherer Standort; Suche wiederholen';
+        spawnRetryAt=Date.now()+800;return;
+      }
       doSpawn(number(()=>g.ticks(),0));
     }
     setTimeout(chunk,0);
   }
   function doSpawn(tick) {
-    if(!opts.autoSpawn||!ctors.spawn||tick-lastSpawn<30 || game.config().isRandomSpawn?.())return;
-    const me=myPlayer();if(me?.hasSpawned?.()||me?.state?.spawnTile!==undefined)return;
+    if(!opts.autoSpawn||!ctors.spawn||tick-lastSpawn<30||
+      game.config().isRandomSpawn?.()||!game.inSpawnPhase?.())return;
+    const me=myPlayer();
+    if(!me||me.hasSpawned?.()||Number.isInteger(me.state?.spawnTile))return;
     if(!spawnCache){startSpawnSearch();return;}
-    const p=spawnCache;
-    if(send('spawn',[p.tile],`SPAWN (${p.x},${p.y})`))lastSpawn=tick;
+    if(spawnJob && spawnRemaining(game)>55)return;
+    const rivals=spawnRivals(game,me);
+    const best=spawnScore(game,spawnCache.tile,rivals);
+    if(!best){
+      spawnCache=null;spawnState.phase='Standort neu prüfen';
+      if(!spawnJob)startSpawnSearch();
+      return;
+    }
+    spawnCache=best;
+    if(send('spawn',[best.tile],
+      'SPAWN → strategischer Standort ('+best.x+','+best.y+
+      ') · Land '+Math.round(best.density*100)+'% · Score '+best.score.toFixed(3),
+      spawnRemaining(game)<=55)){
+      lastSpawn=tick;spawnState.phase='Auswahl gesendet';
+      spawnState.lastSent={tile:best.tile,tick,score:best.score,
+        density:best.density,enemy:best.enemy,teammate:best.teammate};
+      telemetry('spawn_intent','Strategischer Spawn angefordert',
+        {spawn:{...spawnState.lastSent}});
+    }
   }
   async function borders(me,tick) {
     const id=safeID(me);
