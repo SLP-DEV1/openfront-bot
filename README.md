@@ -2,7 +2,7 @@
 
 Autonomer **Singleplayer**-Bot als Tampermonkey-Userscript für [OpenFront](https://openfront.io/).
 
-**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.9.1**. Die ältere Datei `OpenFront_Solo_AggroBot_1.9.0.js` bleibt als unveränderte historische Version erhalten.
+**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.9.2**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
 
 ## Installation
 
@@ -17,11 +17,18 @@ Autonomer **Singleplayer**-Bot als Tampermonkey-Userscript für [OpenFront](http
 
 Strategie-, Wirtschafts-, Marine-, Diplomatie-, Nuke- und SAM-Planung sind vorhanden. Der Bot kann Befehle senden; daraus folgt **keine garantierte Gewinnrate auf „Unmöglich“**. Ein vollständiger Live-Test ist noch nicht erfolgt. „Diagnose JSON“ im Bot-Menü zeichnet unter anderem Gebietsänderungen, Truppenlage, Bauaufträge und Allianzantworten auf. Bitte den Export vor dem Neuladen erstellen.
 
+### Änderung 1.9.2
+
+- Priorisiert **erste Stadt und erste Fabrik** vor nicht dringenden Verteidigungsposten.
+- Ab zwei Städten und zwei Fabriken spart die Wirtschaft im Late Game gezielt auf den **ersten Raketensilo (1,15 Mio. Gold)**; danach kann sie Gold für eine **Atombombe (1,1 Mio. Gold)** vorhalten. Eingehende Raketen und starke Angriffe haben Vorrang.
+- Statt im Late Game bei voller Armee und stärkeren Grenznachbarn ausschließlich zu verteidigen, meldet der Bot **TECH** und finanziert die nächste Angriffstechnologie.
+- Nach längerer erfolgloser Inaktivität wird ein blockiertes Hauptkriegsziel neu bewertet.
+- Diagnoseexport enthält jetzt auch den **Spielmodus** und das **wirtschaftliche Sparziel**.
+- Einstellungen aus 1.9.1 werden übernommen; der Bot startet nach Seitenwechsel weiterhin **ausgeschaltet**.
+
 ### Änderung 1.9.1
 
-- Marine verwendet wieder die **vollständige Grenzbedrohung** bei der Reservenberechnung.
-- Bei festgelegtem Hauptkriegsziel eröffnet die Marine auf „Unmöglich“ **keine zweite Front**.
-- Einstellungen aus 1.9.0 werden einmalig übernommen; ein Bot startet nie selbsttätig.
+- Marine verwendet die **vollständige Grenzbedrohung** bei der Reservenberechnung und respektiert das Hauptkriegsziel.
 
 ## Entwickler-Checks
 
