@@ -878,7 +878,7 @@
     const record=lastBattle;
     const opponent=game.playerViews().find(p=>safeID(p)===record.id);
     if(!opponent || !opponent.isAlive?.()){lastBattle=null;return;}
-    const active=(me.outgoingAttacks?.()||[]).some(a=>a.targetID===record.id&&!a.retreating);
+    const active=(me.outgoingAttacks?.()||[]).some(a=>attackTargets(a.targetID,record.id)&&!a.retreating);
     // Don't attribute other battles, recruitment or construction to this war.
     // Evaluate only after the offensive ends or after a long front stalemate.
     if(active && tick-record.tick<620)return;
@@ -905,7 +905,7 @@
   function confirmAttack(me,tick){
     if(!pendingAttack)return;
     const p=pendingAttack;
-    const out=(me.outgoingAttacks?.()||[]).filter(a=>!a.retreating && a.targetID===p.id);
+    const out=(me.outgoingAttacks?.()||[]).filter(a=>!a.retreating && attackTargets(a.targetID,p.id));
     const newStack=out.some(a=>!p.beforeIds.includes(a.id)) ||
       out.reduce((sum,a)=>sum+a.troops,0)>p.beforeTroops+p.amount*.18;
     // A gain against neutral land must not falsely confirm an unrelated
@@ -966,7 +966,7 @@
         warState={id:null,name:'—',since:tick,blockedUntil:-Infinity};plan=null;
       } else if(tick<warState.blockedUntil) {
         strategic.reason='Front nach Verlusten stabilisieren';
-      } else if(!active.some(a=>a.targetID===warState.id) &&
+      } else if(!active.some(a=>attackTargets(a.targetID,warState.id)) &&
         ((tick-warState.since>550 && !foes.some(x=>x.id===warState.id)) ||
          (tick-warState.since>850 && tick-lastEnemySend>280 && s.incoming===0))) {
         // A once-successful war lock must not paralyze the bot forever after
@@ -977,8 +977,8 @@
       }
     }
     if(warState.id===null && active.length) {
-      const a=active.sort((a,b)=>b.troops-a.troops)[0],p=game.playerViews().find(x=>safeID(x)===a.targetID);
-      if(p){warState={id:a.targetID,name:nameOf(p),since:tick,blockedUntil:-Infinity};
+      const a=active.sort((a,b)=>b.troops-a.troops)[0],p=attackTargetPlayer(a.targetID);
+      if(p){warState={id:safeID(p),name:nameOf(p),since:tick,blockedUntil:-Infinity};
         log('KRIEGSZIEL ÜBERNOMMEN: '+warState.name);}
     }
   }
@@ -1301,7 +1301,7 @@
     if(tick-lastEmergencyRetreat<6||retreatRequests.size>=5)return false;
     candidates.sort((a,b)=>{
       const rank=x=>x.targetID===null||x.targetID===0?0:
-        (isWar()&&x.targetID===warState.id?2:1);
+        (isWar()&&attackTargets(x.targetID,warState.id)?2:1);
       return rank(a)-rank(b)||b.troops-a.troops;
     });
     let issued=0;
@@ -1356,7 +1356,7 @@
       if(amount<100||fresh.home-amount<
         Math.max(fresh.incoming*2.8,fresh.reserve))continue;
       if(send('attack',[id,amount],'KONTROLLIERTER GEGENANGRIFF → '+nameOf(current))){
-        const out=fresh.out.filter(x=>x.targetID===id&&!x.retreating);
+        const out=fresh.out.filter(x=>attackTargets(x.targetID,id)&&!x.retreating);
         pendingAttack={id,name:nameOf(current),tick,amount,ownLand:number(()=>me.numTilesOwned()),
           enemyLand:number(()=>current.numTilesOwned()),beforeIds:out.map(x=>x.id),
           beforeTroops:out.reduce((v,x)=>v+x.troops,0)};
@@ -1404,7 +1404,7 @@
           lastEnemySend=tick;
           plan={id:item.id,until:tick+(hardMode()?1000:300),name:label};
         }
-        const before=s.out.filter(a=>a.targetID===item.id&&!a.retreating);
+        const before=s.out.filter(a=>attackTargets(a.targetID,item.id)&&!a.retreating);
         pendingAttack={id:item.id,name:label,tick,amount,ownLand:number(()=>me.numTilesOwned()),
           enemyLand:item.opponent?number(()=>item.opponent.numTilesOwned()):0,
           beforeIds:before.map(a=>a.id),beforeTroops:before.reduce((v,a)=>v+a.troops,0)};
@@ -2208,7 +2208,7 @@
     const territory=Math.max(0,number(()=>p.numTilesOwned()));
     const mine=Math.max(1,number(()=>me.numTilesOwned()));
     const hostileIncoming=s.inc?.some(a=>a.attackerID===p.smallID?.());
-    const hostileOutgoing=s.out?.some(a=>a.targetID===safeID(p));
+    const hostileOutgoing=s.out?.some(a=>attackTargets(a.targetID,p));
     if(hostileIncoming||hostileOutgoing)return {score:-999,reason:'Aktiver Konflikt'};
     if(opts.autoStrategy && strategic.mode==='ASSAULT'&&plan?.id===safeID(p))
       return {score:-100,reason:'Aktuelles Angriffsziel'};
