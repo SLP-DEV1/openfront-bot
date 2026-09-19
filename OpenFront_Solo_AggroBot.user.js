@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.10.0
+// @version      1.10.1
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -11,10 +11,10 @@
 
 (() => {
   'use strict';
-  if (window.__ofSoloAggroBot1100) return;
-  window.__ofSoloAggroBot1100 = true;
+  if (window.__ofSoloAggroBot1101) return;
+  window.__ofSoloAggroBot1101 = true;
 
-  const VERSION = '1.10.0', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1100';
+  const VERSION = '1.10.1', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1101';
   const defaults = {enabled:false, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -24,7 +24,7 @@
   try { opts = {...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; }
   catch (_) {opts = {...defaults};}
   try {if(!localStorage.getItem(KEY)){
-    opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v199')||localStorage.getItem('of-solo-aggrobot-v198')||localStorage.getItem('of-solo-aggrobot-v197')||localStorage.getItem('of-solo-aggrobot-v196')||localStorage.getItem('of-solo-aggrobot-v195')||localStorage.getItem('of-solo-aggrobot-v194')||localStorage.getItem('of-solo-aggrobot-v193')||localStorage.getItem('of-solo-aggrobot-v192')||localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
+    opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v1100')||localStorage.getItem('of-solo-aggrobot-v199')||localStorage.getItem('of-solo-aggrobot-v198')||localStorage.getItem('of-solo-aggrobot-v197')||localStorage.getItem('of-solo-aggrobot-v196')||localStorage.getItem('of-solo-aggrobot-v195')||localStorage.getItem('of-solo-aggrobot-v194')||localStorage.getItem('of-solo-aggrobot-v193')||localStorage.getItem('of-solo-aggrobot-v192')||localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
     // Only import user-adjustable preferences, never a previously enabled bot.
   }}catch(_){}
   opts.enabled = false;                         // Never auto-start after reload.
@@ -62,8 +62,8 @@
   let diplomacyPending=new Map(),lastDiplomaticEmit=0,diplomacyMissingLogged=new Set();
   let goldSamples=[],incomeStatus={train:null,trade:null,gold:null,observed:false};
   let winStatus={mode:'FFA',progress:null,threshold:null,remaining:null,urgent:false};
-  let fleetStatus='Keine Marineaktivität',lastFleet=-Infinity,lastDonation=-Infinity;
-  let strategicTelemetry={favorableVictims:0,falloutSkipped:0,forecastCount:0};
+  let fleetStatus='Keine Marineaktivität',lastFleet=-Infinity,lastDonation=-Infinity,navalSweep=0;
+  let strategicTelemetry={favorableVictims:0,falloutSkipped:0,falloutFallback:0,afkTargets:0,assists:0,neutralLandings:0,forecastCount:0};
   let nukeBusy=false, lastNuke=-Infinity, nukePending=null, nukeStatus='Warte auf Silo', nukeShots=0,nukeAttempts=0,nukeUnconfirmed=0;
   let nuclearCache=null, nuclearCacheTick=-Infinity;
   let warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};
@@ -101,7 +101,7 @@
       diplomacy:{status:diplomacyStatus,stats:diplomacyStats,pending:[...diplomacyPending.values()]},records:diagnostics,createdAt:new Date().toISOString()};
     const blob=new Blob([JSON.stringify(details,null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download='OpenFront_AggroBot_1.10.0_Diagnose.json';document.body.append(a);a.click();a.remove();
+    a.href=url;a.download='OpenFront_AggroBot_1.10.1_Diagnose.json';document.body.append(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),2000);
   }
 
@@ -118,7 +118,7 @@
       ['Singleplayer','Public','Private'].includes(gameType(g));}
     catch(_){return false;}
   };
-  const conflicts = () => !!(window.__ofSoloAggroBot1 || window.__ofSoloAggroBot11 || window.__ofSoloAggroBot12 || window.__ofSoloAggroBot13 || window.__ofSoloAggroBot14 || window.__ofSoloAggroBot15 || window.__ofSoloAggroBot16 || window.__ofSoloAggroBot17 || window.__ofSoloAggroBot18 || window.__ofSoloAggroBot181 || window.__ofSoloAggroBot190 || window.__ofSoloAggroBot191 || window.__ofSoloAggroBot192 || window.__ofSoloAggroBot193 || window.__ofSoloAggroBot194 || window.__ofSoloAggroBot195 || window.__ofSoloAggroBot196 || window.__ofSoloAggroBot197 || window.__ofSoloAggroBot198 || window.__ofSoloAggroBot199);
+  const conflicts = () => !!(window.__ofSoloAggroBot1 || window.__ofSoloAggroBot11 || window.__ofSoloAggroBot12 || window.__ofSoloAggroBot13 || window.__ofSoloAggroBot14 || window.__ofSoloAggroBot15 || window.__ofSoloAggroBot16 || window.__ofSoloAggroBot17 || window.__ofSoloAggroBot18 || window.__ofSoloAggroBot181 || window.__ofSoloAggroBot190 || window.__ofSoloAggroBot191 || window.__ofSoloAggroBot192 || window.__ofSoloAggroBot193 || window.__ofSoloAggroBot194 || window.__ofSoloAggroBot195 || window.__ofSoloAggroBot196 || window.__ofSoloAggroBot197 || window.__ofSoloAggroBot198 || window.__ofSoloAggroBot199 || window.__ofSoloAggroBot1100);
   function advisorConflict() {
     if (!window.__openfrontSpawnAdvisorV104) return false;
     try {const s=JSON.parse(localStorage.getItem('openfront-spawn-advisor-10.4')||'{}');
@@ -228,8 +228,8 @@
     diplomacyHandled.clear();diplomacyPending.clear();diplomacyMissingLogged.clear();lastDiplomaticEmit=0;
     lastDiplomacyTick=-Infinity;lastProposalTick=-Infinity;diplomacyStatus='Noch keine Anfrage';
     diplomacyStats={accepted:0,rejected:0,offered:0};goldSamples=[];incomeStatus={train:null,trade:null,gold:null,observed:false};
-    winStatus={mode:'FFA',progress:null,threshold:null,remaining:null,urgent:false};fleetStatus='Keine Marineaktivität';lastFleet=-Infinity;lastDonation=-Infinity;
-    strategicTelemetry={favorableVictims:0,falloutSkipped:0,forecastCount:0};
+    winStatus={mode:'FFA',progress:null,threshold:null,remaining:null,urgent:false};fleetStatus='Keine Marineaktivität';lastFleet=-Infinity;lastDonation=-Infinity;navalSweep=0;
+    strategicTelemetry={favorableVictims:0,falloutSkipped:0,falloutFallback:0,afkTargets:0,assists:0,neutralLandings:0,forecastCount:0};
     nukeBusy=false;lastNuke=-Infinity;nukePending=null;nukeStatus='Warte auf Silo';nukeShots=0;nukeAttempts=0;nukeUnconfirmed=0;nuclearCache=null;nuclearCacheTick=-Infinity;
     warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};diagnostics=[];lastDiagnosticTick=-Infinity;combatAwaiting=null;
     investmentStatus='Grundaufbau';lastWarReview=-Infinity;
@@ -512,7 +512,7 @@
       sample:count,engine};
   }
   function targetsFromBorder(me,tiles) {
-    const groups=new Map(), scratch=[], cap=2000;
+    const groups=new Map(), scratch=[], fallout=[], cap=2000;
     const stride=Math.max(1,Math.ceil(tiles.length/cap));
     const offset=borderOffset%stride;
     const ownID=safeID(me);
@@ -523,7 +523,11 @@
         const ref=scratch[j];
         if(!game.isLand(ref)||game.isImpassable(ref))continue;
         const opponent=game.owner(ref),id=safeID(opponent);
-        if(id===null && game.hasFallout?.(ref)){strategicTelemetry.falloutSkipped++;continue;}
+        if(id===null && game.hasFallout?.(ref)){
+          strategicTelemetry.falloutSkipped++;
+          if(!fallout.includes(ref)&&fallout.length<80)fallout.push(ref);
+          continue;
+        }
         if(id===ownID||(id!==null&&friendly(opponent,me)))continue;
         let g=groups.get(id);
         if(!g){g={id,opponent:id===null?null:opponent,tiles:[],front:0};groups.set(id,g);}
@@ -533,6 +537,13 @@
         if(g.tiles.length<20 && !g.tiles.includes(ref))g.tiles.push(ref);
         else if(g.tiles.length===20 && g.front%23===0)g.tiles[(g.front/23|0)%20]=ref;
       }
+    }
+    // The official AI prefers clean land, then falls back to nuked TN if
+    // no clean neutral border remains. Do not make fallout a free land bonus.
+    if(!groups.has(null)&&fallout.length){
+      groups.set(null,{id:null,opponent:null,tiles:fallout.slice(0,20),
+        front:fallout.length,fallout:true});
+      strategicTelemetry.falloutFallback++;
     }
     return [...groups.values()];
   }
