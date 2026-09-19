@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.10.5
+// @version      1.10.6
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -11,10 +11,10 @@
 
 (() => {
   'use strict';
-  if (window.__ofSoloAggroBot1105) return;
-  window.__ofSoloAggroBot1105 = true;
+  if (window.__ofSoloAggroBot1106) return;
+  window.__ofSoloAggroBot1106 = true;
 
-  const VERSION = '1.10.5', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1105';
+  const VERSION = '1.10.6', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1106';
   const defaults = {enabled:false, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -24,7 +24,7 @@
   try { opts = {...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; }
   catch (_) {opts = {...defaults};}
   try {if(!localStorage.getItem(KEY)){
-    opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v1104')||localStorage.getItem('of-solo-aggrobot-v1103')||localStorage.getItem('of-solo-aggrobot-v1102')||localStorage.getItem('of-solo-aggrobot-v1101')||localStorage.getItem('of-solo-aggrobot-v1100')||localStorage.getItem('of-solo-aggrobot-v199')||localStorage.getItem('of-solo-aggrobot-v198')||localStorage.getItem('of-solo-aggrobot-v197')||localStorage.getItem('of-solo-aggrobot-v196')||localStorage.getItem('of-solo-aggrobot-v195')||localStorage.getItem('of-solo-aggrobot-v194')||localStorage.getItem('of-solo-aggrobot-v193')||localStorage.getItem('of-solo-aggrobot-v192')||localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
+    opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v1105')||localStorage.getItem('of-solo-aggrobot-v1104')||localStorage.getItem('of-solo-aggrobot-v1103')||localStorage.getItem('of-solo-aggrobot-v1102')||localStorage.getItem('of-solo-aggrobot-v1101')||localStorage.getItem('of-solo-aggrobot-v1100')||localStorage.getItem('of-solo-aggrobot-v199')||localStorage.getItem('of-solo-aggrobot-v198')||localStorage.getItem('of-solo-aggrobot-v197')||localStorage.getItem('of-solo-aggrobot-v196')||localStorage.getItem('of-solo-aggrobot-v195')||localStorage.getItem('of-solo-aggrobot-v194')||localStorage.getItem('of-solo-aggrobot-v193')||localStorage.getItem('of-solo-aggrobot-v192')||localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
     // Only import user-adjustable preferences, never a previously enabled bot.
   }}catch(_){}
   opts.enabled = false;                         // Never auto-start after reload.
@@ -38,6 +38,33 @@
   const number = (fn, fallback=0) => {try {const n=Number(fn());return Number.isFinite(n)?n:fallback;}catch(_){return fallback;}};
   const nameOf = p => {try{return p.displayName?.() || p.name?.() || String(p.id());}catch(_){return '?';}};
   const safeID = p => {try{return p.id();}catch(_){return null;}};
+  // OpenFront AttackUpdate.targetID/attackerID are numeric smallIDs.
+  // The bot keeps warState, pendingAttack and other targets as PlayerID strings.
+  function attackTargetPlayer(targetID){
+    if(typeof targetID==='number'&&Number.isInteger(targetID)&&targetID>0){
+      try{
+        const player=game?.playerBySmallID?.(targetID);
+        if(player)return player;
+      }catch(_){}
+      try{return game?.playerViews?.().find(p=>p?.smallID?.()===targetID)||null;}
+      catch(_){return null;}
+    }
+    if(typeof targetID==='string'){
+      try{return game?.playerViews?.().find(p=>safeID(p)===targetID)||null;}
+      catch(_){return null;}
+    }
+    return null;
+  }
+  function attackTargetID(targetID){
+    if(targetID===null||targetID===0)return null;
+    if(typeof targetID==='string')return targetID; // Older client/test compatibility.
+    return safeID(attackTargetPlayer(targetID));
+  }
+  function attackTargets(targetID,playerOrID){
+    if(playerOrID===null)return targetID===null||targetID===0;
+    const id=typeof playerOrID==='object'?safeID(playerOrID):playerOrID;
+    return id!==null&&attackTargetID(targetID)===id;
+  }
   let game=null, bus=null, ctors={}, panel=null, busy=false, generation=0;
   const INTENT_KINDS=['spawn','attack','cancel','boat','build','upgrade','alliance','reject'];
   const CORE_INTENTS=['spawn','attack','build'];
@@ -71,7 +98,7 @@
   let nukeBusy=false, lastNuke=-Infinity, nukePending=null, nukeStatus='Warte auf Silo', nukeShots=0,nukeAttempts=0,nukeUnconfirmed=0;
   let nuclearCache=null, nuclearCacheTick=-Infinity;
   let warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};
-  let diagnostics=[],lastDiagnosticTick=-Infinity,combatAwaiting=null,gameEnd=null;
+  let diagnostics=[],lastDiagnosticTick=-Infinity,gameEnd=null;
   let pendingAttack=null,attackReceipts={confirmed:0,unconfirmed:0,territoryGained:0};
   let failedEconomyProbes=0,successfulEconomyTick=-Infinity,warWaitSince=-Infinity;
   let investmentStatus='Grundaufbau',lastWarReview=-Infinity;
@@ -142,7 +169,7 @@
       diplomacy:{status:diplomacyStatus,stats:diplomacyStats,pending:[...diplomacyPending.values()]},records:diagnostics,createdAt:new Date().toISOString()};
     const blob=new Blob([JSON.stringify(details,null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download='OpenFront_AggroBot_1.10.5_Diagnose.json';document.body.append(a);a.click();a.remove();
+    a.href=url;a.download='OpenFront_AggroBot_1.10.6_Diagnose.json';document.body.append(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),2000);
   }
 
@@ -159,7 +186,7 @@
       ['Singleplayer','Public','Private'].includes(gameType(g));}
     catch(_){return false;}
   };
-  const conflicts = () => !!(window.__ofSoloAggroBot1 || window.__ofSoloAggroBot11 || window.__ofSoloAggroBot12 || window.__ofSoloAggroBot13 || window.__ofSoloAggroBot14 || window.__ofSoloAggroBot15 || window.__ofSoloAggroBot16 || window.__ofSoloAggroBot17 || window.__ofSoloAggroBot18 || window.__ofSoloAggroBot181 || window.__ofSoloAggroBot190 || window.__ofSoloAggroBot191 || window.__ofSoloAggroBot192 || window.__ofSoloAggroBot193 || window.__ofSoloAggroBot194 || window.__ofSoloAggroBot195 || window.__ofSoloAggroBot196 || window.__ofSoloAggroBot197 || window.__ofSoloAggroBot198 || window.__ofSoloAggroBot199 || window.__ofSoloAggroBot1100 || window.__ofSoloAggroBot1101 || window.__ofSoloAggroBot1102 || window.__ofSoloAggroBot1103 || window.__ofSoloAggroBot1104);
+  const conflicts = () => !!(window.__ofSoloAggroBot1 || window.__ofSoloAggroBot11 || window.__ofSoloAggroBot12 || window.__ofSoloAggroBot13 || window.__ofSoloAggroBot14 || window.__ofSoloAggroBot15 || window.__ofSoloAggroBot16 || window.__ofSoloAggroBot17 || window.__ofSoloAggroBot18 || window.__ofSoloAggroBot181 || window.__ofSoloAggroBot190 || window.__ofSoloAggroBot191 || window.__ofSoloAggroBot192 || window.__ofSoloAggroBot193 || window.__ofSoloAggroBot194 || window.__ofSoloAggroBot195 || window.__ofSoloAggroBot196 || window.__ofSoloAggroBot197 || window.__ofSoloAggroBot198 || window.__ofSoloAggroBot199 || window.__ofSoloAggroBot1100 || window.__ofSoloAggroBot1101 || window.__ofSoloAggroBot1102 || window.__ofSoloAggroBot1103 || window.__ofSoloAggroBot1104 || window.__ofSoloAggroBot1105);
   function advisorConflict() {
     if (!window.__openfrontSpawnAdvisorV104) return false;
     try {const s=JSON.parse(localStorage.getItem('openfront-spawn-advisor-10.4')||'{}');
@@ -276,7 +303,7 @@
       warshipConfirmed:0,warshipUnconfirmed:0};
     strategicTelemetry={favorableVictims:0,falloutSkipped:0,falloutFallback:0,afkTargets:0,assists:0,neutralLandings:0,forecastCount:0};
     nukeBusy=false;lastNuke=-Infinity;nukePending=null;nukeStatus='Warte auf Silo';nukeShots=0;nukeAttempts=0;nukeUnconfirmed=0;nuclearCache=null;nuclearCacheTick=-Infinity;
-    warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};diagnostics=[];lastDiagnosticTick=-Infinity;combatAwaiting=null;gameEnd=null;
+    warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};diagnostics=[];lastDiagnosticTick=-Infinity;gameEnd=null;
     investmentStatus='Grundaufbau';lastWarReview=-Infinity;
     defenseStatus='Keine Bedrohung';lastEmergencyRetreat=-Infinity;lastDefenseLog=-Infinity;
     retreatRequests.clear();defenseStats={retreatsOrdered:0,retreatsObserved:0,unknown:0,unconfirmed:0};
@@ -851,7 +878,7 @@
     const record=lastBattle;
     const opponent=game.playerViews().find(p=>safeID(p)===record.id);
     if(!opponent || !opponent.isAlive?.()){lastBattle=null;return;}
-    const active=(me.outgoingAttacks?.()||[]).some(a=>a.targetID===record.id&&!a.retreating);
+    const active=(me.outgoingAttacks?.()||[]).some(a=>attackTargets(a.targetID,record.id)&&!a.retreating);
     // Don't attribute other battles, recruitment or construction to this war.
     // Evaluate only after the offensive ends or after a long front stalemate.
     if(active && tick-record.tick<620)return;
@@ -878,7 +905,7 @@
   function confirmAttack(me,tick){
     if(!pendingAttack)return;
     const p=pendingAttack;
-    const out=(me.outgoingAttacks?.()||[]).filter(a=>!a.retreating && a.targetID===p.id);
+    const out=(me.outgoingAttacks?.()||[]).filter(a=>!a.retreating && attackTargets(a.targetID,p.id));
     const newStack=out.some(a=>!p.beforeIds.includes(a.id)) ||
       out.reduce((sum,a)=>sum+a.troops,0)>p.beforeTroops+p.amount*.18;
     // A gain against neutral land must not falsely confirm an unrelated
@@ -899,7 +926,7 @@
           log('HAUPTKRIEGSZIEL BESTÄTIGT → '+p.name);
         }
       }
-      pendingAttack=null;combatAwaiting=null;return;
+      pendingAttack=null;return;
     }
     // Terra-nullius expansion may complete between browser ticks; do not
     // declare a failed command without allowing the map to update.
@@ -912,7 +939,7 @@
     if(warState.id===p.id && !out.length){
       warState={id:null,name:'—',since:tick,blockedUntil:-Infinity};plan=null;
     }
-    pendingAttack=null;combatAwaiting=null;
+    pendingAttack=null;
   }
   // State selection uses hysteresis: don't alternate between expansion and
   // economy every 400 ms merely because the troop ratio moved by 1%.
@@ -939,7 +966,7 @@
         warState={id:null,name:'—',since:tick,blockedUntil:-Infinity};plan=null;
       } else if(tick<warState.blockedUntil) {
         strategic.reason='Front nach Verlusten stabilisieren';
-      } else if(!active.some(a=>a.targetID===warState.id) &&
+      } else if(!active.some(a=>attackTargets(a.targetID,warState.id)) &&
         ((tick-warState.since>550 && !foes.some(x=>x.id===warState.id)) ||
          (tick-warState.since>850 && tick-lastEnemySend>280 && s.incoming===0))) {
         // A once-successful war lock must not paralyze the bot forever after
@@ -949,15 +976,9 @@
         warState={id:null,name:'—',since:tick,blockedUntil:-Infinity};plan=null;
       }
     }
-    if(combatAwaiting && (active.some(a=>a.targetID===combatAwaiting.id) ||
-      tick-combatAwaiting.tick>250)) {
-      if(!active.some(a=>a.targetID===combatAwaiting.id))
-        log('ANGRIFF nicht bestätigt · '+combatAwaiting.name+' später neu prüfen');
-      combatAwaiting=null;
-    }
     if(warState.id===null && active.length) {
-      const a=active.sort((a,b)=>b.troops-a.troops)[0],p=game.playerViews().find(x=>safeID(x)===a.targetID);
-      if(p){warState={id:a.targetID,name:nameOf(p),since:tick,blockedUntil:-Infinity};
+      const a=active.sort((a,b)=>b.troops-a.troops)[0],p=attackTargetPlayer(a.targetID);
+      if(p){warState={id:safeID(p),name:nameOf(p),since:tick,blockedUntil:-Infinity};
         log('KRIEGSZIEL ÜBERNOMMEN: '+warState.name);}
     }
   }
@@ -1136,8 +1157,7 @@
       if(enemy && coordinatedWar() && (
         (pendingAttack?.id!==null && pendingAttack?.id!==undefined && pendingAttack.id!==item.id) ||
         (isWar() && item.id!==warState.id) || tick<warState.blockedUntil ||
-        !context.readiness?.ready || !targetOpportunity(me,items,s,item) ||
-        (combatAwaiting && combatAwaiting.id===item.id && tick-combatAwaiting.tick<250)))return [];
+        !context.readiness?.ready || !targetOpportunity(me,items,s,item)))return [];
       if(tick-(cooldowns.get(key)??-Infinity)<(item.id===null?22:80))return [];
       if(tick-(rejected.get(key)??-Infinity)<25 || tick<(blockedTargets.get(item.id)||0))return [];
       const isNeutral=item.id===null;
@@ -1281,7 +1301,7 @@
     if(tick-lastEmergencyRetreat<6||retreatRequests.size>=5)return false;
     candidates.sort((a,b)=>{
       const rank=x=>x.targetID===null||x.targetID===0?0:
-        (isWar()&&x.targetID===warState.id?2:1);
+        (isWar()&&attackTargets(x.targetID,warState.id)?2:1);
       return rank(a)-rank(b)||b.troops-a.troops;
     });
     let issued=0;
@@ -1336,7 +1356,7 @@
       if(amount<100||fresh.home-amount<
         Math.max(fresh.incoming*2.8,fresh.reserve))continue;
       if(send('attack',[id,amount],'KONTROLLIERTER GEGENANGRIFF → '+nameOf(current))){
-        const out=fresh.out.filter(x=>x.targetID===id&&!x.retreating);
+        const out=fresh.out.filter(x=>attackTargets(x.targetID,id)&&!x.retreating);
         pendingAttack={id,name:nameOf(current),tick,amount,ownLand:number(()=>me.numTilesOwned()),
           enemyLand:number(()=>current.numTilesOwned()),beforeIds:out.map(x=>x.id),
           beforeTroops:out.reduce((v,x)=>v+x.troops,0)};
@@ -1384,7 +1404,7 @@
           lastEnemySend=tick;
           plan={id:item.id,until:tick+(hardMode()?1000:300),name:label};
         }
-        const before=s.out.filter(a=>a.targetID===item.id&&!a.retreating);
+        const before=s.out.filter(a=>attackTargets(a.targetID,item.id)&&!a.retreating);
         pendingAttack={id:item.id,name:label,tick,amount,ownLand:number(()=>me.numTilesOwned()),
           enemyLand:item.opponent?number(()=>item.opponent.numTilesOwned()):0,
           beforeIds:before.map(a=>a.id),beforeTroops:before.reduce((v,a)=>v+a.troops,0)};
@@ -2188,7 +2208,7 @@
     const territory=Math.max(0,number(()=>p.numTilesOwned()));
     const mine=Math.max(1,number(()=>me.numTilesOwned()));
     const hostileIncoming=s.inc?.some(a=>a.attackerID===p.smallID?.());
-    const hostileOutgoing=s.out?.some(a=>a.targetID===safeID(p));
+    const hostileOutgoing=s.out?.some(a=>attackTargets(a.targetID,p));
     if(hostileIncoming||hostileOutgoing)return {score:-999,reason:'Aktiver Konflikt'};
     if(opts.autoStrategy && strategic.mode==='ASSAULT'&&plan?.id===safeID(p))
       return {score:-100,reason:'Aktuelles Angriffsziel'};
