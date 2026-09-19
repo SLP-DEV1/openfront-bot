@@ -2085,6 +2085,35 @@
     }
     return false;
   }
+  // Bounded rotating grid: seek actual unowned LAND shore tiles on islands.
+  // The worker validates water access and the real Transport deployment.
+  // A sample may miss a tiny island this pass; successive calls rotate phase.
+  function neutralNavalCandidates(me,limit=12){
+    if(!game.isShore||!game.width||!game.height)return [];
+    const w=game.width(),h=game.height();
+    if(!(w>0&&h>0))return [];
+    const dx=Math.max(1,Math.ceil(w/40)),dy=Math.max(1,Math.ceil(h/40));
+    const phase=navalSweep++%16;
+    const ox=Math.floor((phase%4)*dx/4),oy=Math.floor(Math.floor(phase/4)*dy/4);
+    const own=number(()=>me.state?.spawnTile,NaN);
+    const result=[];
+    for(let y=Math.floor(dy/2)+oy;y<h;y+=dy){
+      for(let x=Math.floor(dx/2)+ox;x<w;x+=dx){
+        try{
+          const tile=game.ref(x,y);
+          if(!game.isLand(tile)||game.isImpassable?.(tile)||
+            !game.isShore(tile)||game.hasFallout?.(tile))continue;
+          const owner=game.owner(tile);
+          if(owner?.isPlayer?.()||safeID(owner)!==null)continue;
+          const distance=Number.isInteger(own)?
+            Math.hypot(x-game.x(own),y-game.y(own)):0;
+          result.push({tile,distance});
+        }catch(_){}
+      }
+    }
+    result.sort((a,b)=>a.distance-b.distance);
+    return result.slice(0,limit).map(x=>x.tile);
+  }
   async function naval(me,tick,serial) {
     if(!opts.boats||!ctors.boat||tick-lastBoat<100||pendingAttack)return false;
     lastBoat=tick;
@@ -2117,6 +2146,34 @@
         const amount=Math.min(spare,Math.floor(number(()=>me.troops())*.58));
         if(send('boat',[dest,Math.min(amount,Math.floor(spare*.60))],
           'LANDUNG → '+nameOf(foe)))return true;
+      }
+    }
+    // No separate war: transport a safe neutral-expansion force to verified
+    // unowned coasts only after easy land borders are exhausted. Never use
+    // this branch to bypass the single-front director or homeland reserve.
+    if(!isWar() && !strategic.groups.some(g=>g.id===null&&!g.fallout) &&
+      navyState.activeNeutral===0 && navyState.ratio>=.52 &&
+      navyState.strongest<navyState.home*.70 &&
+      spare>=Math.max(1400,navyState.home*.22)){
+      for(const dest of neutralNavalCandidates(me)){
+        if(!live(serial))return false;
+        let legal;
+        try{legal=await me.actions(dest,['Transport']);}catch(_){continue;}
+        if(!live(serial))return false;
+        const ship=legal?.buildableUnits?.find(x=>
+          x.type==='Transport'&&Number.isInteger(x.canBuild));
+        if(!ship||!game.isLand(dest)||game.hasFallout?.(dest)||
+          game.owner(dest)?.isPlayer?.()||
+          safeID(game.owner(dest))!==null)continue;
+        if(!game.config().infiniteGold?.() &&
+          Number(me.gold())<Number(ship.cost))continue;
+        const amount=Math.floor(Math.min(spare*.32,navyState.home*.16));
+        if(amount<1000 || navyState.home-amount<navyState.reserve)continue;
+        if(send('boat',[dest,amount],'INSEL-EXPANSION → neutrales Küstenland')){
+          strategicTelemetry.neutralLandings++;
+          fleetStatus='Neutrale Insellandung angefordert';
+          return true;
+        }
       }
     }
     return false;
