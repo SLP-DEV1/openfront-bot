@@ -71,7 +71,7 @@ function boot() {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'military,warReadiness,targetOpportunity,targetEconomics,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,economy,economicNeeds,strategy,manageWar,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,',
+    'military,warReadiness,targetOpportunity,targetEconomics,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,economy,economicNeeds,strategy,manageWar,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'setWarWait:n=>warWaitSince=n,setEconFails:n=>failedEconomyProbes=n,',
     'setPending:p=>pendingAttack=p,',
@@ -875,6 +875,126 @@ function boot() {
     assert.match(readme,/1\.9\.9/);
     assert.match(readme,/1\.9\.0\.js.{0,100}entfernt/);
     assert.doesNotMatch(readme,/1\.9\.0\.js.{0,90}bleibt als/);
+  });
+  await check('issue #10 AFK target reduces only ratio, not safe home/front floor', () => {
+    const x=boot(),weak={id:'weak',opponent:x.weak,front:9,tiles:[5]};
+    const baseline=x.b.enemyOpportunityRatio(x.weak,false,90000);
+    x.weak.isDisconnected=()=>true;
+    assert(x.b.enemyOpportunityRatio(x.weak,false,90000)<baseline);
+    x.strong.isDisconnected=()=>true;
+    const giant={id:'strong',opponent:x.strong,front:9,tiles:[6]};
+    const s=x.b.military(x.me,[giant]);
+    assert.equal(x.b.targetOpportunity(x.me,[giant],s,giant),false,
+      'a disconnected but stronger opponent must not bypass home reserve');
+    assert.equal(x.b.allyAssistTarget(x.me,x.weak),false);
+  });
+  await check('issue #10 AFK gets score bonus but locked war remains locked', () => {
+    const x=boot(),g={id:'weak',opponent:x.weak,front:10,tiles:[5]},groups=[g];
+    const s=x.b.military(x.me,groups),ctx={wanted:'ASSAULT',foes:1,
+      readiness:{ready:true},underAttack:false,rebuilding:false};
+    const baseline=x.b.rankedTargets(groups,x.me,300,s,ctx)[0]?.score;
+    assert(Number.isFinite(baseline),'ordinary weak border must be targetable');
+    x.weak.isDisconnected=()=>true;
+    const ranked=x.b.rankedTargets(groups,x.me,300,s,ctx);
+    assert(ranked[0].score>baseline+17);
+    x.b.setWar('strong','strong');
+    assert.equal(x.b.rankedTargets(groups,x.me,300,s,ctx).length,0);
+  });
+  await check('issue #10 ally assist prioritizes actual marked enemy only', () => {
+    const x=boot(),g={id:'weak',opponent:x.weak,front:10,tiles:[5]},groups=[g];
+    const s=x.b.military(x.me,groups),ctx={wanted:'ASSAULT',foes:1,
+      readiness:{ready:true},underAttack:false,rebuilding:false};
+    const baseline=x.b.rankedTargets(groups,x.me,300,s,ctx)[0]?.score;
+    x.me.allies=()=>[x.strong];x.me.isFriendly=p=>p===x.strong;
+    x.strong.targets=()=>[x.weak];
+    assert.equal(x.b.allyAssistTarget(x.me,x.weak),true);
+    assert(x.b.rankedTargets(groups,x.me,300,s,ctx)[0]?.score>=baseline+22);
+    x.strong.targets=()=>[x.me];
+    assert.equal(x.b.allyAssistTarget(x.me,x.weak),false);
+    assert.equal(x.b.rankedTargets(groups,x.me,300,s,ctx)[0]?.score,baseline);
+  });
+  await check('issue #10 ordinary neutral land has priority over fallout', () => {
+    const x=boot(),terra={id:()=>null,isPlayer:()=>false};
+    x.game.neighbors4=(_,scratch)=>{scratch.push(50,51);return 2;};
+    x.game.owner=t=>t===50||t===51?terra:x.me;
+    x.game.hasFallout=t=>t===50;
+    const groups=x.b.targetsFromBorder(x.me,[10]);
+    const neutral=groups.find(g=>g.id===null);
+    assert.deepEqual(Array.from(neutral.tiles),[51]);
+    assert.equal(neutral.fallout,undefined);
+    assert.equal(x.b.state().strategicTelemetry.falloutFallback,0);
+  });
+  await check('issue #10 fallout can become fallback when only nuked neutral remains', () => {
+    const x=boot(),terra={id:()=>null,isPlayer:()=>false};
+    x.game.neighbors4=(_,scratch)=>{scratch.push(50);return 1;};
+    x.game.owner=t=>t===50?terra:x.me;x.game.hasFallout=t=>t===50;
+    const groups=x.b.targetsFromBorder(x.me,[10]);
+    assert.equal(groups.length,1);assert.equal(groups[0].fallout,true);
+    assert.deepEqual(Array.from(groups[0].tiles),[50]);
+    assert.equal(x.b.state().strategicTelemetry.falloutFallback,1);
+  });
+  await check('issue #10 nuked fallback needs real surplus before attack', () => {
+    const x=boot(),g={id:null,opponent:null,front:1,tiles:[50],fallout:true};
+    const ctx={wanted:'EXPAND',foes:0,readiness:{ready:true},
+      rebuilding:false,underAttack:false};
+    const safe=x.b.military(x.me,[]);
+    const normal=x.b.rankedTargets([{...g,fallout:false}],x.me,300,safe,ctx)[0];
+    const fallback=x.b.rankedTargets([g],x.me,300,safe,ctx)[0];
+    assert(fallback,'safe fallout border can be attempted');
+    assert(fallback.amount<normal.amount*.55,'fallout attack needs reduced troop spend');
+    assert(fallback.score<normal.score,'fallout must not beat safe clean land');
+    const threatened={...safe,strongest:safe.home*.9};
+    assert.equal(x.b.rankedTargets([g],x.me,300,threatened,ctx).length,0);
+  });
+  await check('issue #10 counterattack emits real attack and protects reserve', async () => {
+    const x=boot();x.game.playerBySmallID=id=>id===2?x.weak:x.strong;
+    x.me.incomingAttacks=()=>[{id:'hostile',attackerID:2,troops:5000,retreating:false}];
+    const groups=[{id:'weak',opponent:x.weak,front:10,tiles:[5]}];
+    const s=x.b.military(x.me,groups);
+    assert.equal(await x.b.defense(x.me,300,0,groups,s),true);
+    assert.equal(x.sent.length,1);assert.equal(x.sent[0].targetID,'weak');
+    assert(x.me.troops()-x.sent[0].troops>=s.reserve);
+    const y=boot();y.setHome(24000);
+    y.game.playerBySmallID=id=>id===2?y.weak:y.strong;
+    y.me.incomingAttacks=()=>[{id:'hostile',attackerID:2,troops:5000,retreating:false}];
+    const g2=[{id:'weak',opponent:y.weak,front:10,tiles:[5]}];
+    assert.equal(await y.b.defense(y.me,300,0,g2,y.b.military(y.me,g2)),false);
+    assert.equal(y.sent.length,0);
+  });
+  await check('issue #10 shore scan finds unowned non-fallout island', () => {
+    const x=boot();x.game.isShore=t=>t===176;
+    x.game.owner=t=>t===176?null:t===5?x.weak:t===6?x.strong:x.me;
+    x.game.hasFallout=()=>false;
+    assert.deepEqual(Array.from(x.b.neutralNavalCandidates(x.me)),[176]);
+    x.game.hasFallout=t=>t===176;
+    assert.equal(x.b.neutralNavalCandidates(x.me).length,0);
+  });
+  await check('issue #10 autonomous neutral island landing uses worker and spare', async () => {
+    const x=boot();x.b.setBoats(true);x.game.isShore=t=>t===176;
+    x.game.owner=t=>t===176?null:t===5?x.weak:t===6?x.strong:x.me;
+    x.game.hasFallout=()=>false;
+    x.me.actions=async tile=>({buildableUnits:tile===176?
+      [{type:'Transport',canBuild:9999,cost:0n}]:[]});
+    class Boat{constructor(dst,troops){this.dst=dst;this.troops=troops;}}
+    x.b.setBoatCtor(Boat);
+    assert.equal(await x.b.naval(x.me,300,0),true);
+    assert.equal(x.sent[0].dst,176);
+    assert(x.sent[0].troops>=1000);
+    assert.equal(x.b.state().strategicTelemetry.neutralLandings,1);
+  });
+  await check('issue #10 island fallback respects locked war and worker refusal', async () => {
+    const x=boot();x.b.setBoats(true);x.game.isShore=t=>t===176;
+    x.game.owner=t=>t===176?null:t===5?x.weak:t===6?x.strong:x.me;
+    x.me.actions=async()=>({buildableUnits:[]});
+    class Boat{constructor(dst,troops){this.dst=dst;this.troops=troops;}}
+    x.b.setBoatCtor(Boat);
+    assert.equal(await x.b.naval(x.me,300,0),false);
+    assert.equal(x.sent.length,0);
+    x.b.setWar('weak','weak');x.setTick(500);
+    x.me.actions=async tile=>({buildableUnits:tile===176?
+      [{type:'Transport',canBuild:9999,cost:0n}]:[]});
+    assert.equal(await x.b.naval(x.me,500,0),false);
+    assert.equal(x.sent.length,0,'neutral island must not open a second front');
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
