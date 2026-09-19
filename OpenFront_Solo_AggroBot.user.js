@@ -1329,14 +1329,21 @@
     const immediate=troopSnapshot.incoming>troops*.18;
     const emergency=immediate||(troopSnapshot.strongest>troops*1.25&&
       (troopSnapshot.ratio<.75||hostileFronts>=2));
-    const wantedDefense=threatened&&(!startup||immediate)?Math.min(16,
-      Math.max(2,Math.ceil((tiles?.length||0)/165),hostileFronts*2)):0;
+    // The first Public game purchased 24 defense posts with little economy.
+    // Cap non-emergency posts separately from urgent defensive construction.
+    const wantedDefense=threatened&&(!startup||immediate)?Math.min(
+      immediate?10:7,Math.max(2,Math.ceil((tiles?.length||0)/310),hostileFronts),
+      Math.max(immediate?3:2,(cities+factories)*2)):0;
     const intel=nuclearIntel(me,units);
     const enemySilos=intel.enemySilos.length,enemyNukes=intel.incomingNukes.length;
-    const threat=!!(enemySilos||enemyNukes);
-    const wantedSAM=opts.antiNuke&&threat&&game.config().isUnitDisabled?.('SAM Launcher')!==true?Math.min(10,Math.max(1,
-      Math.ceil(intel.assets.length/3)+Math.ceil(intel.uncovered.length/3)+(enemyNukes?2:0))):0;
     const late=lateGame(me),siloCount=count('Missile Silo');
+    const proactiveSAM=!basic&&late&&hostileFronts>0&&
+      intel.assets.length>=3&&intel.uncovered.length>0&&gold>=700000;
+    const threat=!!(enemySilos||enemyNukes);
+    const wantedSAM=opts.antiNuke&&game.config().isUnitDisabled?.('SAM Launcher')!==true?
+      Math.min(7,threat?Math.max(1,Math.ceil(intel.assets.length/3)+
+        Math.ceil(intel.uncovered.length/3)+(enemyNukes?2:0)):
+        proactiveSAM?Math.min(2,Math.ceil(intel.uncovered.length/3)):0):0;
     const siloAllowed=opts.nukes && game.config().isUnitDisabled?.('Missile Silo')!==true &&
       ['Atom Bomb','Hydrogen Bomb','MIRV'].some(t=>game.config().isUnitDisabled?.(t)!==true);
     // Earlier requiring 1.8m *before* considering a silo caused endless
@@ -1351,12 +1358,13 @@
           (pressure>.80&&!immediate?30:0)+(cities===0?115:hardMode()&&cities<2?80:0)},
       {type:'Factory',desired:wantedFactory,score:91+econBoost+
           (factories===0?100:hardMode()&&factories<2?85:0)+
-          (gold<450000?15:0)+(pressure<.60&&factories>0?10:0)-
+          (gold<450000?15:0)+(pressure<.60&&factories>0?10:0)+
+          (factories<2&&cities>=2?24:0)-
           (incomeStatus.observed&&incomeStatus.train===0&&factories>=2?26:0)},
       {type:'Port',desired:wantedPort,score:59+econBoost/2+(ports===0&&wantedPort?12:0)+
         (incomeStatus.observed&&incomeStatus.trade===0&&ports===0?13:0)},
-      {type:'Defense Post',desired:wantedDefense,score:immediate?310+defBoost:threatened?(basic?70:119)+defBoost:20},
-      {type:'SAM Launcher',desired:wantedSAM,score:enemyNukes?165+defBoost:threat?116+defBoost:40},
+      {type:'Defense Post',desired:wantedDefense,score:immediate?310+defBoost:threatened?(basic?36:77)+defBoost:20},
+      {type:'SAM Launcher',desired:wantedSAM,score:enemyNukes?210+defBoost:threat?151+defBoost:proactiveSAM?118:40},
       {type:'Missile Silo',desired:wantedSilo,score:siloCount===0?305:opts.nukes?(late?131:94)+(gold>6000000?13:0):0}
     ];
     const value=list.filter(x=>x.desired>count(x.type)).map(x=>({...x,count:count(x.type),
@@ -1364,7 +1372,7 @@
     // Upgrades become useful when expansion is tight or troop cap is near.
     if(opts.upgrades){
       for(const x of list.filter(x=>['City','Factory','Port','SAM Launcher','Missile Silo'].includes(x.type)&&count(x.type)>0 &&
-        (x.type!=='SAM Launcher'||opts.antiNuke&&threat) && (x.type!=='Missile Silo'||opts.nukes))){
+        (x.type!=='SAM Launcher'||opts.antiNuke&&(threat||proactiveSAM)) && (x.type!=='Missile Silo'||opts.nukes))){
         const upgradeScore=x.score-(count(x.type)<x.desired?17:36)+
           (x.type==='City'&&pressure>.75?27:0)+(x.type==='SAM Launcher'&&threat?32:0)+
           (x.type==='Missile Silo'&&late&&opts.nukes?22:0);
@@ -1383,7 +1391,8 @@
     investmentStatus=startup?'Erste Stadt/Fabrik':basic?'Zwei Städte und zwei Fabriken':
       saveForSilo?'Silo-Fonds 1,15 Mio.':saveForNuke?'Raketen-Fonds '+firstRocketFund.toLocaleString():'Wirtschaft & Offensive';
     return {list:value,threatened,gold,cities,factories,mine,pressure,nuclearThreat:threat,incomingNukes:enemyNukes,intel,
-      startup,basic,emergency,immediate,savingsTarget,saveForSilo,saveForNuke,siloCount};
+      startup,basic,emergency,immediate,savingsTarget,saveForSilo,saveForNuke,siloCount,
+      enemySilos,proactiveSAM,wantedDefense,wantedSAM};
   }
   function economicAnchors(me,tiles,units,tick) {
     const w=game.width(),h=game.height(),anchors=[],seen=new Set();
