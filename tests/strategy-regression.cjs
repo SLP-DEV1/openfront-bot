@@ -1362,6 +1362,100 @@ function boot() {
     assert.equal(await x.b.naval(x.me,500,0),false,
       'target cooldown prevents blind 100-tick retry');
   });
+  await check('issue #16: numeric smallIDs resolve to PlayerID strings; neutral stays neutral', () => {
+    const x=boot();
+    assert.equal(x.b.attackTargetID(2),'weak');
+    assert.equal(x.b.attackTargetID(3),'strong');
+    assert.equal(x.b.attackTargetID(0),null);
+    assert.equal(x.b.attackTargetID(null),null);
+    assert.equal(x.b.attackTargetID(999),null);
+    assert.equal(x.b.attackTargets(2,'weak'),true);
+    assert.equal(x.b.attackTargets(2,x.weak),true);
+    assert.equal(x.b.attackTargets(2,'strong'),false);
+    assert.equal(x.b.attackTargets(3,'weak'),false);
+    assert.equal(x.b.attackTargets(0,null),true);
+    assert.equal(x.b.attackTargets(null,null),true);
+    assert.equal(x.b.attackTargets(999,'weak'),false);
+    x.game.playerBySmallID=id=>id===2?x.weak:id===3?x.strong:null;
+    assert.equal(x.b.attackTargetID(2),'weak');
+    assert.equal(x.b.attackTargetPlayer(3),x.strong);
+  });
+  await check('issue #16: real numeric outgoing confirms attack via active_stack', () => {
+    const x=boot();
+    x.b.setPending({id:'weak',name:'weak',tick:300,amount:600,
+      ownLand:1200,enemyLand:900,beforeIds:[],beforeTroops:0});
+    x.out.push({id:'stack-1',attackerID:1,targetID:2,
+      troops:600,retreating:false});
+    x.b.confirmAttack(x.me,305);
+    assert.equal(x.b.state().pendingAttack,null);
+    assert.equal(x.b.state().attackReceipts.confirmed,1);
+    assert.equal(x.b.state().warState.id,'weak');
+    assert(x.b.state().diagnostics.some(v=>v.kind==='attack_confirmed'&&
+      v.via==='active_stack'));
+  });
+  await check('issue #16: existing stack is not false-unconfirmed after 85 ticks', () => {
+    const x=boot();
+    x.b.setPending({id:'weak',name:'weak',tick:200,amount:600,
+      ownLand:1200,enemyLand:900,beforeIds:[],beforeTroops:0});
+    x.out.push({id:'stack-1',attackerID:1,targetID:2,
+      troops:600,retreating:false});
+    x.b.confirmAttack(x.me,290);
+    assert.equal(x.b.state().attackReceipts.unconfirmed,0);
+    assert.equal(x.b.state().warState.id,'weak');
+  });
+  await check('issue #16: adopted numeric target locks war as string PlayerID', () => {
+    const x=boot();
+    x.out.push({id:'war-stack',attackerID:1,targetID:2,
+      troops:15000,retreating:false});
+    x.b.manageWar(x.me,[{id:'weak',opponent:x.weak}],
+      x.b.military(x.me,[]),300);
+    assert.equal(x.b.state().warState.id,'weak');
+    assert.equal(typeof x.b.state().warState.id,'string');
+    x.b.manageWar(x.me,[],x.b.military(x.me,[]),1200);
+    assert.equal(x.b.state().warState.id,'weak',
+      'do not release active war solely due to elapsed time');
+    x.out.length=0;
+    x.b.manageWar(x.me,[],x.b.military(x.me,[]),1201);
+    assert.equal(x.b.state().warState.id,null,
+      'inactive and stale war may be reassessed');
+  });
+  await check('issue #16: battle review waits for numeric active opponent stack', () => {
+    const x=boot();x.setTick(300);
+    x.b.setLastBattle({id:'weak',name:'weak',tick:300,
+      enemyLand:900,ownLand:1200});
+    x.out.push({id:'war-stack',attackerID:1,targetID:2,
+      troops:11000,retreating:false});
+    x.b.evaluateLastBattle(620,x.me);
+    assert.equal(x.b.state().lastBattle.id,'weak');
+    assert(!x.b.state().diagnostics.some(v=>v.kind==='war_stall'));
+    x.out.length=0;
+    x.b.evaluateLastBattle(625,x.me);
+    assert.equal(x.b.state().lastBattle,null);
+    assert(x.b.state().diagnostics.some(v=>v.kind==='war_stall'));
+  });
+  await check('issue #16: emergency retreat preserves numeric-ID primary war front', () => {
+    const x=boot();x.b.setWar('weak','weak');
+    class Cancel{constructor(attackID){this.attackID=attackID;}}
+    x.b.setCancelCtor(Cancel);
+    x.out.push({id:'war-stack',attackerID:1,targetID:2,
+      troops:20000,retreating:false});
+    x.out.push({id:'other-stack',attackerID:1,targetID:3,
+      troops:20000,retreating:false});
+    x.me.incomingAttacks=()=>[{id:'incoming',attackerID:3,targetID:1,
+      troops:80000,retreating:false}];
+    assert.equal(x.b.emergencyRetreat(x.me,300,x.b.military(x.me,[])),true);
+    assert.equal(x.sent[0].attackID,'other-stack');
+  });
+  await check('issue #16: diplomacy rejects numeric-ID outgoing conflict', () => {
+    const x=boot();
+    const state=x.b.military(x.me,[]);
+    state.out=[{id:'out',attackerID:1,targetID:2,troops:10000,
+      retreating:false}];
+    assert.equal(x.b.diplomacyScore(x.me,x.weak,state).reason,
+      'Aktiver Konflikt');
+    assert.equal(x.b.diplomacyScore(x.me,x.strong,state).reason,
+      'Aktiver Konflikt', 'only incoming/outgoing against same target should be blocked');
+  });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
 })();
