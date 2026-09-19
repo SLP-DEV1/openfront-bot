@@ -1675,12 +1675,14 @@
       Math.hypot(game.x(u.targetTile())-game.x(p.tile),game.y(u.targetTile())-game.y(p.tile))<15);
     // An existing missile at the same destination must NOT confirm a second
     // launch. Prefer stable unit IDs, falling back to target-matched counts.
-    const observed=matches.some(u=>{
+    const unseen=matches.filter(u=>{
       const id=u.id?.();
       return id!==undefined && id!==null && !p.beforeIds.includes(String(id));
-    }) || matches.length>p.beforeMatches;
-    if(observed){
-      nukeShots++;
+    }).length;
+    const confirmed=Math.min(p.amount||1,Math.max(unseen,
+      matches.length-p.beforeMatches));
+    if(confirmed>0){
+      nukeShots+=confirmed;
       nukeStatus='Raketenstart bestätigt: '+p.type;
       telemetry('nuke_confirmed',nukeStatus,{tile:p.tile,attempt:p.attempt,confirmed:nukeShots});
       nukePending=null;return false;
@@ -1704,8 +1706,8 @@
     if(!silos.length){nukeStatus='Kein geladener Silo';return;}
     const gold=number(()=>Number(me.gold()),0),infinite=game.config().infiniteGold?.()===true;
     // Hold funds for defensive anti-nuke infrastructure unless already rich.
-    const choices=['Hydrogen Bomb','Atom Bomb'].filter(t=>!game.config().isUnitDisabled?.(t) &&
-      (infinite||gold>=(t==='Hydrogen Bomb'?6400000:1100000)));
+    const choices=['MIRV','Hydrogen Bomb','Atom Bomb'].filter(t=>!game.config().isUnitDisabled?.(t) &&
+      (infinite||gold>=(t==='MIRV'?26000000:t==='Hydrogen Bomb'?6400000:1100000)));
     if(!choices.length){nukeStatus='Gold für Raketen sparen';return;}
     nukeBusy=true;const serial=generation;
     try {
@@ -1719,7 +1721,13 @@
           const built=legal?.buildableUnits?.find(b=>b.type===kind);
           if(!built||built.canBuild===false||!Number.isInteger(built.canBuild))continue;
           const cost=Number(built.cost);
-          if(!infinite&&(!Number.isFinite(cost)||gold-cost<(kind==='Hydrogen Bomb'?800000:250000)))continue;
+          if(!infinite&&(!Number.isFinite(cost)||gold-cost<
+            (kind==='Hydrogen Bomb'||kind==='MIRV'?800000:250000)))continue;
+          const routeRisk=nukeTrajectoryRisk(built.canBuild,candidate.tile,intel.enemySAM);
+          if(routeRisk>0 && candidate.sams===0 && kind!=='MIRV')continue;
+          const salvo=nukeSalvoPlan(kind,candidate,silos,me,cost,gold,infinite);
+          if(salvo.amount<1)continue;
+          if(!infinite&&gold-cost*salvo.amount<250000)continue;
           // Target may have changed owner while worker checked its legality.
           const o=game.owner(candidate.tile);
           if(!o?.isPlayer?.() || friendly(o,me))continue;
@@ -1728,9 +1736,10 @@
             Math.hypot(game.x(u.targetTile())-game.x(candidate.tile),
               game.y(u.targetTile())-game.y(candidate.tile))<15);
           const beforeIds=prior.map(u=>u.id?.()).filter(id=>id!==undefined&&id!==null).map(String);
-          if(send('build',[kind,candidate.tile],`NUKE ${kind} → ${nameOf(o)} (${candidate.hit} Gebäude · ${candidate.value.toFixed(0)} Punkte)`)){
+          const args=salvo.amount>1?[kind,candidate.tile,undefined,salvo.amount]:[kind,candidate.tile];
+          if(send('build',args,`NUKE ${kind} x${salvo.amount} → ${nameOf(o)} (${candidate.hit} Gebäude · ${candidate.value.toFixed(0)} Punkte)`)){
             lastNuke=tick;nukeAttempts++;
-            nukePending={tile:candidate.tile,type:kind,tick,beforeIds,
+            nukePending={tile:candidate.tile,type:kind,tick,beforeIds,amount:salvo.amount,
               beforeMatches:prior.length,attempt:nukeAttempts};
             telemetry('nuke_attempt','Raketen-Befehl abgesendet, noch nicht bestätigt',
               {tile:candidate.tile,type:kind,attempt:nukeAttempts});
