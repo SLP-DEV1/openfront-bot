@@ -399,7 +399,7 @@
     return (g.playerViews?.()||[]).filter(p=>safeID(p)!==safeID(me))
       .map(p=>{
         const tile=p.state?.spawnTile;
-        if(!Number.isInteger(tile)||!g.isValidRef?.(tile))return null;
+        if(!Number.isInteger(tile)||(typeof g.isValidRef==='function'&&!g.isValidRef(tile)))return null;
         return {x:g.x(tile),y:g.y(tile),
           teammate:ownTeam!==null&&ownTeam!==undefined &&
             p.team?.()===ownTeam};
@@ -408,7 +408,7 @@
   // Use the actual 4-tile spawn footprint and three additional land rings.
   // Nearby free plains provide opening growth, while the outer rings penalize
   // islands/peninsulas and distant teammates do not count as enemy threats.
-  function spawnScore(g,tile,rivals=spawnRivals(g,myPlayer())) {
+  function spawnScore(g,tile,rivals=spawnRivals(g,myPlayer()),urgent=false) {
     if(!spawnTileValid(g,tile))return null;
     const x=g.x(tile),y=g.y(tile),w=g.width(),h=g.height();
     const good=(xx,yy)=>{
@@ -426,7 +426,7 @@
       const v=good(x+dx,y+dy);
       if(v){core++;plain+=v.plain?1:0;}
     }
-    if(core<coreTotal*.83)return null;
+    if(core<coreTotal*(urgent?.58:.83))return null;
     const minSide=Math.min(w,h),scale=Math.min(70,Math.max(15,minSide/7));
     const rings=[Math.max(8,scale*.27),Math.max(13,scale*.57),scale];
     let accessible=0,weight=0,plains=0,coastal=0;
@@ -448,7 +448,7 @@
       }
     }
     const density=accessible/Math.max(1,weight);
-    if(density<.48)return null;
+    if(density<(urgent?.24:.48))return null;
     const enemy=rivals.filter(p=>!p.teammate)
       .map(p=>Math.abs(p.x-x)+Math.abs(p.y-y));
     const ally=rivals.filter(p=>p.teammate)
@@ -456,10 +456,10 @@
     const nearestEnemy=enemy.length?Math.min(...enemy):Infinity;
     const nearestAlly=ally.length?Math.min(...ally):Infinity;
     const minimum=number(()=>g.config().minDistanceBetweenPlayers?.(),30);
-    if(nearestEnemy<minimum+4)return null;
+    if(nearestEnemy<(urgent?minimum:minimum+4))return null;
     // Too many people in one shared territory prevents both players growing.
-    if(nearestAlly<Math.max(22,minimum*.8))return null;
-    const enemyScore=!enemy.length?.75:
+    if(nearestAlly<(urgent?16:Math.max(22,minimum*.8)))return null;
+    const enemyScore=enemy.length===0?0.75:
       Math.min(1,Math.max(0,(nearestEnemy-minimum)/(minimum*2.5)));
     const teamScore=!ally.length?0:
       Math.min(1,Math.max(0,(nearestAlly-minimum)/(minimum*2.5)))*
@@ -494,7 +494,7 @@
           jobs.push([x,y]);
     }
     let index=0;
-    spawnJob={serial,started:number(()=>g.ticks(),0),total:jobs.length};
+    spawnJob={serial,started:number(()=>g.ticks(),0),total:jobs.length,candidates};
     spawnState.phase='Suche';spawnState.scanned=0;
     function chunk(){
       if(serial!==generation||g!==game||!opts.enabled||!permittedMatch(g)||
@@ -550,15 +550,38 @@
     }
     setTimeout(chunk,0);
   }
+  function emergencySpawnSearch(g,me){
+    if(!g?.inSpawnPhase?.() || g.config().isRandomSpawn?.())return null;
+    const w=g.width(),h=g.height(),step=Math.max(9,Math.floor(Math.min(w,h)/14)),
+      rivals=spawnRivals(g,me);
+    let best=null;
+    for(let y=5;y<h-5;y+=step)for(let x=5;x<w-5;x+=step){
+      const current=spawnScore(g,g.ref(x,y),rivals,true);
+      if(current&&(!best||current.score>best.score))best=current;
+    }
+    if(best){
+      spawnState.phase='Deadline-Fallback';spawnCache=best;
+    }
+    return best;
+  }
   function doSpawn(tick) {
     if(!opts.autoSpawn||!ctors.spawn||tick-lastSpawn<30||
       game.config().isRandomSpawn?.()||!game.inSpawnPhase?.())return;
     const me=myPlayer();
     if(!me||me.hasSpawned?.()||Number.isInteger(me.state?.spawnTile))return;
-    if(!spawnCache){startSpawnSearch();return;}
+    if(!spawnCache){
+      if(spawnRemaining(game)<=55)spawnCache=emergencySpawnSearch(game,me);
+      if(!spawnCache){startSpawnSearch();return;}
+    }
     if(spawnJob && spawnRemaining(game)>55)return;
-    const rivals=spawnRivals(game,me);
-    const best=spawnScore(game,spawnCache.tile,rivals);
+    const rivals=spawnRivals(game,me),urgent=spawnRemaining(game)<=55;
+    const candidates=[spawnCache,...(spawnJob?.candidates?.values()||[])];
+    let best=null;
+    for(const candidate of candidates){
+      const current=spawnScore(game,candidate.tile,rivals,urgent);
+      if(current && (!best||current.score>best.score))best=current;
+    }
+    if(!best && urgent)best=emergencySpawnSearch(game,me);
     if(!best){
       spawnCache=null;spawnState.phase='Standort neu prüfen';
       if(!spawnJob)startSpawnSearch();
