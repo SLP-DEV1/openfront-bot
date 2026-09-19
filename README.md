@@ -2,7 +2,7 @@
 
 Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscript für [OpenFront](https://openfront.io/).
 
-**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.10.1**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
+**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.10.2**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
 
 ## Installation
 
@@ -16,6 +16,15 @@ Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscr
 ## Strategie & Diagnose
 
 Strategie-, Wirtschafts-, Marine-, Diplomatie-, Nuke- und SAM-Planung sind vorhanden. Der Bot kann Befehle senden; daraus folgt **keine garantierte Gewinnrate auf „Unmöglich“**. Ein vollständiger Live-Test ist noch nicht erfolgt. „Diagnose JSON“ im Bot-Menü zeichnet unter anderem Gebietsänderungen, Truppenlage, Bauaufträge und Allianzantworten auf. Bitte den Export vor dem Neuladen erstellen.
+
+### Änderung 1.10.2 – Public/Medium-Live-Test (Diagnose 1.10.1)
+
+- **Kriegsdirektor:** Die Hauptfrontbindung hängt jetzt an der aktivierten Kriegskoordination (`impossibleMode`-Option), **nicht** an der Lobby-Schwierigkeit. Damit gelten Front-Lock, Zweitfrontreserve und spätere Worker-Nachprüfung auch in Public/Medium. Die auf Impossible abgestimmten Truppenquoten bleiben schwierigkeitsabhängig.
+- **Angriffe auf neue Verbündete verhindern:** Normale Angriffe und Verteidigungs-Gegenangriffe prüfen nach jeder asynchronen Worker-Rückgabe nochmals, ob das Ziel aktuell lebt, feindlich und die eigene Hauptfront ist. Heimreserve und reale eingehende Truppen werden vor Gegenangriffen neu berechnet.
+- **Wirtschaft:** Die passive Defense-Post-Zielzahl wird gedeckelt; akute Invasionen können weiterhin bis zu zehn Posts begründen. Frühe City-/Factory-Investitionen haben Vorrang vor nicht akuten Posts. Bei mehrfach erfolglosen Standortprüfungen werden begrenzt mehr Standorte pro Gebäudeart geprüft.
+- **SAM:** Mehr Bauplatzproben um ungeschützte Cities/Factories/Silos; SAM-Reichweite wird bei der Bewertung aus der Spiel-Config gelesen. Neben beobachteten Silos/Raketen gibt es ab einer ausgebauten Wirtschaft eine kleine, goldgebundene **proaktive** Abdeckung für ungeschützte Infrastruktur. Ohne erkannte Nukes ist das eine vorsichtige Vorsorgeentscheidung, keine Garantie für ausreichende Abwehr.
+- **Live-Diagnose:** Historische Snapshots werden beim Schreiben tief kopiert. Bei Spielende wird nach dem offiziellen `WinUpdate.winner` gesucht, der je nach Spielmodus Spieler-/Team-IDs enthält. Nur ein tatsächlich erkannter Eintrag erlaubt `victory` oder `defeat`; ohne Siegerinformationen bleibt `unknown`, bei einem explizit siegerlosen Ende `incomplete`. Die Diagnose nennt außerdem SAM-Bedarf, beobachtete Silos/Raketen und offene Assets.
+- **Validierung:** Zusätzliche Simulationstests reproduzieren Public/Medium-Frontbindung, Allianzwechsel während Worker-Abfragen, historische Diagnosewerte und die neue Wirtschaft. Ein neuer kompletter Live-Multiplayer-Test bleibt notwendig.
 
 ### Änderung 1.10.1 – Restpunkte aus Issue #10
 
@@ -35,7 +44,7 @@ Strategie-, Wirtschafts-, Marine-, Diplomatie-, Nuke- und SAM-Planung sind vorha
 - **Handel/Bahnbau:** Der Client liefert kumulatives `trainGold()` und `tradeGold()`; der Bot misst deren Differenz je 60 Sekunden. Gebäude erhalten einen Reichweiten-Score mit `trainStationMinRange()`/`trainStationMaxRange()`. Dies beweist weder eine reale Zugroute noch garantiert es künftigen Ertrag; unproduktive zusätzliche Factories werden weniger priorisiert.
 - **Nukes:** Echte `nukeMagnitudes` für Atom/Hydrogen, MIRV-Kandidaten, begrenzte SAM-Flugweg-Proxy-Bewertung, Worker-Kosten und vorberechnete Bulk-Atombomben zur SAM-Überlastung nur bei genügenden Abschussröhren und Rücklagen; mehrteilige Starts werden einzeln bestätigt. Der Proxy ist **keine** genaue parabelförmige Flugbahnsimulation.
 - **Teams/Bündnisse:** Gemeinsamer Landstand, transitive Zielhinweise, begrenzte Truppenspende an tatsächlich bedrängte Teammitglieder, optionaler Goldtransfer und Allianzverlängerung bei vorhandenem Spiel-Event. Kein blindes Spenden an beliebige Allianzpartner.
-- **Kompatibilität:** Public/Private/Singleplayer bleiben ohne MP-Test-Schalter nutzbar; der Bot startet nach Seiten-/Match-Wechsel weiterhin AUS, Replays bleiben gesperrt. Diagnose-Version `OpenFront_AggroBot_1.10.0_Diagnose.json`.
+- **Kompatibilität:** Public/Private/Singleplayer bleiben ohne MP-Test-Schalter nutzbar; der Bot startet nach Seiten-/Match-Wechsel weiterhin AUS, Replays bleiben gesperrt. Für die aktuelle v1.10.2-Datei lautet der Export `OpenFront_AggroBot_1.10.2_Diagnose.json`.
 - **Validierung:** Unit-/VM-Regressionen decken die Heuristiken und asynchronen Events ab. Ein browserseitiger End-to-End-Match-Benchmark über verschiedene Maps und Seeds steht weiterhin aus. Es gibt keine garantierte Impossible- oder Multiplayer-Gewinnquote.
 
 ### Änderung 1.9.9 – Intent-Diagnose (Issue #9)
