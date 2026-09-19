@@ -70,7 +70,7 @@ function boot() {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'military,warReadiness,confirmAttack,economy,economicNeeds,strategy,manageWar,actionBudget,connected,naval,defenseAssessment,emergencyRetreat,siteScore,recognize,',
+    'military,warReadiness,confirmAttack,economy,economicNeeds,strategy,manageWar,actionBudget,connected,naval,defenseAssessment,emergencyRetreat,siteScore,recognize,tuneAutonomously,setting,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'setWarWait:n=>warWaitSince=n,setEconFails:n=>failedEconomyProbes=n,',
     'setPending:p=>pendingAttack=p,',
@@ -78,7 +78,8 @@ function boot() {
     'setGroups:groups=>strategic.groups=groups,',
     'setBoats:yes=>opts.boats=yes,setBoatCtor:C=>ctors.boat=C,',
     'setCancelCtor:C=>ctors.cancel=C,setTroopSnapshot:t=>troopSnapshot=t,',
-    'state:()=>({pendingAttack,attackReceipts,warState,economicStatus,failedEconomyProbes,investmentStatus,strategic,defenseStatus,defenseStats,retreatRequests:[...retreatRequests.values()]}),opts};'
+    'setPerf:(combat,border,economy)=>runtime={...runtime,combatMs:combat,borderMs:border,economyMs:economy},',
+    'state:()=>({pendingAttack,attackReceipts,warState,economicStatus,failedEconomyProbes,investmentStatus,strategic,defenseStatus,defenseStats,autoTuning,retreatRequests:[...retreatRequests.values()]}),opts};'
   ].join('\n');
   vm.runInNewContext(source.replace(anchor, expose + '\n' + anchor), context, {timeout:2000});
   win.__test.setup(game, {emit:event=>sent.push(event)}, {attack:Attack, build:Build});
@@ -266,6 +267,71 @@ function boot() {
     const x=boot();const C=class Minified{constructor(attackID){this.attackID=attackID;}};
     const constructors=x.b.recognize({listeners:new Map([[C,[()=>{}]]])});
     assert.equal(constructors.cancel,C);
+  });
+
+  await check('full autonomy chooses coordinated offensive parameters in late game', () => {
+    const x=boot();x.setTick(2400);x.setLand(51613);
+    const groups=[{id:'weak',opponent:x.weak},{id:'strong',opponent:x.strong}];
+    x.b.tuneAutonomously(x.me,groups,x.b.military(x.me,groups),2400,{wanted:'ASSAULT',rebuilding:false});
+    assert.equal(x.b.state().autoTuning.mode,'ASSAULT');
+    assert.equal(x.b.setting('aggressive'),98);
+    assert.equal(x.b.setting('actionsPerMinute'),98);
+    assert.equal(x.b.setting('maxTargets'),22);
+    assert.equal(x.b.setting('reserve'),23);
+  });
+  await check('incoming offensive forces immediate defensive tuning', () => {
+    const x=boot();x.setTick(2400);x.setLand(51613);
+    const groups=[{id:'weak',opponent:x.weak},{id:'strong',opponent:x.strong}];
+    x.b.tuneAutonomously(x.me,groups,x.b.military(x.me,groups),2400,{wanted:'ASSAULT',rebuilding:false});
+    x.me.incomingAttacks=()=>[{id:'incoming',attackerID:3,troops:49000,retreating:false}];
+    const result=x.b.tuneAutonomously(x.me,groups,x.b.military(x.me,groups),2401,{wanted:'DEFEND',rebuilding:true});
+    assert.equal(x.b.state().autoTuning.mode,'DEFEND');
+    assert.equal(x.b.setting('reserve'),63);
+    assert.equal(x.b.setting('aggressive'),60);
+    assert(result.reserve>=Math.floor(result.home*.63));
+  });
+  await check('autonomous parameters settle and recover without oscillating every tick', () => {
+    const x=boot();x.setTick(2400);x.setLand(51613);
+    const groups=[{id:'weak',opponent:x.weak},{id:'strong',opponent:x.strong}];
+    const s=x.b.military(x.me,groups);
+    x.b.tuneAutonomously(x.me,groups,s,2400,{wanted:'ASSAULT'});
+    x.b.tuneAutonomously(x.me,groups,s,2401,{wanted:'ECONOMY'});
+    assert.equal(x.b.state().autoTuning.mode,'ASSAULT');
+    x.b.tuneAutonomously(x.me,groups,s,2446,{wanted:'ECONOMY'});
+    assert.equal(x.b.state().autoTuning.mode,'ECONOMY');
+  });
+  await check('slow game worker reduces auto target checks and action throughput', () => {
+    const x=boot();x.setTick(2400);x.setLand(51613);x.b.setPerf(1500,950,1800);
+    x.b.tuneAutonomously(x.me,[],x.b.military(x.me,[]),2400,{wanted:'ASSAULT'});
+    assert.equal(x.b.setting('maxTargets'),17);
+    assert.equal(x.b.setting('actionsPerMinute'),80);
+  });
+  await check('manual slider preferences remain untouched by full autonomy', () => {
+    const x=boot();x.setTick(2400);x.setLand(51613);
+    x.b.opts.aggressive=52;x.b.opts.reserve=47;x.b.opts.actionsPerMinute=57;x.b.opts.maxTargets=8;
+    x.b.tuneAutonomously(x.me,[],x.b.military(x.me,[]),2400,{wanted:'ASSAULT'});
+    assert.equal(x.b.opts.aggressive,52);
+    assert.equal(x.b.opts.reserve,47);
+    assert.equal(x.b.opts.actionsPerMinute,57);
+    assert.equal(x.b.opts.maxTargets,8);
+    x.b.opts.fullAuto=false;
+    assert.equal(x.b.setting('aggressive'),52);
+    assert.equal(x.b.setting('reserve'),47);
+    assert.equal(x.b.setting('actionsPerMinute'),57);
+    assert.equal(x.b.setting('maxTargets'),8);
+  });
+  await check('autonomous action cap honors reserved economic capacity', () => {
+    const x=boot();x.setTick(2400);x.setLand(51613);
+    x.b.tuneAutonomously(x.me,[],x.b.military(x.me,[]),2400,{wanted:'ASSAULT'});
+    x.b.setBudget(75);
+    assert.equal(x.b.actionBudget('combat'),true);
+    x.b.opts.fullAuto=false;x.b.opts.actionsPerMinute=72;
+    assert.equal(x.b.actionBudget('combat'),false);
+  });
+  await check('full autonomy still cannot run in Public mode', () => {
+    const x=boot();x.b.opts.fullAuto=true;
+    x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Impossible'});
+    assert.equal(x.b.connected(),false);
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
