@@ -403,8 +403,8 @@
     catch(_){return false;}
   }
   function spawnRivals(g,me) {
-    const ownTeam=me?.team?.();
-    return (g.playerViews?.()||[]).filter(p=>safeID(p)!==safeID(me))
+    const ownTeam=me?.team?.(),mine=safeID(me);
+    return (g.playerViews?.()||[]).filter(p=>mine===null||safeID(p)!==mine)
       .map(p=>{
         const tile=p.state?.spawnTile;
         if(!Number.isInteger(tile)||(typeof g.isValidRef==='function'&&!g.isValidRef(tile)))return null;
@@ -507,8 +507,8 @@
     spawnState.phase='Suche';spawnState.scanned=0;
     function chunk(){
       if(serial!==generation||g!==game||!opts.enabled||!permittedMatch(g)||
-        !g.inSpawnPhase?.()||me.hasSpawned?.()||
-        Number.isInteger(me.state?.spawnTile)){
+        !g.inSpawnPhase?.()||myPlayer()?.hasSpawned?.()||
+        Number.isInteger(myPlayer()?.state?.spawnTile)){
         spawnJob=null;return;
       }
       const start=performance.now();
@@ -529,12 +529,17 @@
       }catch(e){
         spawnJob=null;spawnState.phase='Fehler';
         status='Spawn-Analyse: '+String(e?.message||e).slice(0,90);
+        spawnBlock('Spawn-Suche: '+String(e?.message||e).slice(0,80));
         spawnRetryAt=Date.now()+600;return;
       }
       if(index<jobs.length){
         // Near deadline, send the best VALID candidate found so far while
         // the grid continues. Do not wait out the last spawn-phase tick.
-        if(spawnRemaining(g)<=55 && spawnCache)doSpawn(number(()=>g.ticks(),0));
+        // Prefer a good spot early over scanning until the live spawn expires.
+        const tick=number(()=>g.ticks(),0),remaining=spawnRemaining(g);
+        if(spawnCache && (remaining<=110 ||
+          (index>=120 && spawnCache.score>=.62)))
+          doSpawn(tick);
         setTimeout(chunk,0);return;
       }
       spawnJob=null;spawnState.phase='Fertig';
@@ -575,15 +580,21 @@
     return best;
   }
   function doSpawn(tick) {
-    if(!opts.autoSpawn||!ctors.spawn||tick-lastSpawn<30||
-      game.config().isRandomSpawn?.()||!game.inSpawnPhase?.())return;
+    if(!opts.autoSpawn){spawnBlock('Auto-Spawn ausgeschaltet');return;}
+    if(!game?.inSpawnPhase?.()){spawnBlock('Spawnphase bereits beendet');return;}
+    if(game.config().isRandomSpawn?.()){spawnBlock('Zufallsspawn aktiv');return;}
+    if(!bus?.emit){spawnBlock('EventBus fehlt');return;}
+    if(!ctors.spawn){spawnBlock('Spawn-Intent nicht erkannt');return;}
+    if(tick-lastSpawn<22)return;
     const me=myPlayer();
-    if(!me||me.hasSpawned?.()||Number.isInteger(me.state?.spawnTile))return;
+    if(me?.hasSpawned?.()||Number.isInteger(me?.state?.spawnTile))return;
+    spawnState.blocked=null;
     if(!spawnCache){
       if(spawnRemaining(game)<=55)spawnCache=emergencySpawnSearch(game,me);
       if(!spawnCache){startSpawnSearch();return;}
     }
-    if(spawnJob && spawnRemaining(game)>55)return;
+    if(spawnJob && spawnRemaining(game)>110 &&
+      (spawnState.scanned<120 || spawnCache.score<.62))return;
     const rivals=spawnRivals(game,me),urgent=spawnRemaining(game)<=55;
     const candidates=[spawnCache,...spawnAlternatives,...(spawnJob?.candidates?.values()||[])];
     let best=null;
@@ -606,13 +617,13 @@
     if(send('spawn',[best.tile],
       'SPAWN → strategischer Standort ('+best.x+','+best.y+
       ') · Land '+Math.round(best.density*100)+'% · Score '+best.score.toFixed(3),
-      spawnRemaining(game)<=55)){
+      true)){
       lastSpawn=tick;spawnState.phase='Auswahl gesendet';spawnState.attempts++;
       spawnState.lastSent={tile:best.tile,tick,score:best.score,
         density:best.density,enemy:best.enemy,teammate:best.teammate};
       telemetry('spawn_intent','Strategischer Spawn angefordert',
-        {spawn:{...spawnState.lastSent}});
-    }
+        {spawn:{...spawnState.lastSent},withoutPlayerView:!me});
+    }else spawnBlock('Spawn-Intent nicht gesendet (EventBus/Spielstatus prüfen)');
   }
   async function borders(me,tick) {
     const id=safeID(me);
