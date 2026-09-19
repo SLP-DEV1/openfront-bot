@@ -1427,6 +1427,8 @@
       economicStatus='Bestätigt: '+economicPending.type;
       successfulEconomyTick=tick;failedEconomyProbes=0;
       telemetry('build_confirmed',economicStatus,{type:economicPending.type,kind:economicPending.kind});
+      if(economicPending.type==='Port')telemetry('port_confirmed','Hafen im Spielzustand bestätigt',
+        {tile:economicPending.tile,kind:economicPending.kind});
       economicPending=null;
       return false;
     }
@@ -1788,7 +1790,11 @@
     if(!entries.length){economicStatus='Gebäudeziele erreicht · '+investmentStatus;return false;}
     const types=[...new Set(entries.slice(0,8).map(x=>x.type))];
     const anchors=economicAnchors(me,tiles,units,tick);
-    if(!anchors.length){economicStatus='Kein eigenes Bauland gefunden';return false;}
+    const coastal=opts.boats&&entries.some(e=>e.type==='Port'&&!e.upgrade)?
+      portCoastalAnchors(me,tiles,tick,72):[];
+    if(!anchors.length && !coastal.length){
+      economicStatus='Kein eigenes Bauland gefunden';return false;
+    }
     const meID=safeID(me),all=game.playerViews?.()||[];
     const fronts=[];
     const borderStride=Math.max(1,Math.floor((tiles?.length||0)/220));
@@ -1808,6 +1814,8 @@
       for(let i=0;i<tiles.length&&fronts.length<60;i+=stride)fronts.push(tiles[i]);
     }
     const rankedAnchors=anchors.map(ref=>({ref,coast:shoreNear(ref),dist:frontDistance(ref,fronts)}));
+    const rankedCoast=coastal.map(ref=>({
+      ref,coast:true,dist:frontDistance(ref,fronts)}));
     const siteCache=new Map();
     const score=(entry,site)=>{
       const key=entry.type+':'+site.ref;
@@ -1821,7 +1829,7 @@
       if(!entry.upgrade && !ctors.build)continue;
       // Upgrades must probe existing structures, whereas new buildings probe free land.
       const valid=entry.upgrade?rankedAnchors.filter(a=>units.some(u=>u.type?.()===entry.type && number(()=>u.tile(),-1)===a.ref)):
-        rankedAnchors.filter(a=>entry.type!=='Port'||a.coast);
+        entry.type==='Port'?rankedCoast:rankedAnchors;
       valid.sort((a,b)=>score(entry,b)-score(entry,a));
       for(const site of valid.slice(0,entry.upgrade?4:recovery?12:6))slots.push({entry,site});
     }
@@ -1829,7 +1837,7 @@
     // spend the entire time budget on the first City anchor.
     slots.sort((a,b)=>score(b.entry,b.site)-score(a.entry,a.site));
     const seen=new Set(), proposals=[],perKind=new Map();
-    const probe={queries:0,errors:0,legal:0,unaffordable:0,invalidSite:0,lowestCost:Infinity};
+    const probe={queries:0,errors:0,legal:0,unaffordable:0,invalidSite:0,lowestCost:Infinity,portQueries:0,portLegal:0};
     const work=[];
     // A dozen City anchors must not evict every Factory / SAM / silo query.
     for(const slot of slots){
@@ -1848,6 +1856,7 @@
       const batch=work.slice(offset,offset+3);
       const answers=await Promise.all(batch.map(async slot=>{
         runtime.buildProbes++;probe.queries++;
+        if(slot.entry.type==='Port')probe.portQueries++;
         try{return {slot,legal:await me.actions(slot.site.ref,types)};}
         catch(_){probe.errors++;return {slot,legal:null};}
       }));
@@ -1865,6 +1874,7 @@
           if(isUpgrade&&!ctors.upgrade || !isUpgrade&&!ctors.build)continue;
           if(isUpgrade ? (b.canUpgrade===false || b.canUpgrade===undefined) : (b.canBuild===false || (b.canUpgrade!==false && b.canUpgrade!==undefined)))continue;
           probe.legal++;
+          if(item.type==='Port')probe.portLegal++;
           const tile=isUpgrade?site.ref:b.canBuild;
           if(!Number.isInteger(tile) || !ownedTile(tile,me)){probe.invalidSite++;continue;}
           const key=(isUpgrade?'upgrade':'build')+':'+item.type+':'+tile;
@@ -1883,6 +1893,10 @@
           // Fund the first economic structures before buying defensive posts,
           // ports or upgrades. Emergency SAM / defense remain possible.
           if(requirements.startup && (!economicCore || isUpgrade) && !essential)continue;
+          if(requirements.portMilestone&&!requirements.immediate&&
+            item.type!=='Port' &&
+            !(item.type==='SAM Launcher'&&requirements.incomingNukes>0))
+            continue;
           if(item.type==='Defense Post' && !requirements.immediate &&
             !requirements.incomingNukes && requirements.basic)continue;
           // While saving for a silo / first atomic strike, do not repeatedly
@@ -1907,6 +1921,14 @@
       if(proposals.length)break;
     }
     if(!proposals.length){failedEconomyProbes++;
+      if(requirements.portMilestone && probe.portQueries>0 &&
+        probe.portLegal===0)portProbeFailures++;
+      if(requirements.portMilestone && probe.portQueries>0 &&
+        (portProbeFailures===1||portProbeFailures===4||portProbeFailures===8))
+        telemetry('port_probe','Hafen-Bauplätze im Worker geprüft',
+          {coastCandidates:coastal.length,queries:probe.portQueries,
+            legal:probe.portLegal,unaffordable:probe.unaffordable,
+            failures:portProbeFailures});
       const reason=probe.unaffordable>0&&probe.legal===probe.unaffordable?
         'Gold für gültige Bauoption fehlt':probe.invalidSite>0?
         'Bauplatz-Eigentum/Referenz ungültig':probe.legal===0?
@@ -1919,6 +1941,8 @@
             uncovered:requirements.intel.uncovered.length,wantedSAM:requirements.wantedSAM,
             proactiveSAM:requirements.proactiveSAM},
           queries:probe.queries,workerErrors:probe.errors,legal:probe.legal,
+          port:{coastCandidates:coastal.length,queries:probe.portQueries,
+            legal:probe.portLegal,failures:portProbeFailures},
           unaffordable:probe.unaffordable,invalidSite:probe.invalidSite,
           lowestCost:Number.isFinite(probe.lowestCost)?probe.lowestCost:null});
       economicLastPlan=entries.slice(0,3).map(x=>x.type).join(' › ');return false;}
@@ -1928,6 +1952,12 @@
     const args=chosen.kind==='upgrade'?[chosen.unitId,chosen.type,1]:[chosen.type,chosen.tile];
     if(send(chosen.kind,args,`${chosen.kind==='upgrade'?'UPGRADE':'BAU'} ${chosen.type} · ${chosen.cost.toLocaleString()} Gold`)){
       economicPending={...chosen,tick};failedEconomyProbes=0;lastEconomy=tick;lastEconomicAction=tick;
+      if(chosen.type==='Port'){
+        portProbeFailures=0;
+        telemetry('port_intent','Hafenbau angefordert',
+          {tile:chosen.tile,gold:requirements.gold,cost:chosen.cost,
+            coastCandidates:coastal.length});
+      }
       economicStatus='Anfrage: '+chosen.type+(chosen.kind==='upgrade'?' (Upgrade)':'');
       economicLastPlan=entries.slice(0,3).map(x=>x.type).join(' › ');
       return true;
