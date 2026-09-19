@@ -2344,6 +2344,85 @@
       }
     }).catch(e=>{diplomacyStatus='Allianzangebot fehlgeschlagen: '+String(e.message);});
   }
+  function inspectMarine(me,tick){
+    const units=(()=>{try{return game.units?.()||[];}catch(_){return [];}})();
+    const mine=safeID(me),own=type=>units.filter(u=>
+      u.type?.()===type&&safeID(u.owner?.())===mine&&u.isActive?.());
+    if(pendingBoat){
+      const boat=pendingBoat,ships=own('Transport');
+      const observed=ships.find(u=>{
+        const id=u.id?.();
+        if(id===undefined||boat.beforeIds.includes(id))return false;
+        return Number.isInteger(u.targetTile?.())&&u.targetTile()===boat.dest;
+      });
+      if(observed){
+        const id=observed.id?.();
+        if(!boat.shipIds.includes(id))boat.shipIds.push(id);
+        if(!boat.seen){
+          boat.seen=true;marineStats.transportConfirmed++;
+          fleetStatus='Transport im Spiel sichtbar';
+          telemetry('boat_confirmed','Transport im Spielzustand beobachtet',
+            {dest:boat.dest,target:boat.target,ship:id,troops:boat.troops});
+        }
+      }
+      if(boat.seen && ownedTile(boat.dest,me)){
+        marineStats.transportArrived++;
+        fleetStatus='Landung / Gebiet am Ziel bestätigt';
+        telemetry('boat_arrived','Transportziel nach bestätigtem Schiff übernommen',
+          {dest:boat.dest,target:boat.target,shipIds:boat.shipIds});
+        navalCooldown.set(boat.key,tick+140);
+        pendingBoat=null;
+      }else if(boat.seen && tick-boat.tick>40 &&
+        !ships.some(u=>boat.shipIds.includes(u.id?.()))){
+        marineStats.transportUnresolved++;
+        fleetStatus='Transport verschwunden – Landung nicht bestätigt';
+        telemetry('boat_unresolved','Transport nicht mehr sichtbar; kein eigener Zielbesitz',
+          {dest:boat.dest,target:boat.target,shipIds:boat.shipIds});
+        navalCooldown.set(boat.key,tick+320);pendingBoat=null;
+      }else if(tick-boat.tick>(boat.seen?650:90)){
+        if(boat.seen)marineStats.transportUnresolved++;
+        else marineStats.transportUnconfirmed++;
+        fleetStatus=boat.seen?'Transport ohne Landungsbestätigung':
+          'Transport nach Intent nicht im Spiel beobachtet';
+        telemetry(boat.seen?'boat_unresolved':'boat_unconfirmed',fleetStatus,
+          {dest:boat.dest,target:boat.target,troops:boat.troops});
+        navalCooldown.set(boat.key,tick+400);pendingBoat=null;
+      }
+    }
+    if(pendingWarship){
+      const pending=pendingWarship,ships=own('Warship');
+      const observed=ships.find(u=>!pending.beforeIds.includes(u.id?.()));
+      if(observed){
+        marineStats.warshipConfirmed++;
+        fleetStatus='Kriegsschiff im Spiel bestätigt';
+        telemetry('warship_confirmed','Kriegsschiff im Spielzustand sichtbar',
+          {tile:observed.tile?.(),unitId:observed.id?.(),cost:pending.cost});
+        pendingWarship=null;
+      }else if(tick-pending.tick>110){
+        marineStats.warshipUnconfirmed++;
+        fleetStatus='Kriegsschiff-Befehl nicht bestätigt';
+        telemetry('warship_unconfirmed',fleetStatus,
+          {tile:pending.tile,cost:pending.cost});
+        pendingWarship=null;
+      }
+    }
+  }
+  function sendMarineTransport(me,dest,troops,tick,label,targetKey){
+    if(pendingBoat || (navalCooldown.get(targetKey)||0)>tick)return false;
+    if(!Number.isInteger(dest)||!(troops>=1000))return false;
+    const beforeIds=(()=>{try{return (game.units?.()||[]).filter(u=>
+      u.type?.()==='Transport'&&safeID(u.owner?.())===safeID(me))
+      .map(u=>u.id?.());}catch(_){return [];}})();
+    if(!send('boat',[dest,troops],label))return false;
+    pendingBoat={dest,tick,troops,key:targetKey,target:label,
+      beforeIds,shipIds:[],seen:false};
+    marineStats.transportSent++;
+    navalCooldown.set(targetKey,tick+160);
+    fleetStatus='Transport angefordert · Bestätigung ausstehend';
+    telemetry('boat_intent','Transport angefordert; wartet auf Spielzustand',
+      {dest,troops,target:targetKey});
+    return true;
+  }
   // Protect real owned shores from visible incoming transports. BuildUnitIntentEvent
   // for Warship uses an actual WATER tile checked through the worker.
   async function fleetDefense(me,tick,serial){
@@ -2602,7 +2681,7 @@
       }
       const me=myPlayer();
       if(!me?.isAlive?.()||!me.hasSpawned?.()){status='Warte auf Spawn';return;}
-      sampleTroops(tick,me);sampleIncome(me,tick);victoryPlan(me);confirmAttack(me,tick);evaluateLastBattle(tick,me);
+      sampleTroops(tick,me);sampleIncome(me,tick);inspectMarine(me,tick);victoryPlan(me);confirmAttack(me,tick);evaluateLastBattle(tick,me);
       let immediateState=military(me,strategic.groups);
       // Tune immediately even if emergencyRetreat returns before the normal
       // strategy pass: a dangerous invasion must override ASSAULT right now.
@@ -2628,6 +2707,12 @@
             committed:s.committed,pendingRetreats:retreatRequests.size},enemies:groups.filter(g=>g.id!==null).map(g=>({name:nameOf(g.opponent),troops:number(()=>g.opponent.troops()),land:number(()=>g.opponent.numTilesOwned())})),
           readiness:context.readiness?.reason,ratio:s.ratio,maxTroops:s.max,growthPotential:s.growthPotential,
           victory:winStatus,income:incomeStatus,strategicTelemetry,fleet:fleetStatus,
+          marine:{stats:{...marineStats},pendingBoat:pendingBoat?{...pendingBoat}:null,
+            pendingWarship:pendingWarship?{...pendingWarship}:null,
+            ports:ownStructures(me).filter(u=>u.type?.()==='Port').length,
+            warships:(game.units?.()||[]).filter(u=>u.type?.()==='Warship'&&
+              safeID(u.owner?.())===safeID(me)&&u.isActive?.()).length,
+            portProbeFailures},
           nuclear:{enemySilos:nuclearIntel(me).enemySilos.length,
             incomingNukes:nuclearIntel(me).incomingNukes.length,
             uncovered:nuclearIntel(me).uncovered.length,
