@@ -2,7 +2,7 @@
 
 Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscript für [OpenFront](https://openfront.io/).
 
-**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.10.5**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
+**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.10.6**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
 
 ## Installation
 
@@ -16,6 +16,13 @@ Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscr
 ## Strategie & Diagnose
 
 Strategie-, Wirtschafts-, Marine-, Diplomatie-, Nuke- und SAM-Planung sind vorhanden. Der Bot kann Befehle senden; daraus folgt **keine garantierte Gewinnrate auf „Unmöglich“**. Ein vollständiger Live-Test ist noch nicht erfolgt. „Diagnose JSON“ im Bot-Menü zeichnet unter anderem Gebietsänderungen, Truppenlage, Bauaufträge und Allianzantworten auf. Bitte den Export vor dem Neuladen erstellen.
+
+### Änderung 1.10.6 – Issue #16: echte OpenFront-Angriffs-IDs
+
+- **Korrekte ID-Typen:** `AttackUpdate.targetID` und `attackerID` sind numerische `smallID`-Werte, während `PlayerView.id()` und botinterne Kriegsziele String-`PlayerID`-Werte sind. Eine gemeinsame Umrechnung über `playerBySmallID` beziehungsweise `PlayerView.smallID()` verhindert direkte Vergleiche verschiedener ID-Räume.
+- **Strategie/Verteidigung:** Aktive Angriffs-Stacks bestätigen die tatsächlich angeforderte Offensive; ein laufender Krieg wird nicht aufgrund der Typverwechslung freigegeben. Die Übernahme bereits laufender Angriffe speichert ein String-Kriegsziel. Frontschutz beim Not-Rückzug, Vorher-/Nachher-Vergleiche von Angriffs-Stacks und die Diplomatie-Konfliktprüfung berücksichtigen die numerischen Ziel-IDs.
+- **Aufräumen:** Die nie belegte `combatAwaiting`-Variable und ihr toter Block sind entfernt; `pendingAttack` bleibt der bestätigte Pending-Zustand.
+- **Regression:** Die simulierten OpenFront-Ausgangsangriffe verwenden jetzt numerische Ziel-IDs; ergänzende Tests prüfen die Zuordnung, Angriffsbestätigung, auslaufende War-Locks, Schlachtauswertung, Rückzugsreihenfolge und Allianz-Konflikte. Ein kompletter Live-Multiplayer-Test steht weiter unter Issue #12 aus.
 
 ### Änderung 1.10.5 – Hafen, Schiffe und echte Marine-Nachweise
 
