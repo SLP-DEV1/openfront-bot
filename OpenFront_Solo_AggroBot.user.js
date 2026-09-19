@@ -2428,7 +2428,8 @@
   async function fleetDefense(me,tick,serial){
     if(!opts.boats||tick-lastFleet<120||!game.units)return false;
     const all=game.units()||[],ourID=safeID(me);
-    const ownWarships=all.filter(u=>u.type?.()==='Warship'&&safeID(u.owner?.())===ourID&&u.isActive?.());
+    const ownWarships=all.filter(u=>u.type?.()==='Warship'&&
+      safeID(u.owner?.())===ourID&&u.isActive?.());
     if(ctors.cancelBoat){
       const unsafe=all.find(u=>u.type?.()==='Transport'&&u.isActive?.() &&
         safeID(u.owner?.())===ourID&&Number.isInteger(u.targetTile?.())&&
@@ -2444,9 +2445,8 @@
       safeID(u.owner?.())!==ourID&&!friendly(u.owner?.(),me)&&
       Number.isInteger(u.targetTile?.())&&ownedTile(u.targetTile(),me));
     const active=targets.find(u=>!u.transportShipState?.().isRetreating);
-    if(!active)return false;
-    const water=active.tile?.();
-    if(ctors.warship&&Number.isInteger(water)&&game.isWater?.(water)){
+    const water=active?.tile?.();
+    if(active&&ctors.warship&&Number.isInteger(water)&&game.isWater?.(water)){
       const ship=ownWarships.find(u=>Number.isInteger(u.id?.()) &&
         game.euclideanDistSquared?.(u.tile(),water)<300*300);
       if(ship&&send('warship',[[ship.id()],water],
@@ -2454,28 +2454,62 @@
         lastFleet=tick;fleetStatus='Transporter abfangen';return true;
       }
     }
-    if(!ctors.build || game.config().isUnitDisabled?.('Warship')===true ||
-      ownWarships.length>=3)return false;
-    const ports=ownStructures(me).filter(u=>u.type?.()==='Port'&&!u.isUnderConstruction?.());
+    if(pendingWarship||!ctors.build ||
+      game.config().isUnitDisabled?.('Warship')===true)return false;
+    const ports=ownStructures(me).filter(u=>u.type?.()==='Port'&&
+      !u.isUnderConstruction?.());
+    if(!ports.length){
+      if(active)fleetStatus='Küstenschutz: Hafen fehlt';
+      return false;
+    }
+    // Build one escort before the silo fund, a second only after the first
+    // has appeared in the game. More hulls require a real incoming landing.
+    const desired=active?Math.min(3,ports.length+1):
+      number(()=>me.numTilesOwned(),0)>=15000?2:1;
+    if(ownWarships.length>=desired)return false;
+    const gold=number(()=>Number(me.gold()),0);
+    if(!active && gold<450000 && !game.config().infiniteGold?.())return false;
+    let probes=0,legalFound=0;
     for(const port of ports.slice(0,3)){
       const x=game.x(port.tile()),y=game.y(port.tile());
-      for(const [dx,dy] of [[0,8],[8,0],[0,-8],[-8,0],[12,12],[-12,-12]]){
-        if(!valid(x+dx,y+dy))continue;
-        const tile=game.ref(x+dx,y+dy);
-        if(!game.isWater?.(tile))continue;
-        let legal;
-        try{legal=await me.actions(tile,['Warship']);}catch(_){continue;}
-        if(!live(serial))return false;
-        const ship=legal?.buildableUnits?.find(u=>u.type==='Warship'&&
-          Number.isInteger(u.canBuild));
-        if(!ship)continue;
-        const gold=number(()=>Number(me.gold()),0),cost=Number(ship.cost);
-        if(!game.config().infiniteGold?.() &&
-          (!Number.isFinite(cost)||gold<cost))continue;
-        if(send('build',['Warship',ship.canBuild],'KÜSTENSCHUTZ → Kriegsschiff')){
-          lastFleet=tick;fleetStatus='Kriegsschiff angefordert';return true;
+      for(const radius of [3,6,10,15,20]){
+        for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1],
+          [1,1],[-1,1],[1,-1],[-1,-1]]){
+          const xx=x+dx*radius,yy=y+dy*radius;
+          if(!valid(xx,yy))continue;
+          const tile=game.ref(xx,yy);
+          if(!game.isWater?.(tile))continue;
+          let response;
+          try{response=await me.actions(tile,['Warship']);probes++;}
+          catch(_){continue;}
+          if(!live(serial))return false;
+          const ship=response?.buildableUnits?.find(u=>u.type==='Warship'&&
+            Number.isInteger(u.canBuild));
+          if(!ship)continue;
+          legalFound++;
+          const cost=Number(ship.cost);
+          if(!game.config().infiniteGold?.() &&
+            (!Number.isFinite(cost)||gold<cost))continue;
+          if(send('build',['Warship',ship.canBuild],
+            (active?'KÜSTENSCHUTZ':'FLOTTENAUFBAU')+' → Kriegsschiff')){
+            pendingWarship={tick,tile:ship.canBuild,cost,
+              beforeIds:ownWarships.map(u=>u.id?.())};
+            marineStats.warshipSent++;lastFleet=tick;
+            fleetStatus='Kriegsschiff angefordert · Bestätigung ausstehend';
+            telemetry('warship_intent','Kriegsschiff-Bau angefordert',
+              {tile:ship.canBuild,cost,ports:ports.length,
+                priorWarships:ownWarships.length,emergency:!!active});
+            return true;
+          }
         }
       }
+    }
+    if(probes){
+      lastFleet=tick;
+      fleetStatus=legalFound?'Kriegsschiff: Gold/Budget fehlt':
+        'Kriegsschiff: kein legaler Wasser-Bauplatz';
+      telemetry('warship_probe',fleetStatus,{probes,legalFound,
+        ports:ports.length,gold,warships:ownWarships.length});
     }
     return false;
   }
