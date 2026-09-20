@@ -2301,6 +2301,24 @@
     }
     return result;
   }
+  // Relative payback, derived only from observed income and validated costs.
+  // Scores rank otherwise legal builds; never create a build authorization.
+  function investmentValue(item,cost,requirements,units){
+    const income=incomeStatus.observed?incomeStatus:null;
+    if(item.type==='SAM Launcher'&&requirements.nuclearThreat)
+      return requirements.intel.uncovered.length?46:9;
+    if(item.type==='Defense Post'&&requirements.immediate)return 35;
+    if(item.type==='City')return requirements.pressure>.70?28:0;
+    if(item.type==='Factory'&&income?.train>0)
+      return Math.min(24,income.train/Math.max(1,cost)*18);
+    if(item.type==='Port'){
+      const completed=units.filter(u=>u.type?.()==='Port'&&!u.isUnderConstruction?.()).length;
+      if(completed===0)return requirements.portMilestone?35:12;
+      if(income?.trade===0)return -70;
+      if(income?.trade>0)return Math.min(28,income.trade/Math.max(1,cost)*14);
+    }
+    return 0;
+  }
   function economicNeeds(me,units,tiles) {
     const mine=number(()=>me.numTilesOwned(),0);
     const gold=number(()=>Number(me.gold()),0);
@@ -2621,7 +2639,6 @@
       return false;
     }
     if(!entries.length){economicStatus='Gebäudeziele erreicht · '+investmentStatus;return false;}
-    const types=[...new Set(entries.slice(0,8).map(x=>x.type))];
     const anchors=economicAnchors(me,tiles,units,tick);
     const coastal=opts.boats&&entries.some(e=>e.type==='Port'&&!e.upgrade)?
       portCoastalAnchors(me,tiles,tick,72):[];
@@ -2720,7 +2737,7 @@
       const answers=await Promise.all(batch.map(async slot=>{
         runtime.buildProbes++;probe.queries++;
         if(slot.entry.type==='Port')probe.portQueries++;
-        try{return {slot,legal:await me.actions(slot.site.ref,types)};}
+        try{return {slot,legal:await me.actions(slot.site.ref,[slot.entry.type])};}
         catch(_){probe.errors++;return {slot,legal:null};}
       }));
       if(!live(serial))return false;
@@ -2781,6 +2798,7 @@
           let siteValue=siteScore(item.type,tile,fronts,units,item.urgency);
           if(!Number.isFinite(siteValue))continue;
           if(!infinite && gold>0)siteValue-=Math.min(36,(cost/gold)*26);
+          siteValue+=investmentValue(item,cost,requirements,units);
           if(isUpgrade)siteValue-=Math.max(0,number(()=>units.find(u=>u.id?.()===b.canUpgrade)?.level(),1)-2)*6;
           if(!isUpgrade && item.count>=item.desired)continue;
           const old=units.find(u=>u.id?.()===b.canUpgrade);
@@ -3281,8 +3299,11 @@
       // Player targets may be inland. OpenFront resolves the intent to the
       // nearest reachable shore, so accept the new own transport even when
       // its real target differs from the originally queried tile.
-      const observed=ships.find(u=>isNew(u)&&u.targetTile?.()===boat.dest)||
-        ships.find(isNew);
+      const freshShips=ships.filter(isNew);
+      // Prefer the observed destination, including the server's coastal
+      // redirect. A pre-existing boat cannot satisfy this pending order.
+      const observed=freshShips.find(u=>u.targetTile?.()===boat.dest)||
+        (freshShips.length===1?freshShips[0]:null);
       if(observed){
         const id=observed.id?.();
         const resolved=observed.targetTile?.();
