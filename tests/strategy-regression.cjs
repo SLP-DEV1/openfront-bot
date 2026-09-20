@@ -2251,7 +2251,7 @@ function boot(benchmarkOptions={}) {
     assert(needs.wantedSAM>0);
   });
   await check('v1.18.2 first Port gets provisional funds before worker offers a price', async () => {
-    const x=boot();x.setTick(500);x.setGold(350000);
+    const x=boot();x.setTick(500);x.setGold(350000);x.setLand(52000);
     x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Medium'});
     x.game.isShore=t=>t===5500;
     const units=['City','City','Factory','Factory'].map((type,i)=>({
