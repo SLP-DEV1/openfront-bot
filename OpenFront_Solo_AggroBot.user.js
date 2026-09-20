@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.10.6
+// @version      1.10.7
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -11,10 +11,10 @@
 
 (() => {
   'use strict';
-  if (window.__ofSoloAggroBot1106) return;
-  window.__ofSoloAggroBot1106 = true;
+  if (window.__ofSoloAggroBot1107) return;
+  window.__ofSoloAggroBot1107 = true;
 
-  const VERSION = '1.10.6', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1106';
+  const VERSION = '1.10.7', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1107';
   const defaults = {enabled:false, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -24,7 +24,7 @@
   try { opts = {...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; }
   catch (_) {opts = {...defaults};}
   try {if(!localStorage.getItem(KEY)){
-    opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v1105')||localStorage.getItem('of-solo-aggrobot-v1104')||localStorage.getItem('of-solo-aggrobot-v1103')||localStorage.getItem('of-solo-aggrobot-v1102')||localStorage.getItem('of-solo-aggrobot-v1101')||localStorage.getItem('of-solo-aggrobot-v1100')||localStorage.getItem('of-solo-aggrobot-v199')||localStorage.getItem('of-solo-aggrobot-v198')||localStorage.getItem('of-solo-aggrobot-v197')||localStorage.getItem('of-solo-aggrobot-v196')||localStorage.getItem('of-solo-aggrobot-v195')||localStorage.getItem('of-solo-aggrobot-v194')||localStorage.getItem('of-solo-aggrobot-v193')||localStorage.getItem('of-solo-aggrobot-v192')||localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
+    opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v1106')||localStorage.getItem('of-solo-aggrobot-v1105')||localStorage.getItem('of-solo-aggrobot-v1104')||localStorage.getItem('of-solo-aggrobot-v1103')||localStorage.getItem('of-solo-aggrobot-v1102')||localStorage.getItem('of-solo-aggrobot-v1101')||localStorage.getItem('of-solo-aggrobot-v1100')||localStorage.getItem('of-solo-aggrobot-v199')||localStorage.getItem('of-solo-aggrobot-v198')||localStorage.getItem('of-solo-aggrobot-v197')||localStorage.getItem('of-solo-aggrobot-v196')||localStorage.getItem('of-solo-aggrobot-v195')||localStorage.getItem('of-solo-aggrobot-v194')||localStorage.getItem('of-solo-aggrobot-v193')||localStorage.getItem('of-solo-aggrobot-v192')||localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
     // Only import user-adjustable preferences, never a previously enabled bot.
   }}catch(_){}
   opts.enabled = false;                         // Never auto-start after reload.
@@ -169,7 +169,7 @@
       diplomacy:{status:diplomacyStatus,stats:diplomacyStats,pending:[...diplomacyPending.values()]},records:diagnostics,createdAt:new Date().toISOString()};
     const blob=new Blob([JSON.stringify(details,null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download='OpenFront_AggroBot_1.10.6_Diagnose.json';document.body.append(a);a.click();a.remove();
+    a.href=url;a.download='OpenFront_AggroBot_1.10.7_Diagnose.json';document.body.append(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),2000);
   }
 
@@ -186,7 +186,7 @@
       ['Singleplayer','Public','Private'].includes(gameType(g));}
     catch(_){return false;}
   };
-  const conflicts = () => !!(window.__ofSoloAggroBot1 || window.__ofSoloAggroBot11 || window.__ofSoloAggroBot12 || window.__ofSoloAggroBot13 || window.__ofSoloAggroBot14 || window.__ofSoloAggroBot15 || window.__ofSoloAggroBot16 || window.__ofSoloAggroBot17 || window.__ofSoloAggroBot18 || window.__ofSoloAggroBot181 || window.__ofSoloAggroBot190 || window.__ofSoloAggroBot191 || window.__ofSoloAggroBot192 || window.__ofSoloAggroBot193 || window.__ofSoloAggroBot194 || window.__ofSoloAggroBot195 || window.__ofSoloAggroBot196 || window.__ofSoloAggroBot197 || window.__ofSoloAggroBot198 || window.__ofSoloAggroBot199 || window.__ofSoloAggroBot1100 || window.__ofSoloAggroBot1101 || window.__ofSoloAggroBot1102 || window.__ofSoloAggroBot1103 || window.__ofSoloAggroBot1104 || window.__ofSoloAggroBot1105);
+  const conflicts = () => !!(window.__ofSoloAggroBot1 || window.__ofSoloAggroBot11 || window.__ofSoloAggroBot12 || window.__ofSoloAggroBot13 || window.__ofSoloAggroBot14 || window.__ofSoloAggroBot15 || window.__ofSoloAggroBot16 || window.__ofSoloAggroBot17 || window.__ofSoloAggroBot18 || window.__ofSoloAggroBot181 || window.__ofSoloAggroBot190 || window.__ofSoloAggroBot191 || window.__ofSoloAggroBot192 || window.__ofSoloAggroBot193 || window.__ofSoloAggroBot194 || window.__ofSoloAggroBot195 || window.__ofSoloAggroBot196 || window.__ofSoloAggroBot197 || window.__ofSoloAggroBot198 || window.__ofSoloAggroBot199 || window.__ofSoloAggroBot1100 || window.__ofSoloAggroBot1101 || window.__ofSoloAggroBot1102 || window.__ofSoloAggroBot1103 || window.__ofSoloAggroBot1104 || window.__ofSoloAggroBot1105 || window.__ofSoloAggroBot1106);
   function advisorConflict() {
     if (!window.__openfrontSpawnAdvisorV104) return false;
     try {const s=JSON.parse(localStorage.getItem('openfront-spawn-advisor-10.4')||'{}');
@@ -720,6 +720,24 @@
     }
     if(!goldSamples.length)goldSamples.push(cur);
   }
+  // Look at *where a real player's army is committed*, not only the
+  // player's headline troop count. An adversary fighting a third party has a
+  // short-lived opening, but this never overrides our other-border reserve.
+  function adversaryWindow(me,enemy) {
+    if(!enemy || !me || friendly(enemy,me))return {
+      elsewhere:0,incomingOthers:0,ratio:0,exposed:false,human:false};
+    const home=Math.max(1,number(()=>enemy.troops?.(),0)),ourSmall=number(()=>me.smallID?.(),-1);
+    const outgoing=(()=>{try{return enemy.outgoingAttacks?.()||[];}catch(_){return [];}})();
+    const incoming=(()=>{try{return enemy.incomingAttacks?.()||[];}catch(_){return [];}})();
+    const elsewhere=outgoing.filter(a=>!a.retreating && !attackTargets(a.targetID,me))
+      .reduce((n,a)=>n+Math.max(0,number(()=>a.troops,0)),0);
+    const incomingOthers=incoming.filter(a=>!a.retreating && a.attackerID!==ourSmall)
+      .reduce((n,a)=>n+Math.max(0,number(()=>a.troops,0)),0);
+    const ratio=elsewhere/home,underPressure=incomingOthers/home;
+    return {elsewhere,incomingOthers,ratio,home,
+      exposed:ratio>=.45 || underPressure>=.40,
+      human:enemy.type?.()==='HUMAN'};
+  }
   function enemyUnderAttack(enemy){
     const own=number(()=>enemy.troops?.(),0);
     const incoming=(enemy.incomingAttacks?.()||[]).filter(a=>!a.retreating)
@@ -1021,6 +1039,11 @@
     const normal=hardMode()?(late?1.34:1.75):
       (late?1.18:blitz?1.30:1.55);
     if(enemyUnderAttack(enemy))return hardMode()?(late?1.12:1.24):1.12;
+    // Opportunity in a human FFA: their army is fighting someone else.
+    // Never make this a blanket buff for an uncommitted player.
+    const opening=adversaryWindow(myPlayer(),enemy);
+    if(opening.exposed && opening.ratio>=.45 && opening.human)
+      return Math.max(hardMode()?1.23:1.17,normal*.90);
     if(enemy?.isDisconnected?.()===true &&
       number(()=>enemy.troops(),Infinity)<home*1.2)
       return Math.max(1.15,normal*.86);
@@ -1199,7 +1222,16 @@
         score+=Math.min(29,local.prize*2.7)-
           Math.min(45,local.posts*12+Math.max(0,local.density-32)*.20);
         if(enemyTiles<300 && enemyTroops<available*.55)score+=14;
+        const opening=adversaryWindow(me,enemy);
+        // Capitalize on opponents fighting a *different* player, never on
+        // allied attacks or their outgoing stacks aimed at us.
+        if(opening.exposed && opening.human)score+=Math.min(33,
+          Math.round(opening.ratio*23+opening.incomingOthers/opening.home*16));
         if(enemyUnderAttack(enemy) && (!isWar()||warState.id===item.id))score+=23;
+        // Early human wars are expensive while clean free land remains.
+        // A genuinely exposed player is the exception, not the default.
+        if(enemy.type?.()==='HUMAN' && context.neutral && ownTiles<1100 &&
+          !opening.exposed && !isWar())score-=35;
         if(enemy.isDisconnected?.()===true)score+=18;
         if(allyAssistTarget(me,enemy))score+=22;
         if(winStatus.urgent)score+=18;
@@ -1409,6 +1441,9 @@
           enemyLand:item.opponent?number(()=>item.opponent.numTilesOwned()):0,
           beforeIds:before.map(a=>a.id),beforeTroops:before.reduce((v,a)=>v+a.troops,0)};
         if(item.opponent?.isDisconnected?.()===true)strategicTelemetry.afkTargets++;
+        if(item.opponent && adversaryWindow(me,item.opponent).exposed)
+          telemetry('opportunity_attack','Angriff im gegnerischen Mehrfront-Konflikt',
+            {target:item.id,window:adversaryWindow(me,item.opponent)});
         if(item.opponent&&allyAssistTarget(me,item.opponent))strategicTelemetry.assists++;
         lastSelection=label+' · score '+item.score.toFixed(0)+
           (item.fallout?' · Fallout-Fallback':'');
