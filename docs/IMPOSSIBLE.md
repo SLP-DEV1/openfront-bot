@@ -46,6 +46,30 @@ frischer feindlicher Druck und der bestehende Aktions-/Reserve-/Allianzschutz
 gehen vor. Das Modell sendet niemals ein Spiel-Intent oder einen direkten Angriff.
 Qwen-Betrieb ist kein Nachweis einer besseren Gewinnquote.
 
+## Erste echte Impossible-Messung (20.09.2026)
+
+[GitHub-Actions-Lauf 35501825736](https://github.com/SLP-DEV1/openfront-bot/actions/runs/35501825736)
+spielte vier vollständig beendete World/Compact-Paare auf aktuellem
+offiziellem Engine-Pin: eine und vier Impossible-Nationen, Seeds
+`impossible-101` und `impossible-102`.
+
+| Version | Bestätigte Siege | Bestätigte Niederlagen |
+| --- | ---: | ---: |
+| Historischer Baseline-Bot 1.12 | 0 | 4 |
+| Kandidat 1.13 (erster Stand) | 0 | 4 |
+
+Auch der nachfolgende
+[Lauf 35502155228](https://github.com/SLP-DEV1/openfront-bot/actions/runs/35502155228)
+mit günstigerer Insel-Expansion hatte **0/4** Siege. Die Kandidaten
+überlebten manche FFA-Partien länger, gewannen aber keine der vier.
+**GitHub Actions „success“ bedeutet nur, dass die Testsoftware fehlerfrei
+durchlief, nicht, dass der Bot gewonnen hat.**
+
+Diese Niederlagen sind der Grund für die zusätzliche Prüfung tatsächlicher
+Truppenstärken von Landungskontingenten, die Inselgrößenabschätzung und
+die neuen reproduzierbaren Regressionen. Kein bisheriger Messlauf belegt
+die geforderte dominante Impossible-Spielstärke.
+
 ## Offizielle Engine und Reproduzierbarkeit
 
 Der bewährte ältere Harness-Pin bleibt standardmäßig
