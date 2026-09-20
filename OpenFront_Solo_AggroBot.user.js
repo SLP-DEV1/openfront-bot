@@ -1630,6 +1630,23 @@
         warState={id:null,name:'—',since:tick,blockedUntil:-Infinity};plan=null;
       }
     }
+    // Two independent ranked clients can converge on a teammate's observed
+    // live attack. Release an idle stale solo target lock, not an own active
+    // attack or the worker/reserve checks used to authorize a new one.
+    const duo=rankedDuo(me);
+    if(duo&&warState.id!==null&&!active.length&&
+      !(pendingAttack&&pendingAttack.id!==null)){
+      const focus=duo.enemies.map(p=>({p,...duoFocus(me,p)}))
+        .filter(x=>x.on>0).sort((a,b)=>b.on-a.on)[0];
+      if(focus&&safeID(focus.p)!==warState.id&&
+        tick-lastEnemySend>80){
+        telemetry('duo_war_replan','Rangliste 2v2: inaktive Solofront zugunsten beobachteter Partnerfront freigegeben',
+          {old:warState.id,partner:duo.partnerID,
+            target:safeID(focus.p),partnerTroops:focus.on});
+        warState={id:null,name:'—',since:tick,blockedUntil:-Infinity};
+        plan=null;
+      }
+    }
     if(warState.id===null && active.length) {
       const a=active.sort((a,b)=>b.troops-a.troops)[0],p=attackTargetPlayer(a.targetID);
       if(p){warState={id:safeID(p),name:nameOf(p),since:tick,blockedUntil:-Infinity};
