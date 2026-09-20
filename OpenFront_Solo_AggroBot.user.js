@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.13.0
+// @version      1.14.0
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,12 +14,12 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.13.0', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.14.0', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, learningEnabled:true, brainEnabled:false, brainToken:'', fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
     autoStrategy:true, diplomacy:true, offerAlliances:true, nukes:true, antiNuke:true, lateOffense:true,
-    impossibleMode:true,qwenPolicy:false};
+    impossibleMode:true,qwenPolicy:false,neuralEnabled:false};
   let opts;
   try { opts = {...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; }
   catch (_) {opts = {...defaults};}
@@ -34,6 +34,57 @@
   if(opts.fullAuto)opts.autoStrategy=true;     // Full autonomy includes strategy selection.
   const persist = () => {try {localStorage.setItem(KEY,JSON.stringify(opts));} catch (_) {}};
 
+  // Deployment replaces only the literal below; benchmark loads a signed-by-hash
+  // local model from its isolated loopback storage. No browser network fetches.
+  const NEURAL_BUNDLED_MODEL = null;
+  const NEURAL_LENGTH=90,NEURAL_STORAGE='of-aggrobot-neural-policy-v1';
+  let neuralModel=null;
+  function neuralValidate(data){
+    if(!data||data.schema!==1||data.arch!=='8x8x2-tanh'||
+      !Array.isArray(data.weights)||data.weights.length!==NEURAL_LENGTH||
+      data.weights.some(v=>typeof v!=='number'||!Number.isFinite(v)||Math.abs(v)>5))
+      return null;
+    return data;
+  }
+  try{
+    const local=['localhost','127.0.0.1','[::1]'].includes(window.location?.hostname)&&
+      window.__OF_BENCHMARK_CONFIG__?.enabled===true;
+    neuralModel=neuralValidate(local?
+      JSON.parse(localStorage.getItem(NEURAL_STORAGE)||'null'):
+      NEURAL_BUNDLED_MODEL);
+  }catch(_){neuralModel=null;}
+  function neuralAdjust(v,base,me,s,items,emergency){
+    if(!opts.neuralEnabled||!opts.fullAuto||!neuralModel||emergency||
+      s.incoming>0||recentHostilePressure(number(()=>game.ticks(),0))||
+      s.strongest>s.home*1.25)return v;
+    const home=Math.max(1,s.home),cap=Math.max(1,s.max);
+    const features=[
+      clamp(home/cap,0,1.5)/1.5,
+      clamp(s.incoming/home,0,2)/2,
+      clamp(s.strongest/home,0,3)/3,
+      clamp(s.committed/home,0,2)/2,
+      items.some(x=>x.id===null&&!x.fallout)?1:0,
+      clamp(items.filter(x=>x.id!==null).length/8,0,1),
+      clamp(number(()=>me.numTilesOwned(),0)/20000,0,1),
+      lateGame(me)?1:0];
+    const w=neuralModel.weights,h=[];
+    for(let j=0;j<8;j++){
+      let z=w[64+j];
+      for(let i=0;i<8;i++)z+=features[i]*w[i*8+j];
+      h.push(Math.tanh(z));
+    }
+    const out=[];
+    for(let k=0;k<2;k++){
+      let z=w[88+k];
+      for(let j=0;j<8;j++)z+=h[j]*w[72+j*2+k];
+      out.push(Math.tanh(z));
+    }
+    // Baseline-relative bounds prevent stacked learning/Brain/NN adjustments
+    // from bypassing reserves. Military and worker legality still recheck.
+    return {...v,
+      aggressive:clamp(v.aggressive+Math.round(out[0]*8),base.aggressive-8,base.aggressive+8),
+      reserve:clamp(v.reserve+Math.round(out[1]*8),base.reserve-8,base.reserve+8)};
+  }
   // Hybrid learning: bounded contextual adjustments; keep existing combat safety checks.
   const LEARN_KEY='of-aggrobot-learning-v1';
   let learn={schema:1,contexts:{},updates:0,lastResult:null};
@@ -559,6 +610,7 @@
     const unlearned={...v};
     v=learnAdjust(v,mode,s,emergency);
     v=brainAdjust(v,unlearned,mode,s,emergency);
+    v=neuralAdjust(v,unlearned,me,s,items,emergency);
     v.aggressive=clamp(v.aggressive,40,100);
     v.reserve=clamp(v.reserve,18,65);
     v.actionsPerMinute=clamp(v.actionsPerMinute,45,110);
@@ -3426,7 +3478,7 @@
         opts.fullAuto=!opts.fullAuto;
         if(opts.fullAuto){opts.autoStrategy=true;autoTuning.tick=-Infinity;}
       }else if(key==='autoStrategy'&&opts.fullAuto){opts.fullAuto=false;opts.autoStrategy=false;}
-      else if(['economy','boats','autoSpawn','defense','stopOnError','upgrades','safeMode','autoStrategy','diplomacy','offerAlliances','nukes','antiNuke','lateOffense','impossibleMode','learningEnabled','brainEnabled','qwenPolicy'].includes(key))opts[key]=!opts[key];
+      else if(['economy','boats','autoSpawn','defense','stopOnError','upgrades','safeMode','autoStrategy','diplomacy','offerAlliances','nukes','antiNuke','lateOffense','impossibleMode','learningEnabled','brainEnabled','qwenPolicy','neuralEnabled'].includes(key))opts[key]=!opts[key];
       else if(key==='plan'){opts.fullAuto=false;opts.autoStrategy=false;opts.plan=opts.plan==='Blitz'?'Adaptiv':opts.plan==='Adaptiv'?'Ökonomie':'Blitz';}
       else if(key==='buildStyle'){opts.fullAuto=false;opts.autoStrategy=false;opts.buildStyle=opts.buildStyle==='Ausgewogen'?'Wirtschaft':opts.buildStyle==='Wirtschaft'?'Defensiv':'Ausgewogen';}
       persist();lastPaint=0;paint();
@@ -3464,7 +3516,8 @@
       <div>${b('upgrades','Upgrades')} ${b('safeMode','Not-Aus')} ${b('autoStrategy','Auto-Strategie '+(opts.autoStrategy?'AN':'AUS'))} ${b('fullAuto','Vollautonom '+(opts.fullAuto?'AN':'AUS'))}</div>
       <div>${b('diplomacy','Diplomatie')} ${b('offerAlliances','Bündnisse anbieten')}</div>
       <div>${b('nukes','Auto-Nukes')} ${b('antiNuke','Intelligente SAMs')} ${b('lateOffense','Late-Game-Offensive')}</div>
-      <div>${b('learningEnabled','Lernen')} ${b('brainEnabled','🧠 Lokaler Brain')} ${b('qwenPolicy','Qwen-Hinweise (Test)')} ${b('impossibleMode','Unmöglich-Taktik')} <button data-key="export" style="border:1px solid #73acdd;border-radius:5px;background:#235078;color:white;padding:5px 7px;cursor:pointer">📄 Diagnose JSON</button></div>
+      <div>${b('learningEnabled','Lernen')} ${b('brainEnabled','🧠 Lokaler Brain')} ${b('qwenPolicy','Qwen-Hinweise (Test)')} ${b('neuralEnabled','Neurales Netz')} ${b('impossibleMode','Unmöglich-Taktik')} <button data-key="export" style="border:1px solid #73acdd;border-radius:5px;background:#235078;color:white;padding:5px 7px;cursor:pointer">📄 Diagnose JSON</button></div>
+      <div style="color:#9bd0e4">Neurales Modell: ${neuralModel?'geladen (max. ±8 Punkte)':'nicht geladen'} · nur bei freigegebener Partie</div>
       <div style="color:#9bd0e4">Brain: ${escapeHTML(brainState.status)}${brainState.lastError?' · '+escapeHTML(brainState.lastError):''} · ${escapeHTML(BRAIN_URL)}</div>
       <label>Brain-Token: <input type="password" data-option="brainToken" placeholder="${opts.brainToken?'Gespeichert – neu einfügen zum Ändern':'Aus Terminal einfügen'}" autocomplete="off" style="width:100%;box-sizing:border-box"></label>
       <div style="color:#a9efc9">Hauptfront: ${escapeHTML(warState.name)} · Krieg ${isWar()?'aktiv':'frei'} · ${escapeHTML(lastRecoveryReason||'bereit')}</div>
