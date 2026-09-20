@@ -71,7 +71,7 @@ function boot(benchmarkOptions={}) {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'strategicDirector,railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,observeFronts,qwenStrategyHint,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
+    'strategicDirector,economyPosture,observeOpponents,opponentTrend,navalCommitmentRatio,landingThirdPartyRisk,railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,observeFronts,qwenStrategyHint,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'getBrainMatchId:()=>brainMatchId,setQwen:q=>{brainState.qwen=q;},',
     'setPortBackoff:(fail,tick)=>{portProbeFailures=fail;lastPortRetryTick=tick;},',
@@ -118,6 +118,49 @@ function boot(benchmarkOptions={}) {
     const s=x.b.military(x.me,[]);
     const result=x.b.strategicDirector(x.me,s,{wanted:'ECONOMY'},[],600);
     assert.deepEqual(Array.from(result.order),['naval','land','hold']);
+  });
+  await check('opponent trend requires two time-separated visible observations', () => {
+    const x=boot();let troops=20000;
+    x.weak.troops=()=>troops;
+    x.weak.outgoingAttacks=()=>[{targetID:3,troops:18000,retreating:false}];
+    x.b.observeOpponents(x.me,300);
+    assert.equal(x.b.opponentTrend(x.weak,300).valid,false);
+    assert.equal(x.b.navalCommitmentRatio(x.me,x.weak,300),1.9);
+    x.setTick(390);troops=15000;
+    x.b.observeOpponents(x.me,390);
+    const t=x.b.opponentTrend(x.weak,390);
+    assert.equal(t.valid,true);
+    assert.equal(t.falling,true);
+    assert.equal(t.sustained,true);
+    assert.equal(x.b.navalCommitmentRatio(x.me,x.weak,390),1.35);
+    x.weak.outgoingAttacks=()=>[];
+    x.setTick(391);x.b.observeOpponents(x.me,391);
+    assert.equal(x.b.navalCommitmentRatio(x.me,x.weak,391),1.9);
+  });
+  await check('naval landing rejects an adjacent stronger third-party player', () => {
+    const x=boot();
+    x.game.neighbors4=(dest,arr)=>{arr.push(6);return 1;};
+    assert.equal(x.b.landingThirdPartyRisk(x.me,5,x.weak,3000),true);
+    assert.equal(x.b.landingThirdPartyRisk(x.me,5,x.weak,120000),false);
+    x.game.neighbors4=()=>0;
+    assert.equal(x.b.landingThirdPartyRisk(x.me,5,x.weak,3000),false);
+  });
+  await check('economic director prioritizes first coastal breakout when fronts stall', () => {
+    const x=boot();x.setTick(750);
+    x.me.units=()=>[{type:()=> 'City',isActive:()=>true},
+      {type:()=> 'Factory',isActive:()=>true}];
+    const s=x.b.military(x.me,[]);
+    x.b.setTroopSnapshot(s);
+    x.b.setGroups([]);
+    assert.equal(x.b.economyPosture(x.me,s,750),'breakout');
+    const breakout=x.b.economicNeeds(x.me,x.me.units(),[]);
+    const port=breakout.list.find(v=>v.type==='Port');
+    assert.equal(breakout.posture,'breakout');
+    x.b.setGroups([{id:null,tiles:[5],front:4}]);
+    const land=x.b.economicNeeds(x.me,x.me.units(),[]);
+    const landPort=land.list.find(v=>v.type==='Port');
+    assert(port&&landPort);
+    assert(port.urgency>=landPort.urgency+100);
   });
   await check('reserve includes stronger second neighbor', () => {
     const x=boot(),s=x.b.military(x.me,[{id:'weak',opponent:x.weak},{id:'strong',opponent:x.strong}]);
