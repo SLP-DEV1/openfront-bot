@@ -71,7 +71,7 @@ function boot(benchmarkOptions={}) {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'strategicDirector,economyPosture,observeOpponents,opponentTrend,navalCommitmentRatio,landingThirdPartyRisk,targetHomeRatio,railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,observeFronts,qwenStrategyHint,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
+    'strategicDirector,economyPosture,observeOpponents,opponentTrend,navalCommitmentRatio,landingThirdPartyRisk,targetHomeRatio,railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,frontPressureForecast,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,observeFronts,qwenStrategyHint,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'setNeural:m=>{neuralModel=neuralValidate(m);opts.neuralEnabled=!!neuralModel;neuralPolicyCache={key:null,output:null};},neuralStrategicSignals,neuralChannel,',
     'getBrainMatchId:()=>brainMatchId,setQwen:q=>{brainState.qwen=q;},',
@@ -2080,6 +2080,46 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.b.siteScore('Defense Post',5540,front,[],310,false),-Infinity);
     assert.equal(x.b.siteScore('SAM Launcher',5525,front,[],465,false),-Infinity);
     assert.equal(x.b.siteScore('Factory',5505,front,[],92,false),-Infinity);
+  });
+  await check('v1.18 multiple hostile fronts increase defensive reserve', () => {
+    const x=boot();
+    x.strong.troops=()=>78000;x.weak.troops=()=>71000;
+    const one=[{id:'strong',opponent:x.strong}];
+    const both=[...one,{id:'weak',opponent:x.weak}];
+    const a=x.b.military(x.me,one),b=x.b.military(x.me,both);
+    const p=x.b.frontPressureForecast(x.me,both,300);
+    assert(p.secondary>0&&p.combined>p.primary);
+    assert(b.reserve>=a.reserve,JSON.stringify({a,b,p}));
+    assert(x.b.frontRiskPlan(both,b,'strong').safeStrike<=b.available);
+  });
+  await check('v1.18 a recent hostile invasion disables opening-rush profile', () => {
+    const x=boot();x.setTick(360);x.b.setHostilePressure(350);
+    const groups=[{id:null,front:20,tiles:[7]}];
+    const s=x.b.military(x.me,groups);
+    x.b.tuneAutonomously(x.me,groups,s,360,{wanted:'EXPAND'});
+    assert.notEqual(x.b.state().autoTuning.mode,'OPENING');
+  });
+  await check('v1.18 alliance veto follows active war even outside ASSAULT mode', () => {
+    const x=boot();x.b.setWar('strong','strong');x.b.setMode('EXPAND');
+    const s=x.b.military(x.me,[{id:'strong',opponent:x.strong}]);
+    assert.equal(x.b.diplomacyScore(x.me,x.strong,s,true).score,-999);
+  });
+  await check('v1.18 impending rockets beat the first harbor milestone', async () => {
+    const x=boot();x.setTick(2400);x.setLand(52000);x.setGold(900000);
+    x.game.isShore=t=>t===5500;
+    const units=['City','Factory'].map((type,i)=>({
+      type:()=>type,isActive:()=>true,tile:()=>5000+i*20,
+      id:()=>i+1,level:()=>1}));
+    x.me.units=()=>units;
+    x.game.units=()=>[{type:()=> 'Missile Silo',isActive:()=>true,
+      owner:()=>x.weak,tile:()=>6}];
+    x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
+      type,canBuild:tile,canUpgrade:false,cost:200000n}))});
+    const plan=x.b.economicNeeds(x.me,units,[5500]);
+    assert.equal(plan.portMilestone,true);
+    assert.equal(plan.nuclearThreat,true);
+    assert.equal(await x.b.economy(x.me,2400,0,[5500]),true);
+    assert.equal(x.sent[0].unit,'SAM Launcher');
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
