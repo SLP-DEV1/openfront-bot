@@ -15,7 +15,7 @@
   window.__ofSoloAggroBot1109 = true;
 
   const VERSION = '1.10.9', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1109';
-  const defaults = {enabled:false, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
+  const defaults = {enabled:false, learningEnabled:true, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
     autoStrategy:true, diplomacy:true, offerAlliances:true, nukes:true, antiNuke:true, lateOffense:true,
@@ -33,6 +33,61 @@
   if(!localStorage.getItem(KEY) && opts.fullAuto)opts.boats=true;
   if(opts.fullAuto)opts.autoStrategy=true;     // Full autonomy includes strategy selection.
   const persist = () => {try {localStorage.setItem(KEY,JSON.stringify(opts));} catch (_) {}};
+
+  // Hybrid learning: bounded contextual adjustments; keep existing combat safety checks.
+  const LEARN_KEY='of-aggrobot-learning-v1';
+  let learn={schema:1,contexts:{},updates:0,lastResult:null};
+  let learnMatch={sample:null,key:null,finished:false};
+  try {
+    const saved=JSON.parse(localStorage.getItem(LEARN_KEY)||'null');
+    if(saved?.schema===1&&saved.contexts&&typeof saved.contexts==='object'){
+      for(const [k,x] of Object.entries(saved.contexts).slice(0,48))
+        if(/^(BALANCED|EXPAND|ASSAULT|RECOVER|ECONOMY|TECH|LATE):(SAFE|THREAT)$/.test(k)&&
+          Number.isInteger(x?.n)&&x.n>=0&&x.n<=100000&&Number.isFinite(x?.mean)&&Math.abs(x.mean)<=1)
+          learn.contexts[k]={n:x.n,mean:x.mean};
+      learn.updates=Math.max(0,Math.min(1000000,Math.floor(Number(saved.updates)||0)));
+      learn.lastResult=['victory','defeat'].includes(saved.lastResult)?saved.lastResult:null;
+    }
+  }catch(_){}
+  function saveLearn(){try{localStorage.setItem(LEARN_KEY,JSON.stringify(learn));}catch(_){}}
+  function learnKey(mode,s){
+    return /^(BALANCED|EXPAND|ASSAULT|RECOVER|ECONOMY|TECH|LATE)$/.test(mode)?
+      mode+':'+(s.incoming>0||s.strongest>Math.max(1,s.home)*1.1?'THREAT':'SAFE'):null;
+  }
+  function learnObserve(tick,me,s,mode){
+    if(!opts.learningEnabled||!opts.fullAuto||!me?.hasSpawned?.()||!me?.isAlive?.())return;
+    const key=learnKey(mode,s);if(!key)return;
+    const now={tick,land:number(()=>me.numTilesOwned(),0),troops:number(()=>me.troops(),0),max:Math.max(1,s.max)};
+    const prev=learnMatch.sample;
+    if(prev&&tick-prev.tick>=240){
+      // Progress proxy, NOT causal credit for a specific attack.
+      const reward=clamp(.75*(now.land-prev.land)/Math.max(100,prev.land)+
+        .25*(now.troops-prev.troops)/Math.max(1,prev.max),-1,1);
+      if(learnMatch.key){
+        const old=learn.contexts[learnMatch.key]||{n:0,mean:0};
+        const n=Math.min(100000,old.n+1),mean=clamp(old.mean+(reward-old.mean)/Math.min(n,100),-1,1);
+        learn.contexts[learnMatch.key]={n,mean};learn.updates++;
+        if(learn.updates%8===0)saveLearn();
+        telemetry('learning_update','Strategie-Erfahrung',{context:learnMatch.key,reward,samples:n,mean});
+      }
+      learnMatch.sample=now;learnMatch.key=key;
+    }else if(!prev){learnMatch.sample=now;learnMatch.key=key;}
+  }
+  function learnAdjust(v,mode,s,emergency){
+    if(!opts.learningEnabled||!opts.fullAuto||emergency)return v;
+    const memory=learn.contexts[learnKey(mode,s)];
+    if(!memory||memory.n<3)return v;
+    const signal=clamp(memory.mean*Math.min(1,(memory.n-2)/15),-1,1);
+    return {...v,aggressive:clamp(v.aggressive+Math.round(signal*5),40,100),
+      reserve:clamp(v.reserve-Math.round(signal*4),18,65)};
+  }
+  function learnFinish(outcome){
+    if(learnMatch.finished)return;
+    learnMatch.finished=true;
+    if(!opts.learningEnabled||!['victory','defeat'].includes(outcome))return;
+    learn.lastResult=outcome;saveLearn();
+  }
+
   const escapeHTML = v => String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const clamp = (n,a,b) => Math.min(b,Math.max(a,Number.isFinite(+n)?+n:a));
   const number = (fn, fallback=0) => {try {const n=Number(fn());return Number.isFinite(n)?n:fallback;}catch(_){return fallback;}};
@@ -176,7 +231,7 @@
   }
   function diagnosticSnapshot() {
     const config=game?.config?.().gameConfig?.()||{};
-    const details={bot:VERSION,gameType:config.gameType,
+    const details={bot:VERSION,learning:{enabled:!!opts.learningEnabled,updates:learn.updates,contexts:jsonCopy(learn.contexts),lastResult:learn.lastResult},gameType:config.gameType,
       difficulty:config.difficulty,
       benchmarkMeta:{gameMap:config.gameMap??null,
         gameMapSize:config.gameMapSize??null,gameMode:config.gameMode??null,
@@ -337,6 +392,7 @@
       warshipConfirmed:0,warshipUnconfirmed:0};
     strategicTelemetry={favorableVictims:0,falloutSkipped:0,falloutFallback:0,afkTargets:0,assists:0,neutralLandings:0,forecastCount:0,engineForecasts:0,proxyForecasts:0,forecastComparisons:0,forecastUnavailable:0};
     nukeBusy=false;lastNuke=-Infinity;nukePending=null;nukeStatus='Warte auf Silo';nukeShots=0;nukeAttempts=0;nukeUnconfirmed=0;nuclearCache=null;nuclearCacheTick=-Infinity;
+    learnMatch={sample:null,key:null,finished:false};
     warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};diagnostics=[];recordSequence=0;recordCounts={};recordsDropped=0;streamErrors=0;lastDiagnosticTick=-Infinity;gameEnd=null;forecastAudits=[];lastForecastAudit=null;incomeAttribution=[];
     investmentStatus='Grundaufbau';lastWarReview=-Infinity;
     defenseStatus='Keine Bedrohung';lastEmergencyRetreat=-Infinity;lastDefenseLog=-Infinity;
@@ -400,6 +456,7 @@
       v.maxTargets-=3;v.actionsPerMinute-=6;
     }
     if(runtime.economyMs>1600)v.actionsPerMinute-=6;
+    v=learnAdjust(v,mode,s,emergency);
     v.aggressive=clamp(v.aggressive,40,100);
     v.reserve=clamp(v.reserve,18,65);
     v.actionsPerMinute=clamp(v.actionsPerMinute,45,110);
@@ -2905,6 +2962,7 @@
     if(game?.gameOver?.()){
       if(opts.enabled){
         gameEnd=gameOutcome(game,myPlayer());
+        learnFinish(gameEnd.outcome);
         telemetry('game_over','Partie beendet · Bot automatisch gestoppt',{gameEnd});
         opts.enabled=false;generation++;persist();
       }
@@ -2950,6 +3008,7 @@
       }
       const me=myPlayer();
       if(!me?.isAlive?.()||!me.hasSpawned?.()){status='Warte auf Spawn';return;}
+      learnObserve(tick,me,troopSnapshot,autoTuning.mode);
       sampleTroops(tick,me);sampleIncome(me,tick);inspectMarine(me,tick);victoryPlan(me);confirmAttack(me,tick);evaluateLastBattle(tick,me);
       let immediateState=military(me,strategic.groups);
       // Tune immediately even if emergencyRetreat returns before the normal
@@ -3082,7 +3141,7 @@
       <div>${b('upgrades','Upgrades')} ${b('safeMode','Not-Aus')} ${b('autoStrategy','Auto-Strategie '+(opts.autoStrategy?'AN':'AUS'))} ${b('fullAuto','Vollautonom '+(opts.fullAuto?'AN':'AUS'))}</div>
       <div>${b('diplomacy','Diplomatie')} ${b('offerAlliances','Bündnisse anbieten')}</div>
       <div>${b('nukes','Auto-Nukes')} ${b('antiNuke','Intelligente SAMs')} ${b('lateOffense','Late-Game-Offensive')}</div>
-      <div>${b('impossibleMode','Unmöglich-Taktik')} <button data-key="export" style="border:1px solid #73acdd;border-radius:5px;background:#235078;color:white;padding:5px 7px;cursor:pointer">📄 Diagnose JSON</button></div>
+      <div>${b('learningEnabled','Lernen')} ${b('impossibleMode','Unmöglich-Taktik')} <button data-key="export" style="border:1px solid #73acdd;border-radius:5px;background:#235078;color:white;padding:5px 7px;cursor:pointer">📄 Diagnose JSON</button></div>
       <div style="color:#a9efc9">Hauptfront: ${escapeHTML(warState.name)} · Krieg ${isWar()?'aktiv':'frei'} · ${escapeHTML(lastRecoveryReason||'bereit')}</div>
       <div>${b('plan','Manuell: '+opts.plan)}<br>${b('buildStyle','Manueller Baufokus: '+opts.buildStyle)}</div>
       <div style="color:#a9efc9">KI-Strategie: ${escapeHTML(strategic.mode)} · ${escapeHTML(strategic.reason)} · Bau: ${escapeHTML(effectiveBuildStyle())}</div>

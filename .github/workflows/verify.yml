@@ -18,6 +18,9 @@ jobs:
       - name: Test bot strategy
         run: node tests/strategy-regression.cjs
 
+      - name: Test hybrid learning
+        run: node tests/learning-regression.cjs
+
       - name: Check benchmark tools
         run: |
           node --check tools/benchmark/engine-match.mjs

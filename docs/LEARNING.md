@@ -1,0 +1,8 @@
+# Hybrid Learning v1 (experimental)
+The installed userscript contains an opt-out **Lernen** switch. Learning is active only while Full Auto is active and the bot was manually started in an allowed match. The bot never starts itself. The policy memory key `of-aggrobot-learning-v1` is independent of the versioned UI options key; browser storage deletion resets learning.
+
+Every 240 or more ticks, the bot computes a **progress proxy** based on relative land change and troop change, associates it with the preceding strategy mode and a coarse threat/safe context, and updates a running mean. This is **not causal action attribution, reinforcement learning with a learned neural network, self-play, nor a proven increase in win rate**. A minimum of three samples and a bounded confidence factor constrain the effect to at most +/−5 aggression and +/−4 reserve points. Emergency defense, configured resource/worker limits, existing safety checks, manual sliders and the original strategy modes retain control. Invalid/untrusted persisted values are rejected.
+
+Confirmed `victory` / `defeat` are stored as metadata on a completed game; incomplete/unknown outcomes are not marked as wins/losses and are not used as a numerical reward. The `learning` field in exported diagnostics includes counters and contextual means. For meaningful progress compare matched baseline and challenger seeds; the current suite does **not** train or automatically deploy new models. No self-play harness, opponent modeling or offline candidate promotion is claimed here.
+
+Run `node tests/learning-regression.cjs` for the isolated storage/context/reward/bounds test. Note that localStorage is browser-profile-local and is not imported into standalone engine matches automatically.
