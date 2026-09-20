@@ -77,18 +77,23 @@ function match(model,phase,g,index,map,nation,seed){
   let state=null;
   try{state=JSON.parse(fs.readFileSync(path.join(folder,'match.json'),'utf8'));}catch(_){}
   const termination=state?.run?.termination||'no-report',outcome=state?.gameEnd?.outcome;
-  const confirmed=proc.status===0&&['game-over','eliminated'].includes(termination)&&
-    ['victory','defeat'].includes(outcome)&&
+  const verified=proc.status===0&&!proc.error&&
     state?.benchmarkMeta?.policySHA256===common.digest(JSON.stringify(model)) &&
     state?.benchmarkMeta?.engineCommit===cfg.engineCommit;
-  // No optimization for tick-limit survival masquerading as a victory.
+  const confirmed=verified&&['game-over','eliminated'].includes(termination)&&
+    ['victory','defeat'].includes(outcome);
+  const validSample=confirmed||(verified&&termination==='tick-limit');
+  // Tick-limit is NEVER a win; a small, negative auxiliary signal lets the
+  // exploratory search move without licensing a false model promotion.
   const land=Math.max(0,Number(state?.finalState?.land)||0),
     elapsed=Math.max(0,Number(state?.run?.tick)||0);
-  const reward=!confirmed?-1:(outcome==='victory'?1:0)+
-    Math.min(.035,land/1000000)+Math.min(.015,elapsed/ticks*.015);
+  const reward=!validSample?-1:confirmed?
+    (outcome==='victory'?1:0)+Math.min(.035,land/1000000)+
+      Math.min(.015,elapsed/ticks*.015):
+    -.25+Math.min(.035,land/1000000)+Math.min(.01,elapsed/ticks*.01);
   const row={phase,generation:g,index,map,nation,seed,model:policy.sha(model),
     dir:path.relative(out,folder),termination,outcome:confirmed?outcome:'incomplete',
-    confirmed,land,endTick:elapsed,reward:Math.round(reward*1e6)/1e6,
+    confirmed,validSample,land,endTick:elapsed,reward:Math.round(reward*1e6)/1e6,
     error:proc.error?.message||null,exitCode:proc.status};
   console.log(JSON.stringify(row));
   return row;
@@ -102,7 +107,7 @@ function suite(model,phase,g,index,count){
     }
   return rows;
 }
-const score=rows=>rows.every(x=>x.confirmed)?
+const score=rows=>rows.every(x=>x.validSample)?
   rows.reduce((sum,x)=>sum+x.reward,0)/rows.length:-Infinity;
 for(let g=1;g<=generations;g++){
   const previous=suite(parent,'training',g,'parent',trainSeeds);
