@@ -1,19 +1,19 @@
 'use strict';
-// Schema 2: 12 observable candidate features -> 12 tanh units -> 1 bounded
+// Schema 2: 16 observable candidate features -> 12 tanh units -> 1 bounded
 // score adjustment. Zero weights reproduce the existing heuristic ranking.
 const crypto=require('node:crypto');
-const INPUTS=12,HIDDEN=12,LENGTH=INPUTS*HIDDEN+HIDDEN+HIDDEN+1;
+const INPUTS=16,HIDDEN=12,LENGTH=INPUTS*HIDDEN+HIDDEN+HIDDEN+1;
 const KINDS=['attack','economy','naval'];
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,Number.isFinite(n)?n:a));
 function validate(model){
-  if(!model||model.schema!==2||model.arch!=='12x12x1-tanh'||
+  if(!model||model.schema!==2||model.arch!=='16x12x1-tanh'||
     !Array.isArray(model.weights)||model.weights.length!==LENGTH||
     model.weights.some(v=>typeof v!=='number'||!Number.isFinite(v)||Math.abs(v)>5))
     throw Error('Invalid schema-2 action policy');
   return model;
 }
-function zero(){return {schema:2,arch:'12x12x1-tanh',weights:Array(LENGTH).fill(0)};}
-function features(state,kind,baseScore){
+function zero(){return {schema:2,arch:'16x12x1-tanh',weights:Array(LENGTH).fill(0)};}
+function features(state,kind,baseScore,candidate={}){
   if(!KINDS.includes(kind))throw Error('Unknown action kind');
   const home=Math.max(1,Number(state.home)||0);
   const max=Math.max(1,Number(state.max)||0);
@@ -24,7 +24,11 @@ function features(state,kind,baseScore){
     clamp((Number(state.gold)||0)/1000000,0,1),
     clamp((Number(state.land)||0)/20000,0,1),
     state.late?1:0,state.neutral?1:0,
-    ...KINDS.map(k=>k===kind?1:0),clamp(Number(baseScore)||0,-150,150)/150];
+    ...KINDS.map(k=>k===kind?1:0),clamp(Number(baseScore)||0,-150,150)/150,
+    clamp(Number(candidate.magnitude)||0,0,1),
+    clamp(Number(candidate.opportunity)||0,0,1),
+    clamp(Number(candidate.cost)||0,0,1),
+    clamp(Number(candidate.risk)||0,0,1)];
 }
 function predict(model,vector){
   validate(model);
