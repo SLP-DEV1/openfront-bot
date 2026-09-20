@@ -43,6 +43,12 @@ const aPlus=action.mutate(a0,'action-seed',.3);
 assert.deepEqual(aPlus,action.mutate(a0,'action-seed',.3));
 assert(aPlus.weights.some(w=>w!==0));
 assert(action.predict(aPlus,vectors[0])<=1);
+const naval=action.features(aState,'naval',-90,{
+  magnitude:1,opportunity:.2,cost:.6,risk:.9});
+assert.equal(naval.length,16);
+assert.equal(naval[11],-.6);
+assert.doesNotThrow(()=>action.predict(aPlus,naval));
+assert.throws(()=>action.features(aState,'unknown',0));
 assert.throws(()=>action.validate({...a0,weights:[0]}));
 assert.throws(()=>action.validate({...a0,weights:[...a0.weights.slice(0,-1),Infinity]}));
 assert.throws(()=>action.predict(a0,[3]));
