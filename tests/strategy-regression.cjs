@@ -111,6 +111,19 @@ function boot(benchmarkOptions={}) {
     x.b.setMode('RECOVER');
     assert.equal(x.b.strategicDirector(x.me,s,{wanted:'RECOVER'},ranked,600).order[0],'hold');
   });
+  await check('zero policy preserves the original naval fallback when precheck says no', () => {
+    const x=boot(),zero={schema:3,arch:'16x16x16-tanh',weights:Array(544).fill(0)};
+    x.setTick(650);x.b.setBoats(false);
+    const s=x.b.military(x.me,[]);
+    const rule=x.b.strategicDirector(x.me,s,{wanted:'ECONOMY'},[],650);
+    assert.deepEqual(Array.from(rule.order),['naval','hold']);
+    x.b.setNeural(zero);
+    const learned=x.b.strategicDirector(x.me,s,{wanted:'ECONOMY'},[],650);
+    assert.deepEqual(Array.from(learned.order),Array.from(rule.order));
+    const model={...zero,weights:zero.weights.slice()};
+    model.weights[528+8]=3;x.b.setNeural(model);
+    assert.equal(x.b.strategicDirector(x.me,s,{wanted:'ECONOMY'},[],650).order[0],'hold');
+  });
   await check('trained strategy changes reserves without lowering the strongest-front floor', () => {
     const x=boot(),zero={schema:3,arch:'16x16x16-tanh',weights:Array(544).fill(0)};
     const groups=[{id:'weak',opponent:x.weak},{id:'strong',opponent:x.strong}];
