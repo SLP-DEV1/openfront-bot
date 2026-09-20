@@ -180,7 +180,7 @@ async function scriptedStep(turn){
     const outgoing=(me.outgoingAttacks?.()||[]).filter(a=>!a.retreating);
     if(outgoing.length>=2 || incoming>home*.45)continue;
     const border=await me.borderTiles?.();
-    const tiles=border?.borderTiles||[];
+    const tiles=[...(border?.borderTiles||[])];
     const candidates=[];
     for(const tile of tiles.slice(0,160)){
       const nearby=[];
