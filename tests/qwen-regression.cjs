@@ -102,6 +102,15 @@ const {createServer}=require('../brain/server.cjs');
         headers:{'Content-Type':'application/json','X-Aggrobot-Token':'z'.repeat(64)},
         body:JSON.stringify(o(5,960,1004))});
       assert.equal(obs.status,200,'slow model cannot block /v1/observe');
+      const observed=await obs.json();
+      assert.equal(observed.qwen.matchId,matchId);
+      assert.equal(observed.qwen.kind,'stagnation');
+      assert.equal(observed.qwen.strategy,'HOLD');
+      assert.equal(observed.qwen.tick,720);
+      assert.equal(Object.hasOwn(observed.qwen,'explanation'),false,
+        'only strict typed strategy fields cross into game policy');
+      assert.equal(store.latestQwen('another-match',960),null);
+      assert.equal(store.latestQwen(matchId,719),null);
     }finally{await new Promise(resolve=>server.close(resolve));}
     const before=store.recentQwen().length;
     const noQwen=makeAdvisor({store,config:configFromEnv(),fetchImpl:async()=>{
