@@ -5,6 +5,7 @@ const {spawnSync}=require('node:child_process');
 const p=require('../trainer/policy.cjs');
 const action=require('../trainer/action-policy.cjs');
 const strategic=require('../trainer/strategic-policy.cjs');
+const strategicV4=require('../trainer/strategic-policy-v4.cjs');
 const {parallelMap}=require('../trainer/parallel.cjs');
 const {reward}=require('../trainer/reward.cjs');
 const defeat=reward({validSample:true,confirmed:true,outcome:'defeat',land:30000,endTick:14000,ticks:18000});
@@ -50,6 +51,18 @@ const exec=(args)=>{
 };
 assert.equal(action.LENGTH,217);
 assert.equal(strategic.LENGTH,544);
+assert.equal(strategicV4.LENGTH,1000);
+const z4=strategicV4.zero(),v4=strategicV4.features({home:9000,max:10000,
+  incoming:500,strongest:3000,secondary:2500,land:5000,landLoss:650,
+  trainIncome:120000,tradeIncome:800000,uncovered:3,defenses:2,
+  navalFailures:4,recentPressure:true});
+assert.equal(v4.length,24);
+assert(v4.every(x=>x>=0&&x<=1));
+assert.deepEqual(Object.values(strategicV4.predict(z4,v4)),Array(16).fill(0));
+const trained4=strategicV4.mutate(z4,'strategic-v4',.12);
+assert.deepEqual(trained4,strategicV4.mutate(z4,'strategic-v4',.12));
+assert(trained4.weights.some(w=>w!==0));
+assert.throws(()=>strategicV4.validate({...z4,weights:[]}));
 assert.equal(strategic.OUTPUTS.length,16);
 const z3=strategic.zero(),v3=strategic.features({home:9000,max:10000,
   incoming:800,committed:600,strongest:3000,gold:420000,land:1100,
@@ -104,6 +117,9 @@ const dry=JSON.parse(exec(['trainer/train.mjs','--dryRun','true',
 assert.equal(dry.matches,2*(1*(1*(2+1)+2*2)));
 assert.equal(dry.parallel,2);
 assert.equal(dry.policySchema,3);
+const dryV4=JSON.parse(exec(['trainer/train.mjs','--dryRun','true','--schema','4',
+  '--maps','World','--nations','1']));
+assert.equal(dryV4.policySchema,4);
 assert.equal(dry.difficulty,'Impossible');
 for(const difficulty of ['Medium','Hard','Impossible']){
   const plan=JSON.parse(exec(['trainer/train.mjs','--dryRun','true',
@@ -145,6 +161,12 @@ try{
   assert.equal(v3.modelSHA256,strategic.sha(trained3));
   assert.equal(v3.modelEnabledByDefault,true);
   assert(fs.readFileSync(deployedV3,'utf8').includes('const NEURAL_BUNDLED_MODEL = {"schema":3'));
+  const deployedV4=path.join(temp,'strategic-v4.user.js');
+  fs.writeFileSync(model,JSON.stringify(trained4));
+  const deployed4=JSON.parse(exec(['trainer/deploy.mjs','--model',model,'--out',deployedV4]));
+  assert.equal(deployed4.modelSHA256,strategicV4.sha(trained4));
+  assert.equal(deployed4.modelEnabledByDefault,true);
+  assert(fs.readFileSync(deployedV4,'utf8').includes('const NEURAL_BUNDLED_MODEL = {"schema":4'));
 }finally{fs.rmSync(temp,{recursive:true,force:true});}
 (async()=>{
   let active=0,peak=0;
