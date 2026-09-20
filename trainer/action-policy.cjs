@@ -34,7 +34,7 @@ function predict(model,vector){
   validate(model);
   if(!Array.isArray(vector)||vector.length!==INPUTS||
     vector.some((v,i)=>typeof v!=='number'||!Number.isFinite(v)||
-      v<(i===INPUTS-1?-1:0)||v>1))throw Error('Invalid action vector');
+      v<(i===11?-1:0)||v>1))throw Error('Invalid action vector');
   const w=model.weights,h=[];
   for(let j=0;j<HIDDEN;j++){
     let z=w[INPUTS*HIDDEN+j];
