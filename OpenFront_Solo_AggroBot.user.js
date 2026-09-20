@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.14.0
+// @version      1.14.1
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,8 +14,8 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.14.0', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
-  const defaults = {enabled:false, learningEnabled:true, brainEnabled:false, brainToken:'', fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
+  const VERSION = '1.14.1', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const defaults = {enabled:false, autoStart:true, learningEnabled:true, brainEnabled:false, brainToken:'', fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
     autoStrategy:true, diplomacy:true, offerAlliances:true, nukes:true, antiNuke:true, lateOffense:true,
@@ -27,7 +27,7 @@
     opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v1110')||localStorage.getItem('of-solo-aggrobot-v11010')||localStorage.getItem('of-solo-aggrobot-v1109')||localStorage.getItem('of-solo-aggrobot-v1108')||localStorage.getItem('of-solo-aggrobot-v1107')||localStorage.getItem('of-solo-aggrobot-v1106')||localStorage.getItem('of-solo-aggrobot-v1105')||localStorage.getItem('of-solo-aggrobot-v1104')||localStorage.getItem('of-solo-aggrobot-v1103')||localStorage.getItem('of-solo-aggrobot-v1102')||localStorage.getItem('of-solo-aggrobot-v1101')||localStorage.getItem('of-solo-aggrobot-v1100')||localStorage.getItem('of-solo-aggrobot-v199')||localStorage.getItem('of-solo-aggrobot-v198')||localStorage.getItem('of-solo-aggrobot-v197')||localStorage.getItem('of-solo-aggrobot-v196')||localStorage.getItem('of-solo-aggrobot-v195')||localStorage.getItem('of-solo-aggrobot-v194')||localStorage.getItem('of-solo-aggrobot-v193')||localStorage.getItem('of-solo-aggrobot-v192')||localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
     // Only import user-adjustable preferences, never a previously enabled bot.
   }}catch(_){}
-  opts.enabled = false;                         // Never auto-start after reload.
+  opts.enabled = false;                         // Start only after a playable match and EventBus are discovered.
   // One-time v1.10 migration: full autonomy includes marine operation;
   // a later manual choice is saved under the new key as usual.
   if(!localStorage.getItem(KEY) && opts.fullAuto)opts.boats=true;
@@ -514,8 +514,21 @@
     }
     return health;
   }
+  let autoStartGame=null;
+  function maybeAutoStart() {
+    // One attempt per game object: manual pause and Not-Aus must not be undone
+    // by the next 400-ms polling cycle. A new match clears this latch.
+    if(benchmark || !opts.autoStart || opts.enabled || autoStartGame===game || !connected())return false;
+    autoStartGame=game;
+    opts.enabled=true;generation++;persist();
+    status='Neue '+(multiplayerMatch(game)?'Multiplayer-':'Singleplayer-')+'Partie · Bot automatisch gestartet';
+    log('BOT AUTO-START · '+gameType(game));
+    reportIntents(true);
+    return true;
+  }
   function reset(g,b) {
     generation++; game=g;bus=b;ctors=recognize(b);busy=false;lastWinnerSignal=null;
+    autoStartGame=null;
     bindWinnerCapture(bus,ctors);
     lastIntentHealth=null;lastIntentProbe=-Infinity;missingIntentLogged.clear();
     lastTick=-1;lastSpawn=-Infinity;lastEconomy=-Infinity;lastEconomyProbe=-Infinity;
@@ -550,10 +563,10 @@
     retreatRequests.clear();defenseStats={retreatsOrdered:0,retreatsObserved:0,unknown:0,unconfirmed:0};
     autoTuning={aggressive:85,reserve:35,actionsPerMinute:72,maxTargets:16,
       mode:'INIT',reason:'Warte auf Spielzustand',tick:-Infinity};
-    // Never auto-start in a new match, regardless of mode.
+    // Start this new match as soon as EventBus becomes ready.
     opts.enabled=false;persist();
-    status=gameType(g)==='Singleplayer'?'Singleplayer erkannt · Bot starten':
-      multiplayerMatch(g)?'Multiplayer erkannt · Bot starten':
+    status=gameType(g)==='Singleplayer'?'Singleplayer erkannt · '+(opts.autoStart?'Autostart wartet auf EventBus':'Bot bereit'):
+      multiplayerMatch(g)?'Multiplayer erkannt · '+(opts.autoStart?'Autostart wartet auf EventBus':'Bot bereit'):
       'Replay/unbekannter Spieltyp · gesperrt';
     if(g?.config?.().isReplay?.())status='Replay · BOT GESPERRT';
     log(status);
@@ -3348,6 +3361,7 @@
     }
     if(conflicts()){opts.enabled=false;status='Andere AggroBot-Version aktiv – alte Skripte deaktivieren';paint();return;}
     if(advisorConflict()){opts.enabled=false;status='Spawn Advisor: Auto-Spawn/Smart Attack/Auto-Accept ausschalten';paint();return;}
+    maybeAutoStart();
     if(opts.enabled&&game.inSpawnPhase?.()&&opts.autoSpawn){
       if(!bus?.emit)spawnBlock('EventBus noch nicht verfügbar');
       else if(!ctors.spawn)spawnBlock('Spawn-Intent nicht erkannt');
@@ -3464,7 +3478,7 @@
   function mount() {
     if(panel||!document.body)return;
     panel=document.createElement('section');panel.id='of-solo-aggrobot';
-    panel.style.cssText='position:fixed;left:12px;bottom:12px;width:335px;max-width:calc(100vw - 24px);max-height:68vh;overflow:auto;z-index:2147483644;padding:12px;background:rgba(9,18,32,.96);border:1px solid #42a5d9;border-radius:10px;color:#f0f4fa;font:12px/1.4 system-ui,Arial,sans-serif;box-shadow:0 5px 25px #000a';
+    panel.style.cssText='position:fixed;left:12px;bottom:12px;width:302px;max-width:calc(100vw - 24px);max-height:55vh;overflow:auto;z-index:2147483644;padding:10px;background:rgba(9,18,32,.96);border:1px solid #42a5d9;border-radius:10px;color:#f0f4fa;font:12px/1.4 system-ui,Arial,sans-serif;box-shadow:0 5px 25px #000a';
     panel.addEventListener('click',e=>{
       const key=e.target.closest('button[data-key]')?.dataset.key;if(!key)return;
       if(key==='export'){exportDiagnostics();return;}
@@ -3472,8 +3486,11 @@
         if(!connected())status=conflicts()?'Alte Bot-Version deaktivieren':
           advisorConflict()?'Spawn Advisor Auto/Smart/Auto-Accept ausschalten':
           'Nur in laufender Singleplayer-, Public- oder Private-Partie mit EventBus';
-        else {opts.enabled=!opts.enabled;generation++;log(opts.enabled?'BOT START':'BOT PAUSE');
+        else {opts.enabled=!opts.enabled;autoStartGame=game;generation++;log(opts.enabled?'BOT START':'BOT PAUSE');
           if(opts.enabled)reportIntents(true);}
+      }else if(key==='autoStart'){
+        opts.autoStart=!opts.autoStart;
+        if(opts.autoStart&&!opts.enabled)autoStartGame=null;
       }else if(key==='fullAuto'){
         opts.fullAuto=!opts.fullAuto;
         if(opts.fullAuto){opts.autoStrategy=true;autoTuning.tick=-Infinity;}
@@ -3504,22 +3521,33 @@
     // Keep the user's slider interaction from being interrupted by a redraw.
     if(panel.contains(document.activeElement)&&document.activeElement?.matches('input'))return;
     lastPaint=Date.now();actionBudget();
+    // Rebuilding innerHTML must not collapse sections the player opened.
+    const expanded={};
+    for(const detail of panel.querySelectorAll('details[data-section]'))expanded[detail.dataset.section]=detail.open;
+    const openFor=key=>expanded[key]?' open':'';
+    const sectionStyle='border:1px solid #354d66;border-radius:6px;margin-top:6px;padding:5px 7px';
     const b=(key,label)=>`<button data-key="${key}" style="border:1px solid #779;border-radius:5px;color:#fff;background:${opts[key]?'#167247':'#344157'};padding:5px 7px;margin:2px;cursor:pointer">${label}</button>`;
-    panel.innerHTML=`<b style="font-size:15px;color:#83dcff">Solo AggroBot ${VERSION}</b> ${permittedMatch(game)?'🟢':'🔒'}
+    panel.innerHTML=`<b style="font-size:14px;color:#83dcff">AggroBot ${VERSION}</b> ${permittedMatch(game)?'🟢':'🔒'}
       <div style="color:#bed5e8;margin:6px 0">${escapeHTML(status)}</div>
       ${game?.inSpawnPhase?.()?'<div style="color:#9bd0e4">Strategischer Spawn: '+
         escapeHTML(spawnState.phase)+' · geprüft '+spawnState.scanned+
         ' · Versuche '+spawnState.attempts+' · Rest '+
         spawnRemaining(game)+' Ticks</div>':''}
-      <div>${b('enabled',opts.enabled?'⏸ PAUSE':'▶ BOT STARTEN')}</div>
+      <div>${b('enabled',opts.enabled?'⏸ PAUSE':'▶ STARTEN')} ${b('autoStart',opts.autoStart?'⚡ Auto-Start AN':'⚡ Auto-Start AUS')}</div>
+      <div style="color:#a9efc9">${escapeHTML(strategic.mode)} · ${escapeHTML(strategic.reason)} · ${escapeHTML(economicStatus)}</div>
+      <details data-section="features"${openFor('features')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Module &amp; Optionen</summary>
       <div>${b('autoSpawn','Spawn')} ${b('defense','Gegenangriff')} ${b('economy','Wirtschaft')} ${b('boats','Marine')}</div>
       <div>${b('upgrades','Upgrades')} ${b('safeMode','Not-Aus')} ${b('autoStrategy','Auto-Strategie '+(opts.autoStrategy?'AN':'AUS'))} ${b('fullAuto','Vollautonom '+(opts.fullAuto?'AN':'AUS'))}</div>
       <div>${b('diplomacy','Diplomatie')} ${b('offerAlliances','Bündnisse anbieten')}</div>
       <div>${b('nukes','Auto-Nukes')} ${b('antiNuke','Intelligente SAMs')} ${b('lateOffense','Late-Game-Offensive')}</div>
-      <div>${b('learningEnabled','Lernen')} ${b('brainEnabled','🧠 Lokaler Brain')} ${b('qwenPolicy','Qwen-Hinweise (Test)')} ${b('neuralEnabled','Neurales Netz')} ${b('impossibleMode','Unmöglich-Taktik')} <button data-key="export" style="border:1px solid #73acdd;border-radius:5px;background:#235078;color:white;padding:5px 7px;cursor:pointer">📄 Diagnose JSON</button></div>
+      <div>${b('learningEnabled','Lernen')} ${b('brainEnabled','🧠 Lokaler Brain')} ${b('qwenPolicy','Qwen-Hinweise (Test)')} ${b('neuralEnabled','Neurales Netz')} ${b('impossibleMode','Unmöglich-Taktik')}</div>
+      </details>
+      <details data-section="brain"${openFor('brain')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Lokaler Brain &amp; Token</summary>
       <div style="color:#9bd0e4">Neurales Modell: ${neuralModel?'geladen (max. ±8 Punkte)':'nicht geladen'} · nur bei freigegebener Partie</div>
       <div style="color:#9bd0e4">Brain: ${escapeHTML(brainState.status)}${brainState.lastError?' · '+escapeHTML(brainState.lastError):''} · ${escapeHTML(BRAIN_URL)}</div>
       <label>Brain-Token: <input type="password" data-option="brainToken" placeholder="${opts.brainToken?'Gespeichert – neu einfügen zum Ändern':'Aus Terminal einfügen'}" autocomplete="off" style="width:100%;box-sizing:border-box"></label>
+      </details>
+      <details data-section="situation"${openFor('situation')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Lage &amp; Diplomatie</summary>
       <div style="color:#a9efc9">Hauptfront: ${escapeHTML(warState.name)} · Krieg ${isWar()?'aktiv':'frei'} · ${escapeHTML(lastRecoveryReason||'bereit')}</div>
       <div>${b('plan','Manuell: '+opts.plan)}<br>${b('buildStyle','Manueller Baufokus: '+opts.buildStyle)}</div>
       <div style="color:#a9efc9">KI-Strategie: ${escapeHTML(strategic.mode)} · ${escapeHTML(strategic.reason)} · Bau: ${escapeHTML(effectiveBuildStyle())}</div>
@@ -3528,11 +3556,15 @@
       <div style="color:#9bd0e4">Handel / 60s: Bahn ${incomeStatus.train===null?'unbekannt':Math.round(incomeStatus.train)} · Schiff ${incomeStatus.trade===null?'unbekannt':Math.round(incomeStatus.trade)} · Marine: ${escapeHTML(fleetStatus)}</div>
       <div style="color:#9bd0e4">Nukes: ${escapeHTML(nukeStatus)} · bestätigt ${nukeShots} / Versuche ${nukeAttempts} / unbestätigt ${nukeUnconfirmed} · SAM-Schutz ${nuclearCache?.assets?.length - nuclearCache?.uncovered?.length||0}/${nuclearCache?.assets?.length||0}</div>
       <div style="color:#9bd0e4">Allianzen: ${escapeHTML(diplomacyStatus)} · Bestätigt: ${diplomacyStats.accepted} angenommen, ${diplomacyStats.rejected} abgelehnt · ${diplomacyPending.size} ausstehend · ${diplomacyStats.offered} angeboten</div>
+      </details>
+      <details data-section="tuning"${openFor('tuning')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Feintuning</summary>
       <div style="color:#a9efc9">Parameter: ${opts.fullAuto?'AUTONOM '+escapeHTML(autoTuning.mode)+' · '+escapeHTML(autoTuning.reason):'MANUELL'}</div>
       <label>Aggressivität: ${setting('aggressive')}%${opts.fullAuto?' (Auto)':''}<input type="range" data-option="aggressive" min="40" max="100" value="${setting('aggressive')}" ${opts.fullAuto?'disabled':''} style="display:block;width:100%"></label>
       <label>Reserve: ${setting('reserve')}%${opts.fullAuto?' (Auto)':''}<input type="range" data-option="reserve" min="5" max="65" value="${setting('reserve')}" ${opts.fullAuto?'disabled':''} style="display:block;width:100%"></label>
       <label>Aktionen/Min.: ${setting('actionsPerMinute')}${opts.fullAuto?' (Auto)':''}<input type="range" data-option="actionsPerMinute" min="15" max="120" value="${setting('actionsPerMinute')}" ${opts.fullAuto?'disabled':''} style="display:block;width:100%"></label>
       <label>Zielprüfungen: ${setting('maxTargets')}${opts.fullAuto?' (Auto)':''}<input type="range" data-option="maxTargets" min="4" max="25" value="${setting('maxTargets')}" ${opts.fullAuto?'disabled':''} style="display:block;width:100%"></label>
+      </details>
+      <details data-section="diagnostics"${openFor('diagnostics')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Diagnose &amp; Protokoll</summary>
       <div style="color:#9bd0e4">Bau: ${escapeHTML(economicStatus)} · Sparziel: ${escapeHTML(investmentStatus)} · Prioritäten: ${escapeHTML(economicLastPlan)}</div>
       <div style="color:#9bd0e4">Tempo: Front ${runtime.borderMs}ms · Kampf ${runtime.combatMs}ms · Bau ${runtime.economyMs}ms · Worker-Checks ${runtime.attackProbes}/${runtime.buildProbes}</div>
       <div style="color:${intentHealth().critical.length?'#ff8181':intentHealth().missing.length?'#ffd480':'#a9efc9'}">Intents: ${intentHealth().eventBus?intentHealth().found+'/'+intentHealth().total:'EventBus ausstehend'} · ${intentHealth().missing.length?'Fehlen: '+escapeHTML(intentHealth().missing.join(', ')):'alle erkannt'}${intentHealth().critical.length?' · KERNFUNKTION EINGESCHRÄNKT':''}</div>
@@ -3540,16 +3572,18 @@
       <div style="color:#9bd0e4">Heim: ${Math.floor(troopSnapshot.home/10)} · Reserve: ${Math.floor(troopSnapshot.reserve/10)} · Laufende Angriffe: ${Math.floor(troopSnapshot.committed/10)} · Einkommen/Reserve: ${(troopSnapshot.ratio*100).toFixed(0)}% Kapazität</div>
       <div style="color:#9bd0e4">Eingehend: ${Math.floor(troopSnapshot.incoming/10)} · Stärkster Grenznachbar: ${Math.floor(troopSnapshot.strongest/10)} · Ziel: ${escapeHTML(lastSelection||plan?.name||'Suche')} · ${borderCache?.length||0} Grenzfelder</div>
       <div style="border-top:1px solid #527;margin-top:7px;padding-top:5px"><b>Letzte Entscheidungen</b>${recent.map(s=>`<div>• ${escapeHTML(s)}</div>`).join('')}</div>
-      <div style="color:#97a8be;font-size:10px;margin-top:8px">Singleplayer, Public und Private freigegeben · Replays gesperrt · nach Reload Bot AUS · Alt+Shift+P Start/Pause · Alt+Shift+X NOT-AUS.<br>Bei parallelem Spawn Advisor: Auto-Spawn, Smart Attack und Auto-Accept Alliances dort ausschalten.</div>`;
+      <button data-key="export" style="border:1px solid #73acdd;border-radius:5px;background:#235078;color:white;padding:5px 7px;cursor:pointer">📄 Diagnose JSON</button>
+      </details>
+      <div style="color:#97a8be;font-size:10px;margin-top:8px">Singleplayer, Public und Private freigegeben · Replays gesperrt · Autostart pro Partie · Pause bis zum Spielwechsel · Alt+Shift+P Start/Pause · Alt+Shift+X NOT-AUS (Autostart AUS).<br>Bei parallelem Spawn Advisor: Auto-Spawn, Smart Attack und Auto-Accept Alliances dort ausschalten.</div>`;
   }
   document.addEventListener('keydown',e=>{
     if(!e.altKey||!e.shiftKey||!['p','x'].includes(e.key.toLowerCase())||e.repeat||e.target?.isContentEditable||
       /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName||''))return;
     e.preventDefault();
     if(e.key.toLowerCase()==='x'){
-      opts.enabled=false;generation++;log('NOT-AUS über Hotkey');
+      opts.enabled=false;opts.autoStart=false;autoStartGame=game;generation++;log('NOT-AUS über Hotkey · Autostart AUS');
     }else if(connected()){
-      opts.enabled=!opts.enabled;generation++;log(opts.enabled?'BOT START':'BOT PAUSE');
+      opts.enabled=!opts.enabled;autoStartGame=game;generation++;log(opts.enabled?'BOT START':'BOT PAUSE');
       if(opts.enabled)reportIntents(true);
     } else status='Bot nur in laufender Singleplayer-, Public- oder Private-Partie verfügbar';
     persist();lastPaint=0;paint();
@@ -3576,14 +3610,14 @@
             throw new Error('Invalid benchmark setting: '+key);
         }
         Object.assign(opts,settings);if(opts.fullAuto)opts.autoStrategy=true;
-        autoTuning.tick=-Infinity;opts.enabled=true;generation++;
+        autoTuning.tick=-Infinity;opts.enabled=true;autoStartGame=game;generation++;
         telemetry('benchmark_start','Lokaler Testlauf gestartet',{settings});
         reportIntents(true);
       },
-      stop:()=>{telemetry('benchmark_stop','Lokaler Testlauf gestoppt');opts.enabled=false;generation++;},
+      stop:()=>{telemetry('benchmark_stop','Lokaler Testlauf gestoppt');opts.enabled=false;autoStartGame=game;generation++;},
       // Engine harness awaits every cycle; ordinary browser timers stay unchanged.
       pump:async()=>{await step();await economyStep();await diplomacyTick();await nukeStep();}
     });
   }
-  console.info(PREFIX,'v'+VERSION,'ready; Singleplayer/Public/Private, OFF by default');
+  console.info(PREFIX,'v'+VERSION,'ready; Singleplayer/Public/Private, auto-start after match discovery');
 })();
