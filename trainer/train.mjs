@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import policy from './policy.cjs';
+import policy from './action-policy.cjs';
 import common from '../tools/benchmark/common.cjs';
 import {reviewGeneration} from './qwen-review.mjs';
 import evaluation from './evaluation.cjs';
@@ -47,7 +47,7 @@ const runsPerGeneration=maps.length*nations.length*(trainSeeds*(population+1)+ev
 if(runsPerGeneration>200)throw Error('Too many matches per generation (>200)');
 const total=runsPerGeneration*generations;
 const plan={engineCommit:cfg.engineCommit,maps,nations,generations,population,
-  trainSeeds,evalSeeds,ticks,sigma,parallel,matches:total,
+  trainSeeds,evalSeeds,ticks,sigma,parallel,matches:total,policySchema:2,
   promotion:'strictly more observed holdout victories, no incompletes or process failures'};
 if(cfg.dryRun==='true'){console.log(JSON.stringify(plan,null,2));process.exit(0);}
 if(!cfg.engine)throw Error('Provide --engine or --dryRun true');
@@ -105,10 +105,11 @@ async function match(model,phase,g,index,map,nation,seed){
   const land=Math.max(0,Number(state?.finalState?.land)||0),
     elapsed=Math.max(0,Number(state?.run?.tick)||0);
   const reward=scoring.reward({validSample,confirmed,outcome,land,
-    endTick:elapsed,ticks});
+    endTick:elapsed,ticks,trajectory:state?.trajectory});
   const row={phase,generation:g,index,map,nation,seed,model:policy.sha(model),
     dir:path.relative(out,folder),termination,outcome:confirmed?outcome:'incomplete',
-    confirmed,validSample,land,endTick:elapsed,reward:Math.round(reward*1e6)/1e6,
+    confirmed,validSample,land,endTick:elapsed,trajectory:state?.trajectory?.summary??null,
+    reward:Math.round(reward*1e6)/1e6,
     error:proc.error?.message||null,exitCode:proc.status};
   console.log(JSON.stringify(row));
   return row;
