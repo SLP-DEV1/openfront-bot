@@ -45,7 +45,9 @@ bleibt die Sicherheitsgrenze. Im normalen Userscript ist das neuronale Netz
 ohne einen bestätigten und ausdrücklich eingebetteten Champion **AUS**.
 
 `Start_Training.bat` startet einen reproduzierbaren Neuroevolution-Trainingslauf
-mit echten Impossible-Engine-Partien. Ein optionales Qwen Code CLI bewertet
+mit echten Impossible-Engine-Partien. Standardmäßig laufen **vier unabhängige
+Engine-Matches gleichzeitig** (einstellbar mit `--parallel 1` bis `8`),
+auf deinem Ryzen 9 9950X3D und 64 GB RAM zunächst mit `--parallel 4`. Ein optionales Qwen Code CLI bewertet
 nach jeder Generation die **aggregierten Resultate** und kann ausschließlich
 die Mutationsstärke für die nächste Generation vorschlagen. Nur mehr
 **bestätigte Siege auf getrennten Evaluations-Seeds** können eine
