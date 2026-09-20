@@ -2200,6 +2200,39 @@ function boot(benchmarkOptions={}) {
     assert(x.b.state().navalSiteNegative.some(([tile])=>tile===6));
     assert.equal(x.b.state().marineStats.transportArrived,0);
   });
+  await check('v1.18.1 SAM probes continue beyond first denied asset sites', async () => {
+    const x=boot();x.setTick(2400);x.setGold(900000);x.setLand(52000);
+    const units=['City','Factory'].map((type,i)=>({
+      type:()=>type,isActive:()=>true,tile:()=>5000+i*20,
+      id:()=>i+1,level:()=>1}));
+    x.me.units=()=>units;
+    x.game.units=()=>[{type:()=> 'Missile Silo',isActive:()=>true,
+      owner:()=>x.weak,tile:()=>6}];
+    let samProbes=0;
+    x.me.actions=async(tile,types)=>({buildableUnits:(types||[])
+      .filter(type=>type==='SAM Launcher'&&++samProbes>5).map(type=>({
+        type,canBuild:tile,canUpgrade:false,cost:200000n}))});
+    assert.equal(await x.b.economy(x.me,2400,0,[]),true);
+    assert(samProbes>=6,samProbes);
+    assert.equal(x.sent[0].unit,'SAM Launcher');
+  });
+  await check('v1.18.1 real SAM quote funds protection and expires when stale', async () => {
+    const x=boot();x.setTick(2400);x.setGold(100000);x.setLand(52000);
+    const units=['City','Factory'].map((type,i)=>({
+      type:()=>type,isActive:()=>true,tile:()=>5000+i*20,
+      id:()=>i+1,level:()=>1}));
+    x.me.units=()=>units;
+    x.game.units=()=>[{type:()=> 'Missile Silo',isActive:()=>true,
+      owner:()=>x.weak,tile:()=>6}];
+    x.me.actions=async(tile,types)=>({buildableUnits:(types||[])
+      .filter(type=>type==='SAM Launcher').map(type=>({
+        type,canBuild:tile,canUpgrade:false,cost:350000n}))});
+    assert.equal(await x.b.economy(x.me,2400,0,[]),false);
+    assert.equal(x.b.economicNeeds(x.me,units,[]).savingsTarget,350000);
+    x.setTick(2750);
+    assert.notEqual(x.b.economicNeeds(x.me,units,[]).savingsTarget,350000,
+      'old legal quote must not freeze the economy indefinitely');
+  });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
 })();
