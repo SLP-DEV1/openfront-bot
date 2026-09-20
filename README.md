@@ -58,6 +58,19 @@ Ohne ein validiertes und eingebettetes Modell ist der Live-Bot unveraendert.
 
 [Trainingsanleitung und Versionierung](docs/NEURAL_TRAINING.md).
 
+## Sichtbarer OpenFront-Browsertest mit Qwen Code
+
+Mit `Start_Live_Qwen.bat` einen lokalen Singleplayer-Test im sichtbaren
+Browser gegen Impossible-Nationen starten. Qwen Code analysiert vorhandene
+Bot-Telemetrie asynchron und zeigt Hinweise oberhalb des Spielfelds an;
+der laufende Bot wird dadurch nicht gesteuert oder verlangsamt. Nach dem
+Match steht ein Bericht bereit. Optional kann Qwen aus einer temporaeren
+Kopie eine getrennte Code-Variante erzeugen, ohne das Original zu ersetzen.
+**Kein menschlicher Multiplayer, keine Screenshot-Analyse, keine automatische
+Freigabe einer KI-Aenderung.**
+
+[Start, Grenzen, Auswertung und optionale Code-Variante](docs/LIVE_QWEN.md).
+
 ## Installation
 
 1. In Tampermonkey ein **neues Skript** erstellen und den gesamten Inhalt von `OpenFront_Solo_AggroBot.user.js` einfügen. In einem privaten GitHub-Repository darf man sich nicht darauf verlassen, dass Tampermonkey einen GitHub-Raw-Link ohne Anmeldung automatisch aktualisieren kann.
