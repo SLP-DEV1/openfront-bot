@@ -215,7 +215,7 @@
   let goldSamples=[],incomeStatus={train:null,trade:null,gold:null,observed:false};
   let winStatus={mode:'FFA',progress:null,threshold:null,remaining:null,urgent:false};
   let fleetStatus='Keine Marineaktivität',lastFleet=-Infinity,lastDonation=-Infinity,navalSweep=0;
-  let pendingBoat=null,pendingWarship=null,navalCooldown=new Map(),navalBackoffUntil=-Infinity,portProbeFailures=0,lastPortRetryTick=-Infinity;
+  let pendingBoat=null,pendingWarship=null,navalCooldown=new Map(),navalBackoffUntil=-Infinity,portProbeFailures=0,lastPortRetryTick=-Infinity,navalSiteNegative=new Map();
   let marineStats={transportSent:0,transportConfirmed:0,transportArrived:0,
     transportUnconfirmed:0,transportUnresolved:0,warshipSent:0,
     warshipConfirmed:0,warshipUnconfirmed:0};
@@ -474,7 +474,7 @@
     lastDiplomacyTick=-Infinity;lastProposalTick=-Infinity;diplomacyStatus='Noch keine Anfrage';
     diplomacyStats={accepted:0,rejected:0,offered:0};goldSamples=[];incomeStatus={train:null,trade:null,gold:null,observed:false};
     winStatus={mode:'FFA',progress:null,threshold:null,remaining:null,urgent:false};fleetStatus='Keine Marineaktivität';lastFleet=-Infinity;lastDonation=-Infinity;navalSweep=0;
-    pendingBoat=null;pendingWarship=null;navalCooldown.clear();navalBackoffUntil=-Infinity;portProbeFailures=0;lastPortRetryTick=-Infinity;
+    pendingBoat=null;pendingWarship=null;navalCooldown.clear();navalBackoffUntil=-Infinity;portProbeFailures=0;lastPortRetryTick=-Infinity;navalSiteNegative.clear();
     marineStats={transportSent:0,transportConfirmed:0,transportArrived:0,
       transportUnconfirmed:0,transportUnresolved:0,warshipSent:0,
       warshipConfirmed:0,warshipUnconfirmed:0};
@@ -3068,11 +3068,22 @@
           if(owner?.isPlayer?.()||safeID(owner)!==null)continue;
           const distance=Number.isInteger(own)?
             Math.hypot(x-game.x(own),y-game.y(own)):0;
-          result.push({tile,distance});
+          const neighbors=[];
+          let nearbyNeutral=0,nearbyHostile=0;
+          try{
+            const n=game.neighbors4?.(tile,neighbors)||0;
+            for(let i=0;i<n;i++){
+              const other=game.owner(neighbors[i]);
+              if(safeID(other)===null&&game.isLand(neighbors[i]))nearbyNeutral++;
+              else if(other?.isPlayer?.()&&!friendly(other,me))nearbyHostile++;
+            }
+          }catch(_){}
+          const score=nearbyNeutral*22-nearbyHostile*34-distance*.008;
+          result.push({tile,distance,score});
         }catch(_){}
       }
     }
-    result.sort((a,b)=>a.distance-b.distance);
+    result.sort((a,b)=>b.score-a.score||a.distance-b.distance);
     return result.slice(0,limit).map(x=>x.tile);
   }
   async function naval(me,tick,serial) {
@@ -3080,6 +3091,7 @@
     lastBoat=tick;
     // Use the SAME complete threat snapshot as ground combat. Using military(me)
     // without front groups underestimates the reserve near stronger neighbors.
+    for(const [tile,until] of navalSiteNegative)if(tick>=until)navalSiteNegative.delete(tile);
     const navyState=military(me,strategic.groups),spare=navyState.available;
     if(spare<1300 || navyState.incoming>0 || navyState.activeEnemy>0 ||
       recentHostilePressure(tick,260) || navyState.strongest>=navyState.home*.85)return false;
@@ -3149,6 +3161,7 @@
       spare>=Math.max(1400,navyState.home*.22)){
       for(const dest of neutralNavalCandidates(me)){
         if(!live(serial))return false;
+        if((navalSiteNegative.get(dest)||0)>tick)continue;
         let legal;
         try{legal=await me.actions(dest,['Transport']);}catch(_){continue;}
         if(!live(serial))return false;
@@ -3156,7 +3169,11 @@
           x.type==='Transport'&&Number.isInteger(x.canBuild));
         if(!ship||!game.isLand(dest)||game.hasFallout?.(dest)||
           game.owner(dest)?.isPlayer?.()||
-          safeID(game.owner(dest))!==null)continue;
+          safeID(game.owner(dest))!==null){
+          if(navalSiteNegative.size>300)navalSiteNegative.clear();
+          navalSiteNegative.set(dest,tick+240);
+          continue;
+        }
         if(!game.config().infiniteGold?.() &&
           Number(me.gold())<Number(ship.cost))continue;
         const amount=Math.floor(Math.min(spare*.32,navyState.home*.16));
