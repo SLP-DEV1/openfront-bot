@@ -154,6 +154,7 @@ function boot(benchmarkOptions={}) {
   await check('trained navy and diplomacy heads modify thresholds, not alliances', () => {
     const x=boot(),zero={schema:3,arch:'16x16x16-tanh',weights:Array(544).fill(0)};
     const s=x.b.military(x.me,[]);
+    x.b.setTroopSnapshot(s);
     x.b.setNeural(zero);
     const ratio=x.b.navalCommitmentRatio(x.me,x.weak,300);
     const politics=x.b.diplomacyScore(x.me,x.weak,s,true).score;
