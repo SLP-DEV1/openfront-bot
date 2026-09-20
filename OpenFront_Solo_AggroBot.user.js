@@ -2197,6 +2197,7 @@
     if(tick-lastEconomy<35 || tick-lastEconomyProbe<18)return false;
     lastEconomyProbe=tick;
     for(const [k,expiry] of economicBlocked)if(tick>=expiry)economicBlocked.delete(k);
+    for(const [k,expiry] of economicNegative)if(tick>=expiry)economicNegative.delete(k);
     const requirements=economicNeeds(me,units,tiles);
     const entries=requirements.list;
     // Do not waste worker queries or count failed builds while deliberately
@@ -2271,12 +2272,20 @@
       const kind=slot.entry.type+':'+!!slot.entry.upgrade;
       if((perKind.get(kind)||0)>=(recovery?5:3))continue;
       const key=kind+':'+slot.site.ref;
-      if(seen.has(key))continue;
+      if(seen.has(key)||(economicNegative.get(key)??0)>tick)continue;
       seen.add(key);work.push(slot);
       perKind.set(kind,(perKind.get(kind)||0)+1);
     }
-    // At most twelve worker requests, three simultaneously. Stop after the
-    // first successful batch instead of waiting for every possible building.
+    // A first-port milestone gets a dedicated legal search even if cheaper
+    // City/Factory sites happen to rank above the few usable coastal anchors.
+    if(requirements.portMilestone && coastal.length &&
+      !work.some(x=>x.entry.type==='Port'&&!x.entry.upgrade)){
+      const portEntry=entries.find(x=>x.type==='Port'&&!x.upgrade);
+      const portSite=portEntry&&coastal.find(x=>
+        (economicNegative.get('Port:false:'+x)??0)<=tick);
+      if(portSite)work.unshift({entry:portEntry,site:{ref:portSite,coast:true,dist:Infinity}});
+    }
+    // Worker probes stay bounded; record individual negative site/type checks.
     for(let offset=0;offset<work.length;offset+=3){
       if(!live(serial))return false;
       const batch=work.slice(offset,offset+3);
@@ -2290,6 +2299,13 @@
       for(const {slot,legal} of answers){
         if(!legal)continue;
         const {entry,site}=slot;
+        if(!legal.buildableUnits?.some(u=>u.type===entry.type &&
+          (entry.upgrade?u.canUpgrade!==false&&u.canUpgrade!==undefined:
+            Number.isInteger(u.canBuild)))){
+          const key=entry.type+':'+!!entry.upgrade+':'+site.ref;
+          if(economicNegative.size>500)economicNegative.clear();
+          economicNegative.set(key,tick+100);
+        }
         for(const item of entries.slice(0,8)){
           // The answer belongs to THIS build/upgrade candidate only; otherwise
           // low-priority buildings steal time and sites from high-priority ones.
