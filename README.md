@@ -2,7 +2,7 @@
 
 Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscript für [OpenFront](https://openfront.io/).
 
-**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.10.7**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
+**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.10.8**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
 
 ## Installation
 
@@ -16,6 +16,15 @@ Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscr
 ## Strategie & Diagnose
 
 Strategie-, Wirtschafts-, Marine-, Diplomatie-, Nuke- und SAM-Planung sind vorhanden. Der Bot kann Befehle senden; daraus folgt **keine garantierte Gewinnrate auf „Unmöglich“**. Ein vollständiger Live-Test ist noch nicht erfolgt. „Diagnose JSON“ im Bot-Menü zeichnet unter anderem Gebietsänderungen, Truppenlage, Bauaufträge und Allianzantworten auf. Bitte den Export vor dem Neuladen erstellen.
+
+### Änderung 1.10.8 – Issue #12: Flugbahn-/Bahnprüfung und überprüfbare Live-Daten
+
+- **SAM gegen Nukes:** Statt nur der geraden Verbindung werden die Bézier-Kontrollpunkte aus OpenFront `PathFinder.Parabola.getParabolaControlPoints` nachgebildet. Beide möglichen Flugrichtungen und ein kleiner Rundungspuffer werden geprüft. Risiko bedeutet **mögliche Abwehr**, nicht sicherer Treffer; die Engine entscheidet.
+- **Bahn-Bauplatzbewertung:** Innerhalb des offiziellen Stationsabstands prüft der Bot nun bis zu drei begrenzte Korridore auf zusammenhängendes eigenes, passierbares Land. Ein bloßer Luftlinien-Treffer zählt nicht mehr automatisch als erreichbare Bahnverbindung. Die echte serverseitige `RailNetwork.findStationsPath`-Route ist im Browser-`GameView` nicht zugänglich; die Methode heißt bewusst `owned-corridor-proxy`.
+- **Angriffsprognose:** Die Diagnose nennt `config.attackLogic` versus `rough-proxy`. Sie vergleicht die geschätzten Verluste mit einer tatsächlich beobachteten Netto-Abnahme des eigenen Angriffsverbands, wenn ein passender Verband im Spielzustand sichtbar bleibt. Diese Nettoänderung ist **keine isolierte Gefechtsverlustmessung**.
+- **Einkommensprüfung:** 120 Ticks nach bestätigter City/Factory/Port werden die Veränderungen der sichtbaren Bahn- und Schiff-Goldwerte erfasst. Der Datensatz ist ein Intervallvergleich – kein Beweis, dass das konkrete Gebäude den Zuwachs verursacht hat.
+- **Match-Report:** `node tools/match-report.cjs --json path/zur/Diagnose.json ...` extrahiert nur beobachtete Siege/Niederlagen, bestätigte Angriffe, Häfen, Flotte, Einkommensdaten und Endgebiet. Ein Versionsvergleich wird **nur** bei explizit identischem Seed, Karte, Kartengröße, Modus und Schwierigkeit erzeugt; unbekannte Seeds ergeben keine erfundenen Vergleichspaare. Die offizielle `GameConfigSchema` hat standardmäßig kein `seed`-Feld; wenn eine reproduzierbare private/Test-Lobby den Seed extern kennt, ist er nur als ausdrücklich dokumentierte zusätzliche Exportmetadaten sinnvoll.
+- **Weiter offen:** Vollständige echte Browser-Partien auf verschiedenen Karten/Seeds, End-to-End-Szenarien (Allianz, MIRV, Marine, Replay/GameView-Wechsel) und empirisch belegte Gewinnraten wurden damit **nicht durchgeführt**. Diese Kriterien von #12 dürfen nicht als abgeschlossen markiert werden.
 
 ### Änderung 1.10.7 – Multiplayer-Fenster und Live-Validierung
 
