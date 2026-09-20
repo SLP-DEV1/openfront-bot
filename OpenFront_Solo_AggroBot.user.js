@@ -19,7 +19,7 @@
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
     autoStrategy:true, diplomacy:true, offerAlliances:true, nukes:true, antiNuke:true, lateOffense:true,
-    impossibleMode:true,qwenPolicy:false,neuralEnabled:false};
+    impossibleMode:true,impossibleExperiment:false,qwenPolicy:false,neuralEnabled:false};
   let opts;
   try { opts = {...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; }
   catch (_) {opts = {...defaults};}
@@ -689,8 +689,9 @@
     // Rush the opening while neutral land remains and the home front is safe.
     const opening=tick<1000 && items.some(g=>g.id===null&&!g.fallout) &&
       s.incoming<home*.025 && s.strongest<home*.85 && s.ratio>=.27 &&
-      !recentHostilePressure(tick) && !(armyTrend(tick)?.tiles< -80) &&
-      (!hardMode() || !frontPressureForecast(me,items,tick).pressured);
+      (!opts.impossibleExperiment || (!recentHostilePressure(tick) &&
+        !(armyTrend(tick)?.tiles< -80) &&
+        (!hardMode() || !frontPressureForecast(me,items,tick).pressured)));
     const invasion=s.incoming/home,neighbor=s.strongest/home;
     const emergency=invasion>=.18 || (invasion>=.10 && context.rebuilding);
     let mode='BALANCED',reason='Ausgeglichene Spielphase';
@@ -891,7 +892,8 @@
     // Several nearby enemy spawns are riskier than one equally close rival;
     // avoid an opening surrounded by Impossible nations even on rich land.
     const crowding=enemy.filter(d=>d<minimum*1.8).length;
-    const crowdPenalty=Math.min(.06,Math.max(0,crowding-1)*.03);
+    const crowdPenalty=opts.impossibleExperiment?
+      Math.min(.06,Math.max(0,crowding-1)*.03):0;
     const score=openScore*.19+density*.32+
       (plain/Math.max(1,core)*.45+plains/Math.max(1,weight)*.55)*.18+
       enemyScore*.16+edgeScore*.05+coastScore*.04+
@@ -1379,7 +1381,7 @@
       incoming>0 ? Math.min(home*.94,incoming*1.3) : 0,
       strongest>0 ? Math.min(home*.78,max*(hardMode()?.12:.14)) : 0);
     const predicted=hardMode()?frontPressureForecast(me,items,tick):null;
-    const forecastFloor=predicted&&predicted.pressured?
+    const forecastFloor=opts.impossibleExperiment&&predicted&&predicted.pressured?
       Math.min(home*.91,predicted.combined*.60+incoming*.30):0;
     const reserve=Math.min(home,Math.ceil(Math.max(defensiveFloor,forecastFloor)));
     const available=Math.max(0,Math.floor(home-reserve));
@@ -1539,7 +1541,8 @@
         // while a different independently safe opportunity is available.
         const alternatives=foes.filter(x=>x.id!==warState.id&&
           targetOpportunity(me,items,s,x));
-        if(!active.some(a=>attackTargets(a.targetID,warState.id))&&
+        if(opts.impossibleExperiment &&
+          !active.some(a=>attackTargets(a.targetID,warState.id))&&
           tick-lastEnemySend>110&&alternatives.length&&
           !recentHostilePressure(tick)){
           blockedTargets.set(warState.id,Math.max(warState.blockedUntil,tick+160));
@@ -1651,12 +1654,12 @@
       .sort((a,b)=>b-a)[1]||0;
     const combined=otherThreat+Math.min(secondary*.35,s.home*.4);
     const danger=otherThreat>s.home*1.15 ||
-      (hardMode()&&combined>s.home*1.27&&
+      (opts.impossibleExperiment&&hardMode()&&combined>s.home*1.27&&
        (s.incoming>s.home*.04 || (armyTrend(tick)?.tiles||0)< -100));
     const pressure=s.incoming>Math.max(1200,s.home*.08);
     const floor=Math.max(s.reserve,s.incoming*1.3,
       otherThreat>0?Math.min(s.home,otherThreat*(hardMode()?.63:.55)):0,
-      hardMode()&&secondary>0&&
+      opts.impossibleExperiment&&hardMode()&&secondary>0&&
       (s.incoming>s.home*.04 || (armyTrend(tick)?.tiles||0)< -100)?
         Math.min(s.home*.90,combined*.58):0);
     return {other:otherThreat,danger,pressure,floor,
@@ -2577,7 +2580,7 @@
       // protecting it. With an incoming attack, move the safe band deeper.
       const lost=armyTrend(number(()=>game.ticks(),0))?.tiles||0;
       const standoff=range*(troopSnapshot.incoming>0?.78:.65)+
-        (lost< -100?range*.08:0);
+        (opts.impossibleExperiment&&lost< -100?range*.08:0);
       if(fronts.length && (distance<standoff || distance>range-2))return -Infinity;
       if(!fronts.length)value-=75;
       else {
@@ -2605,7 +2608,8 @@
     }
     else {
       const lost=armyTrend(number(()=>game.ticks(),0))?.tiles||0;
-      const safety=troopSnapshot.incoming>0||lost< -100?36:20;
+      const safety=troopSnapshot.incoming>0||
+        (opts.impossibleExperiment&&lost< -100)?36:20;
       if(fronts.length && distance<safety)return -Infinity;
       value+=Number.isFinite(distance)?Math.min(50,distance*.24)-Math.max(0,80-distance)*1.2:30;
       // Repeated zero ship revenue after a completed harbor is not a reason
@@ -3960,7 +3964,7 @@
         opts.fullAuto=!opts.fullAuto;
         if(opts.fullAuto){opts.autoStrategy=true;autoTuning.tick=-Infinity;}
       }else if(key==='autoStrategy'&&opts.fullAuto){opts.fullAuto=false;opts.autoStrategy=false;}
-      else if(['economy','boats','autoSpawn','defense','stopOnError','upgrades','safeMode','autoStrategy','diplomacy','offerAlliances','nukes','antiNuke','lateOffense','impossibleMode','learningEnabled','brainEnabled','qwenPolicy','neuralEnabled'].includes(key))opts[key]=!opts[key];
+      else if(['economy','boats','autoSpawn','defense','stopOnError','upgrades','safeMode','autoStrategy','diplomacy','offerAlliances','nukes','antiNuke','lateOffense','impossibleMode','impossibleExperiment','learningEnabled','brainEnabled','qwenPolicy','neuralEnabled'].includes(key))opts[key]=!opts[key];
       else if(key==='plan'){opts.fullAuto=false;opts.autoStrategy=false;opts.plan=opts.plan==='Blitz'?'Adaptiv':opts.plan==='Adaptiv'?'Ökonomie':'Blitz';}
       else if(key==='buildStyle'){opts.fullAuto=false;opts.autoStrategy=false;opts.buildStyle=opts.buildStyle==='Ausgewogen'?'Wirtschaft':opts.buildStyle==='Wirtschaft'?'Defensiv':'Ausgewogen';}
       persist();lastPaint=0;paint();
@@ -4005,7 +4009,7 @@
       <div>${b('upgrades','Upgrades')} ${b('safeMode','Not-Aus')} ${b('autoStrategy','Auto-Strategie '+(opts.autoStrategy?'AN':'AUS'))} ${b('fullAuto','Vollautonom '+(opts.fullAuto?'AN':'AUS'))}</div>
       <div>${b('diplomacy','Diplomatie')} ${b('offerAlliances','Bündnisse anbieten')}</div>
       <div>${b('nukes','Auto-Nukes')} ${b('antiNuke','Intelligente SAMs')} ${b('lateOffense','Late-Game-Offensive')}</div>
-      <div>${b('learningEnabled','Lernen')} ${b('brainEnabled','🧠 Lokaler Brain')} ${b('qwenPolicy','Qwen-Hinweise (Test)')} ${b('neuralEnabled','Neurales Netz')} ${b('impossibleMode','Unmöglich-Taktik')}</div>
+      <div>${b('impossibleExperiment','Impossible AI Test')} ${b('learningEnabled','Lernen')} ${b('brainEnabled','🧠 Lokaler Brain')} ${b('qwenPolicy','Qwen-Hinweise (Test)')} ${b('neuralEnabled','Neurales Netz')} ${b('impossibleMode','Unmöglich-Taktik')}</div>
       </details>
       <details data-section="brain"${openFor('brain')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Lokaler Brain &amp; Token</summary>
       <div style="color:#9bd0e4">Neurales Modell: ${neuralModel?.schema===4?'Strategische Policy v4 (24 Signale)':neuralModel?.schema===3?'Strategische Policy v3 (16 Signale)':neuralModel?.schema===2?'Aktionsranking (max. ±14 Punkte)':neuralModel?.schema===1?'Slider (max. ±8 Punkte)':'nicht geladen'} · nur bei freigegebener Partie</div>
