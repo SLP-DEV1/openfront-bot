@@ -2121,6 +2121,18 @@ function boot(benchmarkOptions={}) {
     assert.equal(await x.b.economy(x.me,2400,0,[5500]),true);
     assert.equal(x.sent[0].unit,'SAM Launcher');
   });
+  await check('v1.18 optional schema-4 network uses additional observed signals', () => {
+    const x=boot(),zero={schema:4,arch:'24x24x16-tanh',
+      weights:Array(1000).fill(0)};
+    x.b.setNeural(zero);
+    const s=x.b.military(x.me,[]);
+    const baseline=x.b.neuralStrategicSignals(x.me,s,300);
+    assert(baseline&&Object.values(baseline).every(v=>v===0));
+    const trained={...zero,weights:zero.weights.slice()};
+    trained.weights[984+11]=3; // portPriority output bias
+    x.b.setNeural(trained);
+    assert(x.b.neuralStrategicSignals(x.me,s,300).portPriority>.99);
+  });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
 })();
