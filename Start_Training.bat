@@ -47,7 +47,8 @@ set "OUTPUT=benchmark-results\neural-%RANDOM%-%RANDOM%"
 echo.
 echo Starte neuronales Training gegen echte Impossible-Nationen.
 echo Ergebnisse: %OUTPUT%
-echo Vier Engine-Partien laufen parallel; Qwen Code analysiert dazwischen.\necho Qwen darf nur Sigma vorschlagen.
+echo Vier Engine-Partien laufen parallel; Qwen Code analysiert dazwischen.
+echo Qwen darf nur Sigma vorschlagen.
 echo Zum Unterbrechen Strg+C. Keine Modelle werden ohne bestaetigte Siege freigegeben.
 echo.
 

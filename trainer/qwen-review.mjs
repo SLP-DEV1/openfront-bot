@@ -4,6 +4,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 const safeNumber=v=>Number.isFinite(v)?v:0;
+const QWEN_FLAGS=['--output-format','json','--approval-mode','plan',
+  '--max-session-turns','4','--max-wall-time','2m'];
+// Exported for a no-Qwen regression of Windows argument handling.
+export function qwenCommand(platform=process.platform,env=process.env){
+  if(platform==='win32'){
+    // This command line is fully static; the prompt never enters cmd.exe
+    // arguments, so special characters and newlines cannot split its argv.
+    return {command:env.ComSpec||'cmd.exe',
+      args:['/d','/s','/c','qwen.cmd '+QWEN_FLAGS.join(' ')]};
+  }
+  return {command:'qwen',args:[...QWEN_FLAGS]};
+}
 export function reviewGeneration(report,out){
   const g=report.generation;
   const prompt=[
@@ -23,14 +35,12 @@ export function reviewGeneration(report,out){
     'Promotion durch Spielresultate: '+String(report.promoted)
   ].join('\n');
   fs.writeFileSync(path.join(out,'qwen-prompt-'+g+'.txt'),prompt+'\n');
-  const windows=process.platform==='win32';
-  // Qwen Code supports headless -p / --output-format json. Windows npm
-  // installs typically expose qwen.cmd. No game log text enters this prompt.
-  const result=spawnSync(windows?'qwen.cmd':'qwen',
-    ['-p',prompt,'--output-format','json','--approval-mode','plan',
-      '--max-session-turns','4','--max-wall-time','2m'],
-    {cwd:path.resolve('.'),encoding:'utf8',timeout:150000,maxBuffer:512*1024,
-      ...(windows?{shell:true}:{})});
+  const launch=qwenCommand(process.platform,process.env);
+  // Pass the entire prompt via stdin. On Windows, npm's qwen.cmd needs
+  // cmd.exe, but fixed CLI flags are never shell-concatenated with the prompt.
+  const result=spawnSync(launch.command,launch.args,
+    {cwd:path.resolve('.'),input:prompt,encoding:'utf8',timeout:150000,
+      maxBuffer:512*1024,windowsHide:true});
   if(result.error||result.status!==0){
     const message=String(result.error?.message||result.stderr||result.status).slice(0,400);
     fs.writeFileSync(path.join(out,'qwen-error-'+g+'.txt'),message+'\n');
