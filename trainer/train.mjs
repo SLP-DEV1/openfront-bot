@@ -114,7 +114,12 @@ async function match(model,phase,g,index,map,nation,seed){
   const verified=proc.status===0&&!proc.error&&
     state?.benchmarkMeta?.policySHA256===common.digest(JSON.stringify(model)) &&
     state?.benchmarkMeta?.engineCommit===cfg.engineCommit &&
-    state?.benchmarkMeta?.gameConfig?.difficulty===difficulty;
+    state?.benchmarkMeta?.gameConfig?.difficulty===difficulty &&
+    state?.benchmarkMeta?.gameConfig?.gameType===cfg.gameType &&
+    state?.benchmarkMeta?.gameConfig?.gameMode===
+      (cfg.gameMode==='FFA'?'Free For All':'Team') &&
+    Number(state?.benchmarkMeta?.scriptedHumans??0)===scriptedHumans &&
+    (state?.benchmarkMeta?.opponentProfile??'balanced')===cfg.opponentProfile;
   const confirmed=verified&&['game-over','eliminated'].includes(termination)&&
     ['victory','defeat'].includes(outcome);
   const validSample=confirmed||(verified&&termination==='tick-limit');
