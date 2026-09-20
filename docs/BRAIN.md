@@ -46,7 +46,7 @@ node brain/server.cjs
 
 Der Browser braucht **keinen** llama.cpp-API-Key und keine Änderung seines bisherigen Brain-Tokens. Nach Änderung der Umgebungsvariablen den Brain-Prozess neu starten. Ohne `AGGROBOT_QWEN_ENABLED=1` ist die Qwen-Verbindung **AUS**. Die bestehende Brain-Verbindung in Tampermonkey bleibt wie bisher.
 
-**Auslösung:** Nach drei 240-Tick-Beobachtungsintervallen mit jeweils höchstens 0,5 % Gebietsgewinn bei mindestens 40 % Truppenfüllung (also ungefähr 720 Ticks Stagnation), sowie nach einem gemeldeten Spielende. Mehrere Anfragen werden nicht parallel ausgeführt; ein Stagnationsaufruf pro Match höchstens alle 2400 Ticks. Die LLM-Antwort darf länger brauchen, ohne die `/v1/observe`-Anfrage oder die OpenFront-Steuerung zu blockieren. Ein Modellaufruf wird nach 30 Sekunden abgebrochen; dann spielt der Bot wie bisher weiter.
+**Auslösung:** Qwen analysiert jetzt vier Fälle: (1) **akute Bedrohung** ab mindestens 1.000 eingehenden Truppen und mindestens 35 % der Heimtruppen, auch wenn die eigene Truppenfüllung bereits niedrig ist; (2) **Stagnation** nach drei Beobachtungsintervallen mit jeweils höchstens 0,5 % Gebietsgewinn bei mindestens 40 % Truppenfüllung; (3) **regelmäßige Lageanalyse** erstmals nach mindestens 2.400 Ticks, danach frühestens 2.400 Ticks nach einem automatischen Analyseversuch; (4) **Spielende**, sofern der Browser es an den Brain meldet. Bedrohung hat vor Stagnation und regelmäßiger Analyse Vorrang. Diese 2.400 Ticks sind Spiel-Ticks, keine Sekunden. Mehrere Qwen-Anfragen werden nicht parallel ausgeführt; läuft bereits eine Anfrage, werden normale Zusatzanfragen übersprungen und eine Spielende-Analyse vorgemerkt. Qwen blockiert weder `/v1/observe` noch die OpenFront-Steuerung. Ein Modellaufruf wird nach 30 Sekunden abgebrochen.
 
 Der Brain schickt ausschließlich numerische aggregierte Lage- und Verlaufsschnappschüsse sowie den Ergebnisstatus an dein lokal betriebenes Qwen. Die Modellantwort wird auf bekannte Strategien/Grundkategorien und einen kurzen deutschen Erklärungstext validiert und **nur als Beratung in `qwen_advice` in SQLite** gespeichert. Qwen verändert weder Aggressivität noch Reserve, wird nicht als Trainer-Erfolg verbucht und ist **kein autonom übernommener Policy-Kandidat**. Bei Unsicherheit darf das Modell auch `HOLD` vorschlagen. Tatsächliche Strategieänderungen erfordern gesonderte Engine-Vergleichstests.
 
@@ -56,6 +56,24 @@ Die Auswertung ist nach Authentifizierung direkt am Brain verfügbar:
 $token = (Get-Content .\\brain\\data\\auth-token -Raw).Trim()
 Invoke-RestMethod http://127.0.0.1:8765/v1/qwen -Headers @{"X-Aggrobot-Token"=$token} | ConvertTo-Json -Depth 6
 ```
+
+### Qwen-Verbindung jetzt manuell testen
+
+Der folgende Test benötigt **keine laufende Partie**. Er sendet einen synthetischen numerischen Lage-Snapshot (keine echten Spielinformationen) und prüft so erstmals die reale Verbindung zu deinem llama.cpp. Nach `git pull` den bisherigen Brain-Prozess mit **Strg+C** beenden und mit `AGGROBOT_QWEN_ENABLED=1` neu starten. Den llama-server weiter laufen lassen.
+
+```powershell
+cd C:\Users\SPK\Desktop\openfront
+$token = (Get-Content .\brain\data\auth-token -Raw).Trim()
+Invoke-RestMethod -Method Post http://127.0.0.1:8765/v1/qwen/test -Headers @{"X-Aggrobot-Token"=$token}
+```
+
+Ein HTTP **202 / `accepted: true`** bedeutet ausschließlich: Der Test wurde gestartet, **nicht** dass das Modell erfolgreich geantwortet hat. Danach bis zu 30 Sekunden warten und den Status abrufen:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8765/v1/qwen -Headers @{"X-Aggrobot-Token"=$token} | ConvertTo-Json -Depth 6
+```
+
+`requests > 0` belegt, dass der Brain einen Modellaufruf begonnen hat; `recent` mit `kind: manual` belegt eine gültige, gespeicherte Qwen-Antwort. Bei `lastError` den Wortlaut prüfen. HTTP **409** bedeutet: Qwen ist deaktiviert/beschäftigt oder der vorherige manuelle Test liegt weniger als 60 Sekunden zurück. Der manuelle Test ändert **keine** Bot-Strategie, keine Trainingswerte und löst keinen OpenFront-Befehl aus. Token weder posten noch in Screenshots zeigen.
 
 Falls du `AGGROBOT_TOKEN` statt der automatisch generierten Token-Datei nutzt, verwende diesen Wert. `/health` enthält **keinen** Qwen-Status. `/v1/qwen` zeigt `enabled`, `busy`, `lastError` und die letzten gespeicherten Beratungen. Lass beide localhost-Dienste lokal; keinen davon ins Internet oder zum VPS freigeben.
 
