@@ -14,7 +14,7 @@ import scoring from './reward.cjs';
 import parallelPool from './parallel.cjs';
 
 const cfg={engine:null,engineCommit:common.IMPOSSIBLE_REFERENCE_COMMIT,
-  bot:'OpenFront_Solo_AggroBot.user.js',initialModel:null,maps:'World',size:'Compact',nations:'1,4',bots:'0',difficulty:'Impossible',
+  bot:'OpenFront_Solo_AggroBot.user.js',initialModel:null,maps:'World',size:'Compact',nations:'1,4',bots:'0',rivals:'none',difficulty:'Impossible',
   generations:'3',population:'4',trainSeeds:'2',evalSeeds:'4',ticks:'18000',
   sigma:'0.12',parallel:'2',schema:'3',out:'benchmark-results/neural-training',qwen:'false',dryRun:'false'};
 for(let i=2;i<process.argv.length;i++){
@@ -51,15 +51,21 @@ const list=(name,rx)=>{
 const maps=list('maps',/^[A-Za-z0-9_-]{1,40}$/),
   nations=list('nations',/^(0|[1-9][0-9]?)$/).map(Number),
   botCounts=list('bots',/^(0|[1-9][0-9]?)$/).map(Number);
+const rivalStyles=cfg.rivals==='none'?[]:cfg.rivals.split(',');
+if(rivalStyles.length>4||new Set(rivalStyles).size!==rivalStyles.length||
+  rivalStyles.some(s=>!['rush','economy','defense','opportunist'].includes(s)))
+  throw Error('Invalid --rivals profile list');
+const rivalTag=rivalStyles.length?'r'+rivalStyles.map(s=>s[0]).join(''):'none';
 if(nations.some(n=>n>100)||botCounts.some(n=>n>40)||
-  nations.includes(0)&&botCounts.includes(0))
+  nations.includes(0)&&botCounts.includes(0)&&!rivalStyles.length)
   throw Error('Invalid opponent scenario: each combination needs opponents and bots<=40');
 const runsPerGeneration=maps.length*nations.length*botCounts.length*
   (trainSeeds*(population+1)+evalSeeds*2);
 if(runsPerGeneration>200)throw Error('Too many matches per generation (>200)');
 const total=runsPerGeneration*generations;
 const plan={engineCommit:cfg.engineCommit,difficulty,maps,nations,bots:botCounts,
-  scenario:'Singleplayer FFA: official nations and native tribes; NOT humans or teams',
+  rivals:rivalStyles,
+  scenario:'Singleplayer FFA: nations, native tribes and optional scripted GameView clients; NOT real humans or teams',
   generations,population,trainSeeds,evalSeeds,ticks,sigma,parallel,matches:total,policySchema:modelSchema,
   promotion:'verified complete paired holdout: more victories or consistent survival gains without regressions'};
 if(cfg.dryRun==='true'){console.log(JSON.stringify(plan,null,2));process.exit(0);}
@@ -75,7 +81,7 @@ const save=(p,data)=>common.writeJSON(path.join(out,p),data);
 let incumbent=cfg.initialModel?selectedPolicy.validate(JSON.parse(fs.readFileSync(path.resolve(cfg.initialModel),'utf8'))):selectedPolicy.zero(),parent=incumbent,incumbentWins=0;
 const history=[];
 async function match(model,phase,g,index,map,nation,bots,seed){
-  const id=[phase,g,index,difficulty,map,nation,'tribes'+bots,seed].join('-');
+  const id=[phase,g,index,difficulty,map,nation,'tribes'+bots,rivalTag,seed].join('-');
   const folder=path.join(out,'matches',id),modelFile=path.join(out,'models',id+'.json');
   fs.mkdirSync(path.dirname(folder),{recursive:true});
   fs.mkdirSync(path.dirname(modelFile),{recursive:true});
@@ -89,7 +95,8 @@ async function match(model,phase,g,index,map,nation,bots,seed){
         child=spawn(process.execPath,[runner,'--engine',engine,
           '--engineCommit',cfg.engineCommit,'--bot',bot,'--policy',modelFile,
           '--map',map,'--size',cfg.size,'--difficulty',difficulty,
-          '--bots',String(bots),'--nations',String(nation),'--seed',seed,
+          '--bots',String(bots),'--nations',String(nation),
+          '--rivals',cfg.rivals,'--seed',seed,
           '--ticks',String(ticks),'--profile','autonomous','--out',folder],
         {stdio:['ignore',fd,fd]});
       }catch(error){resolve({status:null,error});return;}
@@ -112,7 +119,8 @@ async function match(model,phase,g,index,map,nation,bots,seed){
     state?.benchmarkMeta?.engineCommit===cfg.engineCommit &&
     state?.benchmarkMeta?.gameConfig?.difficulty===difficulty &&
     state?.benchmarkMeta?.gameConfig?.nations===(nation===0?'disabled':nation) &&
-    state?.benchmarkMeta?.gameConfig?.bots===bots;
+    state?.benchmarkMeta?.gameConfig?.bots===bots &&
+    JSON.stringify(state?.benchmarkMeta?.scriptedRivals)===JSON.stringify(rivalStyles);
   const confirmed=verified&&['game-over','eliminated'].includes(termination)&&
     ['victory','defeat'].includes(outcome);
   const validSample=confirmed||(verified&&termination==='tick-limit');
@@ -122,7 +130,8 @@ async function match(model,phase,g,index,map,nation,bots,seed){
     elapsed=Math.max(0,Number(state?.run?.tick)||0);
   const reward=scoring.reward({validSample,confirmed,outcome,land,
     endTick:elapsed,ticks,trajectory:state?.trajectory});
-  const row={phase,generation:g,index,map,nation,bots,difficulty,seed,model:selectedPolicy.sha(model),
+  const row={phase,generation:g,index,map,nation,bots,rivals:cfg.rivals,
+    difficulty,seed,model:selectedPolicy.sha(model),
     dir:path.relative(out,folder),termination,outcome:confirmed?outcome:'incomplete',
     confirmed,validSample,land,endTick:elapsed,trajectory:state?.trajectory?.summary??null,
     reward:Math.round(reward*1e6)/1e6,
@@ -134,7 +143,7 @@ function suiteJobs(model,phase,g,index,count){
   const jobs=[];
   for(const map of maps)for(const nation of nations)for(const bots of botCounts)
     for(let k=0;k<count;k++){
-      const seed=(phase==='evaluation'?'eval':'train')+'-'+g+'-'+k+'-'+map+'-'+nation+'-tribes'+bots;
+      const seed=(phase==='evaluation'?'eval':'train')+'-'+g+'-'+k+'-'+map+'-'+nation+'-tribes'+bots+'-'+rivalTag;
       jobs.push({model,phase,g,index,map,nation,bots,seed});
     }
   return jobs;
