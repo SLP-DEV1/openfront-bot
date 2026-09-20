@@ -713,6 +713,10 @@
     v=learnAdjust(v,mode,s,emergency);
     v=brainAdjust(v,unlearned,mode,s,emergency);
     v=neuralAdjust(v,unlearned,me,s,items,emergency);
+    if(!emergency){const policy=neuralStrategicSignals(me,s,tick);
+      if(policy){v.aggressive+=Math.round(policy.aggression*12);
+        v.reserve+=Math.round(policy.reserve*10);}}
+
     v.aggressive=clamp(v.aggressive,40,100);
     v.reserve=clamp(v.reserve,18,65);
     v.actionsPerMinute=clamp(v.actionsPerMinute,45,110);
@@ -1263,7 +1267,9 @@
     // a third of the army immediately before a probable counterattack.
     const safeBudget=hardMode()&&exposed?
       Math.min(s.available*.14,s.home*.025):s.available*fraction;
-    return Math.floor(Math.min(safeBudget,Math.max(base,surplus)));
+    const amount=Math.min(safeBudget,Math.max(base,surplus));
+    return Math.floor(Math.min(safeBudget,amount*
+      (1+neuralChannel('neutralCommit',myPlayer(),s)*.35)));
   }
   // Retain short-lived border pressure across transient missing border scans.
   function observeFronts(me,items,tick){
@@ -1311,7 +1317,10 @@
     // Hold meaningful troops while a larger neighbor or incoming offensive exists.
     // On Impossible, preserve a force against the largest OTHER neighbor even
     // while crushing our chosen target. Avoid permanent paralysis from maxTroops.
-    const defensiveFloor=Math.max(baseline,
+    const policyReserve=neuralChannel('reserve',me,{home,max,committed,incoming,strongest,ratio,
+      available:Math.max(0,home-baseline)},tick);
+    const policyBaseline=home*clamp(baseline/home*100+policyReserve*8,12,75)/100;
+    const defensiveFloor=Math.max(policyBaseline,
       // Defending against one enemy does not require parking its entire army
       // at home while an attacking stack is already fighting that same enemy.
       strongest>0 ? Math.min(home*.85,strongest*(hardMode()?.59:.53)) : 0,
@@ -1526,19 +1535,20 @@
   function enemyOpportunityRatio(enemy,late,home,blitz=false){
     const normal=hardMode()?(late?1.34:1.75):
       (late?1.18:blitz?1.30:1.55);
-    if(enemyUnderAttack(enemy))return hardMode()?(late?1.12:1.24):1.12;
+    const learned=1-neuralChannel('warThreshold',myPlayer())*.12;
+    if(enemyUnderAttack(enemy))return (hardMode()?(late?1.12:1.24):1.12)*learned;
     const trend=opponentTrend(enemy);
     if(trend.valid&&trend.sustained&&trend.falling)
-      return Math.max(hardMode()?1.23:1.13,normal*.83);
+      return Math.max(hardMode()?1.23:1.13,normal*.83)*learned;
     // Opportunity in a human FFA: their army is fighting someone else.
     // Never make this a blanket buff for an uncommitted player.
     const opening=adversaryWindow(myPlayer(),enemy);
     if(opening.exposed && opening.ratio>=.45 && opening.human)
-      return Math.max(hardMode()?1.23:1.17,normal*.90);
+      return Math.max(hardMode()?1.23:1.17,normal*.90)*learned;
     if(enemy?.isDisconnected?.()===true &&
       number(()=>enemy.troops(),Infinity)<home*1.2)
-      return Math.max(1.15,normal*.86);
-    return normal;
+      return Math.max(1.15,normal*.86)*learned;
+    return normal*learned;
   }
   function targetHomeRatio(enemy,late){
     const normal=hardMode()?(late?1.45:1.85):(late?1.24:1.45);
@@ -1750,12 +1760,14 @@
         if(item.fallout && (s.incoming>0 || s.strongest>s.home*.65 ||
           s.ratio<.60 || available<s.home*.30))return [];
         score+=Math.max(0,45-s.ratio*40)+(ownTiles<600?26:0);
+        score+=neuralChannel('landPriority',me,s,tick)*28;
         if(item.fallout)score-=36;
         if(context.wanted==='EXPAND')score+=18;
         if(growthPressure(s))score+=Math.min(22,(s.ratio-.70)*90);
         if(late&&context.foes)score-=38;
       } else {
         score+=Math.max(-65,55-50*enemyTroops/Math.max(available,1));
+        score+=neuralChannel('enemyCommit',me,s,tick)*28;
         score+=Math.min(16,enemyTiles/450);
         const local=targetEconomics(item,tick);
         score+=Math.min(29,local.prize*2.7)-
@@ -1787,7 +1799,8 @@
       const amount=isNeutral ?
         Math.floor(neutralAttackAmount(s,aggression)*(item.fallout?.48:1)) :
         Math.min(front.safeStrike,available*(hardMode()?.76:.80),
-          Math.max(enemyTroops*(hardMode()?1.57:(1.25+aggression*.20)),available*.48));
+          Math.max(enemyTroops*(hardMode()?1.57:(1.25+aggression*.20)),available*.48)) *
+          (1+neuralChannel('enemyCommit',me,s,tick)*.22);
       const forecast=!isNeutral?attackForecast(me,item,Math.floor(amount)):null;
       if(forecast){
         score-=Math.min(60,forecast.loss/Math.max(1,amount)*78);
