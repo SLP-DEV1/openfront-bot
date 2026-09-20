@@ -93,7 +93,7 @@
   // No network traffic unless explicitly enabled; no grants that isolate page GameView.
   const BRAIN_URL='http://127.0.0.1:8765';
   let brainMatchId='match-'+Date.now().toString(36)+'-'+Math.floor(Math.random()*0xffffffff).toString(36).padStart(8,'0');
-  let brainSeq=0,brainLastTick=-Infinity,brainBusy=false,brainBackoff=0;
+  let brainSeq=0,brainLastTick=-Infinity,brainLastSampleTick=-Infinity,brainBusy=false,brainBackoff=0;
   let brainState={status:'Aus',advice:null,receivedTick:-Infinity,lastError:null};
   function brainReady(){
     return opts.brainEnabled&&opts.learningEnabled&&opts.fullAuto&&opts.enabled&&
@@ -108,6 +108,12 @@
       reserve:clamp(v.reserve+advice.reserveDelta,base.reserve-4,base.reserve+4)};
   }
   function brainSend(tick,me,s){
+    // Training samples are emitted in normal benchmark runs WITHOUT localhost access.
+    if(opts.fullAuto&&opts.learningEnabled&&tick-brainLastSampleTick>=240){
+      brainLastSampleTick=tick;
+      telemetry('brain_sample','Aggregierter Strategie-Zustand',
+        {brainMode:autoTuning.mode,maxTroops:Math.max(1,s.max),strongest:Math.max(0,s.strongest)});
+    }
     if(!opts.brainEnabled)return;
     if(!opts.brainToken||opts.brainToken.length<24){brainState.status='Token fehlt';return;}
     if(typeof fetch!=='function'){brainState.status='fetch nicht verfügbar';return;}
@@ -476,7 +482,7 @@
     nukeBusy=false;lastNuke=-Infinity;nukePending=null;nukeStatus='Warte auf Silo';nukeShots=0;nukeAttempts=0;nukeUnconfirmed=0;nuclearCache=null;nuclearCacheTick=-Infinity;
     learnMatch={sample:null,key:null,finished:false};
     brainMatchId='match-'+Date.now().toString(36)+'-'+Math.floor(Math.random()*0xffffffff).toString(36).padStart(8,'0');
-    brainSeq=0;brainLastTick=-Infinity;brainBusy=false;brainBackoff=0;
+    brainSeq=0;brainLastTick=-Infinity;brainLastSampleTick=-Infinity;brainBusy=false;brainBackoff=0;
     brainState={status:opts.brainEnabled?'Warte auf Match':'Aus',advice:null,receivedTick:-Infinity,lastError:null};
     warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};diagnostics=[];recordSequence=0;recordCounts={};recordsDropped=0;streamErrors=0;lastDiagnosticTick=-Infinity;gameEnd=null;forecastAudits=[];lastForecastAudit=null;incomeAttribution=[];
     investmentStatus='Grundaufbau';lastWarReview=-Infinity;
