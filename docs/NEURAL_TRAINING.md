@@ -24,7 +24,7 @@ node trainer/train.mjs --dryRun true --generations 3 --population 4 --trainSeeds
 ## Verlaessliche Promotion
 
 - Trainings-Seeds: `train-<generation>-<index>-<map>-<nations>`; davon getrennte Evaluations-Seeds mit Prefix `eval-`. Kandidat und Champion spielen auf **gleichen** Evaluations-Seeds. Die Engine ist auf `bb8af015b515b3b717bd4d901074c5f4c16641cb` fixiert und der Checkout muss sauber sein.
-- Die Trainingsbewertung verwendet bestaetigten Sieg als Hauptreward und minimalen Gebiets-/Zeitbonus nur fuer bestaetigt beendete Partien; unterbrochene Matches erhalten negativen Reward. Die Bewertung ist absichtlich *keine* Sieggarantie oder kalibrierte Gewinnwahrscheinlichkeit.
+- Die Trainingsbewertung verwendet bestaetigten Sieg als Hauptreward. Korrekt simulierte Tick-Limits erhalten nur ein **schwaches negatives Hilfssignal** aus Gebiet/Zeit, damit die Suche auch vor dem ersten beendeten Match lernen kann; Fehler erhalten einen staerker negativen Reward. Tick-Limits sind **niemals Siege**, duerfen kein Modell freigeben und sind keine kalibrierte Gewinnwahrscheinlichkeit.
 - Nur wenn **alle** Auswertungsmatches abgeschlossen sind und der Kandidat **mehr bestaetigte Siege** als der aktuelle Champion hat, schreibt das System `champion.json`. Die besseren Trainingsgewichte landen sonst lediglich in `provisional.json` und werden **nicht** automatisch live installiert.
 - Aufstiegsaussagen sind nur fuer die jeweiligen festen Karten/Gegnerzahlen/Seeds gueltig. Fuer ernstzunehmende Ergebnisse weitere Karten, Seeds, v.a. *neue* Evaluations-Seeds sowie reale Browser- und Multiplayer-Tests einsetzen. Das Netz kann trotz Training weiter 0/4 gegen Impossible erreichen.
 
