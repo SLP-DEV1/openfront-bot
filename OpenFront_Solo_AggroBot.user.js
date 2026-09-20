@@ -3815,8 +3815,12 @@
     const major=requested>=Math.max(200000,s.home*.30);
     const targetID=safeID(target);
     const landContact=groups.some(g=>g.id===targetID&&(g.tiles||[]).length>0);
-    if(!major||landContact)return {amount:requested,remote:!landContact,
-      other:0,reason:'small-or-land-connected'};
+    // Keep existing Impossible policy stable until this stricter global
+    // reserve wins on paired seeds; the optional AI Test can evaluate it.
+    if(!major||landContact||(hardMode()&&!opts.impossibleExperiment))
+      return {amount:requested,remote:!landContact,
+        other:0,reason:hardMode()&&!opts.impossibleExperiment?
+          'impossible-experiment-off':'small-or-land-connected'};
     const visible=(game.playerViews?.()||[]).filter(p=>p?.isAlive?.()&&
       safeID(p)!==safeID(me)&&safeID(p)!==targetID&&!friendly(p,me));
     const other=visible.reduce((best,p)=>Math.max(best,
