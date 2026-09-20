@@ -42,7 +42,7 @@ const config=GameConfigSchema.parse({gameMap:resolve(GameMapType,opts.map),gameM
 const dir=common.outputDir(opts),source=fs.readFileSync(opts.bot,'utf8');
 const rivalStyles=opts.rivals==='none'?[]:opts.rivals.split(',');
 const clientID='aggrobot',players=[{clientID,username:'AggroBot Benchmark',clanTag:null},
-  ...rivalStyles.map((style,i)=>({clientID:'local-rival-'+i,
+  ...rivalStyles.map((style,i)=>({clientID:'rivalbot'+i,
     username:'Scripted '+style+' '+(i+1),clanTag:null}))];
 const start={gameID:opts.seed,lobbyCreatedAt:0,players,config};
 const loader=new NodeGameMapLoader(path.join(opts.engine,'resources/maps'));
