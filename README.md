@@ -2,7 +2,7 @@
 
 Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscript für [OpenFront](https://openfront.io/).
 
-**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.11.0**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
+**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.11.1**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
 
 ## AggroBot 2.0 – erster lokaler Brain-Baustein (v1.11.0)
 
@@ -24,6 +24,14 @@ Start: `node brain/server.cjs`, Token aus der Terminalausgabe im Tampermonkey-Pa
 ## Strategie & Diagnose
 
 Strategie-, Wirtschafts-, Marine-, Diplomatie-, Nuke- und SAM-Planung sind vorhanden. Der Bot kann Befehle senden; daraus folgt **keine garantierte Gewinnrate auf „Unmöglich“**. Ein echter Public-Team-Lauf liegt vor; für eine belastbare Gewinnrate und weitere Karten-/Moduspfade reicht ein einzelnes Match nicht. „Diagnose JSON“ im Bot-Menü zeichnet unter anderem Gebietsänderungen, Truppenlage, Bauaufträge und Allianzantworten auf. Bitte den Export vor dem Neuladen erstellen.
+
+### Änderung 1.11.1 – Verteidigungslehre aus dem Public-FFA-Lauf
+
+- **Marinepfad live bestätigt:** Im Labyrinth/Compact/Public/FFA-Mitschnitt wurden 9/9 Transportbefehle als Schiffe erkannt und 9/9 Landungen am aufgelösten Küstenziel bestätigt. Ein Hafen und ein Kriegsschiff wurden ebenfalls tatsächlich im Spielzustand bestätigt.
+- **Angriffsdruck bleibt in Erinnerung:** Ein großer eingehender Angriff hält den Bot nach dem sichtbaren Ende der Angriffswelle noch 220 Ticks im Wiederaufbau. Eine kurze Lücke zwischen zwei Wellen löst nicht sofort wieder TECH oder ASSAULT aus.
+- **Keine Flottenoffensive neben Übermacht:** Spielerlandungen werden ausgesetzt, wenn der stärkste Grenznachbar mindestens 85 % der Heimtruppen besitzt oder innerhalb der letzten 260 Ticks erheblicher Angriffsdruck bestand.
+- **Beobachteter Auslöser:** Der 1.10.10-Bot startete bei Tick 3216 noch eine Landung mit 281.592 Truppen. Vier Ticks später erkannte er den starken Nachbarn; ab Tick 3288 folgten Angriffswellen bis über 1,5 Mio. Truppen. Der spätere bestätigte Rückzug kam erst nach erheblichem Gebietsverlust.
+- **Lernen funktioniert, Ergebnis fehlt:** Zwölf begrenzte Kontext-Updates wurden gespeichert. Der Export entstand vor `gameOver`, daher bleibt `lastResult` leer und dieser Lauf darf nicht als Sieg oder Niederlage trainiert beziehungsweise gezählt werden.
 
 ### Änderung 1.10.10 – Befunde aus einem echten Public-Team-Match
 
