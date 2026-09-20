@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.10.7
+// @version      1.10.8
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -11,10 +11,10 @@
 
 (() => {
   'use strict';
-  if (window.__ofSoloAggroBot1107) return;
-  window.__ofSoloAggroBot1107 = true;
+  if (window.__ofSoloAggroBot1108) return;
+  window.__ofSoloAggroBot1108 = true;
 
-  const VERSION = '1.10.7', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1107';
+  const VERSION = '1.10.8', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1108';
   const defaults = {enabled:false, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -24,7 +24,7 @@
   try { opts = {...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; }
   catch (_) {opts = {...defaults};}
   try {if(!localStorage.getItem(KEY)){
-    opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v1106')||localStorage.getItem('of-solo-aggrobot-v1105')||localStorage.getItem('of-solo-aggrobot-v1104')||localStorage.getItem('of-solo-aggrobot-v1103')||localStorage.getItem('of-solo-aggrobot-v1102')||localStorage.getItem('of-solo-aggrobot-v1101')||localStorage.getItem('of-solo-aggrobot-v1100')||localStorage.getItem('of-solo-aggrobot-v199')||localStorage.getItem('of-solo-aggrobot-v198')||localStorage.getItem('of-solo-aggrobot-v197')||localStorage.getItem('of-solo-aggrobot-v196')||localStorage.getItem('of-solo-aggrobot-v195')||localStorage.getItem('of-solo-aggrobot-v194')||localStorage.getItem('of-solo-aggrobot-v193')||localStorage.getItem('of-solo-aggrobot-v192')||localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
+    opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v1107')||localStorage.getItem('of-solo-aggrobot-v1106')||localStorage.getItem('of-solo-aggrobot-v1105')||localStorage.getItem('of-solo-aggrobot-v1104')||localStorage.getItem('of-solo-aggrobot-v1103')||localStorage.getItem('of-solo-aggrobot-v1102')||localStorage.getItem('of-solo-aggrobot-v1101')||localStorage.getItem('of-solo-aggrobot-v1100')||localStorage.getItem('of-solo-aggrobot-v199')||localStorage.getItem('of-solo-aggrobot-v198')||localStorage.getItem('of-solo-aggrobot-v197')||localStorage.getItem('of-solo-aggrobot-v196')||localStorage.getItem('of-solo-aggrobot-v195')||localStorage.getItem('of-solo-aggrobot-v194')||localStorage.getItem('of-solo-aggrobot-v193')||localStorage.getItem('of-solo-aggrobot-v192')||localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
     // Only import user-adjustable preferences, never a previously enabled bot.
   }}catch(_){}
   opts.enabled = false;                         // Never auto-start after reload.
@@ -94,12 +94,14 @@
   let marineStats={transportSent:0,transportConfirmed:0,transportArrived:0,
     transportUnconfirmed:0,transportUnresolved:0,warshipSent:0,
     warshipConfirmed:0,warshipUnconfirmed:0};
-  let strategicTelemetry={favorableVictims:0,falloutSkipped:0,falloutFallback:0,afkTargets:0,assists:0,neutralLandings:0,forecastCount:0};
+  let strategicTelemetry={favorableVictims:0,falloutSkipped:0,falloutFallback:0,afkTargets:0,assists:0,neutralLandings:0,forecastCount:0,
+    engineForecasts:0,proxyForecasts:0,forecastComparisons:0,forecastUnavailable:0};
   let nukeBusy=false, lastNuke=-Infinity, nukePending=null, nukeStatus='Warte auf Silo', nukeShots=0,nukeAttempts=0,nukeUnconfirmed=0;
   let nuclearCache=null, nuclearCacheTick=-Infinity;
   let warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};
   let diagnostics=[],lastDiagnosticTick=-Infinity,gameEnd=null;
   let pendingAttack=null,attackReceipts={confirmed:0,unconfirmed:0,territoryGained:0};
+  let forecastAudits=[],lastForecastAudit=null,incomeAttribution=[];
   let failedEconomyProbes=0,successfulEconomyTick=-Infinity,warWaitSince=-Infinity;
   let investmentStatus='Grundaufbau',lastWarReview=-Infinity;
   let defenseStatus='Keine Bedrohung',lastEmergencyRetreat=-Infinity,lastDefenseLog=-Infinity;
@@ -157,19 +159,29 @@
     return result;
   }
   function exportDiagnostics() {
-    const details={bot:VERSION,gameType:game?.config?.().gameConfig?.().gameType,
-      difficulty:game?.config?.().gameConfig?.().difficulty,
+    const config=game?.config?.().gameConfig?.()||{};
+    const details={bot:VERSION,gameType:config.gameType,
+      difficulty:config.difficulty,
+      benchmarkMeta:{gameMap:config.gameMap??null,
+        gameMapSize:config.gameMapSize??null,gameMode:config.gameMode??null,
+        seed:config.seed??null,engineCommit:window.BOOTSTRAP_CONFIG?.gitCommit??null,
+        matchEndObserved:gameEnd!==null,resultsVerifiedByBrowser:false},
       options:{...opts,enabled:false},intents:intentHealth(),tuning:{...autoTuning,enabled:!!opts.fullAuto,
         effective:{aggressive:setting('aggressive'),reserve:setting('reserve'),
           actionsPerMinute:setting('actionsPerMinute'),maxTargets:setting('maxTargets')}},attackReceipts, pendingAttack,
       construction:{pending:economicPending,blocked:[...economicBlocked.entries()],failedProbes:failedEconomyProbes,lastConfirmed:successfulEconomyTick,investment:investmentStatus},
+      validation:{forecastAudits,incomeAttribution,
+        terrainMethod:'nuke-cubic-bezier-conservative',
+        railMethod:'owned-land-corridor-proxy',
+        fullBrowserMatchValidated:false,
+        note:'Die Datei ist ein Spielmitschnitt; Sieg und echte Mehrkarten-Benchmarks erfordern vollständige Browser-Matches.'},
       war:{...warState},gameEnd,spawn:{...spawnState,best:spawnCache?{...spawnCache}:null},victory:winStatus,income:incomeStatus,fleet:fleetStatus,marine:{stats:marineStats,pendingBoat,pendingWarship,portProbeFailures},strategicTelemetry,military:troopSnapshot,
       defense:{status:defenseStatus,stats:defenseStats,pendingRetreats:[...retreatRequests.values()]},
       rockets:{confirmed:nukeShots,attempts:nukeAttempts,unconfirmed:nukeUnconfirmed,pending:nukePending},
       diplomacy:{status:diplomacyStatus,stats:diplomacyStats,pending:[...diplomacyPending.values()]},records:diagnostics,createdAt:new Date().toISOString()};
     const blob=new Blob([JSON.stringify(details,null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download='OpenFront_AggroBot_1.10.7_Diagnose.json';document.body.append(a);a.click();a.remove();
+    a.href=url;a.download='OpenFront_AggroBot_1.10.8_Diagnose.json';document.body.append(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),2000);
   }
 
@@ -186,7 +198,7 @@
       ['Singleplayer','Public','Private'].includes(gameType(g));}
     catch(_){return false;}
   };
-  const conflicts = () => !!(window.__ofSoloAggroBot1 || window.__ofSoloAggroBot11 || window.__ofSoloAggroBot12 || window.__ofSoloAggroBot13 || window.__ofSoloAggroBot14 || window.__ofSoloAggroBot15 || window.__ofSoloAggroBot16 || window.__ofSoloAggroBot17 || window.__ofSoloAggroBot18 || window.__ofSoloAggroBot181 || window.__ofSoloAggroBot190 || window.__ofSoloAggroBot191 || window.__ofSoloAggroBot192 || window.__ofSoloAggroBot193 || window.__ofSoloAggroBot194 || window.__ofSoloAggroBot195 || window.__ofSoloAggroBot196 || window.__ofSoloAggroBot197 || window.__ofSoloAggroBot198 || window.__ofSoloAggroBot199 || window.__ofSoloAggroBot1100 || window.__ofSoloAggroBot1101 || window.__ofSoloAggroBot1102 || window.__ofSoloAggroBot1103 || window.__ofSoloAggroBot1104 || window.__ofSoloAggroBot1105 || window.__ofSoloAggroBot1106);
+  const conflicts = () => !!(window.__ofSoloAggroBot1 || window.__ofSoloAggroBot11 || window.__ofSoloAggroBot12 || window.__ofSoloAggroBot13 || window.__ofSoloAggroBot14 || window.__ofSoloAggroBot15 || window.__ofSoloAggroBot16 || window.__ofSoloAggroBot17 || window.__ofSoloAggroBot18 || window.__ofSoloAggroBot181 || window.__ofSoloAggroBot190 || window.__ofSoloAggroBot191 || window.__ofSoloAggroBot192 || window.__ofSoloAggroBot193 || window.__ofSoloAggroBot194 || window.__ofSoloAggroBot195 || window.__ofSoloAggroBot196 || window.__ofSoloAggroBot197 || window.__ofSoloAggroBot198 || window.__ofSoloAggroBot199 || window.__ofSoloAggroBot1100 || window.__ofSoloAggroBot1101 || window.__ofSoloAggroBot1102 || window.__ofSoloAggroBot1103 || window.__ofSoloAggroBot1104 || window.__ofSoloAggroBot1105 || window.__ofSoloAggroBot1106 || window.__ofSoloAggroBot1107);
   function advisorConflict() {
     if (!window.__openfrontSpawnAdvisorV104) return false;
     try {const s=JSON.parse(localStorage.getItem('openfront-spawn-advisor-10.4')||'{}');
@@ -301,9 +313,9 @@
     marineStats={transportSent:0,transportConfirmed:0,transportArrived:0,
       transportUnconfirmed:0,transportUnresolved:0,warshipSent:0,
       warshipConfirmed:0,warshipUnconfirmed:0};
-    strategicTelemetry={favorableVictims:0,falloutSkipped:0,falloutFallback:0,afkTargets:0,assists:0,neutralLandings:0,forecastCount:0};
+    strategicTelemetry={favorableVictims:0,falloutSkipped:0,falloutFallback:0,afkTargets:0,assists:0,neutralLandings:0,forecastCount:0,engineForecasts:0,proxyForecasts:0,forecastComparisons:0,forecastUnavailable:0};
     nukeBusy=false;lastNuke=-Infinity;nukePending=null;nukeStatus='Warte auf Silo';nukeShots=0;nukeAttempts=0;nukeUnconfirmed=0;nuclearCache=null;nuclearCacheTick=-Infinity;
-    warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};diagnostics=[];lastDiagnosticTick=-Infinity;gameEnd=null;
+    warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};diagnostics=[];lastDiagnosticTick=-Infinity;gameEnd=null;forecastAudits=[];lastForecastAudit=null;incomeAttribution=[];
     investmentStatus='Grundaufbau';lastWarReview=-Infinity;
     defenseStatus='Keine Bedrohung';lastEmergencyRetreat=-Infinity;lastDefenseLog=-Infinity;
     retreatRequests.clear();defenseStats={retreatsOrdered:0,retreatsObserved:0,unknown:0,unconfirmed:0};
@@ -706,6 +718,24 @@
       ownTiles:ours,teamTiles:land};
     return winStatus;
   }
+  function checkIncomeAttribution(me,tick){
+    for(const sample of incomeAttribution){
+      if(sample.finished||tick-sample.tick<120)continue;
+      const train=number(()=>me.trainGold?.(),NaN),
+        trade=number(()=>me.tradeGold?.(),NaN);
+      sample.finished=true;sample.afterTick=tick;
+      sample.trainDelta=Number.isFinite(train)&&
+        Number.isFinite(sample.beforeTrain)?
+        Math.max(0,train-sample.beforeTrain):null;
+      sample.tradeDelta=Number.isFinite(trade)&&
+        Number.isFinite(sample.beforeTrade)?
+        Math.max(0,trade-sample.beforeTrade):null;
+      sample.method='interval-income-observation-not-causal';
+      telemetry('income_after_build',
+        'Bahn-/Schiffseinkommen nach Bau gemessen (keine kausale Zuordnung)',
+        {incomeSample:sample});
+    }
+  }
   function sampleIncome(me,tick){
     const cur={tick,gold:number(()=>Number(me.gold()),0),
       train:number(()=>me.trainGold?.(),NaN),trade:number(()=>me.tradeGold?.(),NaN)};
@@ -719,6 +749,7 @@
       goldSamples.shift();
     }
     if(!goldSamples.length)goldSamples.push(cur);
+    checkIncomeAttribution(me,tick);
   }
   // Look at *where a real player's army is committed*, not only the
   // player's headline troop count. An adversary fighting a third party has a
@@ -786,9 +817,18 @@
     }
     if(!count)return null;
     strategicTelemetry.forecastCount++;
+    if(engine)strategicTelemetry.engineForecasts++;
+    else{
+      strategicTelemetry.proxyForecasts++;
+      if(!strategicTelemetry.forecastUnavailable++){
+        telemetry('forecast_engine_unavailable',
+          'Browser-Config liefert keinen gültigen attackLogic-Verlustwert; Näherung verwendet',
+          {exposed:typeof game?.config?.().attackLogic==='function'});
+      }
+    }
     const sampleTiles=Math.min(80,Math.max(1,number(()=>enemy.numTilesOwned(),1)*.15));
     return {loss:loss/count*sampleTiles,time:time/count*sampleTiles,
-      sample:count,engine};
+      sample:count,engine,method:engine?'config.attackLogic':'rough-proxy'};
   }
   function targetsFromBorder(me,tiles) {
     const groups=new Map(), scratch=[], fallout=[], cap=2000;
@@ -898,6 +938,14 @@
   function evaluateLastBattle(tick,me) {
     if(!lastBattle || tick-lastBattle.tick<110)return;
     const record=lastBattle;
+    // Only estimate stack attrition from an observed matching outgoing attack.
+    // Never turn a disappeared stack into an asserted troop-loss number.
+    const stacks=(me.outgoingAttacks?.()||[]).filter(a=>
+      attackTargets(a.targetID,record.id)&&!a.retreating);
+    if(stacks.length){
+      const total=stacks.reduce((n,a)=>n+number(()=>a.troops,0),0);
+      record.minimumObservedStack=Math.min(record.minimumObservedStack??Infinity,total);
+    }
     const opponent=game.playerViews().find(p=>safeID(p)===record.id);
     if(!opponent || !opponent.isAlive?.()){lastBattle=null;return;}
     const active=(me.outgoingAttacks?.()||[]).some(a=>attackTargets(a.targetID,record.id)&&!a.retreating);
@@ -922,6 +970,19 @@
         ownLandBefore:record.ownLand,ownLandAfter:ownLand});
     } else telemetry('war_review','Ausgang nicht eindeutig: '+record.name,
       {enemyLandBefore:record.enemyLand,enemyLandAfter:enemyLand});
+    if(record.forecast){
+      const approxLoss=Number.isFinite(record.minimumObservedStack)?
+        Math.max(0,record.amount-record.minimumObservedStack):null;
+      const audit={tick,target:record.id,engine:record.forecast.engine,
+        predictedLoss:record.forecast.loss,observedStackAttrition:approxLoss,
+        evidence:approxLoss===null?'no-active-stack-sample':
+          'outgoing-stack-net-change-not-causal',landGained:captured,
+        observedTicks:tick-record.tick};
+      forecastAudits.push(audit);if(forecastAudits.length>75)forecastAudits.shift();
+      lastForecastAudit=audit;strategicTelemetry.forecastComparisons++;
+      telemetry('forecast_audit','Angriffsprognose gegenüber sichtbarer Stack-Abnahme',
+        {audit});
+    }
     lastBattle=null;
   }
   function confirmAttack(me,tick){
@@ -942,7 +1003,8 @@
         {target:p.id,troops:p.amount,via:newStack?'active_stack':'territory'});
       if(p.id!==null){
         lastBattle={id:p.id,name:p.name,tick:p.tick,
-          enemyLand:p.enemyLand,ownLand:p.ownLand};
+          enemyLand:p.enemyLand,ownLand:p.ownLand,
+          forecast:p.forecast||null,amount:p.amount,minimumObservedStack:null};
         if(coordinatedWar()&&warState.id===null){
           warState={id:p.id,name:p.name,since:tick,blockedUntil:-Infinity};
           log('HAUPTKRIEGSZIEL BESTÄTIGT → '+p.name);
@@ -1443,7 +1505,8 @@
         const before=s.out.filter(a=>attackTargets(a.targetID,item.id)&&!a.retreating);
         pendingAttack={id:item.id,name:label,tick,amount,ownLand:number(()=>me.numTilesOwned()),
           enemyLand:item.opponent?number(()=>item.opponent.numTilesOwned()):0,
-          beforeIds:before.map(a=>a.id),beforeTroops:before.reduce((v,a)=>v+a.troops,0)};
+          beforeIds:before.map(a=>a.id),beforeTroops:before.reduce((v,a)=>v+a.troops,0),
+          forecast:item.forecast||null};
         if(item.opponent?.isDisconnected?.()===true)strategicTelemetry.afkTargets++;
         if(item.opponent && adversaryWindow(me,item.opponent).exposed)
           telemetry('opportunity_attack','Angriff im gegnerischen Mehrfront-Konflikt',
@@ -1488,6 +1551,15 @@
       telemetry('build_confirmed',economicStatus,{type:economicPending.type,kind:economicPending.kind});
       if(economicPending.type==='Port')telemetry('port_confirmed','Hafen im Spielzustand bestätigt',
         {tile:economicPending.tile,buildKind:economicPending.kind});
+      if(['City','Factory','Port'].includes(economicPending.type)){
+        const me=myPlayer();
+        const sample={tick,type:economicPending.type,
+          tile:economicPending.tile,buildKind:economicPending.kind,
+          beforeTrain:number(()=>me?.trainGold?.(),NaN),
+          beforeTrade:number(()=>me?.tradeGold?.(),NaN),finished:false};
+        incomeAttribution.push(sample);
+        if(incomeAttribution.length>40)incomeAttribution.shift();
+      }
       economicPending=null;
       return false;
     }
@@ -1760,22 +1832,59 @@
     }
     return false;
   }
-  // Approximate reachable rail-station candidate based on the official
-  // trainStationMinRange/MaxRange, NOT an asserted path or trade guarantee.
+  // The browser GameView does not expose the server's RailNetwork.findStationsPath.
+  // Probe ownership/terrain along bounded potential corridors instead of
+  // assuming that every station within maxRange can actually connect.
+  function railCorridor(from,to){
+    const ax=game.x(from),ay=game.y(from),bx=game.x(to),by=game.y(to),
+      dx=bx-ax,dy=by-ay,len=Math.hypot(dx,dy);
+    if(len<1)return 1;
+    const steps=Math.min(140,Math.max(4,Math.ceil(len/2)));
+    const pass=(x,y)=>{
+      const xx=Math.round(x),yy=Math.round(y);
+      if(typeof game.isValidCoord==='function'&&!game.isValidCoord(xx,yy))
+        return false;
+      if(xx<0||yy<0||xx>=game.width()||yy>=game.height())return false;
+      const tile=game.ref(xx,yy);
+      return ownedTile(tile,myPlayer())&&game.isLand?.(tile)!==false &&
+        game.isImpassable?.(tile)!==true;
+    };
+    let best=0;
+    // Try direct path and two mild bends; this is NOT a verified rail route.
+    for(const bend of [0,.12,-.12]){
+      let passed=0,longest=0,run=0;
+      for(let i=0;i<=steps;i++){
+        const t=i/steps,offset=bend*Math.sin(Math.PI*t);
+        const x=ax+dx*t-dy*offset,y=ay+dy*t+dx*offset;
+        if(pass(x,y)){passed++;run++;longest=Math.max(longest,run);}
+        else run=0;
+      }
+      best=Math.max(best,(passed/(steps+1))*.35+
+        (longest/(steps+1))*.65);
+    }
+    return best;
+  }
   function railStationScore(ref,units){
     const cfg=game.config(),min=number(()=>cfg.trainStationMinRange?.(),12);
     const max=number(()=>cfg.trainStationMaxRange?.(),110);
     const x=game.x(ref),y=game.y(ref);
     const stations=units.filter(u=>['City','Factory','Port'].includes(u.type?.()) &&
       !u.isUnderConstruction?.() && u.hasTrainStation?.()!==false);
-    let reachable=0,tooClose=0;
+    let reachable=0,tooClose=0,blocked=0;
     for(const u of stations){
-      const d=Math.hypot(x-game.x(u.tile()),y-game.y(u.tile()));
-      if(d>=min&&d<=max)reachable++;
+      const tile=number(()=>u.tile(),-1);
+      if(tile<0)continue;
+      const d=Math.hypot(x-game.x(tile),y-game.y(tile));
+      if(d>=min&&d<=max){
+        const likelihood=railCorridor(ref,tile);
+        if(likelihood>=.83)reachable++;
+        else blocked++;
+      }
       if(d<min)tooClose++;
     }
-    return {reachable,score:Math.min(40,reachable*15)-tooClose*30-
-      (stations.length>1&&reachable===0?25:0)};
+    return {reachable,blocked,method:'owned-corridor-proxy',
+      score:Math.min(40,reachable*15)-tooClose*30-blocked*7-
+        (stations.length>1&&reachable===0?25:0)};
   }
   function siteScore(type,ref,fronts,units,priority,alreadyCoastal,precomputedDist) {
     const distance=precomputedDist===undefined?frontDistance(ref,fronts):precomputedDist;
@@ -2087,18 +2196,45 @@
     }
     return proposed.sort((a,b)=>b.value-a.value).slice(0,10);
   }
-  // Official paths are parabolic. A straight chord is a conservative risk
-  // indicator, NEVER proof that a real trajectory is intercepted/safe.
+  // Mirror OpenFront PathFinder.Parabola.getParabolaControlPoints:
+  // p1/p2 lie at 1/4,3/4 of x and rise max(distance/3,50) in y,
+  // clamped to map bounds. The server may choose either rocketDirectionUp,
+  // so cover both curves; a trajectory risk is not a certain interception.
+  function nukeBezierPoints(spawn,target,up=true){
+    const ax=game.x(spawn),ay=game.y(spawn),bx=game.x(target),by=game.y(target),
+      dx=bx-ax,dy=by-ay,height=Math.max(Math.hypot(dx,dy)/3,50),
+      bound=number(()=>game.height(),Math.max(ay,by)+height+1)-1,
+      clampY=y=>Math.min(bound,Math.max(0,y)),sign=up?-1:1;
+    return [{x:ax,y:ay},
+      {x:ax+dx/4,y:clampY(ay+dy/4+sign*height)},
+      {x:ax+dx*3/4,y:clampY(ay+dy*3/4+sign*height)},
+      {x:bx,y:by}];
+  }
+  function nukeBezierPoint(points,t){
+    const q=1-t;
+    return {x:q*q*q*points[0].x+3*q*q*t*points[1].x+
+      3*q*t*t*points[2].x+t*t*t*points[3].x,
+      y:q*q*q*points[0].y+3*q*q*t*points[1].y+
+      3*q*t*t*points[2].y+t*t*t*points[3].y};
+  }
   function nukeTrajectoryRisk(spawn,target,sams){
     if(!Number.isInteger(spawn)||!Number.isInteger(target))return 0;
-    const ax=game.x(spawn),ay=game.y(spawn),bx=game.x(target),by=game.y(target);
+    const points=[nukeBezierPoints(spawn,target,true),
+      nukeBezierPoints(spawn,target,false)];
+    const dist=Math.hypot(game.x(target)-game.x(spawn),
+      game.y(target)-game.y(spawn));
+    const samples=Math.min(160,Math.max(32,Math.ceil(dist/7)));
     return sams.filter(s=>{
       if(s.isActive?.()===false || s.isUnderConstruction?.())return false;
       const x=game.x(s.tile()),y=game.y(s.tile());
-      const rad=number(()=>game.config().samRange(s.level?.()||1),70);
-      for(let i=0;i<=16;i++){
-        const t=i/16,dx=x-ax-(bx-ax)*t,dy=y-ay-(by-ay)*t;
-        if(dx*dx+dy*dy<=rad*rad)return true;
+      // Tile rounding and the actual engine speed are not a proof of safety:
+      // add a small margin, and sample both allowed orientations.
+      const rad=number(()=>game.config().samRange(s.level?.()||1),70)+4;
+      for(const path of points){
+        for(let i=0;i<=samples;i++){
+          const p=nukeBezierPoint(path,i/samples);
+          if((p.x-x)**2+(p.y-y)**2<=rad*rad)return true;
+        }
       }
       return false;
     }).length;
@@ -2816,7 +2952,10 @@
           borders:tiles.length,tuning:{...autoTuning,enabled:!!opts.fullAuto},defense:{status:defenseStatus,incoming:s.incoming,
             committed:s.committed,pendingRetreats:retreatRequests.size},enemies:groups.filter(g=>g.id!==null).map(g=>({name:nameOf(g.opponent),troops:number(()=>g.opponent.troops()),land:number(()=>g.opponent.numTilesOwned())})),
           readiness:context.readiness?.reason,ratio:s.ratio,maxTroops:s.max,growthPotential:s.growthPotential,
-          victory:winStatus,income:incomeStatus,strategicTelemetry,fleet:fleetStatus,
+          victory:winStatus,income:incomeStatus,strategicTelemetry,
+          forecastAudit:lastForecastAudit,
+          recentIncomeSamples:incomeAttribution.slice(-4).map(v=>({...v})),
+          fleet:fleetStatus,
           marine:{stats:{...marineStats},pendingBoat:pendingBoat?{...pendingBoat}:null,
             pendingWarship:pendingWarship?{...pendingWarship}:null,
             ports:ownStructures(me).filter(u=>u.type?.()==='Port').length,
