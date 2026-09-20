@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.12.0
+// @version      1.13.0
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.12.0', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.13.0', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, learningEnabled:true, brainEnabled:false, brainToken:'', fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -205,7 +205,7 @@
   let troopSnapshot={home:0,max:0,committed:0,incoming:0,enemy:0,ratio:0,reserve:0,available:0};
   let lastEconomicAction=-Infinity, lastNeutralSend=-Infinity, lastEnemySend=-Infinity,lastHostilePressure=-Infinity;
   let consecutiveIdle=0;
-  let economicPending=null, economicBlocked=new Map(), economicStatus='Bauplanung bereit', economicLastPlan='—';
+  let economicPending=null, economicBlocked=new Map(), economicNegative=new Map(), economicStatus='Bauplanung bereit', economicLastPlan='—';
   let economyBusy=false, borderInflight=null, legalNegative=new Map();
   let runtime={borderMs:0,combatMs:0,economyMs:0,attackProbes:0,buildProbes:0};
   let strategic={mode:'EXPAND',reason:'Startphase',buildStyle:'Ausgewogen',since:-Infinity,groups:[]};
@@ -230,7 +230,7 @@
   let failedEconomyProbes=0,successfulEconomyTick=-Infinity,warWaitSince=-Infinity;
   let investmentStatus='Grundaufbau',lastWarReview=-Infinity;
   let defenseStatus='Keine Bedrohung',lastEmergencyRetreat=-Infinity,lastDefenseLog=-Infinity;
-  let targetIntelCache=new Map();
+  let targetIntelCache=new Map(),frontMemory=new Map(),lastFrontWarning=-Infinity;
   let retreatRequests=new Map(),defenseStats={retreatsOrdered:0,retreatsObserved:0,unknown:0,unconfirmed:0};
   // Manual slider values remain saved; fullAuto computes independent live values.
   let autoTuning={aggressive:85,reserve:35,actionsPerMinute:72,maxTargets:16,
@@ -329,7 +329,7 @@
     const details=diagnosticSnapshot();
     const blob=new Blob([JSON.stringify(details,null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download='OpenFront_AggroBot_1.11.1_Diagnose.json';document.body.append(a);a.click();a.remove();
+    a.href=url;a.download='OpenFront_AggroBot_'+VERSION+'_Diagnose.json';document.body.append(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),2000);
   }
 
@@ -463,11 +463,11 @@
     buildCursor=0;spawnCache=null;spawnJob=null;spawnRetryAt=0;spawnAlternatives=[];spawnState={scanned:0,phase:'idle',lastSent:null,attempts:0,blocked:null,deadline:null};cooldowns.clear();rejected.clear();
     plan=null;lastSelection='';lastEmission=0;borderOffset=0;lastBorderRefresh=0;
     totalSent=0;totalFailed=0;actions=[];errors=0;troopSamples=[];
-    lastRecoveryReason='';lastBattle=null;pendingAttack=null;targetIntelCache.clear();
+    lastRecoveryReason='';lastBattle=null;pendingAttack=null;targetIntelCache.clear();frontMemory.clear();lastFrontWarning=-Infinity;
     attackReceipts={confirmed:0,unconfirmed:0,territoryGained:0};blockedTargets.clear();
     failedEconomyProbes=0;successfulEconomyTick=-Infinity;warWaitSince=-Infinity;
     lastEconomicAction=-Infinity;lastNeutralSend=-Infinity;lastEnemySend=-Infinity;lastHostilePressure=-Infinity;consecutiveIdle=0;
-    economicPending=null;economicBlocked.clear();economicStatus='Bauplanung bereit';economicLastPlan='—';
+    economicPending=null;economicBlocked.clear();economicNegative.clear();economicStatus='Bauplanung bereit';economicLastPlan='—';
     economyBusy=false;borderInflight=null;legalNegative.clear();runtime={borderMs:0,combatMs:0,economyMs:0,attackProbes:0,buildProbes:0};
     strategic={mode:'EXPAND',reason:'Startphase',buildStyle:'Ausgewogen',since:-Infinity,groups:[]};
     diplomacyHandled.clear();diplomacyPending.clear();diplomacyMissingLogged.clear();lastDiplomaticEmit=0;
@@ -1062,6 +1062,24 @@
       Math.min(s.available*.14,s.home*.025):s.available*fraction;
     return Math.floor(Math.min(safeBudget,Math.max(base,surplus)));
   }
+  // Retain short-lived border pressure across transient missing border scans.
+  function observeFronts(me,items,tick){
+    if(!hardMode())return;
+    for(const item of items){
+      if(item.id===null||!item.opponent?.isAlive?.()||friendly(item.opponent,me))continue;
+      const troops=Math.max(0,number(()=>item.opponent.troops(),0));
+      const old=frontMemory.get(item.id);
+      frontMemory.set(item.id,{troops,lastTick:tick,
+        peak:old&&tick-old.lastTick<=180?Math.max(troops,old.peak*.94):troops,
+        land:number(()=>item.opponent.numTilesOwned(),0)});
+    }
+    for(const [id,value] of frontMemory)
+      if(tick-value.lastTick>360)frontMemory.delete(id);
+    if(frontMemory.size>40){
+      const ordered=[...frontMemory].sort((a,b)=>a[1].lastTick-b[1].lastTick);
+      for(const [id] of ordered.slice(0,frontMemory.size-40))frontMemory.delete(id);
+    }
+  }
   function military(me,items=[]) {
     const home=number(()=>me.troops());
     // Singleplayer's native infinite-troops option reports an artificial
@@ -1075,7 +1093,11 @@
     const committed=out.reduce((sum,a)=>sum+a.troops,0);
     const incoming=inc.reduce((sum,a)=>sum+a.troops,0);
     const hostile=items.filter(t=>t.id!==null && t.opponent?.isAlive?.());
-    const strongest=hostile.reduce((s,t)=>Math.max(s,number(()=>t.opponent.troops())),0);
+    const tick=number(()=>game?.ticks?.(),0);
+    const historical=[...frontMemory.values()].reduce((v,x)=>
+      Math.max(v,tick-x.lastTick<=240?x.peak*.72:0),0);
+    const strongest=Math.max(historical,
+      hostile.reduce((v,t)=>Math.max(v,number(()=>t.opponent.troops())),0));
     const ratio=home/max;
     const adaptiveOffset=opts.autoStrategy?(strategic.mode==='RECOVER'||strategic.mode==='DEFEND'?8:
       strategic.mode==='EXPAND'&&!incoming&&!strongest?-5:0):0;
@@ -1105,7 +1127,17 @@
   // pressure so the bot cannot declare the coast clear and launch a large
   // offensive a few seconds after surviving an attack.
   function rememberHostilePressure(s,tick){
-    if(s.incoming>=Math.max(1200,Math.max(1,s.home)*.08))lastHostilePressure=tick;
+    const trend=armyTrend(tick);
+    const unexpectedLoss=hardMode() && s.strongest>s.home*.70 &&
+      trend && trend.ticks>=100 && trend.tiles< -Math.max(140,s.home*.001);
+    if(s.incoming>=Math.max(1200,Math.max(1,s.home)*.08)||unexpectedLoss){
+      if(unexpectedLoss && tick-lastFrontWarning>150){
+        lastFrontWarning=tick;
+        telemetry('front_loss_warning','Gebietsverlust neben starkem Nachbarn: Wiederaufbau schützen',
+          {lostTiles:trend.tiles,strongest:s.strongest,home:s.home});
+      }
+      lastHostilePressure=tick;
+    }
     return tick-lastHostilePressure<220;
   }
   function recentHostilePressure(tick,window=220){
@@ -1319,11 +1351,16 @@
     const other=items.filter(x=>x.id!==null&&x.id!==targetID&&
       x.opponent?.isAlive?.()).reduce((v,x)=>Math.max(v,
       number(()=>x.opponent.troops(),0)),0);
-    const danger=other>s.home*1.15;
+    const tick=number(()=>game?.ticks?.(),0);
+    const remembered=[...frontMemory].reduce((v,[id,x])=>
+      id!==targetID&&tick-x.lastTick<=240?
+        Math.max(v,x.peak*.72):v,0);
+    const otherThreat=Math.max(other,remembered);
+    const danger=otherThreat>s.home*1.15;
     const pressure=s.incoming>Math.max(1200,s.home*.08);
     const floor=Math.max(s.reserve,s.incoming*1.3,
-      other>0?Math.min(s.home,other*(hardMode()?.63:.55)):0);
-    return {other,danger,pressure,floor,
+      otherThreat>0?Math.min(s.home,otherThreat*(hardMode()?.63:.55)):0);
+    return {other:otherThreat,danger,pressure,floor,
       safeStrike:Math.max(0,Math.floor(s.home-floor)),
       emergency:danger||pressure};
   }
@@ -1398,6 +1435,9 @@
     if(rebuilding){wanted='RECOVER';reason='Truppenverlust oder geringe Reserve';}
     else if(coolingDown){wanted='RECOVER';reason='Nach Großangriff Heimatarmee stabilisieren';}
     else if(danger&&seriousAttack){wanted='DEFEND';reason='Erhebliche eingehende Angriffe';}
+    else if(danger&&s.strongest>s.home*1.08 && !weak.length){
+      wanted='DEFEND';reason='Überlegener Nachbar: keine neue Kriegsfront';
+    }
     else if(late && weak.length && s.ratio>.30 && !seriousAttack && readiness.ready){
       wanted='ASSAULT';reason='Late Game: günstige Offensivchance';
     }
@@ -3198,6 +3238,7 @@
       const tiles=await borders(me,tick);
       if(!live(serial))return;
       const groups=targetsFromBorder(me,tiles);
+      observeFronts(me,groups,tick);
       let s=military(me,groups);rememberHostilePressure(s,tick);troopSnapshot=s;
       manageWar(me,groups,s,tick);
       const context=strategy(me,groups,s);
