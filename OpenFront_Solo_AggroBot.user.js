@@ -215,7 +215,7 @@
   let goldSamples=[],incomeStatus={train:null,trade:null,gold:null,observed:false};
   let winStatus={mode:'FFA',progress:null,threshold:null,remaining:null,urgent:false};
   let fleetStatus='Keine Marineaktivität',lastFleet=-Infinity,lastDonation=-Infinity,navalSweep=0;
-  let pendingBoat=null,pendingWarship=null,navalCooldown=new Map(),navalBackoffUntil=-Infinity,portProbeFailures=0;
+  let pendingBoat=null,pendingWarship=null,navalCooldown=new Map(),navalBackoffUntil=-Infinity,portProbeFailures=0,lastPortRetryTick=-Infinity;
   let marineStats={transportSent:0,transportConfirmed:0,transportArrived:0,
     transportUnconfirmed:0,transportUnresolved:0,warshipSent:0,
     warshipConfirmed:0,warshipUnconfirmed:0};
@@ -474,7 +474,7 @@
     lastDiplomacyTick=-Infinity;lastProposalTick=-Infinity;diplomacyStatus='Noch keine Anfrage';
     diplomacyStats={accepted:0,rejected:0,offered:0};goldSamples=[];incomeStatus={train:null,trade:null,gold:null,observed:false};
     winStatus={mode:'FFA',progress:null,threshold:null,remaining:null,urgent:false};fleetStatus='Keine Marineaktivität';lastFleet=-Infinity;lastDonation=-Infinity;navalSweep=0;
-    pendingBoat=null;pendingWarship=null;navalCooldown.clear();navalBackoffUntil=-Infinity;portProbeFailures=0;
+    pendingBoat=null;pendingWarship=null;navalCooldown.clear();navalBackoffUntil=-Infinity;portProbeFailures=0;lastPortRetryTick=-Infinity;
     marineStats={transportSent:0,transportConfirmed:0,transportArrived:0,
       transportUnconfirmed:0,transportUnresolved:0,warshipSent:0,
       warshipConfirmed:0,warshipUnconfirmed:0};
@@ -1322,7 +1322,7 @@
     const danger=other>s.home*1.15;
     const pressure=s.incoming>Math.max(1200,s.home*.08);
     const floor=Math.max(s.reserve,s.incoming*1.3,
-      other>0?Math.min(s.home,other*(hardMode()?.70:.60)):0);
+      other>0?Math.min(s.home,other*(hardMode()?.63:.55)):0);
     return {other,danger,pressure,floor,
       safeStrike:Math.max(0,Math.floor(s.home-floor)),
       emergency:danger||pressure};
@@ -1896,6 +1896,13 @@
     const wantedPort=!portEnabled?0:opts.boats?Math.min(3,Math.max(1,Math.floor(mine/1800)+1)):
       (factories>=1 && mine>600?Math.min(2,Math.floor(mine/2700)+1):0);
     const startup=(cityEnabled&&cities<1)||(factoryEnabled&&factories<1);
+    const nowTick=number(()=>game.ticks(),0);
+    // Eight failed coast scans used to disable first-port planning forever.
+    // Retry after a bounded pause: territory and legal build sites can change.
+    if(portProbeFailures>=8 && Number.isFinite(lastPortRetryTick) &&
+      nowTick-lastPortRetryTick>=800){
+      portProbeFailures=0;lastPortRetryTick=nowTick;
+    }
     const coastSites=ports===0&&opts.boats?
       portCoastalAnchors(me,tiles,number(()=>game.ticks(),0),8):[];
     const portMilestone=!!(opts.boats&&portEnabled&&ports===0&&!startup&&
@@ -2301,7 +2308,10 @@
     }
     if(!proposals.length){failedEconomyProbes++;
       if(requirements.portMilestone && probe.portQueries>0 &&
-        probe.portLegal===0)portProbeFailures++;
+        probe.portLegal===0){
+        portProbeFailures++;
+        if(portProbeFailures===8)lastPortRetryTick=tick;
+      }
       if(requirements.portMilestone && probe.portQueries>0 &&
         (portProbeFailures===1||portProbeFailures===4||portProbeFailures===8))
         telemetry('port_probe','Hafen-Bauplätze im Worker geprüft',
