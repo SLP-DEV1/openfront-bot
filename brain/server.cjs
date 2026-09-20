@@ -39,6 +39,12 @@ function createServer({token,store,advisor=null}){
     if(req.headers['x-aggrobot-token']!==token)return send(401,{error:'Invalid token'});
     if(req.method==='GET'&&req.url==='/v1/report')return send(200,store.report());
     if(req.method==='GET'&&req.url==='/v1/qwen')return send(200,{status:advisor?.status()||{enabled:false},recent:store.recentQwen()});
+    if(req.url==='/v1/qwen/test'){
+      if(req.method!=='POST')return send(405,{error:'Use POST'});
+      if(!advisor?.manualTest)return send(503,{error:'Qwen advisor unavailable'});
+      const probe=advisor.manualTest();
+      return send(probe.accepted?202:409,probe);
+    }
     if(req.method!=='POST'||!['/v1/observe','/v1/finish'].includes(req.url))
       return send(404,{error:'Not found'});
     let raw='';

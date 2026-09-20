@@ -6,6 +6,8 @@ const MODEL='qwen38-27b-gsq-mtp';
 const API_URL='http://127.0.0.1:8080/v1/chat/completions';
 const STRATEGIES=new Set(['HOLD','EXPAND','ECONOMY','DEFEND','NAVAL','TECH','REPOSITION']);
 const REASONS=new Set(['STAGNATION','THREAT','RESOURCE','EXPANSION','ENDGAME','OTHER']);
+// Sparse sampling: these limits are in simulation ticks, NOT seconds.
+const ADVICE_INTERVAL=2400,THREAT_RATIO=.35,MIN_INCOMING=1000,MANUAL_COOLDOWN_MS=60000;
 function candidate(raw){
   if(typeof raw!=='string'||raw.length>12000)throw new TypeError('Missing or oversized model response');
   let text=raw.trim();
@@ -30,11 +32,11 @@ function makeAdvisor({store,config=configFromEnv(),fetchImpl=globalThis.fetch,no
   maxLatencyMs=30000,logger=()=>{}}){
   if(!store||typeof store.saveQwenAdvice!=='function')throw new Error('Qwen requires a persistent store');
   if(!Number.isFinite(maxLatencyMs)||maxLatencyMs<10||maxLatencyMs>120000)throw new Error('Invalid inference timeout');
-  let running=false,lastError=null,lastResult=null,requests=0,dropped=0,pendingPostmatch=null;
+  let running=false,lastError=null,lastResult=null,lastTrigger=null,requests=0,dropped=0,pendingPostmatch=null,lastManual=-Infinity;
   const states=new Map();
   function status(){
     return {enabled:config.enabled,busy:running,model:config.model,endpoint:'127.0.0.1:8080',
-      requests,dropped,lastError,lastResult};
+      requests,dropped,lastError,lastResult,lastTrigger};
   }
   async function inference({matchId,tick,kind,payload}){
     if(!config.enabled)return;
@@ -43,7 +45,7 @@ function makeAdvisor({store,config=configFromEnv(),fetchImpl=globalThis.fetch,no
       else dropped++;
       return;
     }
-    running=true;requests++;
+    running=true;requests++;lastTrigger={kind,tick,matchId};
     const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),maxLatencyMs);
     timeout.unref?.();
     try{
@@ -84,21 +86,44 @@ function makeAdvisor({store,config=configFromEnv(),fetchImpl=globalThis.fetch,no
     if(!config.enabled)return;
     const o=observation(input);
     let state=states.get(o.matchId);
-    if(!state){state={last:o,streak:0,lastRequestTick:-Infinity,recent:[o]};states.set(o.matchId,state);return;}
-    if(o.tick<=state.last.tick)return;
-    const growth=(o.land-state.last.land)/Math.max(100,state.last.land);
-    state.streak=growth<=0.005&&o.home/o.max>=0.4?state.streak+1:0;
-    state.last=o;state.recent.push(o);
-    if(state.recent.length>6)state.recent.shift();
-    if(state.streak>=3&&o.tick-state.lastRequestTick>=2400){
+    if(!state){
+      state={last:o,firstTick:o.tick,streak:0,lastRequestTick:-Infinity,recent:[o]};
+      states.set(o.matchId,state);
+    }else{
+      if(o.tick<=state.last.tick)return;
+      const growth=(o.land-state.last.land)/Math.max(100,state.last.land);
+      state.streak=growth<=0.005&&o.home/o.max>=.4?state.streak+1:0;
+      state.last=o;state.recent.push(o);
+      if(state.recent.length>6)state.recent.shift();
+    }
+    const severe=o.incoming>=MIN_INCOMING&&o.incoming/Math.max(1,o.home)>=THREAT_RATIO;
+    const due=o.tick-state.lastRequestTick>=ADVICE_INTERVAL;
+    // A threat is actionable even when almost all defending troops are depleted.
+    // Prioritize threat, then persistent stagnation, then infrequent situational review.
+    const kind=due?(severe?'threat':state.streak>=3?'stagnation':
+      o.tick-state.firstTick>=ADVICE_INTERVAL?'periodic':null):null;
+    if(kind){
       state.lastRequestTick=o.tick;
-      // Snapshot captured here; the model cannot touch state mutated by later ticks.
-      void inference({matchId:o.matchId,tick:o.tick,kind:'stagnation',
+      // Snapshot captured now. This is shadow analysis only, never a game command.
+      void inference({matchId:o.matchId,tick:o.tick,kind,
         payload:{...o,recent:state.recent.map(x=>({tick:x.tick,mode:x.mode,
           land:x.land,home:x.home,incoming:x.incoming}))}});
     }
     // Bound sessions in memory; old match data remains in SQLite.
     if(states.size>24)states.delete(states.keys().next().value);
+  }
+  function manualTest(){
+    if(!config.enabled)return {accepted:false,reason:'Qwen disabled'};
+    if(running)return {accepted:false,reason:'Model busy'};
+    const current=now();
+    if(current-lastManual<MANUAL_COOLDOWN_MS)return {accepted:false,reason:'Manual cooldown'};
+    lastManual=current;
+    // No user-supplied prompt or match state: a safe, synthetic connectivity probe.
+    const matchId='manual-'+Math.max(0,Math.floor(current)).toString(36).slice(-12);
+    const payload={tick:0,mode:'BALANCED',land:1000,home:500,max:1000,
+      incoming:0,strongest:200,recent:[]};
+    void inference({matchId,tick:0,kind:'manual',payload});
+    return {accepted:true,status:'queued',model:config.model};
   }
   function onFinish(matchId,outcome){
     if(!config.enabled||!['victory','defeat','unknown','incomplete'].includes(outcome))return;
@@ -110,7 +135,7 @@ function makeAdvisor({store,config=configFromEnv(),fetchImpl=globalThis.fetch,no
       payload:{...o,outcome,recent:state.recent.map(x=>({tick:x.tick,mode:x.mode,
         land:x.land,home:x.home,incoming:x.incoming}))}});
   }
-  return {status,onObservation,onFinish,waitForIdle:async()=>{
+  return {status,onObservation,onFinish,manualTest,waitForIdle:async()=>{
     while(running)await new Promise(resolve=>setTimeout(resolve,5));
   }};
 }

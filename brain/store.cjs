@@ -35,7 +35,7 @@ function makeStore(filename=':memory:'){
   function saveQwenAdvice(entry){
     if(!entry||!/^([A-Za-z0-9_-]{8,96})$/.test(entry.matchId||'')||
       !Number.isSafeInteger(entry.tick)||entry.tick<0||
-      !['stagnation','postmatch'].includes(entry.kind)||
+      !['stagnation','postmatch','threat','periodic','manual'].includes(entry.kind)||
       !['HOLD','EXPAND','ECONOMY','DEFEND','NAVAL','TECH','REPOSITION'].includes(entry.strategy)||
       !['STAGNATION','THREAT','RESOURCE','EXPANSION','ENDGAME','OTHER'].includes(entry.reasonCode)||
       typeof entry.explanation!=='string'||entry.explanation.length<3||entry.explanation.length>360)
