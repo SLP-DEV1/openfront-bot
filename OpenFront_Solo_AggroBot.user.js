@@ -486,7 +486,9 @@
         railMethod:'owned-land-corridor-proxy',
         fullBrowserMatchValidated:false,
         note:'Die Datei ist ein Spielmitschnitt; Sieg und echte Mehrkarten-Benchmarks erfordern vollständige Browser-Matches.'},
-      war:{...warState},gameEnd,spawn:{...spawnState,best:spawnCache?{...spawnCache}:null},victory:winStatus,income:incomeStatus,fleet:fleetStatus,marine:{stats:marineStats,pendingBoat,pendingWarship,portProbeFailures},strategicTelemetry,military:troopSnapshot,
+      war:{...warState},gameEnd,attackAlternatives:latestAttackAlternatives,
+      frontMemory:[...frontMemory.entries()].slice(-40).map(([id,v])=>({id,...v})),
+      spawn:{...spawnState,best:spawnCache?{...spawnCache}:null},victory:winStatus,income:incomeStatus,fleet:fleetStatus,marine:{stats:marineStats,pendingBoat,pendingWarship,portProbeFailures},strategicTelemetry,military:troopSnapshot,
       defense:{status:defenseStatus,stats:defenseStats,pendingRetreats:[...retreatRequests.values()]},
       rockets:{confirmed:nukeShots,attempts:nukeAttempts,unconfirmed:nukeUnconfirmed,pending:nukePending},
       diplomacy:{status:diplomacyStatus,stats:diplomacyStats,pending:[...diplomacyPending.values()]},records:diagnostics,createdAt:new Date().toISOString()};
@@ -1853,23 +1855,31 @@
     const late=lateGame(me),bigLead=late&&s.strongest<s.home*.55;
     const ownTiles=number(()=>me.numTilesOwned());
     if(available<100)return [];
-    return items.flatMap(item=>{
+    const reasons={},examples=[];
+    const ranked=items.flatMap(item=>{
+      const skip=(reason)=>{
+        reasons[reason]=(reasons[reason]||0)+1;
+        if(examples.length<5)examples.push({target:item.id,reason,
+          enemyTroops:number(()=>item.opponent?.troops?.(),null),
+          home:s.home,reserve:s.reserve,available:s.available});
+        return [];
+      };
       const enemy=item.opponent,key=item.id===null?'neutral':String(item.id);
-      if(enemy && !enemy.isAlive?.())return [];
+      if(enemy && !enemy.isAlive?.())return skip('enemy-dead');
       if(enemy && coordinatedWar() && (
         (pendingAttack?.id!==null && pendingAttack?.id!==undefined && pendingAttack.id!==item.id) ||
         (isWar() && item.id!==warState.id) || tick<warState.blockedUntil ||
-        !context.readiness?.ready || !targetOpportunity(me,items,s,item)))return [];
-      if(tick-(cooldowns.get(key)??-Infinity)<(item.id===null?22:80))return [];
-      if(tick-(rejected.get(key)??-Infinity)<25 || tick<(blockedTargets.get(item.id)||0))return [];
+        !context.readiness?.ready || !targetOpportunity(me,items,s,item)))return skip('war-director-or-target-risk');
+      if(tick-(cooldowns.get(key)??-Infinity)<(item.id===null?22:80))return skip('cooldown');
+      if(tick-(rejected.get(key)??-Infinity)<25 || tick<(blockedTargets.get(item.id)||0))return skip('blocked-or-worker-reject');
       const isNeutral=item.id===null;
       // The game sends attacks from home troops; existing outgoing stacks
       // remain in motion. Don't spend the whole army on parallel attacks.
-      if(isNeutral && (s.activeNeutral >= (s.ratio>.63 && !context.underAttack ? 2 : 1) || tick-lastNeutralSend<23))return [];
-      if(!isNeutral && (s.activeEnemy >= 1 || tick-lastEnemySend<(hardMode()?(late?65:120):(late?35:68)) || context.rebuilding))return [];
+      if(isNeutral && (s.activeNeutral >= (s.ratio>.63 && !context.underAttack ? 2 : 1) || tick-lastNeutralSend<23))return skip('neutral-stack-or-cooldown');
+      if(!isNeutral && (s.activeEnemy >= 1 || tick-lastEnemySend<(hardMode()?(late?65:120):(late?35:68)) || context.rebuilding))return skip('enemy-stack-or-rebuilding');
       // If pressured, never begin a fresh offensive -- defense is handled separately.
-      if(!isNeutral && s.incoming>s.home*(late?.15:.04))return [];
-      if(isNeutral && context.underAttack && s.incoming>s.home*.45)return [];
+      if(!isNeutral && s.incoming>s.home*(late?.15:.04))return skip('incoming-home-pressure');
+      if(isNeutral && context.underAttack && s.incoming>s.home*.45)return skip('neutral-home-pressure');
       const enemyTroops=enemy?number(()=>enemy.troops(),Infinity):0;
       // One target cannot be evaluated as isolated when other large enemies
       // still border our home. This was the main multi-front failure in 1.4.
@@ -1882,13 +1892,13 @@
           front.danger||front.pressure||
           Math.min(available*(hardMode()?.76:.80),
             Math.max(enemyTroops*(hardMode()?1.57:1.40),available*.48))>front.safeStrike||
-          enemyTroops<=0 && enemyTiles<=0)return [];
+          enemyTroops<=0 && enemyTiles<=0)return skip('front-risk-or-unaffordable');
       }
       let score=isNeutral?75:52;
       score+=Math.min(20,Math.log2(item.front+1)*4.5);
       if(isNeutral) {
         if(item.fallout && (s.incoming>0 || s.strongest>s.home*.65 ||
-          s.ratio<.60 || available<s.home*.30))return [];
+          s.ratio<.60 || available<s.home*.30))return skip('fallout-home-risk');
         score+=Math.max(0,45-s.ratio*40)+(ownTiles<600?26:0);
         score+=neuralChannel('landPriority',me,s,tick)*28;
         if(item.fallout)score-=36;
@@ -1947,6 +1957,19 @@
       return [{...item,key,score:score+neuralDelta,baseScore,neuralDelta,forecast,
         amount:Math.min(available,Math.floor(amount))}];
     }).sort((a,b)=>b.score-a.score);
+    if(liveMultiplayer()&&tick-lastDecisionExplanationTick>=90){
+      lastDecisionExplanationTick=tick;
+      latestAttackAlternatives={tick,examined:items.length,eligible:ranked.length,
+        reasons,examples,top:ranked.slice(0,4).map(x=>({target:x.id,
+          score:Math.round(x.score),amount:x.amount,
+          homeAfter:Math.floor(s.home-x.amount),
+          observedTroops:number(()=>x.opponent?.troops?.(),null),
+          opponentDataAge:x.id===null?null:tick-(opponentHistory.get(x.id)?.observedTick??tick),
+          forecast:x.forecast?.engine?'engine':x.forecast?'proxy':'unknown'}))};
+      telemetry('attack_alternatives','Geprüfte Landziele und Ablehnungsgründe',
+        latestAttackAlternatives);
+    }
+    return ranked;
   }
   // Shared investment posture; never bypasses worker building legality.
   function economyPosture(me,s,tick=number(()=>game.ticks(),0)){
