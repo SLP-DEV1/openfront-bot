@@ -1,7 +1,7 @@
 @echo off
 setlocal EnableExtensions
 cd /d "%~dp0"
-set "ENGINE=%~dp0..OpenFrontIO"
+set "ENGINE=%~dp0..\OpenFrontIO"
 set "PIN=bb8af015b515b3b717bd4d901074c5f4c16641cb"
 where node >nul 2>nul || (echo Node.js 24 fehlt. & exit /b 1)
 where git >nul 2>nul || (echo Git fehlt. & exit /b 1)
