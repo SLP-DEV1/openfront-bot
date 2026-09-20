@@ -1461,15 +1461,15 @@
       const enemyTroops=enemy?number(()=>enemy.troops(),Infinity):0;
       // One target cannot be evaluated as isolated when other large enemies
       // still border our home. This was the main multi-front failure in 1.4.
-      const otherThreat=enemy?items.filter(x=>x.id!==null && x.id!==item.id)
-        .reduce((v,x)=>Math.max(v,number(()=>x.opponent?.troops(),0)),0):0;
+      const front=enemy?frontRiskPlan(items,s,item.id):null;
       const enemyTiles=enemy?number(()=>enemy.numTilesOwned(),0):0;
       if(!isNeutral) {
         const minimumRatio=enemyOpportunityRatio(enemy,late,s.home,effectivePlan()==='Blitz');
         if(s.ratio<(late?.29:.40) || available<enemyTroops*minimumRatio ||
           s.home<enemyTroops*(hardMode()?(late?1.45:1.85):(late?1.24:1.45)) ||
-          (coordinatedWar() && s.home-Math.min(available*.76,
-            Math.max(enemyTroops*1.57,available*.48))<otherThreat*.58) ||
+          front.danger||front.pressure||
+          Math.min(available*(hardMode()?.76:.80),
+            Math.max(enemyTroops*(hardMode()?1.57:1.40),available*.48))>front.safeStrike||
           enemyTroops<=0 && enemyTiles<=0)return [];
       }
       let score=isNeutral?75:52;
@@ -1509,7 +1509,8 @@
       }
       const amount=isNeutral ?
         Math.floor(neutralAttackAmount(s,aggression)*(item.fallout?.48:1)) :
-        Math.min(available*(hardMode()?.76:.80),Math.max(enemyTroops*(hardMode()?1.57:(1.25+aggression*.20)),available*.48));
+        Math.min(front.safeStrike,available*(hardMode()?.76:.80),
+          Math.max(enemyTroops*(hardMode()?1.57:(1.25+aggression*.20)),available*.48));
       const forecast=!isNeutral?attackForecast(me,item,Math.floor(amount)):null;
       if(forecast){
         score-=Math.min(60,forecast.loss/Math.max(1,amount)*78);
@@ -1682,7 +1683,9 @@
       }
       // The game state may advance during the async worker legality probe.
       const fresh=military(me,strategic.groups); // Never forget stronger OTHER neighbors on recheck.
-      if(item.id!==null && (fresh.incoming>fresh.home*(lateGame(me)?.15:.04) ||
+      const freshFront=item.id!==null?frontRiskPlan(strategic.groups,fresh,item.id):null;
+      if(item.id!==null && (freshFront.danger||freshFront.pressure||
+        fresh.incoming>fresh.home*(lateGame(me)?.15:.04) ||
         fresh.activeEnemy>=(lateGame(me)&&fresh.strongest<fresh.home*.55?2:1) ||
         fresh.available<Math.max(100,number(()=>item.opponent.troops(),Infinity)*(lateGame(me)?1.15:1.3))))continue;
       if(item.id===null && fresh.activeNeutral>=1)continue;
@@ -1693,7 +1696,8 @@
         !targetOpportunity(me,strategic.groups,fresh,item) ||
         (isWar()&&warState.id!==item.id)))continue;
       const amount=Math.min(item.amount,fresh.available,
-        item.id===null ? neutralAttackAmount(fresh,clamp(setting('aggressive'),40,100)/100) : Math.floor(fresh.available*(hardMode()?.76:.8)));
+        item.id===null ? neutralAttackAmount(fresh,clamp(setting('aggressive'),40,100)/100) :
+        Math.min(freshFront.safeStrike,Math.floor(fresh.available*(hardMode()?.76:.8))));
       if(amount<100)continue;
       const label=item.opponent?nameOf(item.opponent):'neutrales Land';
       if(send('attack',[item.id,amount],`ANGRIFF → ${label} (${Math.floor(amount/10)} Tr.)`)){
