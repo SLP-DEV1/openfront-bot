@@ -3375,6 +3375,23 @@
     result.sort((a,b)=>b.score-a.score||a.distance-b.distance);
     return result.slice(0,limit).map(x=>x.tile);
   }
+  function navalCommitmentRatio(me,enemy,tick){
+    const trend=opponentTrend(enemy,tick),window=adversaryWindow(me,enemy);
+    // Never ease naval thresholds based on a momentary third-party attack.
+    return trend.valid&&trend.sustained&&trend.falling&&window.exposed?1.35:1.9;
+  }
+  function landingThirdPartyRisk(me,dest,target,amount){
+    try{
+      const neighbors=[],count=game.neighbors4(dest,neighbors);
+      for(let i=0;i<count;i++){
+        const owner=game.owner(neighbors[i]);
+        if(!owner?.isPlayer?.()||safeID(owner)===safeID(target)||
+          safeID(owner)===safeID(me)||friendly(owner,me))continue;
+        if(number(()=>owner.troops(),Infinity)>amount*.85)return true;
+      }
+    }catch(_){return true;}
+    return false;
+  }
   async function naval(me,tick,serial) {
     if(!opts.boats||!ctors.boat||tick-lastBoat<100||tick<navalBackoffUntil||pendingAttack||pendingBoat)return false;
     lastBoat=tick;
@@ -3405,7 +3422,8 @@
     for(const foe of foes.slice(0,6)){
       if(navyState.strongest>=navyState.home*.85)break;
       if((navalCooldown.get('player:'+safeID(foe))||0)>tick)continue;
-      if(spare<number(()=>foe.troops(),Infinity)*1.9 ||
+      const navyRatio=navalCommitmentRatio(me,foe,tick);
+      if(spare<number(()=>foe.troops(),Infinity)*navyRatio ||
         number(()=>me.troops())<number(()=>game.config().maxTroops(me),1)*.47)continue;
       let points=[];
       // Prefer the opponent's actual coastal border. An inland spawn is legal
@@ -3443,19 +3461,26 @@
         }
         const fresh=military(me,strategic.groups);
         if(fresh.incoming>0 || fresh.activeEnemy>0 ||
-          fresh.available<number(()=>current.troops(),Infinity)*1.9 ||
+          fresh.available<number(()=>current.troops(),Infinity)*
+           navalCommitmentRatio(me,current,tick) ||
           fresh.ratio<.47)continue;
         const ship=legal?.buildableUnits?.find(x=>x.type==='Transport'&&Number.isInteger(x.canBuild));
         if(!ship || (Number(me.gold())<Number(ship.cost)&&!game.config().infiniteGold?.()))continue;
         const committedWar=isWar()&&warState.id===safeID(current);
-        const amount=Math.floor(Math.min(fresh.available*(committedWar ? .60 : .36),
-          fresh.home*(committedWar ? .58 : .30)));
+        const exposedNavy=navalCommitmentRatio(me,current,tick)<1.9;
+        const amount=Math.floor(Math.min(fresh.available*(committedWar ? .60 : exposedNavy?.66:.36),
+          fresh.home*(committedWar ? .58 : exposedNavy?.55:.30)));
         // Having a large spare army is not sufficient: the ACTUAL landing
         // contingent must plausibly beat the enemy's fresh home force.
         if(amount<1000||amount<number(()=>current.troops(),Infinity)*
-          (hardMode()?1.05:.85) || fresh.home-amount<fresh.reserve)continue;
+          (hardMode()?1.05:.85) || fresh.home-amount<fresh.reserve ||
+          landingThirdPartyRisk(me,dest,current,amount))continue;
         if(sendMarineTransport(me,dest,amount,
-          tick,'LANDUNG → '+nameOf(current),'player:'+safeID(current)))return true;
+          tick,'LANDUNG → '+nameOf(current),'player:'+safeID(current))){
+          if(exposedNavy)telemetry('naval_window','Anhaltende Drittfront bestätigt',
+            {target:safeID(current),amount,trend:opponentTrend(current,tick)});
+          return true;
+        }
       }
     }
     // No separate war: transport a safe neutral-expansion force to verified
