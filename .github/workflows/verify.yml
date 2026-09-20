@@ -60,6 +60,9 @@ jobs:
           node --check tools/benchmark/serve-browser.mjs
           node --check tests/live-qwen-regression.cjs
           node tests/live-qwen-regression.cjs
+          node --check tools/benchmark/openfront-backend.mjs
+          node --check tests/openfront-backend-regression.cjs
+          node tests/openfront-backend-regression.cjs
       - name: Test neural trainer and deployer
         run: |
           node --check trainer/train.mjs
