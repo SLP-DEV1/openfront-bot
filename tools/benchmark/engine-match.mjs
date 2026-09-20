@@ -7,6 +7,7 @@ import {pathToFileURL} from 'node:url';
 import common from './common.cjs';
 import policyModel from '../../trainer/policy.cjs';
 import actionModel from '../../trainer/action-policy.cjs';
+import strategicModel from '../../trainer/strategic-policy.cjs';
 
 const opts=common.parse(process.argv.slice(2));
 const engineCommit=common.engineInfo(opts.engine,opts.engineCommit);
@@ -19,7 +20,8 @@ let policyHash=null;
 if(opts.policy){
   const policySource=fs.readFileSync(path.resolve(opts.policy),'utf8');
   const decoded=JSON.parse(policySource);
-  const policy=decoded?.schema===2?actionModel.validate(decoded):policyModel.validate(decoded);
+  const policy=decoded?.schema===3?strategicModel.validate(decoded):
+    decoded?.schema===2?actionModel.validate(decoded):policyModel.validate(decoded);
   policyHash=common.digest(JSON.stringify(policy));
   storage.set('of-aggrobot-neural-policy-v1',JSON.stringify(policy));
   storage.set('of-solo-aggrobot-v1111',JSON.stringify({neuralEnabled:true,fullAuto:true}));

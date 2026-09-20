@@ -1,11 +1,11 @@
-// Real-engine, derivative-free reinforcement learning for a tiny neural policy.
+// Real-engine, derivative-free self-training of multi-head strategic policies.
 // Train seeds choose a provisional parent; disjoint evaluation seeds alone can
 // promote a candidate. Zero weights reproduce the existing rule-only bot.
 import fs from 'node:fs';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import policy from './action-policy.cjs';
+import policy from './strategic-policy.cjs';
 import common from '../tools/benchmark/common.cjs';
 import {reviewGeneration} from './qwen-review.mjs';
 import evaluation from './evaluation.cjs';
@@ -15,7 +15,7 @@ import parallelPool from './parallel.cjs';
 const cfg={engine:null,engineCommit:common.IMPOSSIBLE_REFERENCE_COMMIT,
   bot:'OpenFront_Solo_AggroBot.user.js',initialModel:null,maps:'World',size:'Compact',nations:'1,4',
   generations:'3',population:'4',trainSeeds:'2',evalSeeds:'4',ticks:'18000',
-  sigma:'0.3',parallel:'2',out:'benchmark-results/neural-training',qwen:'false',dryRun:'false'};
+  sigma:'0.12',parallel:'2',out:'benchmark-results/neural-training',qwen:'false',dryRun:'false'};
 for(let i=2;i<process.argv.length;i++){
   const key=process.argv[i];
   if(!key.startsWith('--')||!Object.hasOwn(cfg,key.slice(2)))throw Error('Unknown option '+key);
@@ -47,8 +47,8 @@ const runsPerGeneration=maps.length*nations.length*(trainSeeds*(population+1)+ev
 if(runsPerGeneration>200)throw Error('Too many matches per generation (>200)');
 const total=runsPerGeneration*generations;
 const plan={engineCommit:cfg.engineCommit,maps,nations,generations,population,
-  trainSeeds,evalSeeds,ticks,sigma,parallel,matches:total,policySchema:2,
-  promotion:'strictly more observed holdout victories, no incompletes or process failures'};
+  trainSeeds,evalSeeds,ticks,sigma,parallel,matches:total,policySchema:3,
+  promotion:'verified complete paired holdout: more victories or consistent survival gains without regressions'};
 if(cfg.dryRun==='true'){console.log(JSON.stringify(plan,null,2));process.exit(0);}
 if(!cfg.engine)throw Error('Provide --engine or --dryRun true');
 const engine=path.resolve(cfg.engine),bot=path.resolve(cfg.bot),out=path.resolve(cfg.out);
@@ -100,8 +100,8 @@ async function match(model,phase,g,index,map,nation,seed){
   const confirmed=verified&&['game-over','eliminated'].includes(termination)&&
     ['victory','defeat'].includes(outcome);
   const validSample=confirmed||(verified&&termination==='tick-limit');
-  // Confirmed defeat and right-censored tick-limit have separate search
-  // rewards. Only evaluation.compare may promote a model, never this reward.
+  // Training rewards rank proposals, not champions. Only disjoint complete
+  // paired evaluation may promote the model.
   const land=Math.max(0,Number(state?.finalState?.land)||0),
     elapsed=Math.max(0,Number(state?.run?.tick)||0);
   const reward=scoring.reward({validSample,confirmed,outcome,land,
@@ -163,9 +163,9 @@ for(let g=1;g<=generations;g++){
   const report={generation:g,sigma,proposals:proposals.map(p=>({model:policy.sha(p.model),score:p.score})),
     parentScore:score(previous),trainScore:top.score,
     evaluation:{incumbent:{wins:wins(incumbentRows),rows:incumbentRows},
-      candidate:{wins:wins(candidateRows),rows:candidateRows}},
+      candidate:{wins:wins(candidateRows),rows:candidateRows},comparison},
     promoted,championModel:policy.sha(incumbent),provisionalModel:policy.sha(parent),
-    note:valid?'Completed paired evaluation':'Incomplete or failed evaluation; no promotion'};
+    note:valid?'Completed paired evaluation; '+comparison.reason:'Incomplete or failed evaluation; no promotion'};
   history.push(report);save('generation-'+g+'.json',report);
   save('history.json',{plan,history,published:fs.existsSync(path.join(out,'champion.json'))});
   console.log(JSON.stringify({generation:g,promoted,incumbentWins,

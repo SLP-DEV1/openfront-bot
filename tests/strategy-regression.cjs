@@ -73,6 +73,7 @@ function boot(benchmarkOptions={}) {
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
     'strategicDirector,economyPosture,observeOpponents,opponentTrend,navalCommitmentRatio,landingThirdPartyRisk,targetHomeRatio,railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,observeFronts,qwenStrategyHint,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
+    'setNeural:m=>{neuralModel=neuralValidate(m);opts.neuralEnabled=!!neuralModel;neuralPolicyCache={key:null,output:null};},neuralStrategicSignals,neuralChannel,',
     'getBrainMatchId:()=>brainMatchId,setQwen:q=>{brainState.qwen=q;},',
     'setPortBackoff:(fail,tick)=>{portProbeFailures=fail;lastPortRetryTick=tick;},',
     'setWarWait:n=>warWaitSince=n,setEconFails:n=>failedEconomyProbes=n,',
@@ -94,6 +95,103 @@ function boot(benchmarkOptions={}) {
     setOver:v=>gameOver=v,setGold:v=>gold=v,setHome:v=>home=v};
 }
 (async () => {
+  await check('trained strategic policy switches land versus naval, zero model retains rules', () => {
+    const x=boot();x.setTick(600);x.b.setBoatCtor(class {});
+    const s=x.b.military(x.me,[]);
+    const ranked=[{id:null,score:110}];
+    const zero={schema:3,arch:'16x16x16-tanh',weights:Array(544).fill(0)};
+    x.b.setNeural(zero);
+    assert.equal(x.b.strategicDirector(x.me,s,{wanted:'EXPAND'},ranked,600).order[0],'land');
+    const evolved={...zero,weights:zero.weights.slice()};
+    evolved.weights[528+6]=-3;evolved.weights[528+7]=3;
+    x.b.setNeural(evolved);
+    const result=x.b.strategicDirector(x.me,s,{wanted:'EXPAND'},ranked,600);
+    assert.equal(result.order[0],'naval');
+    assert(result.neural.weights.navalPriority>.9);
+    x.b.setMode('RECOVER');
+    assert.equal(x.b.strategicDirector(x.me,s,{wanted:'RECOVER'},ranked,600).order[0],'hold');
+  });
+  await check('zero policy preserves the original naval fallback when precheck says no', () => {
+    const x=boot(),zero={schema:3,arch:'16x16x16-tanh',weights:Array(544).fill(0)};
+    x.setTick(650);x.b.setBoats(false);
+    const s=x.b.military(x.me,[]);
+    const rule=x.b.strategicDirector(x.me,s,{wanted:'ECONOMY'},[],650);
+    assert.deepEqual(Array.from(rule.order),['naval','hold']);
+    x.b.setNeural(zero);
+    const learned=x.b.strategicDirector(x.me,s,{wanted:'ECONOMY'},[],650);
+    assert.deepEqual(Array.from(learned.order),Array.from(rule.order));
+    const model={...zero,weights:zero.weights.slice()};
+    model.weights[528+8]=3;x.b.setNeural(model);
+    assert.equal(x.b.strategicDirector(x.me,s,{wanted:'ECONOMY'},[],650).order[0],'hold');
+  });
+  await check('trained strategy changes reserves without lowering the strongest-front floor', () => {
+    const x=boot(),zero={schema:3,arch:'16x16x16-tanh',weights:Array(544).fill(0)};
+    const groups=[{id:'weak',opponent:x.weak},{id:'strong',opponent:x.strong}];
+    x.b.setNeural(zero);
+    const original=x.b.military(x.me,groups);
+    const evolved={...zero,weights:zero.weights.slice()};
+    evolved.weights[528]=3;
+    x.b.setNeural(evolved);
+    const updated=x.b.military(x.me,groups);
+    assert(updated.reserve>=original.reserve);
+    assert(updated.reserve>=Math.min(updated.home*.85,updated.strongest*.59));
+    assert(updated.home-updated.available>=updated.reserve);
+  });
+  await check('strategic policy cannot enable a forbidden naval action', () => {
+    const x=boot(),model={schema:3,arch:'16x16x16-tanh',weights:Array(544).fill(0)};
+    model.weights[528+7]=5;
+    x.b.setNeural(model);
+    x.setTick(600);x.b.setBoatCtor(null);
+    const state=x.b.military(x.me,[]);
+    const result=x.b.strategicDirector(x.me,state,{wanted:'EXPAND'},[{id:null}],600);
+    assert.equal(result.order[0],'land');
+    assert.equal(result.navalCandidate,false);
+  });
+  await check('trained economic head alters investment order without inventing buildings', () => {
+    const x=boot(),zero={schema:3,arch:'16x16x16-tanh',weights:Array(544).fill(0)};
+    x.me.units=()=>[{type:()=> 'City',isActive:()=>true},
+      {type:()=> 'Factory',isActive:()=>true}];
+    x.b.setGroups([]);x.b.setTroopSnapshot(x.b.military(x.me,[]));
+    x.b.setNeural(zero);
+    const baseline=x.b.economicNeeds(x.me,x.me.units(),[]);
+    const oldPort=baseline.list.find(e=>e.type==='Port');
+    const model={...zero,weights:zero.weights.slice()};
+    model.weights[528+9]=-3;model.weights[528+10]=-3;
+    model.weights[528+11]=3;x.b.setNeural(model);
+    const result=x.b.economicNeeds(x.me,x.me.units(),[]);
+    const port=result.list.find(e=>e.type==='Port');
+    assert(oldPort&&port);
+    assert(port.urgency>oldPort.urgency+80);
+    assert(result.list.every(e=>['City','Factory','Port','Defense Post','SAM Launcher','Missile Silo'].includes(e.type)));
+  });
+  await check('trained navy and diplomacy heads modify thresholds, not alliances', () => {
+    const x=boot(),zero={schema:3,arch:'16x16x16-tanh',weights:Array(544).fill(0)};
+    const s=x.b.military(x.me,[]);
+    x.b.setTroopSnapshot(s);
+    x.b.setNeural(zero);
+    const ratio=x.b.navalCommitmentRatio(x.me,x.weak,300);
+    const politics=x.b.diplomacyScore(x.me,x.weak,s,true).score;
+    const model={...zero,weights:zero.weights.slice()};
+    model.weights[528+5]=3;model.weights[528+14]=3;
+    x.b.setNeural(model);
+    assert(x.b.navalCommitmentRatio(x.me,x.weak,300)<ratio);
+    assert(x.b.diplomacyScore(x.me,x.weak,s,true).score>politics+20);
+    x.me.isFriendly=p=>p===x.weak;
+    assert.equal(x.b.diplomacyScore(x.me,x.weak,s,true).score,-999);
+  });
+  await check('trained defense can retreat sooner but baseline threat gate remains', () => {
+    const x=boot(),zero={schema:3,arch:'16x16x16-tanh',weights:Array(544).fill(0)};
+    x.me.incomingAttacks=()=>[{troops:31000,attackerID:2,retreating:false}];
+    const s=x.b.military(x.me,[]);x.b.setNeural(zero);
+    assert.equal(x.b.defenseAssessment(x.me,s,300).severe,false);
+    const model={...zero,weights:zero.weights.slice()};
+    model.weights[528+12]=3;x.b.setNeural(model);
+    assert.equal(x.b.defenseAssessment(x.me,s,300).severe,true);
+    x.me.incomingAttacks=()=>[{troops:90000,attackerID:2,retreating:false}];
+    const critical=x.b.military(x.me,[]);
+    x.b.setNeural(zero);
+    assert.equal(x.b.defenseAssessment(x.me,critical,300).critical,true);
+  });
   await check('director prioritizes legal land expansion over speculative shipping', () => {
     const x=boot(),s=x.b.military(x.me,[]);
     const result=x.b.strategicDirector(x.me,s,{wanted:'EXPAND'},

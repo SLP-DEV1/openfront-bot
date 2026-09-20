@@ -4,6 +4,7 @@ const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {spawnSync}=require('node:child_process');
 const p=require('../trainer/policy.cjs');
 const action=require('../trainer/action-policy.cjs');
+const strategic=require('../trainer/strategic-policy.cjs');
 const {parallelMap}=require('../trainer/parallel.cjs');
 const {reward}=require('../trainer/reward.cjs');
 const defeat=reward({validSample:true,confirmed:true,outcome:'defeat',land:30000,endTick:14000,ticks:18000});
@@ -20,19 +21,47 @@ assert(reward({validSample:true,confirmed:true,outcome:'defeat',land:0,endTick:1
   reward({validSample:true,confirmed:true,outcome:'defeat',land:0,endTick:9000,ticks:18000}));
 
 const {compare}=require('../trainer/evaluation.cjs');
-const pair=(seed,outcome,confirmed=true)=>({map:'World',nation:1,seed,outcome,confirmed});
-assert.equal(compare([pair('one','defeat')],[pair('one','victory')]).promoted,true);
-assert.equal(compare([pair('one','defeat')],[pair('one','incomplete',false)]).promoted,false);
-assert.equal(compare([pair('one','defeat')],[pair('other','victory')]).valid,false);
-assert.equal(compare([pair('one','victory')],[pair('one','victory')]).promoted,false);
+const pair=(seed,outcome,confirmed=true,endTick=4000,land=1000)=>
+  ({map:'World',nation:1,seed,outcome,confirmed,validSample:confirmed,
+    exitCode:0,endTick,land});
+assert.equal(compare([pair('one','defeat'),pair('two','defeat')],
+  [pair('one','victory'),pair('two','defeat')]).promoted,true);
+assert.equal(compare([pair('one','defeat'),pair('two','defeat')],
+  [pair('one','incomplete',false),pair('two','victory')]).promoted,false);
+assert.equal(compare([pair('one','defeat'),pair('two','defeat')],
+  [pair('other','victory'),pair('two','defeat')]).valid,false);
+assert.equal(compare([pair('one','victory'),pair('two','defeat')],
+  [pair('one','victory'),pair('two','defeat')]).promoted,false);
 assert.equal(compare([pair('one','defeat'),pair('two','defeat')],
   [pair('one','victory'),pair('one','victory')]).valid,false);
+assert.equal(compare([pair('one','defeat'),pair('two','defeat')],
+  [pair('one','defeat',true,4400),pair('two','defeat',true,4400)]).reason,
+  'consistent-survival-improvement');
+assert.equal(compare([pair('one','defeat'),pair('two','defeat')],
+  [pair('one','defeat',true,4400),pair('two','defeat',true,3800)]).promoted,false);
+assert.equal(compare([pair('one','defeat'),pair('two','defeat')],
+  [pair('one','defeat',true,4400),pair('two','defeat',false,4400)]).valid,false);
 const root=path.resolve(__dirname,'..');
 const exec=(args)=>{
   const r=spawnSync(process.execPath,args,{cwd:root,encoding:'utf8',timeout:30000});
   assert.equal(r.status,0,r.stderr||r.stdout);return r.stdout;
 };
 assert.equal(action.LENGTH,217);
+assert.equal(strategic.LENGTH,544);
+assert.equal(strategic.OUTPUTS.length,16);
+const z3=strategic.zero(),v3=strategic.features({home:9000,max:10000,
+  incoming:800,committed:600,strongest:3000,gold:420000,land:1100,
+  neutral:true,foes:3,activeEnemy:1,available:4400,growthPotential:40,
+  cities:2,ports:1,war:true,thirdParty:true});
+assert.equal(v3.length,16);
+assert(v3.every(x=>x>=0&&x<=1));
+assert.deepEqual(Object.values(strategic.predict(z3,v3)),Array(16).fill(0));
+const trained3=strategic.mutate(z3,'strategic-v3',.12);
+assert.deepEqual(trained3,strategic.mutate(z3,'strategic-v3',.12));
+assert(trained3.weights.some((v,i)=>v!==z3.weights[i]));
+assert.deepEqual(Object.keys(strategic.predict(trained3,v3)),strategic.OUTPUTS);
+assert.throws(()=>strategic.validate({...z3,weights:[]}));
+assert.throws(()=>strategic.predict(z3,[9]));
 const a0=action.zero(),aState={home:850,max:1000,incoming:0,committed:0,
   strongest:100,gold:600000,land:1600,late:false,neutral:true};
 const vectors=action.KINDS.map(kind=>action.features(aState,kind,30));
@@ -72,7 +101,7 @@ const dry=JSON.parse(exec(['trainer/train.mjs','--dryRun','true',
   '--evalSeeds','2','--nations','1','--maps','World']));
 assert.equal(dry.matches,2*(1*(1*(2+1)+2*2)));
 assert.equal(dry.parallel,2);
-assert.equal(dry.policySchema,2);
+assert.equal(dry.policySchema,3);
 const fast=JSON.parse(exec(['trainer/train.mjs','--dryRun','true','--parallel','4']));
 assert.equal(fast.parallel,4);
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),'aggrobot-neural-'));
@@ -91,6 +120,12 @@ try{
   const v2=JSON.parse(exec(['trainer/deploy.mjs','--model',model,'--out',deployedV2]));
   assert.equal(v2.modelSHA256,action.sha(aPlus));
   assert(fs.readFileSync(deployedV2,'utf8').includes('const NEURAL_BUNDLED_MODEL = {"schema":2'));
+  const deployedV3=path.join(temp,'strategic.user.js');
+  fs.writeFileSync(model,JSON.stringify(trained3));
+  const v3=JSON.parse(exec(['trainer/deploy.mjs','--model',model,'--out',deployedV3]));
+  assert.equal(v3.modelSHA256,strategic.sha(trained3));
+  assert.equal(v3.modelEnabledByDefault,true);
+  assert(fs.readFileSync(deployedV3,'utf8').includes('const NEURAL_BUNDLED_MODEL = {"schema":3'));
 }finally{fs.rmSync(temp,{recursive:true,force:true});}
 (async()=>{
   let active=0,peak=0;

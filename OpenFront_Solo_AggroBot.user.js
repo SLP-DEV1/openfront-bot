@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.16.0
+// @version      1.17.0
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.16.0', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.17.0', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, brainEnabled:false, brainToken:'', fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -44,7 +44,9 @@
       data.weights?.length===NEURAL_LENGTH;
     const actions=data?.schema===2&&data.arch==='16x12x1-tanh'&&
       data.weights?.length===217;
-    if((!old&&!actions)||!Array.isArray(data.weights)||
+    const strategic=data?.schema===3&&data.arch==='16x16x16-tanh'&&
+      data.weights?.length===544;
+    if((!old&&!actions&&!strategic)||!Array.isArray(data.weights)||
       data.weights.some(v=>typeof v!=='number'||!Number.isFinite(v)||Math.abs(v)>5))
       return null;
     return data;
@@ -56,6 +58,53 @@
       JSON.parse(localStorage.getItem(NEURAL_STORAGE)||'null'):
       NEURAL_BUNDLED_MODEL);
   }catch(_){neuralModel=null;}
+  // Deployed v3 is active on a fresh install; an explicit saved off-switch wins.
+  if(neuralModel?.schema===3 && !localStorage.getItem(KEY))opts.neuralEnabled=true;
+  const NEURAL_CHANNELS=['reserve','aggression','neutralCommit','enemyCommit',
+    'warThreshold','navalThreshold','landPriority','navalPriority',
+    'holdPriority','cityPriority','factoryPriority','portPriority',
+    'defensePriority','nuclearPriority','diplomacyPriority','fleetPriority'];
+  let neuralPolicyCache={key:null,output:null};
+  function neuralStrategicSignals(me,s,tick=number(()=>game?.ticks?.(),0)){
+    if(!opts.neuralEnabled||!opts.fullAuto||neuralModel?.schema!==3||
+      !me||!s||s.home<=0)return null;
+    const home=Math.max(1,s.home),max=Math.max(1,s.max||home);
+    const gold=number(()=>Number(me.gold?.()),0),
+      land=number(()=>me.numTilesOwned?.(),0);
+    const units=ownStructures(me),groups=strategic.groups||[];
+    const cities=units.filter(u=>u.type?.()==='City').length,
+      ports=units.filter(u=>u.type?.()==='Port').length;
+    const foes=groups.filter(g=>g.id!==null&&g.opponent?.isAlive?.()&&!friendly(g.opponent,me));
+    const thirdParty=foes.some(g=>adversaryWindow(me,g.opponent).exposed);
+    const vector=[
+      clamp(home/max,0,1.5)/1.5,clamp((s.incoming||0)/home,0,2)/2,
+      clamp((s.strongest||0)/home,0,3)/3,clamp((s.committed||0)/home,0,2)/2,
+      clamp(gold/1000000,0,1),clamp(land/20000,0,1),
+      lateGame(me)?1:0,groups.some(g=>g.id===null&&!g.fallout)?1:0,
+      clamp(foes.length/8,0,1),clamp((s.activeEnemy||0)/4,0,1),
+      clamp((s.available||0)/home,0,1),
+      clamp((s.growthPotential||0)/Math.max(1,max*.01),0,1),
+      clamp(cities/8,0,1),clamp(ports/4,0,1),isWar()?1:0,thirdParty?1:0
+    ];
+    const key=tick+':'+vector.join(',');
+    if(neuralPolicyCache.key===key)return neuralPolicyCache.output;
+    const w=neuralModel.weights,h=[],output={};
+    for(let j=0;j<16;j++){
+      let z=w[256+j];
+      for(let i=0;i<16;i++)z+=vector[i]*w[i*16+j];
+      h.push(Math.tanh(z));
+    }
+    for(let k=0;k<16;k++){
+      let z=w[528+k];
+      for(let j=0;j<16;j++)z+=h[j]*w[272+j*16+k];
+      output[NEURAL_CHANNELS[k]]=Math.tanh(z);
+    }
+    neuralPolicyCache={key,output};
+    return output;
+  }
+  function neuralChannel(name,me,s=troopSnapshot,tick=number(()=>game?.ticks?.(),0)){
+    return neuralStrategicSignals(me,s,tick)?.[name]||0;
+  }
   function neuralAdjust(v,base,me,s,items,emergency){
     if(!opts.neuralEnabled||!opts.fullAuto||neuralModel?.schema!==1||emergency||
       s.incoming>0||recentHostilePressure(number(()=>game.ticks(),0))||
@@ -576,7 +625,7 @@
     buildCursor=0;spawnCache=null;spawnJob=null;spawnRetryAt=0;spawnAlternatives=[];spawnState={scanned:0,phase:'idle',lastSent:null,attempts:0,blocked:null,deadline:null};cooldowns.clear();rejected.clear();
     plan=null;lastSelection='';lastEmission=0;borderOffset=0;lastBorderRefresh=0;
     totalSent=0;totalFailed=0;actions=[];errors=0;troopSamples=[];
-    lastRecoveryReason='';lastBattle=null;pendingAttack=null;targetIntelCache.clear();frontMemory.clear();opponentHistory.clear();lastEconomyPosture='—';lastDirectorDecision=null;lastFrontWarning=-Infinity;
+    lastRecoveryReason='';lastBattle=null;pendingAttack=null;targetIntelCache.clear();frontMemory.clear();opponentHistory.clear();lastEconomyPosture='—';lastDirectorDecision=null;neuralPolicyCache={key:null,output:null};lastFrontWarning=-Infinity;
     attackReceipts={confirmed:0,unconfirmed:0,territoryGained:0};blockedTargets.clear();
     failedEconomyProbes=0;successfulEconomyTick=-Infinity;warWaitSince=-Infinity;
     lastEconomicAction=-Infinity;lastNeutralSend=-Infinity;lastEnemySend=-Infinity;lastHostilePressure=-Infinity;consecutiveIdle=0;
@@ -664,6 +713,10 @@
     v=learnAdjust(v,mode,s,emergency);
     v=brainAdjust(v,unlearned,mode,s,emergency);
     v=neuralAdjust(v,unlearned,me,s,items,emergency);
+    if(!emergency){const policy=neuralStrategicSignals(me,s,tick);
+      if(policy){v.aggressive+=Math.round(policy.aggression*12);
+        v.reserve+=Math.round(policy.reserve*10);}}
+
     v.aggressive=clamp(v.aggressive,40,100);
     v.reserve=clamp(v.reserve,18,65);
     v.actionsPerMinute=clamp(v.actionsPerMinute,45,110);
@@ -1214,7 +1267,9 @@
     // a third of the army immediately before a probable counterattack.
     const safeBudget=hardMode()&&exposed?
       Math.min(s.available*.14,s.home*.025):s.available*fraction;
-    return Math.floor(Math.min(safeBudget,Math.max(base,surplus)));
+    const amount=Math.min(safeBudget,Math.max(base,surplus));
+    return Math.floor(Math.min(safeBudget,amount*
+      (1+neuralChannel('neutralCommit',myPlayer(),s)*.35)));
   }
   // Retain short-lived border pressure across transient missing border scans.
   function observeFronts(me,items,tick){
@@ -1262,7 +1317,10 @@
     // Hold meaningful troops while a larger neighbor or incoming offensive exists.
     // On Impossible, preserve a force against the largest OTHER neighbor even
     // while crushing our chosen target. Avoid permanent paralysis from maxTroops.
-    const defensiveFloor=Math.max(baseline,
+    const policyReserve=neuralChannel('reserve',me,{home,max,committed,incoming,strongest,ratio,
+      available:Math.max(0,home-baseline)},tick);
+    const policyBaseline=home*clamp(baseline/home*100+policyReserve*8,12,75)/100;
+    const defensiveFloor=Math.max(policyBaseline,
       // Defending against one enemy does not require parking its entire army
       // at home while an attacking stack is already fighting that same enemy.
       strongest>0 ? Math.min(home*.85,strongest*(hardMode()?.59:.53)) : 0,
@@ -1477,19 +1535,20 @@
   function enemyOpportunityRatio(enemy,late,home,blitz=false){
     const normal=hardMode()?(late?1.34:1.75):
       (late?1.18:blitz?1.30:1.55);
-    if(enemyUnderAttack(enemy))return hardMode()?(late?1.12:1.24):1.12;
+    const learned=1-neuralChannel('warThreshold',myPlayer())*.12;
+    if(enemyUnderAttack(enemy))return (hardMode()?(late?1.12:1.24):1.12)*learned;
     const trend=opponentTrend(enemy);
     if(trend.valid&&trend.sustained&&trend.falling)
-      return Math.max(hardMode()?1.23:1.13,normal*.83);
+      return Math.max(hardMode()?1.23:1.13,normal*.83)*learned;
     // Opportunity in a human FFA: their army is fighting someone else.
     // Never make this a blanket buff for an uncommitted player.
     const opening=adversaryWindow(myPlayer(),enemy);
     if(opening.exposed && opening.ratio>=.45 && opening.human)
-      return Math.max(hardMode()?1.23:1.17,normal*.90);
+      return Math.max(hardMode()?1.23:1.17,normal*.90)*learned;
     if(enemy?.isDisconnected?.()===true &&
       number(()=>enemy.troops(),Infinity)<home*1.2)
-      return Math.max(1.15,normal*.86);
-    return normal;
+      return Math.max(1.15,normal*.86)*learned;
+    return normal*learned;
   }
   function targetHomeRatio(enemy,late){
     const normal=hardMode()?(late?1.45:1.85):(late?1.24:1.45);
@@ -1701,12 +1760,14 @@
         if(item.fallout && (s.incoming>0 || s.strongest>s.home*.65 ||
           s.ratio<.60 || available<s.home*.30))return [];
         score+=Math.max(0,45-s.ratio*40)+(ownTiles<600?26:0);
+        score+=neuralChannel('landPriority',me,s,tick)*28;
         if(item.fallout)score-=36;
         if(context.wanted==='EXPAND')score+=18;
         if(growthPressure(s))score+=Math.min(22,(s.ratio-.70)*90);
         if(late&&context.foes)score-=38;
       } else {
         score+=Math.max(-65,55-50*enemyTroops/Math.max(available,1));
+        score+=neuralChannel('enemyCommit',me,s,tick)*28;
         score+=Math.min(16,enemyTiles/450);
         const local=targetEconomics(item,tick);
         score+=Math.min(29,local.prize*2.7)-
@@ -1738,7 +1799,8 @@
       const amount=isNeutral ?
         Math.floor(neutralAttackAmount(s,aggression)*(item.fallout?.48:1)) :
         Math.min(front.safeStrike,available*(hardMode()?.76:.80),
-          Math.max(enemyTroops*(hardMode()?1.57:(1.25+aggression*.20)),available*.48));
+          Math.max(enemyTroops*(hardMode()?1.57:(1.25+aggression*.20)),available*.48)) *
+          (1+neuralChannel('enemyCommit',me,s,tick)*.22);
       const forecast=!isNeutral?attackForecast(me,item,Math.floor(amount)):null;
       if(forecast){
         score-=Math.min(60,forecast.loss/Math.max(1,amount)*78);
@@ -1792,17 +1854,33 @@
       tick-lastEnemySend>180 && s.ratio>=.52;
     const navalFirst=canSail && (stalledFront || (!land.length&&!enemy.length)) &&
       (targetAtSea || s.activeNeutral===0);
-    const order=recovering?['hold']:
-      navalFirst?['naval','land','hold']:
+    const ruleOrder=navalFirst?['naval','land','hold']:
       enemy.length||land.length?['land','naval','hold']:
       ['naval','hold'];
+    const learned=neuralStrategicSignals(me,s,tick);
+    const utility={
+      land:(land.length||enemy.length?110:0)+((land.length||enemy.length)?learned?.landPriority||0:0)*65,
+      naval:(canSail?(navalFirst?120:80):-1000)+
+        (canSail?(learned?.navalPriority||0)*65:0),
+      hold:(land.length||enemy.length||canSail?-25:35)+(learned?.holdPriority||0)*60
+    };
+    // Recover/defend is an absolute gate; priority values never grant legality.
+    const hasLearnedPreference=learned&&
+      ['landPriority','navalPriority','holdPriority'].some(k=>Math.abs(learned[k])>1e-8);
+    // Zero weights / no model MUST reproduce v1.16.0 exactly. In particular,
+    // naval() can refresh a stale preliminary canSail snapshot.
+    const order=recovering?['hold']:
+      !hasLearnedPreference?ruleOrder:
+      [...new Set([...ruleOrder,'land','naval','hold'])].sort((a,b)=>
+        utility[b]-utility[a]);
     const reason=recovering?'Heimtruppen und Grenzen stabilisieren':
       navalFirst?'Keine sichere Landexpansion: Marineweg vor Landkrieg prüfen':
       enemy.length?'Sicheren Landkrieg vor Küstenoperation prüfen':
       land.length?'Freies Land vor teurer Küstenoperation':
       'Keine freigegebene Landaktion; Seeweg prüfen';
     return {order,reason,landCandidates:land.length,enemyCandidates:enemy.length,
-      navalCandidate:canSail,threatened,economy:economyPosture(me,s,tick)};
+      navalCandidate:canSail,threatened,economy:economyPosture(me,s,tick),
+      neural:learned?{utility,weights:learned}:null};
   }
   async function legalTarget(me,item,serial) {
     // Four-at-a-time worker checks remove the old serialized waterfall.
@@ -1840,8 +1918,10 @@
     const samples=troopSamples.filter(x=>tick-x.tick<=110);
     const prev=samples[0],land=number(()=>me.numTilesOwned(),0);
     const landLoss=prev&&prev.tiles>0?Math.max(0,(prev.tiles-land)/prev.tiles):0;
+    const neuralWarning=neuralChannel('defensePriority',me,s,tick)>.7;
     return {incoming,ratio,landLoss,hostile,
-      severe:ratio>=.43||(ratio>=.23&&landLoss>=.035),
+      severe:ratio>=.43||(ratio>=.23&&landLoss>=.035)||
+        (neuralWarning&&ratio>=.33),
       critical:ratio>=.80||(ratio>=.40&&landLoss>=.075)};
   }
   function refreshRetreats(me,tick) {
@@ -2225,20 +2305,21 @@
     const posture=economyPosture(me,troopSnapshot,nowTick);
     const style=effectiveBuildStyle() || 'Ausgewogen';
     const defBoost=style==='Defensiv'?22:0,econBoost=style==='Wirtschaft'?24:0;
+    const neural=neuralStrategicSignals(me,troopSnapshot,nowTick);
     const list=[
-      {type:'City',desired:wantedCity,score:92+econBoost/2+(posture==='recruit'?38:0)+Math.max(0,pressure-.35)*75+
+      {type:'City',desired:wantedCity,score:92+(neural?.cityPriority||0)*90+econBoost/2+(posture==='recruit'?38:0)+Math.max(0,pressure-.35)*75+
           (pressure>.80&&!immediate?30:0)+(cities===0?115:hardMode()&&cities<2?80:0)},
-      {type:'Factory',desired:wantedFactory,score:91+econBoost+(posture==='bootstrap'?20:0)+
+      {type:'Factory',desired:wantedFactory,score:91+(neural?.factoryPriority||0)*90+econBoost+(posture==='bootstrap'?20:0)+
           (factories===0?100:hardMode()&&factories<2?85:0)+
           (gold<450000?15:0)+(pressure<.60&&factories>0?10:0)+
           (factories<2&&cities>=2?24:0)-
           (incomeStatus.observed&&incomeStatus.train===0&&factories>=2?26:0)},
       {type:'Port',desired:wantedPort,score:portMilestone?345:
-        59+econBoost/2+(posture==='breakout'?115:0)+(ports===0&&wantedPort?12:0)+
+        59+(neural?.portPriority||0)*90+econBoost/2+(posture==='breakout'?115:0)+(ports===0&&wantedPort?12:0)+
         (incomeStatus.observed&&incomeStatus.trade===0&&ports===0?13:0)},
-      {type:'Defense Post',desired:wantedDefense,score:immediate?310+defBoost:threatened?(basic?36:77)+defBoost+(posture==='defensive'?24:0):20},
+      {type:'Defense Post',desired:wantedDefense,score:immediate?310+defBoost:threatened?(basic?36:77)+(neural?.defensePriority||0)*90+defBoost+(posture==='defensive'?24:0):20},
       {type:'SAM Launcher',desired:wantedSAM,score:enemyNukes?210+defBoost:threat?151+defBoost:proactiveSAM?118:40},
-      {type:'Missile Silo',desired:wantedSilo,score:siloCount===0?305:opts.nukes?(late?131:94)+(gold>6000000?13:0):0}
+      {type:'Missile Silo',desired:wantedSilo,score:siloCount===0?305:opts.nukes?(late?131:94)+(neural?.nuclearPriority||0)*75+(gold>6000000?13:0):0}
     ];
     const value=list.filter(x=>x.desired>count(x.type)).map(x=>({...x,count:count(x.type),
       urgency:x.score+Math.min(50,35*(x.desired-count(x.type))/x.desired)}));
@@ -2733,7 +2814,8 @@
       // Launching blindly into a SAM bubble wastes expensive rockets.
       value-=sams.reduce((sum,u)=>sum+9+number(()=>u.level?.(),1)*2,0);
       if(sams.length && kind==='Hydrogen Bomb')value-=9;
-      if(value>=(kind==='Hydrogen Bomb'||kind==='MIRV'?(lateGame(me)?11:13):(lateGame(me)?5:8)))
+      if(value>=(kind==='Hydrogen Bomb'||kind==='MIRV'?(lateGame(me)?11:13):(lateGame(me)?5:8))-
+        neuralChannel('nuclearPriority',me)*3)
         proposed.push({tile,value,hit,sams:sams.length,owner});
     }
     return proposed.sort((a,b)=>b.value-a.value).slice(0,10);
@@ -2845,7 +2927,8 @@
     const me=myPlayer(),tick=number(()=>game.ticks(),-1);
     if(!me?.isAlive?.()||!me.hasSpawned?.()||game.inSpawnPhase?.()||tick<0)return;
     if(inspectNukeLaunch(me,tick))return;
-    if(tick-lastNuke<65 || !actionBudget())return;
+    if(tick-lastNuke<clamp(65-Math.round(neuralChannel('nuclearPriority',me)*18),45,90) ||
+      !actionBudget())return;
     const intel=nuclearIntel(me),silos=ownStructures(me).filter(u=>u.type?.()==='Missile Silo' &&
       !u.isUnderConstruction?.() && !u.isInCooldown?.());
     if(!silos.length){nukeStatus='Kein geladener Silo';return;}
@@ -2944,6 +3027,7 @@
     // different nation. Never reward alliance with our active war target.
     if(offered && their>=own*.85 && !hostileIncoming && !hostileOutgoing &&
       warState.id!==safeID(p))score+=22;
+    score+=neuralChannel('diplomacyPriority',me,s)*28;
     return {score,reason:score>=58?'Schutz/Kooperation nützlich':'Strategischer Nutzen gering'};
   }
   // Diplomacy is a priority channel. The normal minute and attack-burst limits
@@ -3219,7 +3303,8 @@
     // Build one escort before the silo fund, a second only after the first
     // has appeared in the game. More hulls require a real incoming landing.
     const desired=active?Math.min(3,ports.length+1):
-      number(()=>me.numTilesOwned(),0)>=15000?2:1;
+      clamp((number(()=>me.numTilesOwned(),0)>=15000?2:1)+
+        Math.round(neuralChannel('fleetPriority',me)*1.5),1,3);
     if(ownWarships.length>=desired)return false;
     const gold=number(()=>Number(me.gold()),0);
     if(!active && gold<450000 && !game.config().infiniteGold?.())return false;
@@ -3386,7 +3471,8 @@
   function navalCommitmentRatio(me,enemy,tick){
     const trend=opponentTrend(enemy,tick),window=adversaryWindow(me,enemy);
     // Never ease naval thresholds based on a momentary third-party attack.
-    return trend.valid&&trend.sustained&&trend.falling&&window.exposed?1.35:1.9;
+    const baseline=trend.valid&&trend.sustained&&trend.falling&&window.exposed?1.35:1.9;
+    return baseline*(1-neuralChannel('navalThreshold',me)*.16);
   }
   function landingThirdPartyRisk(me,dest,target,amount){
     try{
@@ -3475,7 +3561,8 @@
         const ship=legal?.buildableUnits?.find(x=>x.type==='Transport'&&Number.isInteger(x.canBuild));
         if(!ship || (Number(me.gold())<Number(ship.cost)&&!game.config().infiniteGold?.()))continue;
         const committedWar=isWar()&&warState.id===safeID(current);
-        const exposedNavy=navalCommitmentRatio(me,current,tick)<1.9;
+        const exposedNavy=opponentTrend(current,tick).sustained&&
+          opponentTrend(current,tick).falling&&adversaryWindow(me,current).exposed;
         const amount=Math.floor(Math.min(fresh.available*(committedWar ? .60 : exposedNavy?.66:.36),
           fresh.home*(committedWar ? .58 : exposedNavy?.55:.30)));
         // Having a large spare army is not sufficient: the ACTUAL landing
