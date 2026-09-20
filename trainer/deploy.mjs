@@ -4,6 +4,7 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import policy from './policy.cjs';
 import actionPolicy from './action-policy.cjs';
+import strategicPolicy from './strategic-policy.cjs';
 const args={model:null,out:'OpenFront_Solo_AggroBot_Neural.user.js',
   source:'OpenFront_Solo_AggroBot.user.js'};
 for(let i=2;i<process.argv.length;i++){
@@ -14,7 +15,7 @@ for(let i=2;i<process.argv.length;i++){
 }
 if(!args.model)throw Error('Supply a confirmed champion using --model');
 const input=JSON.parse(fs.readFileSync(args.model,'utf8'));
-const chosen=input?.schema===2?actionPolicy:policy;
+const chosen=input?.schema===3?strategicPolicy:input?.schema===2?actionPolicy:policy;
 const model=chosen.validate(input);
 const source=path.resolve(args.source),out=path.resolve(args.out);
 if(source===out||out===path.resolve(args.model))throw Error('Refuse overwrite of source/model');
@@ -28,4 +29,4 @@ if(test.status!==0){
   fs.unlinkSync(out);throw Error('Generated userscript syntax failed: '+test.stderr);
 }
 console.log(JSON.stringify({out,modelSHA256:chosen.sha(model),
-  modelEnabledByDefault:false,syntax:'PASS'}));
+  modelEnabledByDefault:model.schema===3,syntax:'PASS'}));
