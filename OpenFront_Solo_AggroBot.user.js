@@ -1069,19 +1069,23 @@
         (window.elsewhere>=Math.max(500,window.home*.45) ||
          window.incomingOthers>=Math.max(500,window.home*.40));
       const since=exposed?(old?.exposedSince??tick):null;
-      const previous=old&&tick-old.tick>=75?{tick:old.tick,troops:old.troops,land:old.land}:
+      const resample=!old||tick-old.tick>=90;
+      const previous=old&&resample?{tick:old.tick,troops:old.troops,land:old.land}:
         old?.previous||null;
-      opponentHistory.set(id,{tick,troops,land,previous,exposedSince:since});
+      opponentHistory.set(id,{tick:resample?tick:old.tick,
+        troops:resample?troops:old.troops,
+        land:resample?land:old.land,previous,exposedSince:since,
+        observedTick:tick});
     }
     for(const [id,v] of opponentHistory)
-      if(tick-v.tick>360)opponentHistory.delete(id);
+      if(tick-v.observedTick>360)opponentHistory.delete(id);
     if(opponentHistory.size>64)
-      for(const [id] of [...opponentHistory].sort((a,b)=>a[1].tick-b[1].tick)
+      for(const [id] of [...opponentHistory].sort((a,b)=>a[1].observedTick-b[1].observedTick)
         .slice(0,opponentHistory.size-64))opponentHistory.delete(id);
   }
   function opponentTrend(enemy,tick=number(()=>game.ticks(),0)){
     const v=opponentHistory.get(safeID(enemy)),previous=v?.previous;
-    if(!v||tick-v.tick>120||!previous||
+    if(!v||tick-v.observedTick>120||!previous||
       v.tick-previous.tick<75||v.tick-previous.tick>360)
       return {valid:false,falling:false,growing:false,sustained:false,change:0,landChange:0};
     const change=(v.troops-previous.troops)/Math.max(1,previous.troops);
