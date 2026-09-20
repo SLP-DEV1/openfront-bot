@@ -2,7 +2,7 @@
 
 Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscript für [OpenFront](https://openfront.io/).
 
-**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.10.9**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
+**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.10.10**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
 
 ## Installation
 
@@ -15,7 +15,16 @@ Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscr
 
 ## Strategie & Diagnose
 
-Strategie-, Wirtschafts-, Marine-, Diplomatie-, Nuke- und SAM-Planung sind vorhanden. Der Bot kann Befehle senden; daraus folgt **keine garantierte Gewinnrate auf „Unmöglich“**. Ein vollständiger Live-Test ist noch nicht erfolgt. „Diagnose JSON“ im Bot-Menü zeichnet unter anderem Gebietsänderungen, Truppenlage, Bauaufträge und Allianzantworten auf. Bitte den Export vor dem Neuladen erstellen.
+Strategie-, Wirtschafts-, Marine-, Diplomatie-, Nuke- und SAM-Planung sind vorhanden. Der Bot kann Befehle senden; daraus folgt **keine garantierte Gewinnrate auf „Unmöglich“**. Ein echter Public-Team-Lauf liegt vor; für eine belastbare Gewinnrate und weitere Karten-/Moduspfade reicht ein einzelnes Match nicht. „Diagnose JSON“ im Bot-Menü zeichnet unter anderem Gebietsänderungen, Truppenlage, Bauaufträge und Allianzantworten auf. Bitte den Export vor dem Neuladen erstellen.
+
+### Änderung 1.10.10 – Befunde aus einem echten Public-Team-Match
+
+- **Umgeleitete Landungen erkannt:** OpenFront verschiebt ein angeklicktes Inland-Ziel intern auf eine erreichbare Küste. Der Bot bestätigt einen neuen eigenen Transport deshalb nun anhand seiner ID, speichert dessen tatsächliches `targetTile` und prüft die Landung dort statt am ursprünglichen Inland-Ziel.
+- **Eine Marinefront statt Zielroulette:** Eine bestätigte Spielerlandung wird als Hauptkriegsziel gebunden. Ohne bestehende Front werden nur 30 % der Heimtruppen beziehungsweise 36 % der verfügbaren Reserve eingesetzt; nach unbestätigten oder gescheiterten Landungen gilt zusätzlich eine globale Pause.
+- **Küstenziele bevorzugt:** Vor Spawn- und Gebäudepunkten werden die tatsächlichen Küsten-Grenzfelder des Gegners geprüft. Der Worker bleibt die letzte Instanz für die Erreichbarkeit.
+- **Hafensuche rotiert:** Fehlgeschlagene Workerprüfungen wiederholen nicht mehr nur dieselben bestbewerteten Küstenpunkte, sondern wandern durch die Kandidatenliste.
+- **Siegerereignis gepuffert:** Das kurzlebige `SendWinnerEvent` wird während des Spiels gespeichert. Der Diagnoseexport kann Sieg oder Niederlage damit auch dann bestimmen, wenn `updatesSinceLastTick()` beim späteren `gameOver()`-Check bereits den nächsten Tick enthält.
+- **Live-Befund:** Im Russland/Normal/Public/Team-Mitschnitt wurden strategischer Spawn, 22/22 bestätigte Angriffe, neun Gebäude/Upgrades und 3/3 Raketenstarts beobachtet. Die alte Marineauswertung meldete dagegen nur 5/22 Transporte sichtbar und keine bestätigte Landung; genau dieser Pfad wurde korrigiert. Ein weiterer Live-Lauf mit 1.10.10 ist für die Bestätigung nötig.
 
 ### Änderung 1.10.9 – echte Match-Tests und daraus bestätigte Fehlerbehebungen
 
