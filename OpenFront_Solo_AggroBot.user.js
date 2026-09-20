@@ -3075,6 +3075,30 @@
   // Bounded rotating grid: seek actual unowned LAND shore tiles on islands.
   // The worker validates water access and the real Transport deployment.
   // A sample may miss a tiny island this pass; successive calls rotate phase.
+  // Bounded island-size estimate from the client-visible terrain. Never infer
+  // a large beachhead merely from one reachable coastal tile.
+  function neutralIslandEstimate(tile,limit=1800){
+    if(typeof game?.neighbors4!=='function')return null;
+    const pending=[tile],seen=new Set([tile]);let counted=0,hadNeighbors=false;
+    while(pending.length&&counted<limit){
+      const cur=pending.pop();
+      if(!game.isLand(cur)||game.isImpassable?.(cur)||
+        game.hasFallout?.(cur)||safeID(game.owner(cur))!==null)continue;
+      counted++;
+      const adjacent=[];
+      const n=game.neighbors4(cur,adjacent)||0;
+      if(n>0)hadNeighbors=true;
+      for(let i=0;i<n;i++){
+        const next=adjacent[i];
+        if(!Number.isInteger(next)||seen.has(next))continue;
+        seen.add(next);
+        if(game.isLand(next)&&!game.isImpassable?.(next)&&
+          !game.hasFallout?.(next)&&safeID(game.owner(next))===null)
+          pending.push(next);
+      }
+    }
+    return hadNeighbors?counted:null;
+  }
   function neutralNavalCandidates(me,limit=12){
     if(!game.isShore||!game.width||!game.height)return [];
     const w=game.width(),h=game.height();
@@ -3173,7 +3197,10 @@
         const committedWar=isWar()&&warState.id===safeID(current);
         const amount=Math.floor(Math.min(fresh.available*(committedWar ? .60 : .36),
           fresh.home*(committedWar ? .58 : .30)));
-        if(amount<1000 || fresh.home-amount<fresh.reserve)continue;
+        // Having a large spare army is not sufficient: the ACTUAL landing
+        // contingent must plausibly beat the enemy's fresh home force.
+        if(amount<1000||amount<number(()=>current.troops(),Infinity)*
+          (hardMode()?1.05:.85) || fresh.home-amount<fresh.reserve)continue;
         if(sendMarineTransport(me,dest,amount,
           tick,'LANDUNG → '+nameOf(current),'player:'+safeID(current)))return true;
       }
@@ -3202,7 +3229,15 @@
         }
         if(!game.config().infiniteGold?.() &&
           Number(me.gold())<Number(ship.cost))continue;
-        const amount=Math.floor(Math.min(spare*.32,navyState.home*.16));
+        const area=neutralIslandEstimate(dest);
+        if(area!==null&&area<24){
+          navalSiteNegative.set(dest,tick+480);
+          continue;
+        }
+        // Small islands need scouting-size contingents, not six-figure stacks.
+        const areaBudget=area===null?navyState.home*.10:
+          Math.max(1300,area*35);
+        const amount=Math.floor(Math.min(spare*.32,navyState.home*.16,areaBudget));
         if(amount<1000 || navyState.home-amount<navyState.reserve)continue;
         if(sendMarineTransport(me,dest,amount,tick,
           'INSEL-EXPANSION → neutrales Küstenland','neutral:'+dest)){
