@@ -12,6 +12,9 @@ Start: `node brain/server.cjs`, Token aus der Terminalausgabe im Tampermonkey-Pa
 
 [Einrichtung, Sicherheit und Trainingsbefehle](docs/BRAIN.md) · [Bestehendes Browser-Lernen](docs/LEARNING.md)
 
+**Optionale Qwen-Beratung:** Der lokale Brain kann dein bestehendes llama.cpp unter `127.0.0.1:8080` mit Modell-Alias `qwen38-27b-gsq-mtp` verwenden. Qwen wird ausschließlich bei Stagnation und zum Spielende für validierte, gespeicherte Strategievorschläge im **Shadow-Modus** aufgerufen; keine direkten Spielaktionen oder ungetestete Strategieübernahme. Im Brain-Terminal vor `node brain/server.cjs`: `$env:AGGROBOT_QWEN_ENABLED="1"`; optional `$env:AGGROBOT_QWEN_API_KEY="local"`. Details und Status-Abfrage stehen in [BRAIN.md](docs/BRAIN.md).
+
+
 ## Installation
 
 1. In Tampermonkey ein **neues Skript** erstellen und den gesamten Inhalt von `OpenFront_Solo_AggroBot.user.js` einfügen. In einem privaten GitHub-Repository darf man sich nicht darauf verlassen, dass Tampermonkey einen GitHub-Raw-Link ohne Anmeldung automatisch aktualisieren kann.

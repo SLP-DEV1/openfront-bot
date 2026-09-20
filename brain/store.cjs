@@ -21,6 +21,28 @@ function makeStore(filename=':memory:'){
   );
   CREATE INDEX IF NOT EXISTS ix_experience_context ON experiences(context);
   CREATE INDEX IF NOT EXISTS ix_experience_match ON experiences(match_id);`);
+  db.exec(`CREATE TABLE IF NOT EXISTS qwen_advice (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,match_id TEXT NOT NULL,tick INTEGER NOT NULL,
+    kind TEXT NOT NULL,strategy TEXT NOT NULL,reason_code TEXT NOT NULL,
+    explanation TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS ix_qwen_match ON qwen_advice(match_id,tick);`);
+  const insertQwen=db.prepare(`INSERT INTO qwen_advice
+    (match_id,tick,kind,strategy,reason_code,explanation) VALUES(?,?,?,?,?,?)`);
+  const recentQwen=db.prepare(`SELECT match_id AS matchId,tick,kind,strategy,
+    reason_code AS reasonCode,explanation,created_at AS createdAt
+    FROM qwen_advice ORDER BY id DESC LIMIT 20`);
+  function saveQwenAdvice(entry){
+    if(!entry||!/^([A-Za-z0-9_-]{8,96})$/.test(entry.matchId||'')||
+      !Number.isSafeInteger(entry.tick)||entry.tick<0||
+      !['stagnation','postmatch'].includes(entry.kind)||
+      !['HOLD','EXPAND','ECONOMY','DEFEND','NAVAL','TECH','REPOSITION'].includes(entry.strategy)||
+      !['STAGNATION','THREAT','RESOURCE','EXPANSION','ENDGAME','OTHER'].includes(entry.reasonCode)||
+      typeof entry.explanation!=='string'||entry.explanation.length<3||entry.explanation.length>360)
+      throw new TypeError('Invalid Qwen shadow advice');
+    insertQwen.run(entry.matchId,entry.tick,entry.kind,entry.strategy,
+      entry.reasonCode,entry.explanation);
+  }
   const findSession=db.prepare('SELECT * FROM sessions WHERE match_id=?');
   const upsert=db.prepare(`INSERT INTO sessions(match_id,last_seq,last_tick,land,home,max_troops,context)
     VALUES(?,?,?,?,?,?,?)
@@ -79,6 +101,6 @@ function makeStore(filename=':memory:'){
       finished:db.prepare('SELECT outcome,COUNT(*) AS count FROM sessions WHERE finished=1 GROUP BY outcome').all(),
       contexts:db.prepare('SELECT context,samples,mean FROM context_stats ORDER BY context').all()};
   }
-  return {db,observe,finish,report,hasMatch:id=>!!findSession.get(id),close:()=>db.close()};
+  return {db,observe,finish,report,saveQwenAdvice,recentQwen:()=>recentQwen.all(),hasMatch:id=>!!findSession.get(id),close:()=>db.close()};
 }
 module.exports={makeStore};
