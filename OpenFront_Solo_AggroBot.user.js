@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.17.1
+// @version      1.17.2
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.17.1', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.17.2', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, brainEnabled:false, brainToken:'', fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -2279,7 +2279,7 @@
       portProbeFailures=0;lastPortRetryTick=nowTick;
     }
     const coastSites=ports===0&&opts.boats?
-      portCoastalAnchors(me,tiles,number(()=>game.ticks(),0),8):[];
+      portCoastalAnchors(me,tiles,nowTick,24):[];
     const portMilestone=!!(opts.boats&&portEnabled&&ports===0&&!startup&&
       coastSites.length&&portProbeFailures<8);
     const basic=(cityEnabled&&cities<2)||(factoryEnabled&&factories<2);
@@ -2297,8 +2297,12 @@
     const intel=nuclearIntel(me,units);
     const enemySilos=intel.enemySilos.length,enemyNukes=intel.incomingNukes.length;
     const late=lateGame(me),siloCount=count('Missile Silo');
-    const proactiveSAM=!basic&&late&&hostileFronts>0&&
-      intel.assets.length>=3&&intel.uncovered.length>0&&gold>=700000;
+    // Begin anti-nuclear coverage before the late game, especially when a
+    // nearby opponent has a silo; keep the first City/Factory affordable.
+    const proactiveSAM=!basic&&intel.uncovered.length>0&&
+      intel.assets.length>=2&&gold>=350000&&
+      troopSnapshot.incoming<troops*.10&&
+      (hostileFronts>0||late);
     const threat=!!(enemySilos||enemyNukes);
     const wantedSAM=opts.antiNuke&&game.config().isUnitDisabled?.('SAM Launcher')!==true?
       Math.min(7,threat?Math.max(1,Math.ceil(intel.assets.length/3)+
@@ -2323,11 +2327,11 @@
           (gold<450000?15:0)+(pressure<.60&&factories>0?10:0)+
           (factories<2&&cities>=2?24:0)-
           (incomeStatus.observed&&incomeStatus.train===0&&factories>=2?26:0)},
-      {type:'Port',desired:wantedPort,score:portMilestone?390:
+      {type:'Port',desired:wantedPort,score:portMilestone?430:
         59+(neural?.portPriority||0)*90+econBoost/2+(posture==='breakout'?115:0)+(ports===0&&wantedPort?12:0)+
         (incomeStatus.observed&&incomeStatus.trade===0&&ports===0?35:0)+(ports<2&&coastSites.length?22:0)},
       {type:'Defense Post',desired:wantedDefense,score:immediate?310+defBoost:threatened?(basic?36:77)+(neural?.defensePriority||0)*90+defBoost+(posture==='defensive'?24:0):20},
-      {type:'SAM Launcher',desired:wantedSAM,score:enemyNukes?210+defBoost:threat?151+defBoost:proactiveSAM?118:40},
+      {type:'SAM Launcher',desired:wantedSAM,score:enemyNukes?510+defBoost:threat?465+defBoost:proactiveSAM?295+defBoost:40},
       {type:'Missile Silo',desired:wantedSilo,score:siloCount===0?305:opts.nukes?(late?131:94)+(neural?.nuclearPriority||0)*75+(gold>6000000?13:0):0}
     ];
     const value=list.filter(x=>x.desired>count(x.type)).map(x=>({...x,count:count(x.type),
@@ -2350,8 +2354,11 @@
     const firstRocketFund=game.config().isUnitDisabled?.('Atom Bomb')===true?
       (game.config().isUnitDisabled?.('Hydrogen Bomb')===true?
         (game.config().isUnitDisabled?.('MIRV')===true?0:26000000):6400000):1100000;
-    const savingsTarget=portMilestone?0:saveForSilo?1150000:saveForNuke?firstRocketFund:0;
-    investmentStatus=startup?'Erste Stadt/Fabrik':portMilestone?'Hafen vor Silo':basic?'Zwei Städte und zwei Fabriken':
+    const savingsTarget=portMilestone|| (threat&&intel.uncovered.length>0&&wantedSAM>0)?0:
+      saveForSilo?1150000:saveForNuke?firstRocketFund:0;
+    investmentStatus=startup?'Erste Stadt/Fabrik':
+      threat&&intel.uncovered.length>0&&wantedSAM>0?'SAM-Schutz vor Raketenfonds':
+      portMilestone?'Hafen vor Silo':basic?'Zwei Städte und zwei Fabriken':
       saveForSilo?'Silo-Fonds 1,15 Mio.':saveForNuke?'Raketen-Fonds '+firstRocketFund.toLocaleString():'Wirtschaft & Offensive';
     return {list:value,threatened,gold,cities,factories,mine,pressure,nuclearThreat:threat,incomingNukes:enemyNukes,intel,
       startup,basic,emergency,immediate,savingsTarget,saveForSilo,saveForNuke,siloCount,
@@ -2482,9 +2489,11 @@
     let value=priority;
     if(type==='Defense Post'){
       const range=number(()=>game.config().defensePostRange?.(),30);
-      // A post protects WITHIN its range; 32 cells was outside the 30-cell circle.
+      // A post must finish construction BEHIND the frontier while still
+      // protecting it. With an incoming attack, move the safe band deeper.
+      const standoff=range*(troopSnapshot.incoming>0?.78:.65);
+      if(fronts.length && (distance<standoff || distance>range-2))return -Infinity;
       if(!fronts.length)value-=75;
-      else if(distance>range-3)value-=95+(distance-range)*3;
       else {
         let covered=0,uncovered=0;
         const x=game.x(ref),y=game.y(ref);
@@ -2495,17 +2504,22 @@
             return (fx-px)**2+(fy-py)**2<=range**2;}))covered++;
           else uncovered++;
         }
-        value+=Math.min(95,uncovered*8)+Math.min(12,covered)-Math.abs(distance-range*.55)*.55;
+        value+=Math.min(95,uncovered*8)+Math.min(12,covered)-Math.abs(distance-range*.86)*1.4;
         if(uncovered===0)value-=75;
       }
     }
     else if(type==='SAM Launcher'){
-      // Overlapping bubbles waste gold; protect multiple high-value assets with one SAM.
+      // SAMs belong near protected assets, but not where an advancing army
+      // can capture them before the launcher is finished.
+      if(fronts.length && distance<Math.max(34,number(()=>game.config().samRange?.(1),70)*.52))return -Infinity;
       const intel=nuclearIntel(myPlayer(),units);
-      value+=samCoverageValue(ref,units,intel)+Math.min(10,distance*.05);
+      const coverage=samCoverageValue(ref,units,intel);
+      if(intel.uncovered.length && coverage<=0)return -Infinity;
+      value+=coverage*1.8+Math.min(10,distance*.05);
     }
     else {
-      value+=Number.isFinite(distance)?Math.min(38,distance*.18)-Math.max(0,60-distance)*1.05:25;
+      if(fronts.length && distance<(troopSnapshot.incoming>0?34:20))return -Infinity;
+      value+=Number.isFinite(distance)?Math.min(50,distance*.24)-Math.max(0,80-distance)*1.2:30;
       if(['City','Factory','Port'].includes(type))value+=railStationScore(ref,units).score;
       if(type==='Factory'){
         // Favor nearby City/Port infrastructure without assuming rail connectivity.
@@ -2544,7 +2558,7 @@
     }
     // Do not waste worker queries or count failed builds while deliberately
     // accumulating funds for the first silo / first atomic strike.
-    if(requirements.savingsTarget>0 && !requirements.immediate && requirements.incomingNukes===0 &&
+    if(requirements.savingsTarget>0 && !requirements.immediate && !requirements.nuclearThreat &&
       !game.config().infiniteGold?.() && requirements.gold<requirements.savingsTarget){
       economicStatus='Spare: '+investmentStatus+' ('+Math.floor(requirements.gold).toLocaleString()+
         '/'+requirements.savingsTarget.toLocaleString()+' Gold)';
@@ -2570,11 +2584,15 @@
         }
       }
     }
-    // Incoming attacks can originate from a front not visible in the current
-    // sampled border batch; treat the border as provisional defense frontier.
-    if(!fronts.length&&requirements.threatened&&tiles?.length){
-      const stride=Math.max(1,Math.floor(tiles.length/60));
-      for(let i=0;i<tiles.length&&fronts.length<60;i+=stride)fronts.push(tiles[i]);
+    // Supplement sparse sampled border cells with observed hostile target
+    // tiles; never mistake an arbitrary friendly border for an enemy front.
+    for(const group of strategic.groups){
+      if(fronts.length>=180)break;
+      if(group.id===null || !group.opponent?.isAlive?.()||friendly(group.opponent,me))continue;
+      for(const tile of group.tiles||[]){
+        if(fronts.length>=180)break;
+        if(safeID(game.owner(tile))===safeID(group.opponent))fronts.push(tile);
+      }
     }
     const rankedAnchors=anchors.map(ref=>({ref,coast:shoreNear(ref),dist:frontDistance(ref,fronts)}));
     const rankedCoast=coastal.map(ref=>({
@@ -2596,9 +2614,12 @@
       valid.sort((a,b)=>score(entry,b)-score(entry,a));
       let ordered=valid;
       if(entry.type==='Port'&&!entry.upgrade&&valid.length>1){
-        const offset=buildCursor%valid.length;
-        ordered=valid.slice(offset).concat(valid.slice(0,offset));
-        buildCursor=(buildCursor+(recovery?5:3))%valid.length;
+        // Rotate only within highly scored coast sites. Old full-list rotation
+        // routinely preferred exposed or disconnected sites to safe harbors.
+        const best=valid.slice(0,Math.min(valid.length,recovery?18:12));
+        const offset=buildCursor%best.length;
+        ordered=best.slice(offset).concat(best.slice(0,offset));
+        buildCursor=(buildCursor+(recovery?5:3))%best.length;
       }
       for(const site of ordered.slice(0,entry.upgrade?4:recovery?12:6))slots.push({entry,site});
     }
@@ -2618,14 +2639,19 @@
       seen.add(key);work.push(slot);
       perKind.set(kind,(perKind.get(kind)||0)+1);
     }
-    // A first-port milestone gets a dedicated legal search even if cheaper
-    // City/Factory sites happen to rank above the few usable coastal anchors.
+    // The first harbor receives a dedicated, scored coast search; do not
+    // spend the probe budget on irrelevant upgrades during that milestone.
+    if(requirements.portMilestone){
+      const portWork=work.filter(x=>x.entry.type==='Port'&&!x.entry.upgrade);
+      if(portWork.length)work.splice(0,work.length,...portWork);
+    }
     if(requirements.portMilestone && coastal.length &&
       !work.some(x=>x.entry.type==='Port'&&!x.entry.upgrade)){
       const portEntry=entries.find(x=>x.type==='Port'&&!x.upgrade);
-      const portSite=portEntry&&coastal.find(x=>
-        (economicNegative.get('Port:false:'+x)??0)<=tick);
-      if(Number.isInteger(portSite))work.unshift({entry:portEntry,site:{ref:portSite,coast:true,dist:Infinity}});
+      const portSite=portEntry&&rankedCoast.filter(x=>
+        (economicNegative.get('Port:false:'+x.ref)??0)<=tick)
+        .sort((a,b)=>score(portEntry,b)-score(portEntry,a))[0];
+      if(portSite)work.unshift({entry:portEntry,site:portSite});
     }
     // Worker probes stay bounded; record individual negative site/type checks.
     for(let offset=0;offset<work.length;offset+=3){
@@ -2671,7 +2697,7 @@
           const essential=(item.type==='City'&&requirements.cities===0)||
             (item.type==='Factory'&&requirements.factories===0)||
             (item.type==='Defense Post'&&requirements.immediate)||
-            (item.type==='SAM Launcher'&&requirements.incomingNukes>0)||
+            (item.type==='SAM Launcher'&&requirements.nuclearThreat)||
             (item.type==='Missile Silo'&&opts.nukes&&lateGame(me));
           const economicCore=item.type==='City'||item.type==='Factory';
           // Fund the first economic structures before buying defensive posts,
@@ -2679,14 +2705,14 @@
           if(requirements.startup && (!economicCore || isUpgrade) && !essential)continue;
           if(requirements.portMilestone&&!requirements.immediate&&
             item.type!=='Port' &&
-            !(item.type==='SAM Launcher'&&requirements.incomingNukes>0))
+            !(item.type==='SAM Launcher'&&requirements.nuclearThreat))
             continue;
           if(item.type==='Defense Post' && !requirements.immediate &&
             !requirements.incomingNukes && requirements.basic)continue;
           // While saving for a silo / first atomic strike, do not repeatedly
           // spend the whole treasury on expandable city/factory goals.
           if(!infinite && requirements.savingsTarget>0 && !requirements.immediate &&
-            !(item.type==='SAM Launcher'&&requirements.incomingNukes>0) &&
+            !(item.type==='SAM Launcher'&&requirements.nuclearThreat) &&
             !(item.type==='Defense Post'&&requirements.immediate) &&
             !(item.type==='Missile Silo'&&requirements.saveForSilo) &&
             gold-cost<requirements.savingsTarget)continue;

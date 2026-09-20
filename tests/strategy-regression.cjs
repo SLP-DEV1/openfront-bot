@@ -2037,6 +2037,50 @@ function boot(benchmarkOptions={}) {
     assert(queries.has(x.sent[0].tile),'intent keeps the original queried tile');
     assert.equal(x.b.state().economicPending.tile,x.sent[0].tile+1);
   });
+  await check('v1.17.2 first harbor chooses a safe coast rather than exposed frontline', async () => {
+    const x=boot();x.setTick(300);x.setGold(500000);
+    x.game.isShore=t=>t===5500||t===5560;
+    x.game.owner=t=>t===5501?x.weak:x.me;
+    x.game.neighbors4=(t,out)=>{if(t===5500){out.push(5501);return 1;}return 0;};
+    x.me.units=()=>['City','Factory'].map((type,i)=>({
+      type:()=>type,isActive:()=>true,tile:()=>5000+i*20,id:()=>i+1,level:()=>1}));
+    x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
+      type,canBuild:tile,canUpgrade:false,cost:125000n}))});
+    const plan=x.b.economicNeeds(x.me,x.me.units(),[5500,5560]);
+    assert.equal(plan.portMilestone,true);
+    assert.equal(await x.b.economy(x.me,300,0,[5500,5560]),true);
+    assert.equal(x.sent[0].unit,'Port');
+    assert(Math.hypot(x.game.x(x.sent[0].tile)-x.game.x(5501),
+      x.game.y(x.sent[0].tile)-x.game.y(5501))>=20,
+      'Port must be behind the active hostile frontier');
+  });
+  await check('v1.17.2 silo threat funds and prioritizes uncovered SAM before our silo', async () => {
+    const x=boot();x.setTick(2400);x.setGold(900000);x.setLand(52000);
+    const units=['City','Factory'].map((type,i)=>({
+      type:()=>type,isActive:()=>true,tile:()=>5000+i*20,
+      id:()=>i+1,level:()=>1}));
+    x.me.units=()=>units;
+    x.game.units=()=>[{type:()=> 'Missile Silo',isActive:()=>true,
+      owner:()=>x.weak,tile:()=>6}];
+    x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
+      type,canBuild:tile,canUpgrade:false,cost:200000n}))});
+    const plan=x.b.economicNeeds(x.me,units,[]);
+    assert.equal(plan.nuclearThreat,true);
+    assert.equal(plan.savingsTarget,0,'anti-nuke must bypass silo saving');
+    assert(plan.list.some(e=>e.type==='SAM Launcher'));
+    assert.equal(await x.b.economy(x.me,2400,0,[]),true);
+    assert.equal(x.sent[0].unit,'SAM Launcher');
+  });
+  await check('v1.17.2 posts need a rear standoff yet stay within defense range', () => {
+    const x=boot(),front=[5500];x.game.config().defensePostRange=()=>30;
+    x.b.setTroopSnapshot({home:90000,max:100000,ratio:.9,incoming:45000,
+      strongest:50000,committed:0,reserve:0,available:20000});
+    assert.equal(x.b.siteScore('Defense Post',5505,front,[],310,false),-Infinity);
+    assert(Number.isFinite(x.b.siteScore('Defense Post',5525,front,[],310,false)));
+    assert.equal(x.b.siteScore('Defense Post',5540,front,[],310,false),-Infinity);
+    assert.equal(x.b.siteScore('SAM Launcher',5525,front,[],465,false),-Infinity);
+    assert.equal(x.b.siteScore('Factory',5505,front,[],92,false),-Infinity);
+  });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
 })();
