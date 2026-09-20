@@ -71,7 +71,7 @@ function boot(benchmarkOptions={}) {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'strategicDirector,economyPosture,observeOpponents,opponentTrend,navalCommitmentRatio,landingThirdPartyRisk,targetHomeRatio,railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,frontPressureForecast,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,offensiveCommitment,globalNavalHomeGuard,observeFronts,qwenStrategyHint,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,samBuildAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
+    'strategicDirector,economyPosture,observeOpponents,opponentTrend,navalCommitmentRatio,landingThirdPartyRisk,targetHomeRatio,matchContext,railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,frontPressureForecast,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,offensiveCommitment,globalNavalHomeGuard,observeFronts,qwenStrategyHint,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,samBuildAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'setNeural:m=>{neuralModel=neuralValidate(m);opts.neuralEnabled=!!neuralModel;neuralPolicyCache={key:null,output:null};},neuralStrategicSignals,neuralChannel,',
     'getBrainMatchId:()=>brainMatchId,setQwen:q=>{brainState.qwen=q;},',
@@ -2303,6 +2303,38 @@ function boot(benchmarkOptions={}) {
       'unproven Impossible restriction is opt-in');
     x.b.opts.impossibleExperiment=true;
     assert(x.b.globalNavalHomeGuard(x.me,x.weak,s,950000,[]).amount<950000);
+  });
+  await check('v1.18.3 Public Medium remembers visible human fronts independent of Nation difficulty', () => {
+    const x=boot();
+    x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Medium',gameMode:'FFA'});
+    x.strong.clientID=()=> 'human-strong';
+    x.b.setGroups([{id:'strong',opponent:x.strong,tiles:[6]}]);
+    x.b.observeFronts(x.me,[{id:'strong',opponent:x.strong,tiles:[6]}],300);
+    x.setHome(100000);
+    x.strong.troops=()=>90000;
+    const s=x.b.military(x.me,[]);
+    assert(s.strongest>=64800,
+      'recent Public human front must remain in home-risk snapshot after border scan disappears');
+    const c=x.b.matchContext(x.me);
+    assert.equal(c.multiplayer,true);
+    assert.equal(c.hostileHumans>=1,true);
+  });
+  await check('v1.18.3 Public Medium pressure forecast reserves troops only on observed pressure', () => {
+    const x=boot();
+    x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Medium',gameMode:'FFA'});
+    x.strong.clientID=()=> 'human-strong';
+    x.setHome(100000);x.strong.troops=()=>120000;
+    const groups=[{id:'strong',opponent:x.strong,tiles:[6]}];
+    x.b.observeFronts(x.me,groups,300);
+    x.b.setTroopSnapshot({home:100000,max:100000,committed:0,incoming:0,strongest:120000,
+      ratio:1,reserve:35000,available:65000,out:[],inc:[],activeEnemy:0,activeNeutral:0});
+    const p=x.b.frontPressureForecast(x.me,groups,300);
+    assert.equal(p.pressured,false,'peaceful adjacency alone must not trigger pressure forecast');
+    x.me.incomingAttacks=()=>[{troops:16000,retreating:false}];
+    const q=x.b.frontPressureForecast(x.me,groups,320);
+    assert.equal(q.pressured,true);
+    const s=x.b.military(x.me,groups);
+    assert(s.reserve>=Math.ceil(Math.min(88000,q.combined*.52+16000*.30)));
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
