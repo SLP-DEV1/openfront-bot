@@ -1105,6 +1105,22 @@ function boot(benchmarkOptions={}) {
     x.game.updatesSinceLastTick=()=>null;
     assert.equal(x.b.gameOutcome(x.game,x.me).outcome,'unknown');
   });
+  await check('v1.10.10 winner event survives the final-tick update window', () => {
+    const x=boot();
+    class SendWinnerEvent{constructor(winner,allPlayersStats){
+      this.winner=winner;this.allPlayersStats=allPlayersStats;
+    }}
+    const listeners=new Map(),eventBus={listeners,
+      on(C,fn){if(!listeners.has(C))listeners.set(C,[]);listeners.get(C).push(fn);},
+      off(C,fn){const list=listeners.get(C)||[];const i=list.indexOf(fn);if(i>=0)list.splice(i,1);},
+      emit(event){for(const fn of listeners.get(event.constructor)||[])fn(event);}};
+    eventBus.on(SendWinnerEvent,()=>{});
+    x.b.reset(x.game,eventBus);x.b.opts.enabled=true;
+    x.game.updatesSinceLastTick=()=>null;
+    eventBus.emit(new SendWinnerEvent(['team','blue','client-me'],{}));
+    assert.equal(x.b.gameOutcome(x.game,x.me).outcome,'victory');
+    assert(x.b.state().diagnostics.some(e=>e.kind==='winner_observed'));
+  });
   function spawnFixture(x,tick=20){
     x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Medium',gameMode:'FFA'});
     x.game.config().numSpawnPhaseTurns=()=>200;
@@ -1291,6 +1307,24 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.b.economicNeeds(x.me,units,[5500]).portMilestone,false);
     assert.equal(x.b.economicNeeds(x.me,units,[5500]).savingsTarget,1150000);
   });
+  await check('v1.10.10 Port probes rotate across different coastal anchors', async () => {
+    const x=boot();x.setTick(2400);x.setLand(52000);x.setGold(900000);
+    x.game.isShore=()=>true;
+    const units=['City','City','Factory','Factory'].map((type,i)=>({
+      type:()=>type,isActive:()=>true,tile:()=>5000+i*20,
+      id:()=>i+1,level:()=>1}));
+    x.me.units=()=>units;
+    const queried=[];
+    x.me.actions=async(tile,types)=>{if(types?.includes('Port'))queried.push(tile);
+      return {buildableUnits:[]};};
+    const coast=Array.from({length:18},(_,i)=>5400+i*11);
+    for(let k=0;k<3;k++){
+      x.setTick(2400+k*22);
+      await x.b.economy(x.me,2400+k*22,0,coast);
+    }
+    assert(new Set(queried).size>5,
+      `expected rotating Port probes, got ${new Set(queried).size}`);
+  });
   await check('v1.10.5 own Port is confirmed from actual unit view', async () => {
     const x=boot();x.setTick(300);x.setGold(500000);x.game.isShore=t=>t===5500;
     const city={type:()=> 'City',isActive:()=>true,tile:()=>5000};
@@ -1361,6 +1395,35 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.b.state().marineStats.transportArrived,0);
     assert.equal(await x.b.naval(x.me,500,0),false,
       'target cooldown prevents blind 100-tick retry');
+  });
+  await check('v1.10.10 redirected coastal Transport is confirmed and tracked', () => {
+    const x=boot();
+    class Boat{constructor(dst,troops){this.dst=dst;this.troops=troops;}}
+    x.b.setBoatCtor(Boat);
+    assert.equal(x.b.sendMarineTransport(x.me,6,12000,300,
+      'LANDUNG → strong','player:strong'),true);
+    x.game.ownerID=t=>t===42?3:1;
+    x.game.units=()=>[{id:()=>91,type:()=> 'Transport',owner:()=>x.me,
+      targetTile:()=>42,isActive:()=>true}];
+    x.b.inspectMarine(x.me,310);
+    assert.equal(x.b.state().marineStats.transportConfirmed,1);
+    assert.equal(x.b.state().pendingBoat.resolvedDest,42);
+    assert.equal(x.b.state().warState.id,'strong');
+    x.game.ownerID=()=>1;
+    x.b.inspectMarine(x.me,320);
+    assert.equal(x.b.state().marineStats.transportArrived,1);
+  });
+  await check('v1.10.10 naval planner prefers observed enemy coast over inland spawn', async () => {
+    const x=boot();x.b.setWar('strong','strong');x.strong.troops=()=>5000;
+    x.b.setGroups([{id:'strong',opponent:x.strong}]);
+    x.strong.borderTiles=async()=>({borderTiles:new Set([42])});
+    x.game.owner=t=>t===42?x.strong:x.me;
+    x.game.isShore=t=>t===42;
+    x.me.actions=async()=>({buildableUnits:[{type:'Transport',canBuild:1,cost:0n}]});
+    class Boat{constructor(dst,troops){this.dst=dst;this.troops=troops;}}
+    x.b.setBoatCtor(Boat);
+    assert.equal(await x.b.naval(x.me,300,0),true);
+    assert.equal(x.sent[0].dst,42);
   });
   await check('issue #16: numeric smallIDs resolve to PlayerID strings; neutral stays neutral', () => {
     const x=boot();
@@ -1700,4 +1763,3 @@ function boot(benchmarkOptions={}) {
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
 })();
-
