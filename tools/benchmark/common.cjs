@@ -7,15 +7,22 @@ const ENGINE_COMMIT='13b403387af01d388f8c8ed8c953b6d3a11d1457';
 const IMPOSSIBLE_REFERENCE_COMMIT='bb8af015b515b3b717bd4d901074c5f4c16641cb';
 function parse(argv){
   const out={engine:null,map:'World',size:'Compact',difficulty:'Medium',bots:40,nations:8,
-    seed:'aggro-train-001',ticks:18000,out:null,profile:'autonomous',bot:null,policy:null,port:5173,engineCommit:ENGINE_COMMIT};
+    seed:'aggro-train-001',ticks:18000,out:null,profile:'autonomous',bot:null,policy:null,
+    port:5173,engineCommit:ENGINE_COMMIT,gameType:'Singleplayer',gameMode:'FFA',
+    scriptedHumans:0,opponentProfile:'balanced'};
   for(let i=0;i<argv.length;i++){
     const key=argv[i].replace(/^--/,'');
     if(!argv[i].startsWith('--')||!Object.hasOwn(out,key))throw Error('Unknown option '+argv[i]);
     if(!argv[i+1]||argv[i+1].startsWith('--'))throw Error('Missing value for '+argv[i]);
     const value=argv[++i];out[key]=typeof out[key]==='number'?Number(value):value;
   }
-  for(const [key,min,max] of [['ticks',1,72000],['bots',0,400],['nations',0,100],['port',1024,65535]])
+  for(const [key,min,max] of [['ticks',1,72000],['bots',0,400],['nations',0,100],
+    ['port',1024,65535],['scriptedHumans',0,12]])
     if(!Number.isInteger(out[key])||out[key]<min||out[key]>max)throw Error('Invalid '+key);
+  if(!['Singleplayer','Public','Private'].includes(out.gameType))throw Error('Invalid gameType');
+  if(!['FFA','Team'].includes(out.gameMode))throw Error('Invalid gameMode');
+  if(!['rush','balanced','defender','opportunist','mixed'].includes(out.opponentProfile))
+    throw Error('Invalid opponentProfile');
   if(!out.engine)throw Error('--engine /path/to/OpenFrontIO is required');
   if(!/^[a-f0-9]{40}$/.test(out.engineCommit))throw Error('Invalid --engineCommit SHA');
   if(!/^[a-zA-Z0-9_-]{1,64}$/.test(out.seed))throw Error('Seed must contain 1–64 letters, digits, _ or -');
