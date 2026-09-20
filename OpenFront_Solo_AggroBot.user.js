@@ -1435,7 +1435,8 @@
     if(rebuilding){wanted='RECOVER';reason='Truppenverlust oder geringe Reserve';}
     else if(coolingDown){wanted='RECOVER';reason='Nach Großangriff Heimatarmee stabilisieren';}
     else if(danger&&seriousAttack){wanted='DEFEND';reason='Erhebliche eingehende Angriffe';}
-    else if(danger&&s.strongest>s.home*1.08 && !weak.length){
+    else if(danger&&s.strongest>s.home*1.08 && !weak.length &&
+      !(fullLate&&nuclearReady)){
       wanted='DEFEND';reason='Überlegener Nachbar: keine neue Kriegsfront';
     }
     else if(late && weak.length && s.ratio>.30 && !seriousAttack && readiness.ready){
@@ -2283,7 +2284,7 @@
       const portEntry=entries.find(x=>x.type==='Port'&&!x.upgrade);
       const portSite=portEntry&&coastal.find(x=>
         (economicNegative.get('Port:false:'+x)??0)<=tick);
-      if(portSite)work.unshift({entry:portEntry,site:{ref:portSite,coast:true,dist:Infinity}});
+      if(Number.isInteger(portSite))work.unshift({entry:portEntry,site:{ref:portSite,coast:true,dist:Infinity}});
     }
     // Worker probes stay bounded; record individual negative site/type checks.
     for(let offset=0;offset<work.length;offset+=3){
@@ -2299,7 +2300,7 @@
       for(const {slot,legal} of answers){
         if(!legal)continue;
         const {entry,site}=slot;
-        if(!legal.buildableUnits?.some(u=>u.type===entry.type &&
+        if(entry.type!=='Port' && !legal.buildableUnits?.some(u=>u.type===entry.type &&
           (entry.upgrade?u.canUpgrade!==false&&u.canUpgrade!==undefined:
             Number.isInteger(u.canBuild)))){
           const key=entry.type+':'+!!entry.upgrade+':'+site.ref;
