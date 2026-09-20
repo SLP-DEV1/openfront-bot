@@ -134,6 +134,50 @@ function boot(benchmarkOptions={}) {
     assert.equal(result.order[0],'land');
     assert.equal(result.navalCandidate,false);
   });
+  await check('trained economic head alters investment order without inventing buildings', () => {
+    const x=boot(),zero={schema:3,arch:'16x16x16-tanh',weights:Array(544).fill(0)};
+    x.me.units=()=>[{type:()=> 'City',isActive:()=>true},
+      {type:()=> 'Factory',isActive:()=>true}];
+    x.b.setGroups([]);x.b.setTroopSnapshot(x.b.military(x.me,[]));
+    x.b.setNeural(zero);
+    const baseline=x.b.economicNeeds(x.me,x.me.units(),[]);
+    const oldPort=baseline.list.find(e=>e.type==='Port');
+    const model={...zero,weights:zero.weights.slice()};
+    model.weights[528+9]=-3;model.weights[528+10]=-3;
+    model.weights[528+11]=3;x.b.setNeural(model);
+    const result=x.b.economicNeeds(x.me,x.me.units(),[]);
+    const port=result.list.find(e=>e.type==='Port');
+    assert(oldPort&&port);
+    assert(port.urgency>oldPort.urgency+80);
+    assert(result.list.every(e=>['City','Factory','Port','Defense Post','SAM Launcher','Missile Silo'].includes(e.type)));
+  });
+  await check('trained navy and diplomacy heads modify thresholds, not alliances', () => {
+    const x=boot(),zero={schema:3,arch:'16x16x16-tanh',weights:Array(544).fill(0)};
+    const s=x.b.military(x.me,[]);
+    x.b.setNeural(zero);
+    const ratio=x.b.navalCommitmentRatio(x.me,x.weak,300);
+    const politics=x.b.diplomacyScore(x.me,x.weak,s,true).score;
+    const model={...zero,weights:zero.weights.slice()};
+    model.weights[528+5]=3;model.weights[528+14]=3;
+    x.b.setNeural(model);
+    assert(x.b.navalCommitmentRatio(x.me,x.weak,300)<ratio);
+    assert(x.b.diplomacyScore(x.me,x.weak,s,true).score>politics+20);
+    x.me.isFriendly=p=>p===x.weak;
+    assert.equal(x.b.diplomacyScore(x.me,x.weak,s,true).score,-999);
+  });
+  await check('trained defense can retreat sooner but baseline threat gate remains', () => {
+    const x=boot(),zero={schema:3,arch:'16x16x16-tanh',weights:Array(544).fill(0)};
+    x.me.incomingAttacks=()=>[{troops:31000,attackerID:2,retreating:false}];
+    const s=x.b.military(x.me,[]);x.b.setNeural(zero);
+    assert.equal(x.b.defenseAssessment(x.me,s,300).severe,false);
+    const model={...zero,weights:zero.weights.slice()};
+    model.weights[528+12]=3;x.b.setNeural(model);
+    assert.equal(x.b.defenseAssessment(x.me,s,300).severe,true);
+    x.me.incomingAttacks=()=>[{troops:90000,attackerID:2,retreating:false}];
+    const critical=x.b.military(x.me,[]);
+    x.b.setNeural(zero);
+    assert.equal(x.b.defenseAssessment(x.me,critical,300).critical,true);
+  });
   await check('director prioritizes legal land expansion over speculative shipping', () => {
     const x=boot(),s=x.b.military(x.me,[]);
     const result=x.b.strategicDirector(x.me,s,{wanted:'EXPAND'},
