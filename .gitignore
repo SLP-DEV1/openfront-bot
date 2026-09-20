@@ -1,2 +1,5 @@
 node_modules/
 benchmark-results/
+brain/data/
+__pycache__/
+*.pyc
