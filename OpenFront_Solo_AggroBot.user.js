@@ -3144,13 +3144,14 @@
     for(const [tile,until] of navalSiteNegative)if(tick>=until)navalSiteNegative.delete(tile);
     const navyState=military(me,strategic.groups),spare=navyState.available;
     if(spare<1300 || navyState.incoming>0 || navyState.activeEnemy>0 ||
-      recentHostilePressure(tick,260) || navyState.strongest>=navyState.home*.85)return false;
+      recentHostilePressure(tick,260))return false;
     const foes=game.playerViews().filter(p=>safeID(p)!==safeID(me)&&p.isAlive?.()&&
       !friendly(p,me)&&Number.isInteger(p.state?.spawnTile)&&
       // The naval planner must obey the single-front war director as well.
       (!coordinatedWar() || !isWar() || safeID(p)===warState.id));
     foes.sort((a,b)=>number(()=>a.troops())-number(()=>b.troops()));
     for(const foe of foes.slice(0,6)){
+      if(navyState.strongest>=navyState.home*.85)break;
       if((navalCooldown.get('player:'+safeID(foe))||0)>tick)continue;
       if(spare<number(()=>foe.troops(),Infinity)*1.9 ||
         number(()=>me.troops())<number(()=>game.config().maxTroops(me),1)*.47)continue;
@@ -3210,8 +3211,8 @@
     // this branch to bypass the single-front director or homeland reserve.
     if(!isWar() && !strategic.groups.some(g=>g.id===null&&!g.fallout) &&
       navyState.activeNeutral===0 && navyState.ratio>=.52 &&
-      navyState.strongest<navyState.home*.70 &&
-      spare>=Math.max(1400,navyState.home*.22)){
+      navyState.strongest<navyState.home*1.20 &&
+      spare>=Math.max(1400,navyState.home*.06)){
       for(const dest of neutralNavalCandidates(me)){
         if(!live(serial))return false;
         if((navalSiteNegative.get(dest)||0)>tick)continue;
@@ -3237,8 +3238,11 @@
         // Small islands need scouting-size contingents, not six-figure stacks.
         const areaBudget=area===null?navyState.home*.10:
           Math.max(1300,area*35);
-        const amount=Math.floor(Math.min(spare*.32,navyState.home*.16,areaBudget));
-        if(amount<1000 || navyState.home-amount<navyState.reserve)continue;
+        const amount=Math.floor(Math.min(spare*.22,navyState.home*.075,areaBudget));
+        // A new neutral beachhead may be worth taking beside a near-peer,
+        // but the actual landing must leave a viable army at the home border.
+        if(amount<1000 || navyState.home-amount<
+          Math.max(navyState.reserve,navyState.strongest*.78))continue;
         if(sendMarineTransport(me,dest,amount,tick,
           'INSEL-EXPANSION → neutrales Küstenland','neutral:'+dest)){
           strategicTelemetry.neutralLandings++;
