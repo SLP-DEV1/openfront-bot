@@ -73,6 +73,7 @@ function boot(benchmarkOptions={}) {
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
     'strategicDirector,economyPosture,observeOpponents,opponentTrend,navalCommitmentRatio,landingThirdPartyRisk,targetHomeRatio,railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,observeFronts,qwenStrategyHint,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
+    'setNeural:m=>{neuralModel=neuralValidate(m);opts.neuralEnabled=!!neuralModel;neuralPolicyCache={key:null,output:null};},neuralStrategicSignals,neuralChannel,',
     'getBrainMatchId:()=>brainMatchId,setQwen:q=>{brainState.qwen=q;},',
     'setPortBackoff:(fail,tick)=>{portProbeFailures=fail;lastPortRetryTick=tick;},',
     'setWarWait:n=>warWaitSince=n,setEconFails:n=>failedEconomyProbes=n,',
@@ -94,6 +95,45 @@ function boot(benchmarkOptions={}) {
     setOver:v=>gameOver=v,setGold:v=>gold=v,setHome:v=>home=v};
 }
 (async () => {
+  await check('trained strategic policy switches land versus naval, zero model retains rules', () => {
+    const x=boot();x.setTick(600);x.b.setBoatCtor(class {});
+    const s=x.b.military(x.me,[]);
+    const ranked=[{id:null,score:110}];
+    const zero={schema:3,arch:'16x16x16-tanh',weights:Array(544).fill(0)};
+    x.b.setNeural(zero);
+    assert.equal(x.b.strategicDirector(x.me,s,{wanted:'EXPAND'},ranked,600).order[0],'land');
+    const evolved={...zero,weights:zero.weights.slice()};
+    evolved.weights[528+6]=-3;evolved.weights[528+7]=3;
+    x.b.setNeural(evolved);
+    const result=x.b.strategicDirector(x.me,s,{wanted:'EXPAND'},ranked,600);
+    assert.equal(result.order[0],'naval');
+    assert(result.neural.weights.navalPriority>.9);
+    x.b.setMode('RECOVER');
+    assert.equal(x.b.strategicDirector(x.me,s,{wanted:'RECOVER'},ranked,600).order[0],'hold');
+  });
+  await check('trained strategy changes reserves without lowering the strongest-front floor', () => {
+    const x=boot(),zero={schema:3,arch:'16x16x16-tanh',weights:Array(544).fill(0)};
+    const groups=[{id:'weak',opponent:x.weak},{id:'strong',opponent:x.strong}];
+    x.b.setNeural(zero);
+    const original=x.b.military(x.me,groups);
+    const evolved={...zero,weights:zero.weights.slice()};
+    evolved.weights[528]=3;
+    x.b.setNeural(evolved);
+    const updated=x.b.military(x.me,groups);
+    assert(updated.reserve>=original.reserve);
+    assert(updated.reserve>=Math.min(updated.home*.85,updated.strongest*.59));
+    assert(updated.home-updated.available>=updated.reserve);
+  });
+  await check('strategic policy cannot enable a forbidden naval action', () => {
+    const x=boot(),model={schema:3,arch:'16x16x16-tanh',weights:Array(544).fill(0)};
+    model.weights[528+7]=5;
+    x.b.setNeural(model);
+    x.setTick(600);x.b.setBoatCtor(null);
+    const state=x.b.military(x.me,[]);
+    const result=x.b.strategicDirector(x.me,state,{wanted:'EXPAND'},[{id:null}],600);
+    assert.equal(result.order[0],'land');
+    assert.equal(result.navalCandidate,false);
+  });
   await check('director prioritizes legal land expansion over speculative shipping', () => {
     const x=boot(),s=x.b.military(x.me,[]);
     const result=x.b.strategicDirector(x.me,s,{wanted:'EXPAND'},
