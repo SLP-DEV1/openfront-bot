@@ -3,3 +3,5 @@ benchmark-results/
 brain/data/
 __pycache__/
 *.pyc
+trainer/champion.json
+OpenFront_Solo_AggroBot_Neural.user.js
