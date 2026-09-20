@@ -33,9 +33,19 @@ jobs:
             --map World --size Compact --difficulty Impossible \
             --bots 0 --nations 1 --seed impossible-ci-001 --ticks 2200 \
             --profile autonomous --policy zero-policy.json --out benchmark-results/impossible-ci
+      - name: Exercise one neural evolution generation with real Impossible games
+        run: |
+          node trainer/train.mjs \
+            --engine ../OpenFrontIO \
+            --engineCommit bb8af015b515b3b717bd4d901074c5f4c16641cb \
+            --generations 1 --population 2 --trainSeeds 1 --evalSeeds 2 \
+            --maps World --nations 1 --ticks 4500 --qwen false \
+            --out benchmark-results/neural-ci
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: impossible-engine-smoke
-          path: benchmark-results/impossible-ci
+          path: |
+            benchmark-results/impossible-ci
+            benchmark-results/neural-ci
           if-no-files-found: ignore
