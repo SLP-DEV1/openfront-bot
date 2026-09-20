@@ -2350,6 +2350,22 @@ function boot(benchmarkOptions={}) {
     assert(rec&&rec.examined===1&&rec.eligible===0);
     assert(Object.keys(rec.reasons).length>0&&rec.examples.length<=5);
   });
+  await check('v1.18.3 team aid prioritizes relative emergency, not largest raw attack', () => {
+    const x=boot();
+    class Donate{constructor(recipient,troops){this.recipient=recipient;this.troops=troops;}}
+    x.b.setCtor('donateTroops',Donate);
+    x.game.config().gameConfig=()=>({gameType:'Public',gameMode:'Team',difficulty:'Medium'});
+    x.me.team=()=>1;x.weak.team=()=>1;x.strong.team=()=>1;
+    x.me.isOnSameTeam=p=>p===x.weak||p===x.strong;
+    x.weak.troops=()=>20000;x.strong.troops=()=>200000;
+    x.weak.incomingAttacks=()=>[{troops:15000,retreating:false}];
+    x.strong.incomingAttacks=()=>[{troops:95000,retreating:false}];
+    x.b.victoryPlan(x.me);
+    const s=x.b.military(x.me,[]);
+    assert.equal(x.b.teamSupport(x.me,300,s),true);
+    assert.equal(x.sent[0].recipient,x.weak,
+      '75% incoming is more urgent than 47.5% despite lower absolute troops');
+  });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
 })();
