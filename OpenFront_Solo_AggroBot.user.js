@@ -3799,6 +3799,29 @@
     const baseline=trend.valid&&trend.sustained&&trend.falling&&window.exposed?1.35:1.9;
     return baseline*(1-neuralChannel('navalThreshold',me)*.16);
   }
+  // A remote landing can empty the homeland even when no opposing land
+  // border is currently visible. Account for other *visible live nations*,
+  // excluding the selected victim and actual allies. This is not an estimate
+  // of fog-of-war or a guarantee of a future attack.
+  function globalNavalHomeGuard(me,target,s,requested,groups=strategic.groups){
+    const major=requested>=Math.max(200000,s.home*.30);
+    const targetID=safeID(target);
+    const landContact=groups.some(g=>g.id===targetID&&(g.tiles||[]).length>0);
+    if(!major||landContact)return {amount:requested,remote:!landContact,
+      other:0,reason:'small-or-land-connected'};
+    const visible=(game.playerViews?.()||[]).filter(p=>p?.isAlive?.()&&
+      safeID(p)!==safeID(me)&&safeID(p)!==targetID&&!friendly(p,me));
+    const other=visible.reduce((best,p)=>Math.max(best,
+      Math.max(0,number(()=>p.troops?.(),0))),0);
+    if(other<=0)return {amount:requested,remote:true,other:0,
+      reason:'no-other-visible-nations'};
+    const floor=Math.max(s.reserve,s.incoming*1.7,
+      Math.min(s.home*.92,other*(hardMode()?.80:.72)));
+    const possible=Math.max(0,Math.floor(s.home-floor));
+    const amount=Math.min(requested,possible);
+    return {amount,remote:true,other,floor,requested,
+      reason:amount<requested?'visible-nation-home-reserve':'protected'};
+  }
   function landingThirdPartyRisk(me,dest,target,amount){
     try{
       const neighbors=[],count=game.neighbors4(dest,neighbors);
@@ -3900,6 +3923,19 @@
         const protectedLanding=offensiveCommitment(strategic.groups,fresh,
           {id:safeID(current),opponent:current},amount);
         amount=protectedLanding.amount;
+        const globalGuard=globalNavalHomeGuard(me,current,fresh,amount);
+        if(globalGuard.amount<amount){
+          telemetry('naval_global_guard','Seeoffensive: Heimatarmee gegen sichtbare Nationen geschützt',
+            {target:safeID(current),requested:amount,allowed:globalGuard.amount,
+              other:globalGuard.other,floor:globalGuard.floor,
+              reason:globalGuard.reason});
+          if(globalGuard.amount<number(()=>current.troops(),Infinity)*
+            (hardMode()?1.05:.85)){
+            navalCooldown.set('player:'+safeID(current),tick+100);
+            continue;
+          }
+        }
+        amount=globalGuard.amount;
         // Having a large spare army is not sufficient: the ACTUAL landing
         // contingent must plausibly beat the enemy's fresh home force.
         if(amount<1000||amount<number(()=>current.troops(),Infinity)*
