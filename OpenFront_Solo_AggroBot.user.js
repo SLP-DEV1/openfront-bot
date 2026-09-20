@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.17.0
+// @version      1.17.1
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.17.0', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.17.1', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, brainEnabled:false, brainToken:'', fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -670,6 +670,9 @@
   function tuneAutonomously(me,items,s,tick,context) {
     if(!opts.fullAuto)return s;
     const late=lateGame(me),home=Math.max(1,s.home);
+    // Rush the opening while neutral land remains and the home front is safe.
+    const opening=tick<1000 && items.some(g=>g.id===null&&!g.fallout) &&
+      s.incoming<home*.025 && s.strongest<home*.85 && s.ratio>=.27;
     const invasion=s.incoming/home,neighbor=s.strongest/home;
     const emergency=invasion>=.18 || (invasion>=.10 && context.rebuilding);
     let mode='BALANCED',reason='Ausgeglichene Spielphase';
@@ -692,6 +695,10 @@
     } else if(late&&s.ratio>.74&&!s.incoming){
       mode='LATE';reason='Große Truppenreserve – Chancen häufiger prüfen';
       v={aggressive:93,reserve:27,actionsPerMinute:91,maxTargets:20};
+    }
+    if(opening && !emergency && !['DEFEND','RECOVER'].includes(mode)){
+      mode='OPENING';reason='Frühe Landnahme: schneller expandieren, Reserve dynamisch schützen';
+      v={aggressive:100,reserve:22,actionsPerMinute:105,maxTargets:23};
     }
     if(!emergency && s.incoming>0){
       v.reserve+=Math.min(13,Math.ceil(invasion*35));
@@ -1258,10 +1265,12 @@
     return s.ratio>.74 && s.incoming===0 && s.activeEnemy===0 &&
       s.strongest<s.home*.70;
   }
+  function exposedOpeningRisk(s){return s.incoming>s.home*.025 || s.strongest>s.home*.85;}
   function neutralAttackAmount(s,aggression) {
     const base=Math.max(130,s.home*(hardMode()?(.055+aggression*.035):(.09+aggression*.08)));
     const surplus=growthPressure(s)?Math.max(0,s.home-s.max*.48)*.46:0;
-    const fraction=growthPressure(s)?(hardMode()?.49:.55):(hardMode()?.31:.55);
+    const opening=number(()=>game?.ticks?.(),Infinity)<1000 && !exposedOpeningRisk(s);
+    const fraction=growthPressure(s)?(hardMode()?.49:.55):opening?(hardMode()?.44:.68):(hardMode()?.31:.55);
     const exposed=s.strongest>=s.home*.85||s.incoming>=s.home*.10;
     // Cheap expansion may continue near a strong rival, but never consume
     // a third of the army immediately before a probable counterattack.
@@ -2259,7 +2268,7 @@
     const portEnabled=game.config().isUnitDisabled?.('Port')!==true;
     const wantedCity=cityEnabled?(hardMode()?Math.min(13,Math.max(2,2+Math.floor(mine/600))):Math.min(9,Math.max(1,1+Math.floor(mine/900)))):0;
     const wantedFactory=factoryEnabled?(hardMode()?Math.min(11,Math.max(2,2+Math.floor(mine/900))):Math.min(8,Math.max(1,1+Math.floor(mine/1350)))):0;
-    const wantedPort=!portEnabled?0:opts.boats?Math.min(3,Math.max(1,Math.floor(mine/1800)+1)):
+    const wantedPort=!portEnabled?0:opts.boats?Math.min(5,Math.max(1,Math.floor(mine/1050)+1)):
       (factories>=1 && mine>600?Math.min(2,Math.floor(mine/2700)+1):0);
     const startup=(cityEnabled&&cities<1)||(factoryEnabled&&factories<1);
     const nowTick=number(()=>game.ticks(),0);
@@ -2314,9 +2323,9 @@
           (gold<450000?15:0)+(pressure<.60&&factories>0?10:0)+
           (factories<2&&cities>=2?24:0)-
           (incomeStatus.observed&&incomeStatus.train===0&&factories>=2?26:0)},
-      {type:'Port',desired:wantedPort,score:portMilestone?345:
+      {type:'Port',desired:wantedPort,score:portMilestone?390:
         59+(neural?.portPriority||0)*90+econBoost/2+(posture==='breakout'?115:0)+(ports===0&&wantedPort?12:0)+
-        (incomeStatus.observed&&incomeStatus.trade===0&&ports===0?13:0)},
+        (incomeStatus.observed&&incomeStatus.trade===0&&ports===0?35:0)+(ports<2&&coastSites.length?22:0)},
       {type:'Defense Post',desired:wantedDefense,score:immediate?310+defBoost:threatened?(basic?36:77)+(neural?.defensePriority||0)*90+defBoost+(posture==='defensive'?24:0):20},
       {type:'SAM Launcher',desired:wantedSAM,score:enemyNukes?210+defBoost:threat?151+defBoost:proactiveSAM?118:40},
       {type:'Missile Silo',desired:wantedSilo,score:siloCount===0?305:opts.nukes?(late?131:94)+(neural?.nuclearPriority||0)*75+(gold>6000000?13:0):0}
@@ -3019,6 +3028,10 @@
     if(s.strongest>own*.8)score+=13;
     if(their<own*.22 && s.incoming===0)score-=26;
     if(territory<mine*.15 && s.incoming===0)score-=12;
+    // In the opening, ally with useful neighbours instead of inviting a
+    // second war; never override conflict, traitor or current-target vetoes.
+    if(number(()=>game?.ticks?.(),Infinity)<1100 && their>=own*.45 &&
+      territory>=mine*.3 && warState.id!==safeID(p))score+=14;
     if(safeID(p)===plan?.id)score-=70;
     const alliances=number(()=>me.alliances?.().length);
     if(alliances>=3)score-=36;
@@ -3138,7 +3151,7 @@
     }
     if(renewAlliances(me,tick))return;
     if(!opts.offerAlliances || !ctors.alliance || !actionBudget() ||
-      tick-lastProposalTick<850)return;
+      tick-lastProposalTick<450)return;
     const s=military(me,strategic.groups);
     const candidates=strategic.groups.filter(g=>g.id!==null&&g.opponent &&
       !diplomacyHandled.has(g.id)&&!diplomacyPending.has(g.id)&&
@@ -3147,7 +3160,7 @@
         number(()=>g.opponent.troops(),0)>=number(()=>me.troops(),1)*.85)&&
       !me.isRequestingAllianceWith?.(g.opponent))
       .map(g=>({g,...diplomacyScore(me,g.opponent,s,true)}))
-      .filter(x=>x.score>=80).sort((a,b)=>b.score-a.score);
+      .filter(x=>x.score>=72).sort((a,b)=>b.score-a.score);
     if(!candidates.length)return;
     const chosen=candidates[0];
     const target=chosen.g.opponent,serial=generation,anchor=chosen.g.tiles?.[0];
