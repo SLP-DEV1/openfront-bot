@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import {createRequire} from 'node:module';
 import {pathToFileURL} from 'node:url';
 import common from './common.cjs';
+import policyModel from '../../trainer/policy.cjs';
 
 const opts=common.parse(process.argv.slice(2));
 const engineCommit=common.engineInfo(opts.engine,opts.engineCommit);
@@ -16,7 +17,7 @@ const storage=new Map();
 let policyHash=null;
 if(opts.policy){
   const policySource=fs.readFileSync(path.resolve(opts.policy),'utf8');
-  const policy=require('./../../trainer/policy.cjs').validate(JSON.parse(policySource));
+  const policy=policyModel.validate(JSON.parse(policySource));
   policyHash=common.digest(JSON.stringify(policy));
   storage.set('of-aggrobot-neural-policy-v1',JSON.stringify(policy));
   storage.set('of-solo-aggrobot-v1111',JSON.stringify({neuralEnabled:true,fullAuto:true}));
