@@ -3813,8 +3813,35 @@
             partnerHome,amount,ownHome:s.home,remaining:s.home-amount,floor});
         return true;
       }
-      // No speculative donation to a full-strength ally. Preserve both
-      // independent economies and skip legacy absolute-incoming selection.
+      // One-way economic assistance: only a clearly richer teammate with a
+      // funded own construction reserve may help a cash-starved partner.
+      // Independent instances cannot ping-pong gold when the wealth gap
+      // criterion and one-match cooldown are enforced.
+      const cfg=game?.config?.().gameConfig?.()||{};
+      const ownGold=number(()=>Number(me.gold()),0);
+      const partnerGold=number(()=>Number(partner.gold?.()),Infinity);
+      if(!ownDanger&&cfg.donateGold!==false&&ctors.donateGold&&
+        (!me.canDonateGold||me.canDonateGold(partner))&&
+        Number.isFinite(partnerGold)&&partnerGold<400000&&
+        ownGold>Math.max(1400000,partnerGold+850000)&&
+        (inbound>0||number(()=>partner.numTilesOwned(),0)<
+          number(()=>me.numTilesOwned(),0)*.65)){
+        const savings=economicNeeds(me,ownStructures(me),[]).savingsTarget;
+        const cashFloor=Math.max(savings,1000000);
+        const amountGold=Math.floor(Math.min(200000,
+          (ownGold-cashFloor)*.20,400000-partnerGold));
+        if(amountGold>=50000&&ownGold-amountGold>=cashFloor&&
+          send('donateGold',[partner,BigInt(amountGold)],
+            'RANKED 2V2 · AUFBAUHILFE → '+nameOf(partner))){
+          lastDonation=tick;
+          telemetry('duo_gold','Goldhilfe bei eindeutigem Wirtschaftsrückstand',
+            {partner:duo.partnerID,partnerGold,ownGold,
+              amount:amountGold,cashFloor,partnerIncoming:inbound});
+          return true;
+        }
+      }
+      // No speculative equal-wealth donations or legacy absolute-incoming
+      // selection; both bots keep their own reserve and economy.
       return false;
     }
     const needy=partners.map(p=>({p,incoming:(p.incomingAttacks?.()||[])
