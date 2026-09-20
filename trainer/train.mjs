@@ -56,7 +56,7 @@ const list=(name,rx)=>{
     throw Error('Invalid '+name);
   return a;
 };
-const maps=list('maps',/^[A-Za-z0-9_-]{1,40}$/),nations=list('nations',/^[1-9][0-9]?$/).map(Number);
+const maps=list('maps',/^[A-Za-z0-9_-]{1,40}$/),nations=list('nations',/^(?:0|[1-9][0-9]?)$/).map(Number);
 const runsPerGeneration=maps.length*nations.length*(trainSeeds*(population+1)+evalSeeds*2);
 if(runsPerGeneration>200)throw Error('Too many matches per generation (>200)');
 const total=runsPerGeneration*generations;
