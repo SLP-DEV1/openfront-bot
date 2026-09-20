@@ -41,6 +41,9 @@ assert.equal(compare([pair('one','defeat'),pair('two','defeat')],
   [{...pair('one','victory'),bots:4},pair('two','victory')]).valid,false,
   'native tribe opponent count must match for every holdout pair');
 assert.equal(compare([pair('one','defeat'),pair('two','defeat')],
+  [{...pair('one','victory'),rivals:'rush,economy'},pair('two','victory')]).valid,false,
+  'scripted rival profiles must be identical in paired holdouts');
+assert.equal(compare([pair('one','defeat'),pair('two','defeat')],
   [pair('one','defeat',true,4400),pair('two','defeat',true,4400)]).reason,
   'consistent-survival-improvement');
 assert.equal(compare([pair('one','defeat'),pair('two','defeat')],
@@ -127,6 +130,15 @@ const mixed=JSON.parse(exec(['trainer/train.mjs','--dryRun','true',
   '--maps','World']));
 assert.equal(mixed.matches,2*(1*2*2*(1*3+2*2)));
 assert.deepEqual(mixed.bots,[0,4]);
+const scripted=JSON.parse(exec(['trainer/train.mjs','--dryRun','true',
+  '--schema','4','--nations','0','--bots','0',
+  '--rivals','rush,economy','--maps','World']));
+assert.deepEqual(scripted.rivals,['rush','economy']);
+assert.match(scripted.scenario,/NOT real humans/);
+const badRival=spawnSync(process.execPath,
+  ['trainer/train.mjs','--dryRun','true','--rivals','rush,rush'],
+  {cwd:root,encoding:'utf8'});
+assert.notEqual(badRival.status,0);
 assert.match(mixed.scenario,/NOT humans/);
 const noOpponents=spawnSync(process.execPath,
   ['trainer/train.mjs','--dryRun','true','--nations','0','--bots','0'],
