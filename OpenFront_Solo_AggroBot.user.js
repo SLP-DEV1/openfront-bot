@@ -768,9 +768,18 @@
     }
     if(!count)return null;
     strategicTelemetry.forecastCount++;
+    if(engine)strategicTelemetry.engineForecasts++;
+    else{
+      strategicTelemetry.proxyForecasts++;
+      if(!strategicTelemetry.forecastUnavailable++){
+        telemetry('forecast_engine_unavailable',
+          'Browser-Config liefert keinen gültigen attackLogic-Verlustwert; Näherung verwendet',
+          {exposed:typeof game?.config?.().attackLogic==='function'});
+      }
+    }
     const sampleTiles=Math.min(80,Math.max(1,number(()=>enemy.numTilesOwned(),1)*.15));
     return {loss:loss/count*sampleTiles,time:time/count*sampleTiles,
-      sample:count,engine};
+      sample:count,engine,method:engine?'config.attackLogic':'rough-proxy'};
   }
   function targetsFromBorder(me,tiles) {
     const groups=new Map(), scratch=[], fallout=[], cap=2000;
@@ -880,6 +889,14 @@
   function evaluateLastBattle(tick,me) {
     if(!lastBattle || tick-lastBattle.tick<110)return;
     const record=lastBattle;
+    // Only estimate stack attrition from an observed matching outgoing attack.
+    // Never turn a disappeared stack into an asserted troop-loss number.
+    const stacks=(me.outgoingAttacks?.()||[]).filter(a=>
+      attackTargets(a.targetID,record.id)&&!a.retreating);
+    if(stacks.length){
+      const total=stacks.reduce((n,a)=>n+number(()=>a.troops,0),0);
+      record.minimumObservedStack=Math.min(record.minimumObservedStack??Infinity,total);
+    }
     const opponent=game.playerViews().find(p=>safeID(p)===record.id);
     if(!opponent || !opponent.isAlive?.()){lastBattle=null;return;}
     const active=(me.outgoingAttacks?.()||[]).some(a=>attackTargets(a.targetID,record.id)&&!a.retreating);
@@ -904,6 +921,19 @@
         ownLandBefore:record.ownLand,ownLandAfter:ownLand});
     } else telemetry('war_review','Ausgang nicht eindeutig: '+record.name,
       {enemyLandBefore:record.enemyLand,enemyLandAfter:enemyLand});
+    if(record.forecast){
+      const approxLoss=Number.isFinite(record.minimumObservedStack)?
+        Math.max(0,record.amount-record.minimumObservedStack):null;
+      const audit={tick,target:record.id,engine:record.forecast.engine,
+        predictedLoss:record.forecast.loss,observedStackAttrition:approxLoss,
+        evidence:approxLoss===null?'no-active-stack-sample':
+          'outgoing-stack-net-change-not-causal',landGained:captured,
+        observedTicks:tick-record.tick};
+      forecastAudits.push(audit);if(forecastAudits.length>75)forecastAudits.shift();
+      lastForecastAudit=audit;strategicTelemetry.forecastComparisons++;
+      telemetry('forecast_audit','Angriffsprognose gegenüber sichtbarer Stack-Abnahme',
+        {audit});
+    }
     lastBattle=null;
   }
   function confirmAttack(me,tick){
@@ -924,7 +954,8 @@
         {target:p.id,troops:p.amount,via:newStack?'active_stack':'territory'});
       if(p.id!==null){
         lastBattle={id:p.id,name:p.name,tick:p.tick,
-          enemyLand:p.enemyLand,ownLand:p.ownLand};
+          enemyLand:p.enemyLand,ownLand:p.ownLand,
+          forecast:p.forecast||null,amount:p.amount,minimumObservedStack:null};
         if(coordinatedWar()&&warState.id===null){
           warState={id:p.id,name:p.name,since:tick,blockedUntil:-Infinity};
           log('HAUPTKRIEGSZIEL BESTÄTIGT → '+p.name);
@@ -1411,7 +1442,8 @@
         const before=s.out.filter(a=>attackTargets(a.targetID,item.id)&&!a.retreating);
         pendingAttack={id:item.id,name:label,tick,amount,ownLand:number(()=>me.numTilesOwned()),
           enemyLand:item.opponent?number(()=>item.opponent.numTilesOwned()):0,
-          beforeIds:before.map(a=>a.id),beforeTroops:before.reduce((v,a)=>v+a.troops,0)};
+          beforeIds:before.map(a=>a.id),beforeTroops:before.reduce((v,a)=>v+a.troops,0),
+          forecast:item.forecast||null};
         if(item.opponent?.isDisconnected?.()===true)strategicTelemetry.afkTargets++;
         if(item.opponent&&allyAssistTarget(me,item.opponent))strategicTelemetry.assists++;
         lastSelection=label+' · score '+item.score.toFixed(0)+
