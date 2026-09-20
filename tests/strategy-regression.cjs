@@ -108,7 +108,7 @@ function boot(benchmarkOptions={}) {
   });
   await check('director never promotes naval aggression during incoming threats', () => {
     const x=boot();x.setTick(600);x.b.setBoatCtor(class {});
-    x.incoming.push({troops:35000,retreating:false});
+    x.me.incomingAttacks=()=>[{troops:35000,retreating:false}];
     const s=x.b.military(x.me,[]);
     const result=x.b.strategicDirector(x.me,s,{wanted:'DEFEND'},[],600);
     assert.deepEqual(Array.from(result.order),['hold']);
