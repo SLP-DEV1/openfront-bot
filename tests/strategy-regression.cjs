@@ -2286,6 +2286,7 @@ function boot(benchmarkOptions={}) {
   await check('v1.18.2 global naval guard protects home without a land frontier', () => {
     const x=boot();x.setHome(2000000);
     x.strong.troops=()=>1700000;x.weak.troops=()=>350000;
+    x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Medium'});
     const s=x.b.military(x.me,[]);
     const capped=x.b.globalNavalHomeGuard(x.me,x.weak,s,950000,[]);
     assert(capped.remote&&capped.other===1700000);
@@ -2296,6 +2297,11 @@ function boot(benchmarkOptions={}) {
     const contact=x.b.globalNavalHomeGuard(x.me,x.weak,s,950000,
       [{id:'weak',opponent:x.weak,tiles:[6]}]);
     assert.equal(contact.amount,950000,'land front remains on existing guard');
+    x.game.config().gameConfig=()=>({gameType:'Singleplayer',difficulty:'Impossible'});
+    assert.equal(x.b.globalNavalHomeGuard(x.me,x.weak,s,950000,[]).amount,950000,
+      'unproven Impossible restriction is opt-in');
+    x.b.opts.impossibleExperiment=true;
+    assert(x.b.globalNavalHomeGuard(x.me,x.weak,s,950000,[]).amount<950000);
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
