@@ -9,6 +9,8 @@ const REASONS=new Set(['STAGNATION','THREAT','RESOURCE','EXPANSION','ENDGAME','O
 function candidate(raw){
   if(typeof raw!=='string'||raw.length>12000)throw new TypeError('Missing or oversized model response');
   let text=raw.trim();
+  // Some reasoning-enabled llama.cpp templates preserve <think> separately or inline.
+  text=text.replace(/<think>[\s\S]*?<\/think>/g,'').trim();
   if(text.startsWith('```'))text=text.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');
   const parsed=JSON.parse(text);
   if(!parsed||typeof parsed!=='object'||Array.isArray(parsed)||
@@ -28,7 +30,7 @@ function makeAdvisor({store,config=configFromEnv(),fetchImpl=globalThis.fetch,no
   maxLatencyMs=30000,logger=()=>{}}){
   if(!store||typeof store.saveQwenAdvice!=='function')throw new Error('Qwen requires a persistent store');
   if(!Number.isFinite(maxLatencyMs)||maxLatencyMs<10||maxLatencyMs>120000)throw new Error('Invalid inference timeout');
-  let running=false,lastError=null,lastResult=null,requests=0,dropped=0;
+  let running=false,lastError=null,lastResult=null,requests=0,dropped=0,pendingPostmatch=null;
   const states=new Map();
   function status(){
     return {enabled:config.enabled,busy:running,model:config.model,endpoint:'127.0.0.1:8080',
@@ -36,7 +38,11 @@ function makeAdvisor({store,config=configFromEnv(),fetchImpl=globalThis.fetch,no
   }
   async function inference({matchId,tick,kind,payload}){
     if(!config.enabled)return;
-    if(running){dropped++;return;}
+    if(running){
+      if(kind==='postmatch')pendingPostmatch={matchId,tick,kind,payload};
+      else dropped++;
+      return;
+    }
     running=true;requests++;
     const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),maxLatencyMs);
     timeout.unref?.();
@@ -69,7 +75,10 @@ function makeAdvisor({store,config=configFromEnv(),fetchImpl=globalThis.fetch,no
       lastError=e?.name==='AbortError'?'llama.cpp timeout':
         String(e?.message||e).slice(0,130);
       logger('Qwen shadow error',lastError);
-    }finally{clearTimeout(timeout);running=false;}
+    }finally{
+      clearTimeout(timeout);running=false;
+      if(pendingPostmatch){const next=pendingPostmatch;pendingPostmatch=null;void inference(next);}
+    }
   }
   function onObservation(input){
     if(!config.enabled)return;
