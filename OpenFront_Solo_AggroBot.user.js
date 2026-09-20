@@ -1856,7 +1856,7 @@
       (targetAtSea || s.activeNeutral===0);
     const ruleOrder=navalFirst?['naval','land','hold']:
       enemy.length||land.length?['land','naval','hold']:
-      ['naval','land','hold'];
+      ['naval','hold'];
     const learned=neuralStrategicSignals(me,s,tick);
     const utility={
       land:(land.length||enemy.length?110:0)+((land.length||enemy.length)?learned?.landPriority||0:0)*65,
@@ -1865,8 +1865,14 @@
       hold:(land.length||enemy.length||canSail?-25:35)+(learned?.holdPriority||0)*60
     };
     // Recover/defend is an absolute gate; priority values never grant legality.
+    const hasLearnedPreference=learned&&
+      ['landPriority','navalPriority','holdPriority'].some(k=>Math.abs(learned[k])>1e-8);
+    // Zero weights / no model MUST reproduce v1.16.0 exactly. In particular,
+    // naval() can refresh a stale preliminary canSail snapshot.
     const order=recovering?['hold']:
-      [...ruleOrder].sort((a,b)=>utility[b]-utility[a]);
+      !hasLearnedPreference?ruleOrder:
+      [...new Set([...ruleOrder,'land','naval','hold'])].sort((a,b)=>
+        utility[b]-utility[a]);
     const reason=recovering?'Heimtruppen und Grenzen stabilisieren':
       navalFirst?'Keine sichere Landexpansion: Marineweg vor Landkrieg prüfen':
       enemy.length?'Sicheren Landkrieg vor Küstenoperation prüfen':
