@@ -2291,14 +2291,18 @@
     const protectedUnits=ourStructures.concat(allyStructures);
     const sams=protectedUnits.filter(u=>u.type?.()==='SAM Launcher');
     const assetType=u=>['City','Factory','Port','Missile Silo'].includes(u.type?.());
-    const assets=ourStructures.filter(assetType),allyAssets=allyStructures.filter(assetType);
+    const allyAssets=allyStructures.filter(assetType);
+    // Preserve the previous Impossible heuristic until a paired test proves
+    // changing its global asset accounting improves actual outcomes.
+    const assets=hardMode()?ourStructures.filter(assetType).concat(allyAssets):
+      ourStructures.filter(assetType);
     const range=s=>number(()=>game.config().samRange(s.level?.()||1),70);
     const covered=a=>sams.some(s=>{
       const r=range(s),x=game.x(a.tile())-game.x(s.tile()),y=game.y(a.tile())-game.y(s.tile());
       return x*x+y*y<=r*r;
     });
     const uncovered=assets.filter(a=>!covered(a));
-    const allyUncovered=allyAssets.filter(a=>!covered(a));
+    const allyUncovered=hardMode()?[]:allyAssets.filter(a=>!covered(a));
     nuclearCache={enemy,enemySilos,enemySAM,incomingNukes,sams,assets,uncovered,
       allyAssets,allyUncovered,protectedUnits};
     nuclearCacheTick=tick;return nuclearCache;
@@ -2953,7 +2957,7 @@
             !(item.type==='Port'&&requirements.portMilestone&&!requirements.nuclearThreat) &&
             // After fully funding the first harbor, no worker-offered Port
             // should stall all other productive buildings this cycle.
-            !(requirements.portMilestone&&!requirements.nuclearThreat&&
+            !(requirements.portMilestone&&!hardMode()&&!requirements.nuclearThreat&&
               probe.portQueries>0&&probe.portLegal===0&&
               gold>=requirements.savingsTarget) &&
             gold-cost<requirements.savingsTarget)continue;
@@ -2988,7 +2992,7 @@
             unitDisabled:game.config().isUnitDisabled?.('SAM Launcher')===true,
             quotedCost:samQuotedCost,lowestCost:Number.isFinite(probe.lowestCost)?probe.lowestCost:null});
       if(requirements.portMilestone && probe.portQueries>0 &&
-        probe.portLegal===0 && (game.config().infiniteGold?.()||
+        probe.portLegal===0 && (hardMode() || game.config().infiniteGold?.()||
           requirements.gold>=requirements.portQuotedCost&&requirements.portQuotedCost>0 ||
           requirements.gold>=500000)){
         portProbeFailures++;
