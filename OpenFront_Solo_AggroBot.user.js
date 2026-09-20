@@ -1666,6 +1666,24 @@
       safeStrike:Math.max(0,Math.floor(s.home-floor)),
       emergency:danger||pressure};
   }
+  // Major offensives must be defensible AFTER the army leaves home. The
+  // target's remaining force and other observed fronts stay in the budget;
+  // this never overrides attack legality, diplomacy or the existing reserve.
+  function offensiveCommitment(items,s,item,requested){
+    if(item.id===null||requested<Math.max(125000,s.home*.30))
+      return {amount:requested,capped:false,reason:'small-attack'};
+    const front=frontRiskPlan(items,s,item.id);
+    const enemy=Math.max(0,number(()=>item.opponent?.troops?.(),0));
+    const floor=Math.max(s.reserve,s.incoming*1.7,
+      front.other*(hardMode()?.87:.80),
+      Math.min(enemy*.35,s.home*.32));
+    const amount=Math.floor(Math.min(requested,Math.max(0,s.home-floor)));
+    const minimum=enemy*(hardMode()?1.16:1.04);
+    return {amount:amount>=minimum?amount:0,capped:amount<requested,
+      floor,other:front.other,minimum,reason:amount<minimum?
+        'Verbleibende Truppen reichen nach Risikobegrenzung nicht für den Angriff':
+        'Heimschutz nach Großangriff'};
+  }
   function targetOpportunity(me,items,s,item) {
     if(!item?.opponent?.isAlive?.()||friendly(item.opponent,me))return false;
     const late=lateGame(me),troops=number(()=>item.opponent.troops(),Infinity);
@@ -2137,9 +2155,23 @@
       if(item.id!==null && coordinatedWar() && (!warReadiness(me,strategic.groups,fresh,tick,item).ready ||
         !targetOpportunity(me,strategic.groups,fresh,item) ||
         (isWar()&&warState.id!==item.id)))continue;
-      const amount=Math.min(item.amount,fresh.available,
+      let amount=Math.min(item.amount,fresh.available,
         item.id===null ? neutralAttackAmount(fresh,clamp(setting('aggressive'),40,100)/100) :
         Math.min(freshFront.safeStrike,Math.floor(fresh.available*(hardMode()?.76:.8))));
+      if(item.id!==null){
+        const protectedStrike=offensiveCommitment(strategic.groups,fresh,item,amount);
+        if(protectedStrike.capped){
+          telemetry('offensive_guard','Großangriff nach verbleibendem Heimschutz begrenzt',
+            {target:item.id,requested:amount,allowed:protectedStrike.amount,
+              floor:protectedStrike.floor,other:protectedStrike.other,
+              reason:protectedStrike.reason});
+          if(!protectedStrike.amount){
+            blockedTargets.set(item.id,tick+110);
+            continue;
+          }
+        }
+        amount=protectedStrike.amount;
+      }
       if(amount<100)continue;
       const label=item.opponent?nameOf(item.opponent):'neutrales Land';
       if(send('attack',[item.id,amount],`ANGRIFF → ${label} (${Math.floor(amount/10)} Tr.)`)){
@@ -3408,6 +3440,10 @@
       const observed=freshShips.find(u=>u.targetTile?.()===boat.dest)||
         (freshShips.length===1?freshShips[0]:null);
       if(observed){
+        const position=number(()=>observed.tile?.(),NaN);
+        if(Number.isInteger(position)&&position!==boat.lastShipTile){
+          boat.lastShipTile=position;boat.lastProgressTick=tick;
+        }
         const id=observed.id?.();
         const resolved=observed.targetTile?.();
         if(Number.isInteger(resolved))boat.resolvedDest=resolved;
@@ -3435,21 +3471,31 @@
         telemetry('boat_arrived','Transportziel nach bestätigtem Schiff übernommen',
           {dest:boat.dest,resolvedDest:landingTile,target:boat.target,shipIds:boat.shipIds});
         navalCooldown.set(boat.key,tick+140);
+        navalSiteNegative.delete(landingTile);
         pendingBoat=null;
       }else if(boat.seen && tick-boat.tick>40 &&
         !ships.some(u=>boat.shipIds.includes(u.id?.()))){
         marineStats.transportUnresolved++;
         fleetStatus='Transport verschwunden – Landung nicht bestätigt';
         telemetry('boat_unresolved','Transport nicht mehr sichtbar; kein eigener Zielbesitz',
-          {dest:boat.dest,resolvedDest:landingTile,target:boat.target,shipIds:boat.shipIds});
-        navalCooldown.set(boat.key,tick+320);navalBackoffUntil=tick+180;pendingBoat=null;
-      }else if(tick-boat.tick>(boat.seen?650:90)){
+          {dest:boat.dest,resolvedDest:landingTile,target:boat.target,shipIds:boat.shipIds,
+            reason:'ship-disappeared'});
+        navalSiteNegative.set(landingTile,tick+900);
+        navalCooldown.set(boat.key,tick+350);navalBackoffUntil=tick+160;pendingBoat=null;
+      }else if(boat.seen && tick-boat.tick>650 && !boat.delayed){
+        boat.delayed=true;fleetStatus='Transport noch unterwegs / Landung ungeklärt';
+        telemetry('boat_delayed',fleetStatus,{dest:boat.dest,resolvedDest:landingTile,
+          shipIds:boat.shipIds,lastProgressTick:boat.lastProgressTick});
+      }else if(tick-boat.tick>(boat.seen?1350:90) &&
+        (!boat.seen||tick-boat.lastProgressTick>260)){
         if(boat.seen)marineStats.transportUnresolved++;
         else marineStats.transportUnconfirmed++;
-        fleetStatus=boat.seen?'Transport ohne Landungsbestätigung':
+        fleetStatus=boat.seen?'Transport lange ohne Landungsbestätigung':
           'Transport nach Intent nicht im Spiel beobachtet';
         telemetry(boat.seen?'boat_unresolved':'boat_unconfirmed',fleetStatus,
-          {dest:boat.dest,target:boat.target,troops:boat.troops});
+          {dest:boat.dest,resolvedDest:landingTile,target:boat.target,troops:boat.troops,
+            reason:boat.seen?'stalled-no-owned-coast':'ship-not-seen'});
+        navalSiteNegative.set(landingTile,tick+900);
         navalCooldown.set(boat.key,tick+400);navalBackoffUntil=tick+240;pendingBoat=null;
       }
     }
@@ -3480,7 +3526,8 @@
     if(!send('boat',[dest,troops],label))return false;
     pendingBoat={dest,tick,troops,key:targetKey,target:label,
       playerID:targetKey.startsWith('player:')?targetKey.slice(7):null,
-      resolvedDest:null,beforeIds,shipIds:[],seen:false};
+      resolvedDest:null,beforeIds,shipIds:[],seen:false,
+      lastShipTile:null,lastProgressTick:tick,delayed:false};
     marineStats.transportSent++;
     navalCooldown.set(targetKey,tick+160);
     fleetStatus='Transport angefordert · Bestätigung ausstehend';
@@ -3720,6 +3767,12 @@
     // without front groups underestimates the reserve near stronger neighbors.
     for(const [tile,until] of navalSiteNegative)if(tick>=until)navalSiteNegative.delete(tile);
     const navyState=military(me,strategic.groups),spare=navyState.available;
+    // After an observed failed landing, build an escort via fleetDefense
+    // before committing another player transport to a different beach.
+    if(marineStats.transportUnresolved>0 &&
+      !(game.units?.()||[]).some(u=>u.type?.()==='Warship'&&
+        safeID(u.owner?.())===safeID(me)&&u.isActive?.()&&
+        !u.isUnderConstruction?.()))return false;
     if(spare<1300 || navyState.incoming>0 || navyState.activeEnemy>0 ||
       recentHostilePressure(tick,260))return false;
     const foes=game.playerViews().filter(p=>safeID(p)!==safeID(me)&&p.isAlive?.()&&
@@ -3766,6 +3819,7 @@
         if(Number.isInteger(t)&&!points.includes(t)&&points.length<7)points.push(t);
       }
       for(const dest of points){
+        if((navalSiteNegative.get(dest)||0)>tick)continue;
         if(!game.isLand(dest)||safeID(game.owner(dest))!==safeID(foe))continue;
         let legal;
         try {legal=await me.actions(dest,['Transport']);}catch(_){continue;}
@@ -3790,8 +3844,11 @@
         const committedWar=isWar()&&warState.id===safeID(current);
         const exposedNavy=opponentTrend(current,tick).sustained&&
           opponentTrend(current,tick).falling&&adversaryWindow(me,current).exposed;
-        const amount=Math.floor(Math.min(fresh.available*(committedWar ? .60 : exposedNavy?.66:.36),
+        let amount=Math.floor(Math.min(fresh.available*(committedWar ? .60 : exposedNavy?.66:.36),
           fresh.home*(committedWar ? .58 : exposedNavy?.55:.30)));
+        const protectedLanding=offensiveCommitment(strategic.groups,fresh,
+          {id:safeID(current),opponent:current},amount);
+        amount=protectedLanding.amount;
         // Having a large spare army is not sufficient: the ACTUAL landing
         // contingent must plausibly beat the enemy's fresh home force.
         if(amount<1000||amount<number(()=>current.troops(),Infinity)*
