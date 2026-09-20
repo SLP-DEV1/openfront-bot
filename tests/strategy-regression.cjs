@@ -2418,7 +2418,7 @@ function boot(benchmarkOptions={}) {
     x.strong.troops=()=>85000;
     x.weak.outgoingAttacks=()=>[{targetID:3,troops:90000,retreating:false}];
     const credit=x.b.duoBattleCredit(x.me,x.strong);
-    assert.equal(credit,49500);
+    assert(Math.abs(credit-49500)<1e-6,'bounded partner credit');
     const state=x.b.military(x.me,[{id:'strong',opponent:x.strong,tiles:[6]}]);
     assert(state.reserve>=Math.min(state.home*.85,state.strongest*.53));
     x.weak.outgoingAttacks=()=>[{targetID:3,troops:90000,retreating:true}];
