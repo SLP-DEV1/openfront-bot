@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.16.0
+// @version      1.17.0
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.16.0', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.17.0', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, brainEnabled:false, brainToken:'', fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -44,7 +44,9 @@
       data.weights?.length===NEURAL_LENGTH;
     const actions=data?.schema===2&&data.arch==='16x12x1-tanh'&&
       data.weights?.length===217;
-    if((!old&&!actions)||!Array.isArray(data.weights)||
+    const strategic=data?.schema===3&&data.arch==='16x16x16-tanh'&&
+      data.weights?.length===544;
+    if((!old&&!actions&&!strategic)||!Array.isArray(data.weights)||
       data.weights.some(v=>typeof v!=='number'||!Number.isFinite(v)||Math.abs(v)>5))
       return null;
     return data;
@@ -56,6 +58,53 @@
       JSON.parse(localStorage.getItem(NEURAL_STORAGE)||'null'):
       NEURAL_BUNDLED_MODEL);
   }catch(_){neuralModel=null;}
+  // Deployed v3 is active on a fresh install; an explicit saved off-switch wins.
+  if(neuralModel?.schema===3 && !localStorage.getItem(KEY))opts.neuralEnabled=true;
+  const NEURAL_CHANNELS=['reserve','aggression','neutralCommit','enemyCommit',
+    'warThreshold','navalThreshold','landPriority','navalPriority',
+    'holdPriority','cityPriority','factoryPriority','portPriority',
+    'defensePriority','nuclearPriority','diplomacyPriority','fleetPriority'];
+  let neuralPolicyCache={key:null,output:null};
+  function neuralStrategicSignals(me,s,tick=number(()=>game?.ticks?.(),0)){
+    if(!opts.neuralEnabled||!opts.fullAuto||neuralModel?.schema!==3||
+      !me||!s||s.home<=0)return null;
+    const home=Math.max(1,s.home),max=Math.max(1,s.max||home);
+    const gold=number(()=>Number(me.gold?.()),0),
+      land=number(()=>me.numTilesOwned?.(),0);
+    const units=ownStructures(me),groups=strategic.groups||[];
+    const cities=units.filter(u=>u.type?.()==='City').length,
+      ports=units.filter(u=>u.type?.()==='Port').length;
+    const foes=groups.filter(g=>g.id!==null&&g.opponent?.isAlive?.()&&!friendly(g.opponent,me));
+    const thirdParty=foes.some(g=>adversaryWindow(me,g.opponent).exposed);
+    const vector=[
+      clamp(home/max,0,1.5)/1.5,clamp((s.incoming||0)/home,0,2)/2,
+      clamp((s.strongest||0)/home,0,3)/3,clamp((s.committed||0)/home,0,2)/2,
+      clamp(gold/1000000,0,1),clamp(land/20000,0,1),
+      lateGame(me)?1:0,groups.some(g=>g.id===null&&!g.fallout)?1:0,
+      clamp(foes.length/8,0,1),clamp((s.activeEnemy||0)/4,0,1),
+      clamp((s.available||0)/home,0,1),
+      clamp((s.growthPotential||0)/Math.max(1,max*.01),0,1),
+      clamp(cities/8,0,1),clamp(ports/4,0,1),isWar()?1:0,thirdParty?1:0
+    ];
+    const key=tick+':'+vector.join(',');
+    if(neuralPolicyCache.key===key)return neuralPolicyCache.output;
+    const w=neuralModel.weights,h=[],output={};
+    for(let j=0;j<16;j++){
+      let z=w[256+j];
+      for(let i=0;i<16;i++)z+=vector[i]*w[i*16+j];
+      h.push(Math.tanh(z));
+    }
+    for(let k=0;k<16;k++){
+      let z=w[528+k];
+      for(let j=0;j<16;j++)z+=h[j]*w[272+j*16+k];
+      output[NEURAL_CHANNELS[k]]=Math.tanh(z);
+    }
+    neuralPolicyCache={key,output};
+    return output;
+  }
+  function neuralChannel(name,me,s=troopSnapshot,tick=number(()=>game?.ticks?.(),0)){
+    return neuralStrategicSignals(me,s,tick)?.[name]||0;
+  }
   function neuralAdjust(v,base,me,s,items,emergency){
     if(!opts.neuralEnabled||!opts.fullAuto||neuralModel?.schema!==1||emergency||
       s.incoming>0||recentHostilePressure(number(()=>game.ticks(),0))||
@@ -576,7 +625,7 @@
     buildCursor=0;spawnCache=null;spawnJob=null;spawnRetryAt=0;spawnAlternatives=[];spawnState={scanned:0,phase:'idle',lastSent:null,attempts:0,blocked:null,deadline:null};cooldowns.clear();rejected.clear();
     plan=null;lastSelection='';lastEmission=0;borderOffset=0;lastBorderRefresh=0;
     totalSent=0;totalFailed=0;actions=[];errors=0;troopSamples=[];
-    lastRecoveryReason='';lastBattle=null;pendingAttack=null;targetIntelCache.clear();frontMemory.clear();opponentHistory.clear();lastEconomyPosture='—';lastDirectorDecision=null;lastFrontWarning=-Infinity;
+    lastRecoveryReason='';lastBattle=null;pendingAttack=null;targetIntelCache.clear();frontMemory.clear();opponentHistory.clear();lastEconomyPosture='—';lastDirectorDecision=null;neuralPolicyCache={key:null,output:null};lastFrontWarning=-Infinity;
     attackReceipts={confirmed:0,unconfirmed:0,territoryGained:0};blockedTargets.clear();
     failedEconomyProbes=0;successfulEconomyTick=-Infinity;warWaitSince=-Infinity;
     lastEconomicAction=-Infinity;lastNeutralSend=-Infinity;lastEnemySend=-Infinity;lastHostilePressure=-Infinity;consecutiveIdle=0;
