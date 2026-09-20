@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.18.1
+// @version      1.18.2
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.18.1', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.18.2', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, brainEnabled:false, brainToken:'', fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -2283,17 +2283,24 @@
         })))incomingNukes.push(u);
       }
     }
-    // Tests / older view builds may not include game.units(); own units are still valid.
-    const protectedUnits=ourUnits.filter(u=>STRUCTURE_TYPES.includes(u.type?.())).concat(
-      friendlyUnits.filter(u=>safeID(u.owner?.())!==myID));
+    // Buildable own territory is the primary SAM task. Allied infrastructure
+    // is optional collateral coverage, not an impossible own-site obligation.
+    // Retain the ownStructures fallback when game.units() is not exposed.
+    const ourStructures=ourUnits.filter(u=>STRUCTURE_TYPES.includes(u.type?.()));
+    const allyStructures=friendlyUnits.filter(u=>safeID(u.owner?.())!==myID);
+    const protectedUnits=ourStructures.concat(allyStructures);
     const sams=protectedUnits.filter(u=>u.type?.()==='SAM Launcher');
-    const assets=protectedUnits.filter(u=>['City','Factory','Port','Missile Silo'].includes(u.type?.()));
+    const assetType=u=>['City','Factory','Port','Missile Silo'].includes(u.type?.());
+    const assets=ourStructures.filter(assetType),allyAssets=allyStructures.filter(assetType);
     const range=s=>number(()=>game.config().samRange(s.level?.()||1),70);
-    const uncovered=assets.filter(a=>!sams.some(s=>{
+    const covered=a=>sams.some(s=>{
       const r=range(s),x=game.x(a.tile())-game.x(s.tile()),y=game.y(a.tile())-game.y(s.tile());
       return x*x+y*y<=r*r;
-    }));
-    nuclearCache={enemy,enemySilos,enemySAM,incomingNukes,sams,assets,uncovered,protectedUnits};
+    });
+    const uncovered=assets.filter(a=>!covered(a));
+    const allyUncovered=allyAssets.filter(a=>!covered(a));
+    nuclearCache={enemy,enemySilos,enemySAM,incomingNukes,sams,assets,uncovered,
+      allyAssets,allyUncovered,protectedUnits};
     nuclearCacheTick=tick;return nuclearCache;
   }
   function assetValue(type) {return {'City':5,'Factory':5,'Missile Silo':8,'Port':3,'SAM Launcher':7,'Defense Post':2}[type]||1;}
@@ -2307,6 +2314,10 @@
       if(!near(u,radius))continue;
       const covered=intel.sams.some(s=>nearSAM(s,u));
       score+=assetValue(u.type?.())*(covered?0.22:2.25);
+    }
+    // An own asset must benefit before optional allied overlap adds value.
+    if(score>0)for(const u of intel.allyUncovered||[]){
+      if(near(u,radius))score+=assetValue(u.type?.())*.35;
     }
     for(const sam of intel.sams){if(near(sam,45))score-=65;else if(near(sam,75))score-=22;}
     return score;
@@ -2508,7 +2519,11 @@
     // production forever after the front or shoreline changes.
     const samFund=threat&&intel.uncovered.length>0&&wantedSAM>0&&
       nowTick-samQuotedTick<=300?samQuotedCost:0;
-    const portFund=portMilestone&&nowTick-portQuotedTick<=210?portQuotedCost:0;
+    // On Public Europe this first Port cost 500k, but a worker may omit a
+    // buildable option while funds are low. Use an explicitly provisional
+    // floor until a real, current worker quote replaces it.
+    const portFund=portMilestone?
+      (nowTick-portQuotedTick<=210&&portQuotedCost>0?portQuotedCost:500000):0;
     const savingsTarget=samFund>0?samFund:portFund>0?portFund:
       portMilestone||(threat&&intel.uncovered.length>0&&wantedSAM>0)?0:
       saveForSilo?1150000:saveForNuke?firstRocketFund:0;
@@ -2728,7 +2743,8 @@
     // Do not waste worker queries or count failed builds while deliberately
     // accumulating funds for the first silo / first atomic strike.
     if(requirements.savingsTarget>0 && !requirements.immediate && !requirements.nuclearThreat &&
-      !game.config().infiniteGold?.() && requirements.gold<requirements.savingsTarget){
+      !requirements.portMilestone && !game.config().infiniteGold?.() &&
+      requirements.gold<requirements.savingsTarget){
       economicStatus='Spare: '+investmentStatus+' ('+Math.floor(requirements.gold).toLocaleString()+
         '/'+requirements.savingsTarget.toLocaleString()+' Gold)';
       return false;
@@ -2931,6 +2947,7 @@
             !(item.type==='SAM Launcher'&&requirements.nuclearThreat) &&
             !(item.type==='Defense Post'&&requirements.immediate) &&
             !(item.type==='Missile Silo'&&requirements.saveForSilo) &&
+            !(item.type==='Port'&&requirements.portMilestone&&!requirements.nuclearThreat) &&
             gold-cost<requirements.savingsTarget)continue;
           const reserve=gold>650000?Math.min(220000,gold*.12):0;
           if(!infinite&&!essential&&gold-cost<reserve)continue;
@@ -2955,12 +2972,17 @@
         (failedEconomyProbes===1||failedEconomyProbes%4===0))
         telemetry('sam_probe','SAM-Standorte / Budget geprüft',
           {enemySilos:requirements.enemySilos,uncovered:requirements.intel.uncovered.length,
+            alliedUncovered:requirements.intel.allyUncovered.length,
             candidates:probe.samSites,queries:probe.samQueries,legal:probe.samLegal,
             unaffordable:probe.samUnaffordable,unsafe:probe.samUnsafe,
             unavailable:probe.samNoWorkerBuild,gold:requirements.gold,
+            workerNoOfferCause:probe.samNoWorkerBuild?'unresolved: price, game rules or location':null,
+            unitDisabled:game.config().isUnitDisabled?.('SAM Launcher')===true,
             quotedCost:samQuotedCost,lowestCost:Number.isFinite(probe.lowestCost)?probe.lowestCost:null});
       if(requirements.portMilestone && probe.portQueries>0 &&
-        probe.portLegal===0){
+        probe.portLegal===0 && (game.config().infiniteGold?.()||
+          requirements.gold>=requirements.portQuotedCost&&requirements.portQuotedCost>0 ||
+          requirements.gold>=500000)){
         portProbeFailures++;
         if(portProbeFailures===8)lastPortRetryTick=tick;
       }
@@ -2969,6 +2991,8 @@
         telemetry('port_probe','Hafen-Bauplätze im Worker geprüft',
           {coastCandidates:coastal.length,queries:probe.portQueries,
             legal:probe.portLegal,unaffordable:probe.unaffordable,
+            fundingEstimate:requirements.portQuotedCost||500000,
+            fundingUncertain:requirements.portQuotedCost===0,
             failures:portProbeFailures});
       const reason=probe.unaffordable>0&&probe.legal===probe.unaffordable?
         'Gold für gültige Bauoption fehlt':probe.invalidSite>0?
@@ -2979,7 +3003,9 @@
         telemetry('build_stalled',reason,{attempts:failedEconomyProbes,
           gold:requirements.gold,investment:investmentStatus,priorities:entries.slice(0,4).map(e=>e.type),
           nuclear:{enemySilos:requirements.enemySilos,incomingNukes:requirements.incomingNukes,
-            uncovered:requirements.intel.uncovered.length,wantedSAM:requirements.wantedSAM,
+            uncovered:requirements.intel.uncovered.length,
+            alliedUncovered:requirements.intel.allyUncovered.length,
+            wantedSAM:requirements.wantedSAM,
             proactiveSAM:requirements.proactiveSAM},
           queries:probe.queries,workerErrors:probe.errors,legal:probe.legal,
           port:{coastCandidates:coastal.length,queries:probe.portQueries,
@@ -2988,6 +3014,8 @@
           sam:{candidates:probe.samSites,queries:probe.samQueries,
             legal:probe.samLegal,unaffordable:probe.samUnaffordable,
             unsafe:probe.samUnsafe,unavailable:probe.samNoWorkerBuild,
+            workerNoOfferCause:probe.samNoWorkerBuild?'unresolved: price, game rules or location':null,
+            unitDisabled:game.config().isUnitDisabled?.('SAM Launcher')===true,
             quotedCost:samQuotedCost},
           unaffordable:probe.unaffordable,invalidSite:probe.invalidSite,
           lowestCost:Number.isFinite(probe.lowestCost)?probe.lowestCost:null});
@@ -4047,6 +4075,7 @@
           nuclear:{enemySilos:nuclearIntel(me).enemySilos.length,
             incomingNukes:nuclearIntel(me).incomingNukes.length,
             uncovered:nuclearIntel(me).uncovered.length,
+            alliedUncovered:nuclearIntel(me).allyUncovered.length,
             ownSAM:nuclearIntel(me).sams.filter(u=>safeID(u.owner?.())===safeID(me)).length}});}
 
       if(plan&&tick>=plan.until)plan=null;
