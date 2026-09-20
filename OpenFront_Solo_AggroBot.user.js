@@ -2671,11 +2671,26 @@
         let legal;
         try {legal=await me.actions(dest,['Transport']);}catch(_){continue;}
         if(!live(serial))return false;
+        // Alliance, ownership and available troops can all change while the
+        // worker is checking a destination. Revalidate the *current* foe.
+        const current=game.playerViews?.().find(p=>safeID(p)===safeID(foe));
+        if(!current?.isAlive?.() || friendly(current,me) ||
+          safeID(game.owner(dest))!==safeID(current) ||
+          (coordinatedWar() && isWar() && safeID(current)!==warState.id)){
+          telemetry('naval_allied_skip','Landung nach Allianz-/Front-/Eigentümerwechsel verhindert',
+            {target:safeID(foe),dest});
+          continue;
+        }
+        const fresh=military(me,strategic.groups);
+        if(fresh.incoming>0 || fresh.activeEnemy>0 ||
+          fresh.available<number(()=>current.troops(),Infinity)*1.9 ||
+          fresh.ratio<.47)continue;
         const ship=legal?.buildableUnits?.find(x=>x.type==='Transport'&&Number.isInteger(x.canBuild));
         if(!ship || (Number(me.gold())<Number(ship.cost)&&!game.config().infiniteGold?.()))continue;
-        const amount=Math.min(spare,Math.floor(number(()=>me.troops())*.58));
-        if(sendMarineTransport(me,dest,Math.min(amount,Math.floor(spare*.60)),
-          tick,'LANDUNG → '+nameOf(foe),'player:'+safeID(foe)))return true;
+        const amount=Math.floor(Math.min(fresh.available*.60,fresh.home*.58));
+        if(amount<1000 || fresh.home-amount<fresh.reserve)continue;
+        if(sendMarineTransport(me,dest,amount,
+          tick,'LANDUNG → '+nameOf(current),'player:'+safeID(current)))return true;
       }
     }
     // No separate war: transport a safe neutral-expansion force to verified
