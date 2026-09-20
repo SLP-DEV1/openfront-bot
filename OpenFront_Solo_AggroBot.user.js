@@ -15,7 +15,7 @@
   window.__ofSoloAggroBot11010 = true;
 
   const VERSION = '1.10.10', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v11010';
-  const defaults = {enabled:false, learningEnabled:true, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
+  const defaults = {enabled:false, learningEnabled:true, brainEnabled:false, brainToken:'', fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
     autoStrategy:true, diplomacy:true, offerAlliances:true, nukes:true, antiNuke:true, lateOffense:true,
@@ -86,6 +86,69 @@
     learnMatch.finished=true;
     if(!opts.learningEnabled||!['victory','defeat'].includes(outcome))return;
     learn.lastResult=outcome;saveLearn();
+  }
+
+
+  // Optional localhost Brain advisory. The page remains the only issuer of game intents.
+  // No network traffic unless explicitly enabled; no grants that isolate page GameView.
+  const BRAIN_URL='http://127.0.0.1:8765';
+  let brainMatchId='match-'+Date.now().toString(36)+'-'+Math.floor(Math.random()*0xffffffff).toString(36).padStart(8,'0');
+  let brainSeq=0,brainLastTick=-Infinity,brainBusy=false,brainBackoff=0;
+  let brainState={status:'Aus',advice:null,receivedTick:-Infinity,lastError:null};
+  function brainReady(){
+    return opts.brainEnabled&&opts.learningEnabled&&opts.fullAuto&&opts.enabled&&
+      typeof fetch==='function'&&typeof opts.brainToken==='string'&&opts.brainToken.length>=24;
+  }
+  function brainAdjust(v,base,mode,s,emergency){
+    const advice=brainState.advice,key=learnKey(mode,s);
+    if(!brainReady()||emergency||!advice||advice.context!==key||
+      brainState.receivedTick<0||number(()=>game.ticks(),Infinity)-brainState.receivedTick>480)return v;
+    // Hard bound is relative to the UNLEARNED baseline: local + Brain cannot stack unboundedly.
+    return {...v,aggressive:clamp(v.aggressive+advice.aggressiveDelta,base.aggressive-5,base.aggressive+5),
+      reserve:clamp(v.reserve+advice.reserveDelta,base.reserve-4,base.reserve+4)};
+  }
+  function brainSend(tick,me,s){
+    if(!opts.brainEnabled)return;
+    if(!opts.brainToken||opts.brainToken.length<24){brainState.status='Token fehlt';return;}
+    if(typeof fetch!=='function'){brainState.status='fetch nicht verfügbar';return;}
+    if(!brainReady()||brainBusy||tick-brainLastTick<240||Date.now()<brainBackoff)return;
+    const mode=autoTuning.mode;if(!learnKey(mode,s))return;
+    brainLastTick=tick;brainBusy=true;
+    const seq=++brainSeq,matchId=brainMatchId;
+    const payload={schema:1,matchId,seq,tick,mode,land:number(()=>me.numTilesOwned(),0),
+      home:number(()=>me.troops(),0),max:Math.max(1,s.max),incoming:Math.max(0,s.incoming),
+      strongest:Math.max(0,s.strongest)};
+    brainState.status='Verbinde …';
+    const controller=typeof AbortController==='function'?new AbortController():null;
+    const timeout=controller?setTimeout(()=>controller.abort(),1600):null;
+    fetch(BRAIN_URL+'/v1/observe',{method:'POST',mode:'cors',credentials:'omit',cache:'no-store',
+      headers:{'Content-Type':'application/json','X-Aggrobot-Token':opts.brainToken},
+      body:JSON.stringify(payload),signal:controller?.signal}).then(async response=>{
+        if(!response.ok)throw Error('HTTP '+response.status);
+        const data=await response.json();
+        if(data?.schema!==1||data.matchId!==matchId||data.seq!==seq||
+          !/^([A-Z]+):(SAFE|THREAT)$/.test(data.context||'')||
+          !Number.isInteger(data.aggressiveDelta)||Math.abs(data.aggressiveDelta)>5||
+          !Number.isInteger(data.reserveDelta)||Math.abs(data.reserveDelta)>4||
+          !Number.isInteger(data.samples)||data.samples<0)
+          throw Error('Ungültige Brain-Antwort');
+        if(matchId!==brainMatchId||!opts.brainEnabled)return;
+        brainState={status:'Verbunden · '+data.samples+' Erfahrungen',
+          advice:{context:data.context,aggressiveDelta:data.aggressiveDelta,
+            reserveDelta:data.reserveDelta},receivedTick:tick,lastError:null};
+      }).catch(e=>{
+        if(matchId!==brainMatchId)return;
+        brainState={status:'Offline · lokaler Bot aktiv',advice:null,
+          receivedTick:-Infinity,lastError:String(e?.message||e).slice(0,90)};
+        brainBackoff=Date.now()+12000;
+      }).finally(()=>{if(timeout!==null)clearTimeout(timeout);brainBusy=false;});
+  }
+  function brainFinish(outcome){
+    if(!opts.brainEnabled||!opts.brainToken||typeof fetch!=='function'||brainSeq===0)return;
+    if(!['victory','defeat','unknown','incomplete'].includes(outcome))return;
+    fetch(BRAIN_URL+'/v1/finish',{method:'POST',mode:'cors',credentials:'omit',cache:'no-store',
+      headers:{'Content-Type':'application/json','X-Aggrobot-Token':opts.brainToken},
+      body:JSON.stringify({matchId:brainMatchId,outcome}),keepalive:true}).catch(()=>{});
   }
 
   const escapeHTML = v => String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -233,13 +296,13 @@
   }
   function diagnosticSnapshot() {
     const config=game?.config?.().gameConfig?.()||{};
-    const details={bot:VERSION,learning:{enabled:!!opts.learningEnabled,updates:learn.updates,contexts:jsonCopy(learn.contexts),lastResult:learn.lastResult},gameType:config.gameType,
+    const details={bot:VERSION,brain:{enabled:!!opts.brainEnabled,status:brainState.status,advice:brainState.advice,receivedTick:brainState.receivedTick,lastError:brainState.lastError},learning:{enabled:!!opts.learningEnabled,updates:learn.updates,contexts:jsonCopy(learn.contexts),lastResult:learn.lastResult},gameType:config.gameType,
       difficulty:config.difficulty,
       benchmarkMeta:{gameMap:config.gameMap??null,
         gameMapSize:config.gameMapSize??null,gameMode:config.gameMode??null,
         seed:config.seed??null,engineCommit:window.BOOTSTRAP_CONFIG?.gitCommit??null,
         matchEndObserved:gameEnd!==null,resultsVerifiedByBrowser:false},
-      options:{...opts,enabled:false},intents:intentHealth(),tuning:{...autoTuning,enabled:!!opts.fullAuto,
+      options:{...opts,brainToken:opts.brainToken?'[redacted]':'',enabled:false},intents:intentHealth(),tuning:{...autoTuning,enabled:!!opts.fullAuto,
         effective:{aggressive:setting('aggressive'),reserve:setting('reserve'),
           actionsPerMinute:setting('actionsPerMinute'),maxTargets:setting('maxTargets')}},attackReceipts, pendingAttack,
       construction:{pending:economicPending,blocked:[...economicBlocked.entries()],failedProbes:failedEconomyProbes,lastConfirmed:successfulEconomyTick,investment:investmentStatus},
@@ -412,6 +475,9 @@
     strategicTelemetry={favorableVictims:0,falloutSkipped:0,falloutFallback:0,afkTargets:0,assists:0,neutralLandings:0,forecastCount:0,engineForecasts:0,proxyForecasts:0,forecastComparisons:0,forecastUnavailable:0};
     nukeBusy=false;lastNuke=-Infinity;nukePending=null;nukeStatus='Warte auf Silo';nukeShots=0;nukeAttempts=0;nukeUnconfirmed=0;nuclearCache=null;nuclearCacheTick=-Infinity;
     learnMatch={sample:null,key:null,finished:false};
+    brainMatchId='match-'+Date.now().toString(36)+'-'+Math.floor(Math.random()*0xffffffff).toString(36).padStart(8,'0');
+    brainSeq=0;brainLastTick=-Infinity;brainBusy=false;brainBackoff=0;
+    brainState={status:opts.brainEnabled?'Warte auf Match':'Aus',advice:null,receivedTick:-Infinity,lastError:null};
     warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};diagnostics=[];recordSequence=0;recordCounts={};recordsDropped=0;streamErrors=0;lastDiagnosticTick=-Infinity;gameEnd=null;forecastAudits=[];lastForecastAudit=null;incomeAttribution=[];
     investmentStatus='Grundaufbau';lastWarReview=-Infinity;
     defenseStatus='Keine Bedrohung';lastEmergencyRetreat=-Infinity;lastDefenseLog=-Infinity;
@@ -475,7 +541,9 @@
       v.maxTargets-=3;v.actionsPerMinute-=6;
     }
     if(runtime.economyMs>1600)v.actionsPerMinute-=6;
+    const unlearned={...v};
     v=learnAdjust(v,mode,s,emergency);
+    v=brainAdjust(v,unlearned,mode,s,emergency);
     v.aggressive=clamp(v.aggressive,40,100);
     v.reserve=clamp(v.reserve,18,65);
     v.actionsPerMinute=clamp(v.actionsPerMinute,45,110);
@@ -3020,6 +3088,7 @@
       if(opts.enabled){
         gameEnd=gameOutcome(game,myPlayer());
         learnFinish(gameEnd.outcome);
+        brainFinish(gameEnd.outcome);
         telemetry('game_over','Partie beendet · Bot automatisch gestoppt',{gameEnd});
         opts.enabled=false;generation++;persist();
       }
@@ -3083,6 +3152,7 @@
       const context=strategy(me,groups,s);
       s=tuneAutonomously(me,groups,s,tick,context);
       troopSnapshot=s;
+      brainSend(tick,me,s);
       if(tick-lastDiagnosticTick>=80){lastDiagnosticTick=tick;
         telemetry('snapshot','Spielzustand',{difficulty:game.config().gameConfig().difficulty,
           gameType:game.config().gameConfig().gameType,investment:investmentStatus,
@@ -3165,7 +3235,7 @@
         opts.fullAuto=!opts.fullAuto;
         if(opts.fullAuto){opts.autoStrategy=true;autoTuning.tick=-Infinity;}
       }else if(key==='autoStrategy'&&opts.fullAuto){opts.fullAuto=false;opts.autoStrategy=false;}
-      else if(['economy','boats','autoSpawn','defense','stopOnError','upgrades','safeMode','autoStrategy','diplomacy','offerAlliances','nukes','antiNuke','lateOffense','impossibleMode'].includes(key))opts[key]=!opts[key];
+      else if(['economy','boats','autoSpawn','defense','stopOnError','upgrades','safeMode','autoStrategy','diplomacy','offerAlliances','nukes','antiNuke','lateOffense','impossibleMode','learningEnabled','brainEnabled'].includes(key))opts[key]=!opts[key];
       else if(key==='plan'){opts.fullAuto=false;opts.autoStrategy=false;opts.plan=opts.plan==='Blitz'?'Adaptiv':opts.plan==='Adaptiv'?'Ökonomie':'Blitz';}
       else if(key==='buildStyle'){opts.fullAuto=false;opts.autoStrategy=false;opts.buildStyle=opts.buildStyle==='Ausgewogen'?'Wirtschaft':opts.buildStyle==='Wirtschaft'?'Defensiv':'Ausgewogen';}
       persist();lastPaint=0;paint();
@@ -3176,6 +3246,11 @@
       if(key==='reserve')opts.reserve=clamp(e.target.value,5,65);
       if(key==='actionsPerMinute')opts.actionsPerMinute=clamp(e.target.value,15,120);
       if(key==='maxTargets')opts.maxTargets=clamp(e.target.value,4,25);
+      if(key==='brainToken'){
+        const token=String(e.target.value||'').trim();
+        if(token.length>=24&&token.length<=256){opts.brainToken=token;brainState.status='Token gespeichert';}
+        else brainState.status='Token ungültig (mind. 24 Zeichen)';
+      }
       persist();lastPaint=0;paint();
     });
     document.body.appendChild(panel);
@@ -3198,7 +3273,9 @@
       <div>${b('upgrades','Upgrades')} ${b('safeMode','Not-Aus')} ${b('autoStrategy','Auto-Strategie '+(opts.autoStrategy?'AN':'AUS'))} ${b('fullAuto','Vollautonom '+(opts.fullAuto?'AN':'AUS'))}</div>
       <div>${b('diplomacy','Diplomatie')} ${b('offerAlliances','Bündnisse anbieten')}</div>
       <div>${b('nukes','Auto-Nukes')} ${b('antiNuke','Intelligente SAMs')} ${b('lateOffense','Late-Game-Offensive')}</div>
-      <div>${b('learningEnabled','Lernen')} ${b('impossibleMode','Unmöglich-Taktik')} <button data-key="export" style="border:1px solid #73acdd;border-radius:5px;background:#235078;color:white;padding:5px 7px;cursor:pointer">📄 Diagnose JSON</button></div>
+      <div>${b('learningEnabled','Lernen')} ${b('brainEnabled','🧠 Lokaler Brain')} ${b('impossibleMode','Unmöglich-Taktik')} <button data-key="export" style="border:1px solid #73acdd;border-radius:5px;background:#235078;color:white;padding:5px 7px;cursor:pointer">📄 Diagnose JSON</button></div>
+      <div style="color:#9bd0e4">Brain: ${escapeHTML(brainState.status)}${brainState.lastError?' · '+escapeHTML(brainState.lastError):''} · ${escapeHTML(BRAIN_URL)}</div>
+      <label>Brain-Token: <input type="password" data-option="brainToken" placeholder="${opts.brainToken?'Gespeichert – neu einfügen zum Ändern':'Aus Terminal einfügen'}" autocomplete="off" style="width:100%;box-sizing:border-box"></label>
       <div style="color:#a9efc9">Hauptfront: ${escapeHTML(warState.name)} · Krieg ${isWar()?'aktiv':'frei'} · ${escapeHTML(lastRecoveryReason||'bereit')}</div>
       <div>${b('plan','Manuell: '+opts.plan)}<br>${b('buildStyle','Manueller Baufokus: '+opts.buildStyle)}</div>
       <div style="color:#a9efc9">KI-Strategie: ${escapeHTML(strategic.mode)} · ${escapeHTML(strategic.reason)} · Bau: ${escapeHTML(effectiveBuildStyle())}</div>
