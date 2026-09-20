@@ -2523,7 +2523,10 @@
     // buildable option while funds are low. Use an explicitly provisional
     // floor until a real, current worker quote replaces it.
     const portFund=portMilestone?
-      (nowTick-portQuotedTick<=210&&portQuotedCost>0?portQuotedCost:500000):0;
+      (nowTick-portQuotedTick<=210&&portQuotedCost>0?portQuotedCost:
+        // Provisional saving begins only after a productive core exists;
+        // otherwise early harbor hoarding delays essential income buildings.
+        cities>=2&&factories>=2?500000:0):0;
     const savingsTarget=samFund>0?samFund:portFund>0?portFund:
       portMilestone||(threat&&intel.uncovered.length>0&&wantedSAM>0)?0:
       saveForSilo?1150000:saveForNuke?firstRocketFund:0;
