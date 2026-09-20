@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.17.2
+// @version      1.18.0
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.17.2', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.18.0', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, brainEnabled:false, brainToken:'', fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -672,7 +672,9 @@
     const late=lateGame(me),home=Math.max(1,s.home);
     // Rush the opening while neutral land remains and the home front is safe.
     const opening=tick<1000 && items.some(g=>g.id===null&&!g.fallout) &&
-      s.incoming<home*.025 && s.strongest<home*.85 && s.ratio>=.27;
+      s.incoming<home*.025 && s.strongest<home*.85 && s.ratio>=.27 &&
+      !recentHostilePressure(tick) && !(armyTrend(tick)?.tiles< -80) &&
+      (!hardMode() || frontPressureForecast(me,items,tick).risk<.90);
     const invasion=s.incoming/home,neighbor=s.strongest/home;
     const emergency=invasion>=.18 || (invasion>=.10 && context.rebuilding);
     let mode='BALANCED',reason='Ausgeglichene Spielphase';
@@ -870,10 +872,14 @@
     const edgeScore=Math.min(1,edge/Math.max(22,scale));
     // Coast is helpful for ports, not a reason to prefer a tiny island.
     const coastScore=Math.min(1,coastal/Math.max(1,weight)*3);
+    // Several nearby enemy spawns are riskier than one equally close rival;
+    // avoid an opening surrounded by Impossible nations even on rich land.
+    const crowding=enemy.filter(d=>d<minimum*2.5).length;
+    const crowdPenalty=Math.min(.21,Math.max(0,crowding-1)*.07);
     const score=openScore*.19+density*.32+
       (plain/Math.max(1,core)*.45+plains/Math.max(1,weight)*.55)*.18+
       enemyScore*.16+edgeScore*.05+coastScore*.04+
-      (ally.length?teamScore*.06:0);
+      (ally.length?teamScore*.06:0)-crowdPenalty;
     return {tile,x,y,score,density,core:openScore,
       coast:coastScore,enemy:Number.isFinite(nearestEnemy)?nearestEnemy:null,
       teammate:Number.isFinite(nearestAlly)?nearestAlly:null};
@@ -1298,6 +1304,27 @@
       for(const [id] of ordered.slice(0,frontMemory.size-40))frontMemory.delete(id);
     }
   }
+  // Predict immediate pressure from observable fronts and recent own losses.
+  // This is a conservative safety envelope, NOT a claim about hidden armies.
+  function frontPressureForecast(me,items=[],tick=number(()=>game?.ticks?.(),0)) {
+    const home=Math.max(1,number(()=>me?.troops?.(),1));
+    const fronts=items.filter(g=>g.id!==null&&g.opponent?.isAlive?.()&&
+      !friendly(g.opponent,me)).map(g=>{
+      const now=Math.max(0,number(()=>g.opponent.troops(),0));
+      const prior=frontMemory.get(g.id);
+      const recent=prior&&tick-prior.lastTick<=240?prior.peak*.72:0;
+      return {id:g.id,troops:Math.max(now,recent)};
+    }).sort((a,b)=>b.troops-a.troops);
+    const primary=fronts[0]?.troops||0,secondary=fronts[1]?.troops||0;
+    const trend=armyTrend(tick),lost=trend&&trend.ticks>=80?
+      Math.max(0,-trend.tiles):0;
+    const incoming=(me?.incomingAttacks?.()||[]).filter(a=>!a.retreating)
+      .reduce((n,a)=>n+Math.max(0,number(()=>a.troops,0)),0);
+    const combined=primary+Math.min(secondary*.35,home*.4);
+    const risk=Math.max(incoming/home,combined/home*(lost>100?1.15:1));
+    return {primary,secondary,combined,incoming,lost,risk,
+      pressured:incoming>home*.10 || (lost>100&&combined>home*.65)};
+  }
   function military(me,items=[]) {
     const home=number(()=>me.troops());
     // Singleplayer's native infinite-troops option reports an artificial
@@ -1335,7 +1362,10 @@
       strongest>0 ? Math.min(home*.85,strongest*(hardMode()?.59:.53)) : 0,
       incoming>0 ? Math.min(home*.94,incoming*1.3) : 0,
       strongest>0 ? Math.min(home*.78,max*(hardMode()?.12:.14)) : 0);
-    const reserve=Math.min(home,Math.ceil(defensiveFloor));
+    const predicted=hardMode()?frontPressureForecast(me,items,tick):null;
+    const forecastFloor=predicted&&(predicted.pressured||predicted.combined>home*1.18)?
+      Math.min(home*.91,predicted.combined*.60+incoming*.30):0;
+    const reserve=Math.min(home,Math.ceil(Math.max(defensiveFloor,forecastFloor)));
     const available=Math.max(0,Math.floor(home-reserve));
     const total=home+committed;
     const activeEnemy=out.filter(a=>a.targetID!==0 && a.targetID!==null).length;
@@ -1489,7 +1519,18 @@
         log('KRIEGSZIEL ERLEDIGT: '+warState.name);
         warState={id:null,name:'—',since:tick,blockedUntil:-Infinity};plan=null;
       } else if(tick<warState.blockedUntil) {
-        strategic.reason='Front nach Verlusten stabilisieren';
+        // An inactive stalled war should not hold the entire nation hostage
+        // while a different independently safe opportunity is available.
+        const alternatives=foes.filter(x=>x.id!==warState.id&&
+          targetOpportunity(me,items,s,x));
+        if(!active.some(a=>attackTargets(a.targetID,warState.id))&&
+          tick-lastEnemySend>110&&alternatives.length&&
+          !recentHostilePressure(tick)){
+          blockedTargets.set(warState.id,Math.max(warState.blockedUntil,tick+160));
+          telemetry('war_replan','Festgefahrene Front freigegeben',
+            {oldTarget:warState.id,alternatives:alternatives.map(x=>x.id)});
+          warState={id:null,name:'—',since:tick,blockedUntil:-Infinity};plan=null;
+        } else strategic.reason='Front nach Verlusten stabilisieren';
       } else if(!active.some(a=>attackTargets(a.targetID,warState.id)) &&
         ((tick-warState.since>550 && !foes.some(x=>x.id===warState.id)) ||
          (tick-warState.since>850 && tick-lastEnemySend>280 && s.incoming===0))) {
@@ -1589,10 +1630,16 @@
       id!==targetID&&tick-x.lastTick<=240?
         Math.max(v,x.peak*.72):v,0);
     const otherThreat=Math.max(other,remembered);
-    const danger=otherThreat>s.home*1.15;
+    const secondary=items.filter(x=>x.id!==null&&x.id!==targetID&&
+      x.opponent?.isAlive?.()).map(x=>number(()=>x.opponent.troops(),0))
+      .sort((a,b)=>b-a)[1]||0;
+    const combined=otherThreat+Math.min(secondary*.35,s.home*.4);
+    const danger=otherThreat>s.home*1.15 ||
+      (hardMode()&&combined>s.home*1.27);
     const pressure=s.incoming>Math.max(1200,s.home*.08);
     const floor=Math.max(s.reserve,s.incoming*1.3,
-      otherThreat>0?Math.min(s.home,otherThreat*(hardMode()?.63:.55)):0);
+      otherThreat>0?Math.min(s.home,otherThreat*(hardMode()?.63:.55)):0,
+      hardMode()&&secondary>0?Math.min(s.home*.90,combined*.58):0);
     return {other:otherThreat,danger,pressure,floor,
       safeStrike:Math.max(0,Math.floor(s.home-floor)),
       emergency:danger||pressure};
@@ -2491,7 +2538,9 @@
       const range=number(()=>game.config().defensePostRange?.(),30);
       // A post must finish construction BEHIND the frontier while still
       // protecting it. With an incoming attack, move the safe band deeper.
-      const standoff=range*(troopSnapshot.incoming>0?.78:.65);
+      const lost=armyTrend(number(()=>game.ticks(),0))?.tiles||0;
+      const standoff=range*(troopSnapshot.incoming>0?.78:.65)+
+        (lost< -100?range*.08:0);
       if(fronts.length && (distance<standoff || distance>range-2))return -Infinity;
       if(!fronts.length)value-=75;
       else {
@@ -2518,8 +2567,15 @@
       value+=coverage*1.8+Math.min(10,distance*.05);
     }
     else {
-      if(fronts.length && distance<(troopSnapshot.incoming>0?34:20))return -Infinity;
+      const lost=armyTrend(number(()=>game.ticks(),0))?.tiles||0;
+      const safety=troopSnapshot.incoming>0||lost< -100?36:20;
+      if(fronts.length && distance<safety)return -Infinity;
       value+=Number.isFinite(distance)?Math.min(50,distance*.24)-Math.max(0,80-distance)*1.2:30;
+      // Repeated zero ship revenue after a completed harbor is not a reason
+      // to buy yet another idle harbor ahead of productive core buildings.
+      if(type==='Port'&&units.some(u=>u.type?.()==='Port'&&
+        !u.isUnderConstruction?.())&&incomeStatus.observed&&
+        incomeStatus.trade===0)value-=65;
       if(['City','Factory','Port'].includes(type))value+=railStationScore(ref,units).score;
       if(type==='Factory'){
         // Favor nearby City/Port infrastructure without assuming rail connectivity.
@@ -2639,13 +2695,17 @@
       seen.add(key);work.push(slot);
       perKind.set(kind,(perKind.get(kind)||0)+1);
     }
-    // The first harbor receives a dedicated, scored coast search; do not
-    // spend the probe budget on irrelevant upgrades during that milestone.
-    if(requirements.portMilestone){
+    // Nuclear emergency and immediate land defense have their own lane.
+    // Never discard legal SAM/defense candidates merely because the first
+    // harbor also has high priority. Harbor-only probes apply only when safe.
+    const urgentSAM=requirements.nuclearThreat&&requirements.wantedSAM>0&&
+      requirements.intel.uncovered.length>0;
+    const urgentLand=requirements.immediate&&requirements.wantedDefense>0;
+    if(requirements.portMilestone&&!urgentSAM&&!urgentLand){
       const portWork=work.filter(x=>x.entry.type==='Port'&&!x.entry.upgrade);
       if(portWork.length)work.splice(0,work.length,...portWork);
     }
-    if(requirements.portMilestone && coastal.length &&
+    if(requirements.portMilestone && !urgentSAM && !urgentLand && coastal.length &&
       !work.some(x=>x.entry.type==='Port'&&!x.entry.upgrade)){
       const portEntry=entries.find(x=>x.type==='Port'&&!x.upgrade);
       const portSite=portEntry&&rankedCoast.filter(x=>
@@ -3038,11 +3098,15 @@
     if(!p?.isAlive?.() || safeID(p)===safeID(me) || friendly(p,me))
       return {score:-999,reason:'Ungültiger / verbündeter Spieler'};
     if(p.isTraitor?.())return {score:-999,reason:'Verräter'};
+    // A target locked by the war director is never a peace-time proposal.
+    if(safeID(p)===warState.id || safeID(p)===plan?.id)
+      return {score:-999,reason:'Aktuelles Kriegsziel'};
     const their=Math.max(0,number(()=>p.troops()));
     const own=Math.max(1,number(()=>me.troops()));
     const territory=Math.max(0,number(()=>p.numTilesOwned()));
     const mine=Math.max(1,number(()=>me.numTilesOwned()));
-    const hostileIncoming=s.inc?.some(a=>a.attackerID===p.smallID?.());
+    const hostileIncoming=s.inc?.some(a=>
+      a.attackerID===p.smallID?.() || attackTargetID(a.attackerID)===safeID(p));
     const hostileOutgoing=s.out?.some(a=>attackTargets(a.targetID,p));
     if(hostileIncoming||hostileOutgoing)return {score:-999,reason:'Aktiver Konflikt'};
     if(opts.autoStrategy && strategic.mode==='ASSAULT'&&plan?.id===safeID(p))
