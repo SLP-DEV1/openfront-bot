@@ -1,7 +1,8 @@
 @echo off
 setlocal
 cd /d "%~dp0" || goto failed
-set "ENGINE=..\OpenFrontIO"
+rem Separate training checkout: never alter the historical ../OpenFrontIO benchmark pin.
+set "ENGINE=..\OpenFrontIO-Impossible"
 set "SHA=bb8af015b515b3b717bd4d901074c5f4c16641cb"
 
 where node >nul 2>&1 || (
@@ -14,7 +15,7 @@ where git >nul 2>&1 || (
 )
 
 if not exist "%ENGINE%\package.json" (
-    echo Klone offizielle OpenFront-Engine...
+    echo Erstelle separaten Impossible-Checkout in %ENGINE% ...
     git clone --depth 1 https://github.com/openfrontio/OpenFrontIO.git "%ENGINE%" || goto failed
     git -C "%ENGINE%" fetch --depth 1 origin %SHA% || goto failed
     git -C "%ENGINE%" checkout --detach %SHA% || goto failed
@@ -24,7 +25,7 @@ if /i not "%ENGINE_HEAD%"=="%SHA%" (
     echo Der separate Engine-Checkout hat einen anderen Commit.
     echo Erwartet: %SHA%
     echo Gefunden: %ENGINE_HEAD%
-    echo Nicht automatisch umstellen, um lokale Aenderungen zu schuetzen.
+    echo Der bestehende Ordner bleibt unveraendert. Bitte den Checkout pruefen.
     goto failed
 )
 if not exist "%ENGINE%\node_modules\tsx" (
