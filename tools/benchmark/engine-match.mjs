@@ -51,7 +51,7 @@ const clientID='aggrobot';
 const players=[{clientID,username:'AggroBot Benchmark',clanTag:null,
   ...(gameMode===GameMode.Team?{teamIndex:0}:{})},
   ...Array.from({length:opts.scriptedHumans},(_,i)=>({
-    clientID:'scripted-'+(i+1),username:'Scripted '+profileFor(i)+' '+(i+1),clanTag:null,
+    clientID:'scripted'+String(i+1).padStart(2,'0'),username:'Scripted '+profileFor(i)+' '+(i+1),clanTag:null,
     ...(gameMode===GameMode.Team?{teamIndex:i%3===0?0:1}:{})
   }))];
 const start={gameID:opts.seed,lobbyCreatedAt:0,players,config};
@@ -112,7 +112,7 @@ function scriptedHumanIntents(turn){
   if(opts.scriptedHumans<=0)return [];
   const out=[];
   for(let i=0;i<opts.scriptedHumans;i++){
-    const cid='scripted-'+(i+1),p=runner.game.playerByClientID(cid),profile=profileFor(i);
+    const cid='scripted'+String(i+1).padStart(2,'0'),p=runner.game.playerByClientID(cid),profile=profileFor(i);
     if(!p?.isAlive?.()||!p.hasSpawned?.()){scriptedStats.skipped++;continue;}
     const active=(p.outgoingAttacks?.()||[]).filter(a=>!a.retreating&&a.troops>0);
     const settings=profile==='rush'?{period:38,fraction:.42,max:2,start:110}:
