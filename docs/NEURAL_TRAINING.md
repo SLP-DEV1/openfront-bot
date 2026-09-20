@@ -1,12 +1,57 @@
-# Neural Impossible Trainer (experimental, 1.14.0)
+# Neural Impossible Trainer (experimental, 1.15.0)
 
-Der Trainer fuehrt echte Singleplayer-FFA-Partien mit der offiziellen OpenFront-Engine und Nation-Schwierigkeit **Impossible** aus. Es ist **Neuroevolution / derivative-free Reinforcement Learning**, kein PyTorch-Backpropagationstraining: ein kleines 8→8→2-Tanh-Netz wird mit deterministisch erzeugten Gewichtsmutationen ueber echte Matchresultate optimiert. Keine GPU, PyTorch oder Cloud erforderlich; der limitierende Faktor sind die Engine-Simulationen.
+Der Trainer fuehrt echte Singleplayer-FFA-Partien mit der offiziellen OpenFront-Engine und Nation-Schwierigkeit **Impossible** aus. Es ist **Neuroevolution / derivative-free Reinforcement Learning**, kein PyTorch-Backpropagationstraining: ein kleines 16→12→1-Tanh-Netz wird mit deterministisch erzeugten Gewichtsmutationen ueber echte Matchresultate optimiert. Keine GPU, PyTorch oder Cloud erforderlich; der limitierende Faktor sind die Engine-Simulationen.
 
-## Spiel-Policy
+## Spiel-Policy: Kandidaten statt Slider
 
-Die acht Eingaben sind normalisierte Heimtruppen/Kapazitaet, eingehende Truppen/Heimtruppen, staerkster Grenznachbar/Heimtruppen, gebundene Truppen/Heimtruppen, neutrales Land vorhanden, Anzahl erreichbarer Gegner, eigenes Gebiet und Late-Game-Indikator. Ausgaben aendern Aggressivitaet und Reserve um hoechstens ±8 Punkte relativ zur **ungelehrnten** regelbasierten Basis. Im Alarmfall, bei akutem Angriff oder sehr starkem Nachbarn wird das Netz nicht angewandt. Es erzeugt keine direkten Spielbefehle, fuehrt keine illegalen Aktionen aus, hebt nie Allianz- oder Worker-Pruefungen auf und ist ohne gueltige Gewichte AUS.
+Der Trainingslauf erzeugt jetzt ein neues **Schema-2-Netz (16→12→1,
+217 Gewichte)**: Der Bot stellt aus der eigenen GameView beobachtbare
+Lagedaten und **pro Kandidat** Typ, Basiswertung, Gegnerstaerke bzw.
+Bauklasse, Gebiet/Front, Kosten/Truppeneinsatz und Risiko zusammen.
+Die Netzausgabe aendert **nur die Sortierreihenfolge um maximal ±14
+Scorepunkte**. Ein Nullgewichtsmodell entspricht exakt dem regulaeren
+Heuristik-Ranking.
 
-Die Nullgewicht-Policy ist exakt die bestehende regelbasierte Strategie. Live-Modelle werden NICHT automatisch aus Trainingsordnern geladen; nur ein ausdruecklich erzeugtes Deploy-Userscript enthaelt Gewichte. Im Tampermonkey-Panel bleibt `Neurales Netz` zunaechst AUS. Die lokale Benchmark-VM laedt Kandidaten ausschliesslich aus `--policy` und protokolliert ihren SHA-256 neben Engine- und Bot-Hash.
+Die vorhandenen Regelpruefungen begrenzen die Wahl unveraendert:
+Angriffsziele werden vor Aufnahme bewertet und vor Versand ueber
+`legalTarget` sowie Reserve-, Front-, Allianz- und Feindpruefungen
+nochmals validiert; Wirtschaftskandidaten erst nach Worker-Baupruefung,
+Finanzierung, Besitz, Pflichtbau und Goldreserve; Marinekandidaten
+vor dem Versand erneut auf Wasserweg, Besitz und Bedrohung.
+Defensive Notfallrueckzuege und der Scheduler bleiben regelbasiert.
+Der Kandidaten-Scorer darf **keine neue Aktion freischalten und keinen
+direkten Intent erzeugen**. Bei akutem eingehendem Angriff oder
+zu starkem Nachbarn wird er deaktiviert.
+
+Das Scoring findet im bestehenden Attack-, Economy- und Marineplaner
+statt, **nicht** als freier globaler Scheduler, der gleichzeitig zwischen
+Bau und einem Angriff waehlt. Es ersetzt weder die taktischen
+Heuristiken noch garantiert es ein strategisch gelungenes Spiel.
+
+Schema-1-Modelle (8→8→2, frueher Slider) bleiben im Userscript
+lesbar, sind aber mit dem neuen Training **nicht kompatibel**:
+`--initialModel` verlangt nun Schema 2. Einen alten
+`provisional.json`-Kandidaten nicht als Champion ausgeben.
+Das Netz ist im normalen Userscript ohne gebuendelte Gewichte und
+separates Opt-in **AUS**; nur die isolierte Engine-Benchmark-VM
+aktiviert Testmodelle automatisch und protokolliert ihren SHA-256.
+
+## Verlauf statt nur Schlussbild
+
+Die echte Engine zeichnet im Matchbericht alle 200 Ticks einen
+begrenzten, ausschliesslich ueber `GameView` sichtbaren Verlauf auf:
+eigenes Land, Heimtruppen, Gold sowie sichtbares Gegnerland und
+Gegnertruppen. Die Zusammenfassung enthaelt Hoechststand,
+durchschnittlich gehaltenes Land und den beim Schluss verbliebenen
+Anteil. Der Such-Reward beruecksichtigt daher **halten statt nur kurz
+erobern** und unterscheidet nachgewiesene Niederlage, rechtszensierte
+Tick-Limit-Partie und verifizierten Sieg.
+
+Der Reward dient nur zum Erkunden und zur **vorlaeufigen**
+Parent/Kandidat-Auswahl. Ein Tick-Limit zaehlt weiterhin nie als Sieg.
+Ein Champion entsteht ausschliesslich bei mehr **bestaetigten Siegen
+auf paarigen, getrennten Evaluations-Seeds** und vollstaendigen
+Matchdaten. Ein hoeherer Reward allein erteilt keine Freigabe.
 
 ## Windows-Schnellstart
 
@@ -45,7 +90,7 @@ nicht noetig; insbesondere gleichnamige Ausgabeordner vermeiden.
 ## Verlaessliche Promotion
 
 - Trainings-Seeds: `train-<generation>-<index>-<map>-<nations>`; davon getrennte Evaluations-Seeds mit Prefix `eval-`. Kandidat und Champion spielen auf **gleichen** Evaluations-Seeds. Die Engine ist auf `bb8af015b515b3b717bd4d901074c5f4c16641cb` fixiert und der Checkout muss sauber sein.
-- Die Trainingsbewertung unterscheidet **nachgewiesenen Sieg** (hoeherer Such-Reward), **nachgewiesene Niederlage** (negativer Such-Reward), und **Tick-Limit bei noch laufendem Match** (mittlerer Hilfs-Reward fuer bis zum Limit ueberlebendes und gehaltenes Gebiet). Vorher wurden Tick-Limits schlechter als fruehe Niederlagen bewertet: Das ist korrigiert. Fehler erhalten -1. Tick-Limits sind **niemals Siege**, duerfen kein Modell freigeben und sind keine kalibrierte Gewinnwahrscheinlichkeit. Ein moeglicher Anreiz zum passiven Ueberleben bleibt eine Begrenzung dieses vereinfachten Signals.
+- Der Such-Reward bewertet zusaetzlich den sichtbaren Matchverlauf: mittleres gehaltenes Land, Gebietshoechststand und Retention bei Partieende. Sieg-Nachweis und Champion-Freigabe bleiben strikt unabhaengig vom Reward; passives Ueberleben oder blosse Groesse kann dennoch zu einem suboptimalen Suchsignal fuehren.
 - Nur wenn **alle** Auswertungsmatches abgeschlossen sind und der Kandidat **mehr bestaetigte Siege** als der aktuelle Champion hat, schreibt das System `champion.json`. Die besseren Trainingsgewichte landen sonst lediglich in `provisional.json` und werden **nicht** automatisch live installiert.
 - Aufstiegsaussagen sind nur fuer die jeweiligen festen Karten/Gegnerzahlen/Seeds gueltig. Fuer ernstzunehmende Ergebnisse weitere Karten, Seeds, v.a. *neue* Evaluations-Seeds sowie reale Browser- und Multiplayer-Tests einsetzen. Das Netz kann trotz Training weiter 0/4 gegen Impossible erreichen.
 
