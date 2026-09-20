@@ -1544,7 +1544,8 @@ function boot(benchmarkOptions={}) {
     const plan=x.b.economicNeeds(x.me,units,[5500]);
     assert.equal(plan.saveForSilo,true);
     assert.equal(plan.portMilestone,true);
-    assert.equal(plan.savingsTarget,0);
+    assert.equal(plan.savingsTarget,500000,
+      'fund first harbor before deferring to silo savings');
     assert.equal(await x.b.economy(x.me,2400,0,[5500]),true);
     assert.equal(x.sent[0].unit,'Port');
   });
