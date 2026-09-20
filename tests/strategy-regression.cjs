@@ -71,7 +71,7 @@ function boot(benchmarkOptions={}) {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'strategicDirector,economyPosture,observeOpponents,opponentTrend,navalCommitmentRatio,landingThirdPartyRisk,targetHomeRatio,railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,frontPressureForecast,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,offensiveCommitment,observeFronts,qwenStrategyHint,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,samBuildAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
+    'strategicDirector,economyPosture,observeOpponents,opponentTrend,navalCommitmentRatio,landingThirdPartyRisk,targetHomeRatio,railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,frontPressureForecast,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,offensiveCommitment,globalNavalHomeGuard,observeFronts,qwenStrategyHint,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,samBuildAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'setNeural:m=>{neuralModel=neuralValidate(m);opts.neuralEnabled=!!neuralModel;neuralPolicyCache={key:null,output:null};},neuralStrategicSignals,neuralChannel,',
     'getBrainMatchId:()=>brainMatchId,setQwen:q=>{brainState.qwen=q;},',
@@ -2233,6 +2233,68 @@ function boot(benchmarkOptions={}) {
     x.setTick(2750);
     assert.notEqual(x.b.economicNeeds(x.me,units,[]).savingsTarget,350000,
       'old legal quote must not freeze the economy indefinitely');
+  });
+  await check('v1.18.2 allied buildings do not inflate own SAM obligations', () => {
+    const x=boot(),city={type:()=> 'City',tile:()=>5000,isActive:()=>true},
+      factory={type:()=> 'Factory',tile:()=>5020,isActive:()=>true};
+    x.me.units=()=>[city,factory];
+    x.me.isFriendly=p=>p===x.weak;
+    x.game.units=()=>[{type:()=> 'City',tile:()=>6000,isActive:()=>true,
+      owner:()=>x.weak},{type:()=> 'Missile Silo',tile:()=>6,
+      isActive:()=>true,owner:()=>x.strong}];
+    const intel=x.b.nuclearIntel(x.me,[city,factory]);
+    assert.equal(intel.assets.length,2,'own assets only');
+    assert.equal(intel.uncovered.length,2,'own uncovered only');
+    assert.equal(intel.allyAssets.length,1,'ally assets reported separately');
+    assert.equal(intel.allyUncovered.length,1);
+    const needs=x.b.economicNeeds(x.me,[city,factory],[]);
+    assert(needs.wantedSAM>0);
+  });
+  await check('v1.18.2 first Port gets provisional funds before worker offers a price', async () => {
+    const x=boot();x.setTick(500);x.setGold(350000);
+    x.game.isShore=t=>t===5500;
+    const units=['City','Factory'].map((type,i)=>({
+      type:()=>type,isActive:()=>true,tile:()=>5000+i*20,
+      id:()=>i+1,level:()=>1}));
+    x.me.units=()=>units;
+    x.me.actions=async(tile,types)=>({buildableUnits:(types||[])
+      .filter(type=>type!=='Port').map(type=>({
+        type,canBuild:tile,canUpgrade:false,cost:125000n}))});
+    assert.equal(x.b.economicNeeds(x.me,units,[5500]).savingsTarget,500000);
+    assert.equal(await x.b.economy(x.me,500,0,[5500]),false);
+    assert.equal(x.b.state().portProbeFailures,0,
+      'no offer while undercapitalized is not a confirmed illegal shore');
+    x.setTick(540);x.setGold(600000);
+    assert.equal(await x.b.economy(x.me,540,0,[5500]),true,
+      'funded but unavailable Port permits productive core construction');
+    assert.notEqual(x.sent[0].unit,'Port');
+  });
+  await check('v1.18.2 cheaper verified harbor bypasses provisional 500k goal', async () => {
+    const x=boot();x.setTick(500);x.setGold(300000);
+    x.game.isShore=t=>t===5500;
+    const units=['City','Factory'].map((type,i)=>({
+      type:()=>type,isActive:()=>true,tile:()=>5000+i*20,
+      id:()=>i+1,level:()=>1}));
+    x.me.units=()=>units;
+    x.me.actions=async(tile,types)=>({buildableUnits:(types||[])
+      .filter(type=>type==='Port').map(type=>({
+        type,canBuild:tile,canUpgrade:false,cost:250000n}))});
+    assert.equal(await x.b.economy(x.me,500,0,[5500]),true);
+    assert.equal(x.sent[0].unit,'Port');
+  });
+  await check('v1.18.2 global naval guard protects home without a land frontier', () => {
+    const x=boot();x.setHome(2000000);
+    x.strong.troops=()=>1700000;x.weak.troops=()=>350000;
+    const s=x.b.military(x.me,[]);
+    const capped=x.b.globalNavalHomeGuard(x.me,x.weak,s,950000,[]);
+    assert(capped.remote&&capped.other===1700000);
+    assert(capped.amount<950000);
+    assert(s.home-capped.amount>=Math.min(s.home*.92,1700000*.80));
+    const short=x.b.globalNavalHomeGuard(x.me,x.weak,s,100000,[]);
+    assert.equal(short.amount,100000,'scouting-size actions unaffected');
+    const contact=x.b.globalNavalHomeGuard(x.me,x.weak,s,950000,
+      [{id:'weak',opponent:x.weak,tiles:[6]}]);
+    assert.equal(contact.amount,950000,'land front remains on existing guard');
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
