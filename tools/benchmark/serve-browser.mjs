@@ -68,4 +68,14 @@ console.log(`Browser benchmark: http://127.0.0.1:${opts.port}/__aggrobot/`);
 console.log('Output: '+dir);
 console.log('Qwen Code live coach: '+(coach.status().enabled?'ENABLED':'OFF (AGGROBOT_LIVE_QWEN=1)'));
 console.log('Qwen results: '+path.join(dir,'qwen-live-report.md'));
+if(process.env.AGGROBOT_OPEN_BROWSER==='1'&&process.platform==='win32'){
+  // Static localhost URL; no user input or secrets on the command line.
+  const {spawn}=await import('node:child_process');
+  const url='http://127.0.0.1:'+opts.port+'/__aggrobot/?autostart=1';
+  const browser=spawn(process.env.ComSpec||'cmd.exe',
+    ['/d','/s','/c','start "" "'+url+'"'],
+    {stdio:'ignore',windowsHide:true,detached:true});
+  browser.on('error',e=>console.warn('Browser did not open automatically: '+e.message));
+  browser.unref();
+}
 for(const signal of ['SIGINT','SIGTERM'])process.on(signal,async()=>{await server.close();process.exit(0);});
