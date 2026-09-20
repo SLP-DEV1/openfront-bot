@@ -8,7 +8,7 @@ einem Sieg. Bei 1.18 unbedingt die im PR verlinkte *paired evaluation* mit
 denselben Seeds, dem Engine-Commit, den `outcome`-Feldern und den Endticks
 vergleichen. Nicht abgeschlossene Matches sind weder Siege noch Niederlagen.
 
-## Veränderte Spielplanung
+**Sicherer Standard:** Die experimentelle, noch nicht siegreiche Mehrfront-/Spawn-/Kriegs-Neuplanung ist über den GUI-Schalter **Impossible AI Test** ausdrücklich opt-in (`impossibleExperiment=false` auf einer frischen Installation). Hafen-/SAM-Fehlerbehebungen, Investitionswertung, Worker- und Marine-Bestätigung bleiben unabhängig davon aktiv. So wird eine im Paarvergleich schlechter abschneidende Strategie nicht stillschweigend zur Standardpolicy.\n\n## Veränderte Spielplanung
 
 - Aus sichtbaren feindlichen Fronten, eigener Entwicklung und eingehenden
   Angriffen ergibt sich eine **konservative Frontprognose**. Zusätzliche
