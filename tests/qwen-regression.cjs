@@ -1,7 +1,7 @@
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {makeStore}=require('../brain/store.cjs');
-const {makeAdvisor,candidate,configFromEnv,API_URL,MODEL}=require('../brain/qwen.cjs');
+const {makeAdvisor,buildPrompt,candidate,configFromEnv,API_URL,MODEL}=require('../brain/qwen.cjs');
 const {createServer}=require('../brain/server.cjs');
 (async()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'aggrobot-qwen-'));
@@ -12,6 +12,33 @@ const {createServer}=require('../brain/server.cjs');
     assert.equal(API_URL,'http://127.0.0.1:8080/v1/chat/completions');
     assert.equal(MODEL,'qwen38-27b-gsq-mtp');
     assert.throws(()=>candidate('not json'));
+    const manual=buildPrompt('manual',{tick:0,mode:'BALANCED',land:1000,
+      home:500,max:1000,incoming:0,strongest:200,recent:[]});
+    assert.equal(manual.isSyntheticConnectivityTest,true);
+    assert.equal(manual.current.ownTerritoryTiles,1000);
+    assert.equal(manual.current.ownHomeTroops,500);
+    assert.equal(manual.current.strongestVisibleBorderNeighborTroops,200);
+    assert.equal(manual.fieldGuide.ownHomeTroops.includes('KEIN Land'),true);
+    assert.equal(manual.notProvided.includes('Gegnerische Gebietsgrößen'),true);
+    assert.equal(Object.hasOwn(manual.current,'land'),false,'ambiguous field names removed');
+    const history=buildPrompt('threat',{tick:500,mode:'DEFEND',land:50,home:80,
+      max:1000,incoming:5000,strongest:2000,
+      recent:[{tick:250,mode:'DEFEND',land:100,home:200,incoming:1000}]});
+    assert.equal(history.recent[0].ownTerritoryTiles,100);
+    assert.equal(history.recent[0].ownHomeTroops,200);
+    assert.equal(Object.hasOwn(history.recent[0],'home'),false);
+    assert.throws(()=>candidate(JSON.stringify({
+      strategy:'EXPAND',reasonCode:'EXPANSION',
+      explanation:'Frühes Spiel (Tick 0) mit deutlicher Führung: 500 Land gegen 200 des stärksten Gegners.'
+    })),/Ungrounded/,'reject the exact hallucination observed in the live manual test');
+    assert.throws(()=>candidate(JSON.stringify({
+      strategy:'EXPAND',reasonCode:'EXPANSION',
+      explanation:'Wir haben einen deutlichen Vorsprung vor den Gegnern.'
+    })),/Ungrounded/);
+    assert.equal(candidate(JSON.stringify({
+      strategy:'HOLD',reasonCode:'OTHER',
+      explanation:'Synthetischer Verbindungstest ohne echte Matchdaten.'
+    })).strategy,'HOLD');
     assert.equal(candidate('<think>internal trace</think>\n```json\n'+JSON.stringify({
       strategy:'HOLD',reasonCode:'OTHER',explanation:'Gegenwärtige Lage beobachten.'
     })+'\n```').strategy,'HOLD');
@@ -39,6 +66,13 @@ const {createServer}=require('../brain/server.cjs');
     assert.equal(body.model,MODEL);
     assert.equal(body.stream,false);
     assert.equal(body.max_tokens,768);
+    const sent=JSON.parse(body.messages[1].content);
+    assert.equal(sent.current.ownTerritoryTiles,1003);
+    assert.equal(sent.current.ownHomeTroops,800);
+    assert.equal(sent.current.strongestVisibleBorderNeighborTroops,200);
+    assert.equal(Object.hasOwn(sent.current,'land'),false);
+    assert.equal(sent.notProvided.includes('Gegnerische Gebietsgrößen'),true);
+    assert(body.messages[0].content.includes('TROOP COUNTS and NEVER land'));
     assert.equal(body.messages[1].content.includes('shadowmatch123456'),false,
       'model sees aggregate state, not session identifier');
     assert.equal(advisor.status().lastResult,null,'result is not available before model finishes');

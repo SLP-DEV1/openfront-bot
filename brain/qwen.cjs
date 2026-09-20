@@ -8,6 +8,42 @@ const STRATEGIES=new Set(['HOLD','EXPAND','ECONOMY','DEFEND','NAVAL','TECH','REP
 const REASONS=new Set(['STAGNATION','THREAT','RESOURCE','EXPANSION','ENDGAME','OTHER']);
 // Sparse sampling: these limits are in simulation ticks, NOT seconds.
 const ADVICE_INTERVAL=2400,THREAT_RATIO=.35,MIN_INCOMING=1000,MANUAL_COOLDOWN_MS=60000;
+const FIELD_GUIDE=Object.freeze({
+  tick:'Spiel-Tick, kein Zeitwert in Sekunden',
+  mode:'Regelbasierter Strategiemodus des Bots, kein Spielausgang',
+  ownTerritoryTiles:'Anzahl ausschließlich eigener Gebietsfelder (Tiles)',
+  ownHomeTroops:'Eigene momentan zu Hause verfügbare Truppen, KEIN Land',
+  ownTroopCapacity:'Eigene Truppenkapazität, KEIN Land',
+  incomingEnemyTroops:'Summe aktuell eingehender gegnerischer Angriffstruppen, KEIN Land',
+  strongestVisibleBorderNeighborTroops:'Truppenstärke des stärksten sichtbaren Grenznachbarn, KEIN Land'
+});
+function buildPrompt(kind,payload){
+  const current={
+    tick:payload.tick,mode:payload.mode,
+    ownTerritoryTiles:payload.land,
+    ownHomeTroops:payload.home,
+    ownTroopCapacity:payload.max,
+    incomingEnemyTroops:payload.incoming,
+    strongestVisibleBorderNeighborTroops:payload.strongest
+  };
+  const recent=Array.isArray(payload.recent)?payload.recent.slice(-6).map(x=>({
+    tick:x.tick,mode:x.mode,ownTerritoryTiles:x.land,
+    ownHomeTroops:x.home,incomingEnemyTroops:x.incoming
+  })):[];
+  return {kind,isSyntheticConnectivityTest:kind==='manual',fieldGuide:FIELD_GUIDE,
+    current,recent,outcome:payload.outcome||null,
+    notProvided:['Gegnerische Gebietsgrößen','Gegnerische Kartenpositionen',
+      'Schiffszugang und Küstenlage','Anzahl oder Gebiete anderer Spieler',
+      'Gesicherte Führung gegenüber anderen Spielern']};
+}
+function checkExplanationGrounding(explanation){
+  // Conservative output contract, not a general factual-verification engine.
+  // No numeric claims: avoids confusing troop counts with territory sizes.
+  if(/\d/.test(explanation)||
+    /(?:führ(?:ung|t)|vorsprung|überlegen(?:heit)?|mehr\s+(?:land|gebiet)|gegner(?:isches|ische|ischen)?\s+(?:land|gebiet)|gegnergebiete)/i.test(explanation))
+    throw new TypeError('Ungrounded numeric/territory-lead assertion');
+}
+
 function candidate(raw){
   if(typeof raw!=='string'||raw.length>12000)throw new TypeError('Missing or oversized model response');
   let text=raw.trim();
@@ -19,6 +55,7 @@ function candidate(raw){
     !STRATEGIES.has(parsed.strategy)||!REASONS.has(parsed.reasonCode)||
     typeof parsed.explanation!=='string'||parsed.explanation.length<3||parsed.explanation.length>360)
     throw new TypeError('Invalid advisor recommendation');
+  checkExplanationGrounding(parsed.explanation);
   return {strategy:parsed.strategy,reasonCode:parsed.reasonCode,
     explanation:parsed.explanation.replace(/[\x00-\x1f]/g,' ').slice(0,360)};
 }
@@ -49,9 +86,7 @@ function makeAdvisor({store,config=configFromEnv(),fetchImpl=globalThis.fetch,no
     const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),maxLatencyMs);
     timeout.unref?.();
     try{
-      const prompt={kind,match:{tick:payload.tick,mode:payload.mode,land:payload.land,
-        home:payload.home,max:payload.max,incoming:payload.incoming,strongest:payload.strongest},
-        recent:payload.recent,outcome:payload.outcome||null};
+      const prompt=buildPrompt(kind,payload);
       const response=await fetchImpl(config.url,{method:'POST',signal:controller.signal,
         headers:{'Content-Type':'application/json','Authorization':'Bearer '+config.apiKey},
         body:JSON.stringify({model:config.model,stream:false,temperature:0.2,
@@ -62,8 +97,16 @@ function makeAdvisor({store,config=configFromEnv(),fetchImpl=globalThis.fetch,no
             'strategy (HOLD|EXPAND|ECONOMY|DEFEND|NAVAL|TECH|REPOSITION), '+
             'reasonCode (STAGNATION|THREAT|RESOURCE|EXPANSION|ENDGAME|OTHER), '+
             'explanation (German, 3-360 characters). '+
-            'Do not assume naval access or enemy positions if not supplied. '+
-            'Do not invent map facts. A strategy suggestion is observational only.'},
+            'Read fieldGuide and current carefully. ownTerritoryTiles is the ONLY own-land field. '+
+            'ownHomeTroops, ownTroopCapacity, incomingEnemyTroops and strongestVisibleBorderNeighborTroops '+
+            'are TROOP COUNTS and NEVER land or territories. recent fields have the same meanings. '+
+            'Enemy territory sizes, map positions, coastal access, rankings and whether we lead are NOT PROVIDED; '+
+            'never claim a lead, advantage, enemy territory size, precise coast or map facts. '+
+            'In explanation use qualitative observations only: NO digits or numerical comparisons, '+
+            'NO claims of territorial leadership or opponent territory. '+
+            'Do not infer victory or defeat unless outcome explicitly says so. '+
+            'For isSyntheticConnectivityTest true, describe only that this is a connection test, not a real match. '+
+            'A strategy suggestion is observational only.'},
             {role:'user',content:JSON.stringify(prompt)}]})});
       if(!response.ok)throw new Error('llama.cpp HTTP '+response.status);
       const json=await response.json();
@@ -139,4 +182,4 @@ function makeAdvisor({store,config=configFromEnv(),fetchImpl=globalThis.fetch,no
     while(running)await new Promise(resolve=>setTimeout(resolve,5));
   }};
 }
-module.exports={MODEL,API_URL,candidate,configFromEnv,makeAdvisor};
+module.exports={MODEL,API_URL,FIELD_GUIDE,buildPrompt,candidate,configFromEnv,makeAdvisor};
