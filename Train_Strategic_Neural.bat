@@ -56,10 +56,10 @@ if not exist "%ENGINE%\node_modules\tsx" (
 )
 for /f %%I in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmmss"') do set "STAMP=%%I"
 if not defined STAMP (echo Kein Trainings-Zeitstempel verfuegbar. & exit /b 1)
-set "OUT=benchmark-results\strategic-v3-%DIFFICULTY%-%STAMP%"
+set "OUT=benchmark-results\strategic-v4-%DIFFICULTY%-%STAMP%"
 echo Starte Lernen in echten offiziellen %DIFFICULTY%-Engine-Matches.
 echo Trainings-Ergebnisse: %OUT%
-node trainer/train.mjs --engine "%ENGINE%" --engineCommit %PIN% --difficulty %DIFFICULTY% --maps World,Europe --nations 1,4 --generations 3 --population 4 --trainSeeds 2 --evalSeeds 4 --ticks 18000 --parallel 2 --sigma 0.12 --out "%OUT%"
+node trainer/train.mjs --schema 4 --engine "%ENGINE%" --engineCommit %PIN% --difficulty %DIFFICULTY% --maps World,Europe --nations 1,4 --generations 3 --population 4 --trainSeeds 2 --evalSeeds 4 --ticks 18000 --parallel 2 --sigma 0.12 --out "%OUT%"
 if errorlevel 1 exit /b 1
 if not exist "%OUT%\champion.json" (
   echo Kein belegbar besseres Modell gefunden. Keine automatische Freigabe.
