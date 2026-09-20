@@ -2,7 +2,7 @@
 
 Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscript für [OpenFront](https://openfront.io/).
 
-**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.18.3**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
+**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.18.4**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
 
 ## AggroBot 2.0 – erster lokaler Brain-Baustein (v1.11.0)
 
@@ -92,6 +92,24 @@ Kopie eine getrennte Code-Variante erzeugen, ohne das Original zu ersetzen.
 Freigabe einer KI-Aenderung.**
 
 [Start, Grenzen, Auswertung und optionale Code-Variante](docs/LIVE_QWEN.md).
+
+## Ranked 2v2 mit zwei AggroBots (1.18.4)
+
+Nur bei `gameConfig.rankedType === '2v2'` und Teammodus aktiviert der Bot
+seine Zwei-Spieler-Koordination. Die beiden Instanzen brauchen kein gemeinsames
+Browser-`localStorage` und keinen Brain-Server: Jede beobachtet ihren Partner
+über den offiziellen sichtbaren Spielzustand. Sie bevorzugen nahe, aber nicht
+überlappende Spawns; eine laufende Partnerfront erhält einen begrenzten
+Zielbonus. Eine eigene inaktive Kriegsziel-Sperre darf für diese bestätigte
+Partnerfront freigegeben werden, laufende eigene Angriffe aber nicht.
+
+Truppenhilfe erfolgt nur bei beobachtetem Angriff und tatsächlichem
+Partnerdefizit und nur oberhalb der eigenen Heimreserve. Goldhilfe ist auf
+einen eindeutig ärmeren Partner, den eigenen verfügbaren Überschuss und den
+Baubudget-Schutz begrenzt. Server/Worker bleiben für Legalität und tatsächliche
+Ausführung zuständig. **Keine Garantie auf Ranglisten-Siege**: Offizielle
+Impossible-Engine-Checks ersetzen keine abgeschlossenen Ranked-2v2-Matches
+mit zwei verbundenen Bot-Clients.
 
 ## Installation
 
