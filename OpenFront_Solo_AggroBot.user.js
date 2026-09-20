@@ -4008,7 +4008,7 @@
       <div>${b('learningEnabled','Lernen')} ${b('brainEnabled','🧠 Lokaler Brain')} ${b('qwenPolicy','Qwen-Hinweise (Test)')} ${b('neuralEnabled','Neurales Netz')} ${b('impossibleMode','Unmöglich-Taktik')}</div>
       </details>
       <details data-section="brain"${openFor('brain')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Lokaler Brain &amp; Token</summary>
-      <div style="color:#9bd0e4">Neurales Modell: ${neuralModel?.schema===2?'Aktionsranking (max. ±14 Punkte)':neuralModel?.schema===1?'Slider (max. ±8 Punkte)':'nicht geladen'} · nur bei freigegebener Partie</div>
+      <div style="color:#9bd0e4">Neurales Modell: ${neuralModel?.schema===4?'Strategische Policy v4 (24 Signale)':neuralModel?.schema===3?'Strategische Policy v3 (16 Signale)':neuralModel?.schema===2?'Aktionsranking (max. ±14 Punkte)':neuralModel?.schema===1?'Slider (max. ±8 Punkte)':'nicht geladen'} · nur bei freigegebener Partie</div>
       <div style="color:#9bd0e4">Brain: ${escapeHTML(brainState.status)}${brainState.lastError?' · '+escapeHTML(brainState.lastError):''} · ${escapeHTML(BRAIN_URL)}</div>
       <label>Brain-Token: <input type="password" data-option="brainToken" placeholder="${opts.brainToken?'Gespeichert – neu einfügen zum Ändern':'Aus Terminal einfügen'}" autocomplete="off" style="width:100%;box-sizing:border-box"></label>
       </details>
