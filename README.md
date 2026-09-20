@@ -2,7 +2,7 @@
 
 Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscript für [OpenFront](https://openfront.io/).
 
-**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.10.6**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
+**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.10.7**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
 
 ## Installation
 
@@ -16,6 +16,15 @@ Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscr
 ## Strategie & Diagnose
 
 Strategie-, Wirtschafts-, Marine-, Diplomatie-, Nuke- und SAM-Planung sind vorhanden. Der Bot kann Befehle senden; daraus folgt **keine garantierte Gewinnrate auf „Unmöglich“**. Ein vollständiger Live-Test ist noch nicht erfolgt. „Diagnose JSON“ im Bot-Menü zeichnet unter anderem Gebietsänderungen, Truppenlage, Bauaufträge und Allianzantworten auf. Bitte den Export vor dem Neuladen erstellen.
+
+### Änderung 1.10.7 – Multiplayer-Fenster und Live-Validierung
+
+- **Gegner kämpfen anderswo:** Spieler-Intelligenz unterscheidet numerische OpenFront-`smallID`-Angriffe gegen uns von Truppen, die ein echter Gegner gegen *Dritte* gebunden hat. Bei einem sichtbar anderweitig engagierten menschlichen Gegner sinkt der benötigte Truppenvorteil **nur moderat**; nach der asynchronen Workerprüfung bleiben die Heimreserve gegen andere Nachbarn und die Frontbindung verbindlich.
+- **Neutrale Eröffnung:** Wenn unbesetztes Land erreichbar und unsere Region noch klein ist, sinkt die Priorität eines nicht exponierten menschlichen Angriffsziels. Eine tatsächlich exponierte Person kann trotzdem eine Gelegenheitsoption sein. Es gibt keinen pauschalen Aufruf zum frühen Spielerkrieg.
+- **Keine Scheinschwäche:** Ein Gegner zählt nicht deshalb als „von anderen angegriffen“, weil nur *unser eigener* Angriff in seinen Incoming-Stacks erscheint. Ausgehende Stapel, die gegen uns gerichtet sind, gelten nicht als anderweitig gebunden.
+- **Marine-Allianzschutz:** Während `me.actions()` veralten Informationen. Direkt vor der Landung werden der aktuelle Zielspieler, Bündnis-/Teamstatus, Eigentümer des Küstenfelds, War-Lock, eingehende Angriffe und frische Truppenreserve erneut geprüft. Kein zweiter Landungskrieg gegen einen neuen Verbündeten.
+- **Diagnose:** `opportunity_attack` und `naval_allied_skip` dokumentieren die neuen Entscheidungen. VM-Regressionen testen Drittfronten, frühe Expansionspriorität, einen starken zweiten Nachbarn, neue Allianzen und Eigentümer-/Armeeänderungen während Workerabfragen.
+- **Grenze:** Issue [#12](https://github.com/SLP-DEV1/openfront-bot/issues/12) bleibt offen: Regressionstests beweisen keinen realen Multiplayer-Sieg. Für belastbare Optimierung bitte komplette Diagnose-JSONs aus mehreren Karten-/Team-/FFA-Partien exportieren. Regeln der Lobby beachten.
 
 ### Änderung 1.10.6 – Issue #16: echte OpenFront-Angriffs-IDs
 
