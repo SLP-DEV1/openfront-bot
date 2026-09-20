@@ -1491,6 +1491,14 @@
       return Math.max(1.15,normal*.86);
     return normal;
   }
+  function targetHomeRatio(enemy,late){
+    const normal=hardMode()?(late?1.45:1.85):(late?1.24:1.45);
+    const t=opponentTrend(enemy),window=adversaryWindow(myPlayer(),enemy);
+    // Only the SPECIFIC target's verified decline can lower the home
+    // threshold. Other-front reserve, incoming-defense and worker checks stay.
+    return t.valid&&t.sustained&&t.falling&&window.exposed?
+      hardMode()?(late?1.26:1.46):(late?1.16:1.32):normal;
+  }
   // Ally-target marking is a preference, not an attack authorization.
   function allyAssistTarget(me,enemy){
     if(!enemy || friendly(enemy,me))return false;
@@ -1527,12 +1535,12 @@
     if(!(troops>0)||s.incoming>s.home*(late?.15:.04)||s.ratio<(late?.29:.40))return false;
     const minRatio=enemyOpportunityRatio(item.opponent,late,s.home);
     if(s.available<troops*minRatio ||
-      s.home<troops*(hardMode()?(late?1.45:1.85):(late?1.24:1.45)))return false;
+      s.home<troops*targetHomeRatio(item.opponent,late))return false;
     const front=frontRiskPlan(items,s,item.id);
     if(front.danger||front.pressure)return false;
     const strike=Math.min(s.available*(hardMode()?.76:.80),
       Math.max(troops*(hardMode()?1.57:1.40),s.available*.48));
-    return strike<=front.safeStrike;
+    return strike<=front.safeStrike && strike>=troops*(hardMode()?1.18:1.08);
   }
   function warReadiness(me,items,s,tick,target=null) {
     if(!hardMode())return {ready:true,reason:'Normal'};
@@ -1681,7 +1689,7 @@
       if(!isNeutral) {
         const minimumRatio=enemyOpportunityRatio(enemy,late,s.home,effectivePlan()==='Blitz');
         if(s.ratio<(late?.29:.40) || available<enemyTroops*minimumRatio ||
-          s.home<enemyTroops*(hardMode()?(late?1.45:1.85):(late?1.24:1.45)) ||
+          s.home<enemyTroops*targetHomeRatio(enemy,late) ||
           front.danger||front.pressure||
           Math.min(available*(hardMode()?.76:.80),
             Math.max(enemyTroops*(hardMode()?1.57:1.40),available*.48))>front.safeStrike||
