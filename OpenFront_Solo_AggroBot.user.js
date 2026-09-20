@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.18.2
+// @version      1.18.3
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.18.2', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.18.3', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, brainEnabled:false, brainToken:'', fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -396,14 +396,17 @@
   let investmentStatus='Grundaufbau',lastWarReview=-Infinity;
   let defenseStatus='Keine Bedrohung',lastEmergencyRetreat=-Infinity,lastDefenseLog=-Infinity;
   let targetIntelCache=new Map(),frontMemory=new Map(),lastFrontWarning=-Infinity;
+  let lastDecisionExplanationTick=-Infinity,latestAttackAlternatives=null;
   let opponentHistory=new Map(),lastEconomyPosture='—',lastDirectorDecision=null;
   let retreatRequests=new Map(),defenseStats={retreatsOrdered:0,retreatsObserved:0,unknown:0,unconfirmed:0};
   // Manual slider values remain saved; fullAuto computes independent live values.
   let autoTuning={aggressive:85,reserve:35,actionsPerMinute:72,maxTargets:16,
     mode:'INIT',reason:'Warte auf Spielzustand',tick:-Infinity};
   const hardMode=()=>opts.impossibleMode && game?.config?.().gameConfig?.().difficulty==='Impossible';
-  // Keep single-front coordination in Public/Medium as well as Impossible.
-  // Difficulty-specific troop ratios remain tied to actual difficulty.
+  // Public/Private player threats must not depend on the difficulty of
+  // computer-controlled nations. Preserve Impossible-only experimental math.
+  const liveMultiplayer=()=>['Public','Private'].includes(
+    game?.config?.().gameConfig?.().gameType);
   const coordinatedWar=()=>opts.impossibleMode;
   const isWar=()=>warState.id!==null;
   // Test control exists only on loopback and only after explicit harness opt-in.
@@ -1308,12 +1311,22 @@
   }
   // Retain short-lived border pressure across transient missing border scans.
   function observeFronts(me,items,tick){
-    if(!hardMode())return;
+    if(!hardMode()&&!liveMultiplayer())return;
+    const liveIncoming=(me.incomingAttacks?.()||[]).filter(a=>!a.retreating&&a.troops>0);
     for(const item of items){
       if(item.id===null||!item.opponent?.isAlive?.()||friendly(item.opponent,me))continue;
-      const troops=Math.max(0,number(()=>item.opponent.troops(),0));
+      // On Public/Private remember an actual hostile attack, not every
+      // peaceful neighbor. An idle powerful neighbor alone is not evidence
+      // of a coordinated offensive. Impossible retains its old behavior.
+      const underAttack=liveIncoming.some(a=>
+        a.attackerID===number(()=>item.opponent.smallID(),-1));
       const old=frontMemory.get(item.id);
-      frontMemory.set(item.id,{troops,lastTick:tick,
+      if(!hardMode()&&!underAttack&&!(old&&tick-old.lastTick<=180))continue;
+      const troops=Math.max(0,number(()=>item.opponent.troops(),0));
+      if(underAttack&&!old&&liveMultiplayer())
+        telemetry('front_contact','Feindlicher Angriff im Frontgedächtnis erfasst',
+          {target:item.id,observedTroops:troops,source:'incoming-attack'});
+      frontMemory.set(item.id,{troops,lastTick:underAttack||hardMode()?tick:old.lastTick,
         peak:old&&tick-old.lastTick<=180?Math.max(troops,old.peak*.94):troops,
         land:number(()=>item.opponent.numTilesOwned(),0)});
     }
@@ -1671,6 +1684,25 @@
   // Major offensives must be defensible AFTER the army leaves home. The
   // target's remaining force and other observed fronts stay in the budget;
   // this never overrides attack legality, diplomacy or the existing reserve.
+  // One risk envelope for actual outgoing human-match commitments. The
+  // baseline Impossible and Singleplayer planner is deliberately unchanged.
+  function multiplayerCommitment(me,s,requested,targetID=null,kind='land'){
+    if(!liveMultiplayer()||requested<=0)return {amount:requested,reason:'not-multiplayer'};
+    const tick=number(()=>game?.ticks?.(),0);
+    const active=[...frontMemory].filter(([id,x])=>id!==targetID&&
+      tick-x.lastTick<=240);
+    const remembered=active.reduce((n,[,x])=>Math.max(n,x.peak*.72),0);
+    const otherIncoming=(me.incomingAttacks?.()||[]).filter(a=>!a.retreating&&
+      a.troops>0&&a.attackerID!==number(()=>game.playerViews?.().find(p=>
+        safeID(p)===targetID)?.smallID?.(),-1)).reduce((n,a)=>n+a.troops,0);
+    const major=requested>=Math.max(10000,s.home*.20);
+    const floor=major?Math.max(s.reserve,s.incoming*1.7,
+      Math.min(s.home*.92,remembered*.72),Math.min(s.home*.92,otherIncoming*1.3)):
+      s.reserve;
+    const amount=Math.max(0,Math.floor(Math.min(requested,s.home-floor)));
+    return {amount,floor,requested,remembered,otherIncoming,kind,
+      reason:amount<requested?'multiplayer-home-guard':'safe'};
+  }
   function offensiveCommitment(items,s,item,requested){
     if(item.id===null||requested<Math.max(125000,s.home*.30))
       return {amount:requested,capped:false,reason:'small-attack'};
@@ -2160,6 +2192,12 @@
       let amount=Math.min(item.amount,fresh.available,
         item.id===null ? neutralAttackAmount(fresh,clamp(setting('aggressive'),40,100)/100) :
         Math.min(freshFront.safeStrike,Math.floor(fresh.available*(hardMode()?.76:.8))));
+      const publicGuard=multiplayerCommitment(me,fresh,amount,item.id,'land');
+      if(publicGuard.amount<amount && item.id!==null){
+        telemetry('multiplayer_guard','Public/Private: Einsatz nach Heimschutz begrenzt',
+          {target:item.id,...publicGuard});
+        amount=publicGuard.amount;
+      }
       if(item.id!==null){
         const protectedStrike=offensiveCommitment(strategic.groups,fresh,item,amount);
         if(protectedStrike.capped){
@@ -2198,6 +2236,9 @@
         telemetry('attack_intent','Angriff angefordert – wartet auf Bestätigung',
           {target:item.id,troops:amount,baseScore:item.baseScore,
             neuralDelta:item.neuralDelta,chosenScore:item.score,
+            homeAfter:fresh.home-amount,reserve:fresh.reserve,
+            otherFront:freshFront?.other??null,
+            recentHostile:recentHostilePressure(tick),
             kind:item.id===null?'neutral':'enemy'});
         return true;
       }
@@ -3703,7 +3744,11 @@
       .sort((a,b)=>b.incoming-a.incoming)[0];
     if(!needy || needy.incoming<number(()=>needy.p.troops(),1)*.35 ||
       s.incoming>0 || s.strongest>=s.home*.85)return false;
-    const amount=Math.floor(Math.min(s.available*.18,s.home*.08));
+    const requested=Math.floor(Math.min(s.available*.18,s.home*.08));
+    const giftGuard=multiplayerCommitment(me,s,requested,null,'team-aid');
+    const amount=giftGuard.amount;
+    if(amount<requested)telemetry('multiplayer_guard','Teamhilfe: Heimschutz geprüft',
+      {target:safeID(needy.p),...giftGuard});
     if(ctors.donateTroops && amount>=1000 &&
       s.home-amount>Math.max(s.home*.35,s.strongest*.6) &&
       send('donateTroops',[needy.p,amount],'TEAMHILFE → '+nameOf(needy.p))){
@@ -3952,6 +3997,12 @@
           }
         }
         amount=globalGuard.amount;
+        const publicGuard=multiplayerCommitment(me,fresh,amount,safeID(current),'naval');
+        if(publicGuard.amount<amount){
+          telemetry('multiplayer_guard','Public/Private: Landung nach Heimschutz begrenzt',
+            {target:safeID(current),...publicGuard});
+          amount=publicGuard.amount;
+        }
         // Having a large spare army is not sufficient: the ACTUAL landing
         // contingent must plausibly beat the enemy's fresh home force.
         if(amount<1000||amount<number(()=>current.troops(),Infinity)*
