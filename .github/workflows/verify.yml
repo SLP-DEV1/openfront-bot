@@ -9,6 +9,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - name: Check userscript syntax
         run: node --check OpenFront_Solo_AggroBot.user.js
       - name: Check regression test syntax
@@ -20,6 +23,17 @@ jobs:
 
       - name: Test hybrid learning
         run: node tests/learning-regression.cjs
+
+      - name: Check Brain modules and tests
+        run: |
+          node --check brain/learning.cjs
+          node --check brain/store.cjs
+          node --check brain/server.cjs
+          node --check brain/import.cjs
+          node --check brain/train.cjs
+          node --check tests/brain-regression.cjs
+          node tests/brain-regression.cjs
+          python3 -m py_compile brain/policy_train.py
 
       - name: Check benchmark tools
         run: |

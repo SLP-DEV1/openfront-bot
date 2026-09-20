@@ -2,7 +2,15 @@
 
 Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscript für [OpenFront](https://openfront.io/).
 
-**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.10.10**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
+**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.11.0**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
+
+## AggroBot 2.0 – erster lokaler Brain-Baustein (v1.11.0)
+
+**Tampermonkey bleibt die Spielsteuerung.** Optionaler lokaler Node.js-24-Brain mit SQLite-Gedächtnis, abgesicherten aggregierten Beobachtungen, eng begrenzten Strategieempfehlungen und einem Engine-Trainings-/Import-Werkzeug. Das autonome Userscript spielt bei nicht erreichbarem Brain mit seinen bisherigen Regeln weiter. Kein automatischer Start, keine direkten Game-Intents durch den Brain und keine Selbstlern-Gewinnratenbehauptung.
+
+Start: `node brain/server.cjs`, Token aus der Terminalausgabe im Tampermonkey-Panel einfügen, `Lernen`, `Vollautonom` und `🧠 Lokaler Brain` einschalten und dann den Bot im Match manuell starten. Das neue Brain-Feature ist nach der Aktualisierung zunächst **AUS**.
+
+[Einrichtung, Sicherheit und Trainingsbefehle](docs/BRAIN.md) · [Bestehendes Browser-Lernen](docs/LEARNING.md)
 
 ## Installation
 
