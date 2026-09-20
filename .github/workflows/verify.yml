@@ -36,6 +36,8 @@ jobs:
           node tests/brain-regression.cjs
           node --check tests/qwen-regression.cjs
           node tests/qwen-regression.cjs
+          node --check tests/qwen-triggers.cjs
+          node tests/qwen-triggers.cjs
           python3 -m py_compile brain/policy_train.py
 
       - name: Check benchmark tools
