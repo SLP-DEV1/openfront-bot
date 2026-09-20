@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.11.1
+// @version      1.12.0
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.11.1', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.12.0', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, learningEnabled:true, brainEnabled:false, brainToken:'', fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -1055,7 +1055,12 @@
     const base=Math.max(130,s.home*(hardMode()?(.055+aggression*.035):(.09+aggression*.08)));
     const surplus=growthPressure(s)?Math.max(0,s.home-s.max*.48)*.46:0;
     const fraction=growthPressure(s)?(hardMode()?.49:.55):(hardMode()?.31:.55);
-    return Math.floor(Math.min(s.available*fraction,Math.max(base,surplus)));
+    const exposed=s.strongest>=s.home*.85||s.incoming>=s.home*.10;
+    // Cheap expansion may continue near a strong rival, but never consume
+    // a third of the army immediately before a probable counterattack.
+    const safeBudget=hardMode()&&exposed?
+      Math.min(s.available*.14,s.home*.025):s.available*fraction;
+    return Math.floor(Math.min(safeBudget,Math.max(base,surplus)));
   }
   function military(me,items=[]) {
     const home=number(()=>me.troops());
@@ -1308,6 +1313,20 @@
     return allies.some(ally=>ally?.isAlive?.() && friendly(ally,me) &&
       (ally.targets?.()||[]).some(target=>safeID(target)===safeID(enemy)));
   }
+  // Attack budget against OTHER fronts, independent of the chosen victim.
+  // These checks cannot be bypassed by target scores or AI suggestions.
+  function frontRiskPlan(items,s,targetID=null) {
+    const other=items.filter(x=>x.id!==null&&x.id!==targetID&&
+      x.opponent?.isAlive?.()).reduce((v,x)=>Math.max(v,
+      number(()=>x.opponent.troops(),0)),0);
+    const danger=other>s.home*1.15;
+    const pressure=s.incoming>Math.max(1200,s.home*.08);
+    const floor=Math.max(s.reserve,s.incoming*1.3,
+      other>0?Math.min(s.home,other*(hardMode()?.70:.60)):0);
+    return {other,danger,pressure,floor,
+      safeStrike:Math.max(0,Math.floor(s.home-floor)),
+      emergency:danger||pressure};
+  }
   function targetOpportunity(me,items,s,item) {
     if(!item?.opponent?.isAlive?.()||friendly(item.opponent,me))return false;
     const late=lateGame(me),troops=number(()=>item.opponent.troops(),Infinity);
@@ -1315,13 +1334,11 @@
     const minRatio=enemyOpportunityRatio(item.opponent,late,s.home);
     if(s.available<troops*minRatio ||
       s.home<troops*(hardMode()?(late?1.45:1.85):(late?1.24:1.45)))return false;
-    const otherThreat=items.filter(x=>x.id!==null&&x.id!==item.id&&x.opponent?.isAlive?.())
-      .reduce((v,x)=>Math.max(v,number(()=>x.opponent.troops(),0)),0);
+    const front=frontRiskPlan(items,s,item.id);
+    if(front.danger||front.pressure)return false;
     const strike=Math.min(s.available*(hardMode()?.76:.80),
       Math.max(troops*(hardMode()?1.57:1.40),s.available*.48));
-    // Do not cap the other neighbor's reserve to a percentage of our own
-    // army: that would incorrectly approve suicidal attacks against giants.
-    return s.home-strike>=Math.max(s.home*.22,otherThreat*(hardMode()?.58:.50));
+    return strike<=front.safeStrike;
   }
   function warReadiness(me,items,s,tick,target=null) {
     if(!hardMode())return {ready:true,reason:'Normal'};
