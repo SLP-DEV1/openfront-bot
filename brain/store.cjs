@@ -79,6 +79,6 @@ function makeStore(filename=':memory:'){
       finished:db.prepare('SELECT outcome,COUNT(*) AS count FROM sessions WHERE finished=1 GROUP BY outcome').all(),
       contexts:db.prepare('SELECT context,samples,mean FROM context_stats ORDER BY context').all()};
   }
-  return {db,observe,finish,report,close:()=>db.close()};
+  return {db,observe,finish,report,hasMatch:id=>!!findSession.get(id),close:()=>db.close()};
 }
 module.exports={makeStore};
