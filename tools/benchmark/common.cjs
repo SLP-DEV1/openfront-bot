@@ -7,7 +7,7 @@ const ENGINE_COMMIT='13b403387af01d388f8c8ed8c953b6d3a11d1457';
 const IMPOSSIBLE_REFERENCE_COMMIT='bb8af015b515b3b717bd4d901074c5f4c16641cb';
 function parse(argv){
   const out={engine:null,map:'World',size:'Compact',difficulty:'Medium',bots:40,nations:8,
-    seed:'aggro-train-001',ticks:18000,out:null,profile:'autonomous',bot:null,policy:null,port:5173,engineCommit:ENGINE_COMMIT};
+    seed:'aggro-train-001',ticks:18000,out:null,profile:'autonomous',bot:null,policy:null,rivals:'none',port:5173,engineCommit:ENGINE_COMMIT};
   for(let i=0;i<argv.length;i++){
     const key=argv[i].replace(/^--/,'');
     if(!argv[i].startsWith('--')||!Object.hasOwn(out,key))throw Error('Unknown option '+argv[i]);
@@ -20,6 +20,10 @@ function parse(argv){
   if(!/^[a-f0-9]{40}$/.test(out.engineCommit))throw Error('Invalid --engineCommit SHA');
   if(!/^[a-zA-Z0-9_-]{1,64}$/.test(out.seed))throw Error('Seed must contain 1–64 letters, digits, _ or -');
   if(!profiles[out.profile])throw Error('Unknown profile '+out.profile);
+  const rivalStyles=out.rivals==='none'?[]:out.rivals.split(',');
+  if(rivalStyles.length>4||new Set(rivalStyles).size!==rivalStyles.length||
+    rivalStyles.some(s=>!['rush','economy','defense','opportunist'].includes(s)))
+    throw Error('Invalid --rivals: none or a unique comma-separated subset of rush,economy,defense,opportunist');
   out.engine=path.resolve(out.engine);out.bot=path.resolve(out.bot||path.join(__dirname,'../../OpenFront_Solo_AggroBot.user.js'));
   if(out.out)out.out=path.resolve(out.out);
   return out;
