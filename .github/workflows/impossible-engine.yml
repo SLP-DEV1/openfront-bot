@@ -36,7 +36,7 @@ jobs:
           node -e "const m=require('./benchmark-results/impossible-ci/match.json'); const p=require('./trainer/action-policy.cjs');if(m.benchmarkMeta.policySHA256!==require('crypto').createHash('sha256').update(JSON.stringify(p.zero())).digest('hex')||!m.trajectory?.samples?.length||!m.trajectory.summary)process.exit(1)"
       - name: Exercise one neural evolution generation with real Impossible games
         run: |
-          node trainer/train.mjs \
+          node trainer/train.mjs --schema 4 \
             --engine ../OpenFrontIO \
             --engineCommit bb8af015b515b3b717bd4d901074c5f4c16641cb \
             --generations 1 --population 2 --parallel 2 --trainSeeds 1 --evalSeeds 2 \
