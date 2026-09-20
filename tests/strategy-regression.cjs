@@ -71,7 +71,7 @@ function boot() {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'military,warReadiness,targetOpportunity,targetEconomics,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
+    'railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,warReadiness,targetOpportunity,targetEconomics,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'setWarWait:n=>warWaitSince=n,setEconFails:n=>failedEconomyProbes=n,',
     'setPending:p=>pendingAttack=p,setLastBattle:p=>lastBattle=p,',
@@ -82,7 +82,7 @@ function boot() {
     'setMode:m=>strategic.mode=m,setAllianceCtor:C=>ctors.alliance=C,',
     'setNukePending:p=>nukePending=p,',
     'setPerf:(combat,border,economy)=>runtime={...runtime,combatMs:combat,borderMs:border,economyMs:economy},',
-    'state:()=>({pendingAttack,attackReceipts,warState,lastBattle,gameEnd,diagnostics,spawnState,spawnCache,spawnJob,economicStatus,failedEconomyProbes,investmentStatus,pendingBoat,pendingWarship,marineStats,portProbeFailures,strategic,winStatus,incomeStatus,fleetStatus,strategicTelemetry,defenseStatus,defenseStats,autoTuning,nukeShots,nukeAttempts,nukeUnconfirmed,nukePending,lastProposalTick,diplomacyStatus,diplomacyPending:[...diplomacyPending.values()],retreatRequests:[...retreatRequests.values()]}),opts};'
+    'state:()=>({pendingAttack,attackReceipts,warState,lastBattle,gameEnd,diagnostics,forecastAudits,incomeAttribution,spawnState,spawnCache,spawnJob,economicStatus,failedEconomyProbes,investmentStatus,pendingBoat,pendingWarship,marineStats,portProbeFailures,strategic,winStatus,incomeStatus,fleetStatus,strategicTelemetry,defenseStatus,defenseStats,autoTuning,nukeShots,nukeAttempts,nukeUnconfirmed,nukePending,lastProposalTick,diplomacyStatus,diplomacyPending:[...diplomacyPending.values()],retreatRequests:[...retreatRequests.values()]}),opts};'
   ].join('\n');
   vm.runInNewContext(source.replace(anchor, expose + '\n' + anchor), context, {timeout:2000});
   win.__test.setup(game, {emit:event=>sent.push(event)}, {attack:Attack, build:Build});
@@ -1455,6 +1455,83 @@ function boot() {
       'Aktiver Konflikt');
     assert.notEqual(x.b.diplomacyScore(x.me,x.strong,state).reason,
       'Aktiver Konflikt', 'unrelated player is not the active target');
+  });
+  await check('issue #12: true cubic trajectory flags SAM off the straight chord', () => {
+    const x=boot();x.game.config().samRange=()=>7;
+    const a=x.game.ref(20,70),b=x.game.ref(80,70);
+    const unit=(xx,yy)=>({tile:()=>x.game.ref(xx,yy),
+      level:()=>1,isActive:()=>true,isUnderConstruction:()=>false});
+    assert.equal(x.b.nukeTrajectoryRisk(a,b,[unit(50,33)]),1,
+      'upward curve has a SAM well outside straight chord');
+    assert.equal(x.b.nukeTrajectoryRisk(a,b,[unit(50,92)]),1,
+      'downward direction must also be treated conservatively');
+    assert.equal(x.b.nukeTrajectoryRisk(a,b,[unit(50,9)]),0,
+      'distant SAM is not artificially counted');
+    const curve=x.b.nukeBezierPoints(a,b,true);
+    const middle=x.b.nukeBezierPoint(curve,.5);
+    assert(Math.abs(middle.y-32.5)<.1);
+  });
+  await check('issue #12: rail scoring needs a continuous owned terrain corridor', () => {
+    const x=boot(),from=x.game.ref(20,20),to=x.game.ref(80,20);
+    x.game.config().trainStationMinRange=()=>12;
+    x.game.config().trainStationMaxRange=()=>110;
+    const units=[{type:()=> 'City',tile:()=>to,
+      isUnderConstruction:()=>false,hasTrainStation:()=>true}];
+    const open=x.b.railStationScore(from,units);
+    assert.equal(open.reachable,1);
+    assert.equal(open.method,'owned-corridor-proxy');
+    x.game.isLand=tile=>x.game.x(tile)!==50; // vertical sea wall
+    const blocked=x.b.railStationScore(from,units);
+    assert.equal(blocked.reachable,0);
+    assert.equal(blocked.blocked,1);
+    assert(blocked.score<open.score);
+  });
+  await check('issue #12: observed attackLogic and explicit fallback are distinguished', () => {
+    const x=boot();
+    x.game.terrainType=()=>0;
+    x.game.config().attackLogic=()=>({attackerTroopLoss:15,tickFraction:.5});
+    const item={opponent:x.weak,tiles:[x.game.ref(10,10)],
+      front:10};
+    const verified=x.b.attackForecast(x.me,item,12000);
+    assert(verified.engine);
+    assert.equal(verified.method,'config.attackLogic');
+    assert.equal(x.b.state().strategicTelemetry.engineForecasts,1);
+    delete x.game.config().attackLogic;
+    const rough=x.b.attackForecast(x.me,item,12000);
+    assert.equal(rough.engine,false);
+    assert.equal(rough.method,'rough-proxy');
+    assert.equal(x.b.state().strategicTelemetry.proxyForecasts,1);
+    assert(x.b.state().diagnostics.some(v=>
+      v.kind==='forecast_engine_unavailable'));
+  });
+  await check('issue #12: forecast audit reports net stack change not exact battle loss', () => {
+    const x=boot();x.b.setLastBattle({id:'weak',name:'weak',tick:300,
+      enemyLand:900,ownLand:1200,amount:1000,
+      forecast:{loss:120,engine:true},minimumObservedStack:null});
+    x.out.push({id:'observed',attackerID:1,targetID:2,
+      troops:650,retreating:false});
+    x.b.evaluateLastBattle(930,x.me);
+    const audit=x.b.state().forecastAudits[0];
+    assert.equal(audit.predictedLoss,120);
+    assert.equal(audit.observedStackAttrition,350);
+    assert.equal(audit.evidence,'outgoing-stack-net-change-not-causal');
+    assert(x.b.state().diagnostics.some(v=>v.kind==='forecast_audit'));
+  });
+  await check('issue #12: match report refuses unverifiable same-seed comparison', () => {
+    const {summarize,compare}=require('../tools/match-report.cjs');
+    const base={bot:'1.10.6',benchmarkMeta:{gameMap:'Europe',
+      gameMode:'FFA',gameMapSize:'normal'},difficulty:'Impossible',
+      gameEnd:{outcome:'victory',tick:9000,land:40000},
+      records:[{kind:'attack_intent'},{kind:'attack_confirmed'}]};
+    const current={...base,bot:'1.10.7',
+      gameEnd:{outcome:'defeat',tick:9000,land:20000}};
+    const old=summarize(base,'old'),now=summarize(current,'new');
+    assert.equal(compare([old,now]).length,0,'unknown seed not paired');
+    base.benchmarkMeta.seed=123;current.benchmarkMeta={...base.benchmarkMeta};
+    const verified=compare([summarize(base),summarize(current)]);
+    assert.equal(verified.length,1);
+    assert.equal(verified[0].matches.length,2);
+    assert.equal(summarize({...base,gameEnd:null}).outcome,'unknown');
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
