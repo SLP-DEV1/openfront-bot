@@ -1067,7 +1067,8 @@ function boot(benchmarkOptions={}) {
     x.game.hasFallout=()=>false;
     x.game.neighbors4=(tile,out)=>{if(tile===176){out.push(177);return 1;}
       if(tile===177){out.push(176);return 1;}return 0;};
-    x.me.actions=async()=>({buildableUnits:[{type:'Transport',canBuild:9999,cost:0n}]});
+    x.me.actions=async tile=>({buildableUnits:tile===176?
+      [{type:'Transport',canBuild:9999,cost:0n}]:[]});
     class Boat{constructor(dst,troops){this.dst=dst;this.troops=troops;}}
     x.b.setBoatCtor(Boat);
     assert.equal(await x.b.naval(x.me,300,0),false);
