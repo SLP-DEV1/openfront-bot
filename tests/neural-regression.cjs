@@ -32,12 +32,12 @@ const exec=(args)=>{
   const r=spawnSync(process.execPath,args,{cwd:root,encoding:'utf8',timeout:30000});
   assert.equal(r.status,0,r.stderr||r.stdout);return r.stdout;
 };
-assert.equal(action.LENGTH,169);
+assert.equal(action.LENGTH,217);
 const a0=action.zero(),aState={home:850,max:1000,incoming:0,committed:0,
   strongest:100,gold:600000,land:1600,late:false,neutral:true};
 const vectors=action.KINDS.map(kind=>action.features(aState,kind,30));
 assert.equal(vectors.length,3);
-assert(vectors.every(v=>v.length===12&&v.every(x=>x>=-1&&x<=1)));
+assert(vectors.every(v=>v.length===16&&v.every(x=>x>=-1&&x<=1)));
 assert(vectors.every(v=>action.predict(a0,v)===0));
 const aPlus=action.mutate(a0,'action-seed',.3);
 assert.deepEqual(aPlus,action.mutate(a0,'action-seed',.3));
@@ -46,7 +46,7 @@ assert(action.predict(aPlus,vectors[0])<=1);
 assert.throws(()=>action.validate({...a0,weights:[0]}));
 assert.throws(()=>action.validate({...a0,weights:[...a0.weights.slice(0,-1),Infinity]}));
 assert.throws(()=>action.predict(a0,[3]));
-assert(action.predict({...a0,weights:a0.weights.map((w,i)=>i===168?3:w)},vectors[0])>.99);
+assert(action.predict({...a0,weights:a0.weights.map((w,i)=>i===216?3:w)},vectors[0])>.99);
 assert.equal(p.LENGTH,90);
 const base=p.zero(),v=p.features({home:700,max:1000,incoming:0,
   strongest:200,committed:0,neutral:true,foes:1,land:1200,late:false});
