@@ -1748,6 +1748,20 @@
         amount:Math.min(available,Math.floor(amount))}];
     }).sort((a,b)=>b.score-a.score);
   }
+  // Shared investment posture; never bypasses worker building legality.
+  function economyPosture(me,s,tick=number(()=>game.ticks(),0)){
+    const units=ownStructures(me);
+    if(!units.some(u=>u.type?.()==='City')||
+       !units.some(u=>u.type?.()==='Factory'))return 'bootstrap';
+    if(s.incoming>Math.max(1200,s.home*.10)||recentHostilePressure(tick))
+      return 'defensive';
+    const noNeutral=strategic.groups.every(g=>g.id!==null||g.fallout);
+    if(opts.boats&&noNeutral&&tick-lastNeutralSend>=200&&
+      tick-lastEnemySend>=200&&!isWar()&&!s.activeEnemy&&
+      s.strongest<s.home*.85)return 'breakout';
+    if(s.ratio>=.78&&!s.incoming&&s.strongest<s.home*.70)return 'recruit';
+    return 'balanced';
+  }
   // Shared strategic director: decide which existing LEGAL planner gets first
   // refusal. Never issues intents and never weakens any planner's safety gate.
   function strategicDirector(me,s,context,ranked,tick) {
@@ -1780,7 +1794,7 @@
       land.length?'Freies Land vor teurer Küstenoperation':
       'Keine freigegebene Landaktion; Seeweg prüfen';
     return {order,reason,landCandidates:land.length,enemyCandidates:enemy.length,
-      navalCandidate:canSail,threatened};
+      navalCandidate:canSail,threatened,economy:economyPosture(me,s,tick)};
   }
   async function legalTarget(me,item,serial) {
     // Four-at-a-time worker checks remove the old serialized waterfall.
@@ -2200,20 +2214,21 @@
     const wantedSilo=siloAllowed && (!cityEnabled||cities>=2)&&(!factoryEnabled||factories>=2) && late && mine>900 ?
       (siloCount===0?1:nukeShots>0&&gold>2500000?Math.min(3,1+Math.floor(mine/18000)):1):0;
     const pressure=troops/cap;
+    const posture=economyPosture(me,troopSnapshot,nowTick);
     const style=effectiveBuildStyle() || 'Ausgewogen';
     const defBoost=style==='Defensiv'?22:0,econBoost=style==='Wirtschaft'?24:0;
     const list=[
-      {type:'City',desired:wantedCity,score:92+econBoost/2+Math.max(0,pressure-.35)*75+
+      {type:'City',desired:wantedCity,score:92+econBoost/2+(posture==='recruit'?38:0)+Math.max(0,pressure-.35)*75+
           (pressure>.80&&!immediate?30:0)+(cities===0?115:hardMode()&&cities<2?80:0)},
-      {type:'Factory',desired:wantedFactory,score:91+econBoost+
+      {type:'Factory',desired:wantedFactory,score:91+econBoost+(posture==='bootstrap'?20:0)+
           (factories===0?100:hardMode()&&factories<2?85:0)+
           (gold<450000?15:0)+(pressure<.60&&factories>0?10:0)+
           (factories<2&&cities>=2?24:0)-
           (incomeStatus.observed&&incomeStatus.train===0&&factories>=2?26:0)},
       {type:'Port',desired:wantedPort,score:portMilestone?345:
-        59+econBoost/2+(ports===0&&wantedPort?12:0)+
+        59+econBoost/2+(posture==='breakout'?115:0)+(ports===0&&wantedPort?12:0)+
         (incomeStatus.observed&&incomeStatus.trade===0&&ports===0?13:0)},
-      {type:'Defense Post',desired:wantedDefense,score:immediate?310+defBoost:threatened?(basic?36:77)+defBoost:20},
+      {type:'Defense Post',desired:wantedDefense,score:immediate?310+defBoost:threatened?(basic?36:77)+defBoost+(posture==='defensive'?24:0):20},
       {type:'SAM Launcher',desired:wantedSAM,score:enemyNukes?210+defBoost:threat?151+defBoost:proactiveSAM?118:40},
       {type:'Missile Silo',desired:wantedSilo,score:siloCount===0?305:opts.nukes?(late?131:94)+(gold>6000000?13:0):0}
     ];
@@ -2242,7 +2257,7 @@
       saveForSilo?'Silo-Fonds 1,15 Mio.':saveForNuke?'Raketen-Fonds '+firstRocketFund.toLocaleString():'Wirtschaft & Offensive';
     return {list:value,threatened,gold,cities,factories,mine,pressure,nuclearThreat:threat,incomingNukes:enemyNukes,intel,
       startup,basic,emergency,immediate,savingsTarget,saveForSilo,saveForNuke,siloCount,
-      enemySilos,proactiveSAM,wantedDefense,wantedSAM,portMilestone,coastSites:coastSites.length,portProbeFailures};
+      enemySilos,proactiveSAM,wantedDefense,wantedSAM,portMilestone,coastSites:coastSites.length,portProbeFailures,posture};
   }
   function economicAnchors(me,tiles,units,tick) {
     const w=game.width(),h=game.height(),anchors=[],seen=new Set();
@@ -2424,6 +2439,11 @@
     for(const [k,expiry] of economicNegative)if(tick>=expiry)economicNegative.delete(k);
     const requirements=economicNeeds(me,units,tiles);
     const entries=requirements.list;
+    if(lastEconomyPosture!==requirements.posture){
+      lastEconomyPosture=requirements.posture;
+      telemetry('economy_posture','Investitionsziel: '+requirements.posture,
+        {posture:requirements.posture,priorities:entries.slice(0,3).map(e=>e.type)});
+    }
     // Do not waste worker queries or count failed builds while deliberately
     // accumulating funds for the first silo / first atomic strike.
     if(requirements.savingsTarget>0 && !requirements.immediate && requirements.incomingNukes===0 &&
@@ -3587,6 +3607,7 @@
             committed:s.committed,pendingRetreats:retreatRequests.size},enemies:groups.filter(g=>g.id!==null).map(g=>({name:nameOf(g.opponent),troops:number(()=>g.opponent.troops()),land:number(()=>g.opponent.numTilesOwned())})),
           readiness:context.readiness?.reason,ratio:s.ratio,maxTroops:s.max,growthPotential:s.growthPotential,
           victory:winStatus,income:incomeStatus,strategicTelemetry,
+           director:lastDirectorDecision,economyPosture:lastEconomyPosture,
           forecastAudit:lastForecastAudit,
           recentIncomeSamples:incomeAttribution.slice(-4).map(v=>({...v})),
           fleet:fleetStatus,
@@ -3614,6 +3635,13 @@
       if(teamSupport(me,tick,s))return;
       // Economy has its own scheduler and cannot block the combat planner.
       const directive=strategicDirector(me,s,context,ranked,tick);
+      if(!lastDirectorDecision||lastDirectorDecision.order[0]!==directive.order[0]||
+        lastDirectorDecision.economy!==directive.economy){
+        telemetry('director_decision',directive.reason,{order:directive.order,
+          economy:directive.economy,landCandidates:directive.landCandidates,
+          enemyCandidates:directive.enemyCandidates,threatened:directive.threatened});
+      }
+      lastDirectorDecision=directive;
       if(directive.order[0]==='hold') {
         status='AUFBAU · Truppen regenerieren / Verteidigung halten';
         return;
