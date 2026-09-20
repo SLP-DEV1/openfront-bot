@@ -48,3 +48,10 @@ jobs:
           node tests/benchmark-regression.cjs
           node --check tools/benchmark/impossible-matrix.mjs
           node tools/benchmark/impossible-matrix.mjs --dryRun true > /dev/null
+      - name: Test neural trainer and deployer
+        run: |
+          node --check trainer/train.mjs
+          node --check trainer/deploy.mjs
+          node --check trainer/qwen-review.mjs
+          node --check trainer/policy.cjs
+          node tests/neural-regression.cjs
