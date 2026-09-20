@@ -71,7 +71,7 @@ function boot(benchmarkOptions={}) {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'strategicDirector,economyPosture,observeOpponents,opponentTrend,navalCommitmentRatio,landingThirdPartyRisk,targetHomeRatio,matchContext,rankedDuo,duoFocus,railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,frontPressureForecast,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,offensiveCommitment,globalNavalHomeGuard,observeFronts,qwenStrategyHint,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,samBuildAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
+    'strategicDirector,economyPosture,observeOpponents,opponentTrend,navalCommitmentRatio,landingThirdPartyRisk,targetHomeRatio,matchContext,rankedDuo,duoFocus,duoBattleCredit,railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,frontPressureForecast,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,offensiveCommitment,globalNavalHomeGuard,observeFronts,qwenStrategyHint,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,samBuildAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'setNeural:m=>{neuralModel=neuralValidate(m);opts.neuralEnabled=!!neuralModel;neuralPolicyCache={key:null,output:null};},neuralStrategicSignals,neuralChannel,',
     'getBrainMatchId:()=>brainMatchId,setQwen:q=>{brainState.qwen=q;},',
@@ -2408,6 +2408,27 @@ function boot(benchmarkOptions={}) {
     assert.equal(y.b.teamSupport(y.me,300,y.b.military(y.me,[])),false,
       'own inbound emergency prohibits donation');
     assert.equal(y.sent.length,0);
+  });
+  await check('v1.18.4 ranked partner credit requires observed live stack and never drops home reserve',()=>{
+    const x=boot();
+    x.game.config().gameConfig=()=>({gameType:'Public',
+      gameMode:'Team',rankedType:'2v2',difficulty:'Medium'});
+    x.me.team=()=>1;x.weak.team=()=>1;x.strong.team=()=>2;
+    x.me.isOnSameTeam=p=>p===x.weak;
+    x.strong.troops=()=>85000;
+    x.weak.outgoingAttacks=()=>[{targetID:3,troops:90000,retreating:false}];
+    const credit=x.b.duoBattleCredit(x.me,x.strong);
+    assert.equal(credit,49500);
+    const state=x.b.military(x.me,[{id:'strong',opponent:x.strong,tiles:[6]}]);
+    assert(state.reserve>=Math.min(state.home*.85,state.strongest*.53));
+    x.weak.outgoingAttacks=()=>[{targetID:3,troops:90000,retreating:true}];
+    assert.equal(x.b.duoBattleCredit(x.me,x.strong),0,
+      'retreating partner stack must not be counted');
+    x.game.config().gameConfig=()=>({gameType:'Public',
+      gameMode:'Team',difficulty:'Medium'});
+    x.weak.outgoingAttacks=()=>[{targetID:3,troops:90000,retreating:false}];
+    assert.equal(x.b.duoBattleCredit(x.me,x.strong),0,
+      'ordinary teams keep existing attack commitment heuristics');
   });
   await check('v1.18.4 ranked gold support is one-way and preserves own funds',()=>{
     const x=boot();class Gold{constructor(recipient,gold){
