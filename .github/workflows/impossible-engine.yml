@@ -38,7 +38,7 @@ jobs:
           node trainer/train.mjs \
             --engine ../OpenFrontIO \
             --engineCommit bb8af015b515b3b717bd4d901074c5f4c16641cb \
-            --generations 1 --population 2 --trainSeeds 1 --evalSeeds 2 \
+            --generations 1 --population 2 --parallel 2 --trainSeeds 1 --evalSeeds 2 \
             --maps World --nations 1 --ticks 4500 --qwen false \
             --out benchmark-results/neural-ci
       - uses: actions/upload-artifact@v4
