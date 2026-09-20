@@ -47,11 +47,11 @@ set "OUTPUT=benchmark-results\neural-%RANDOM%-%RANDOM%"
 echo.
 echo Starte neuronales Training gegen echte Impossible-Nationen.
 echo Ergebnisse: %OUTPUT%
-echo Qwen Code analysiert nach jeder Generation und darf nur Sigma vorschlagen.
+echo Vier Engine-Partien laufen parallel; Qwen Code analysiert dazwischen.\necho Qwen darf nur Sigma vorschlagen.
 echo Zum Unterbrechen Strg+C. Keine Modelle werden ohne bestaetigte Siege freigegeben.
 echo.
 
-node trainer\train.mjs --engine "%ENGINE%" --engineCommit %SHA% --bot OpenFront_Solo_AggroBot.user.js --generations 3 --population 4 --trainSeeds 2 --evalSeeds 4 --nations 1,4 --maps World --ticks 18000 --qwen true --out "%OUTPUT%" %INITIAL%
+node trainer\train.mjs --engine "%ENGINE%" --engineCommit %SHA% --bot OpenFront_Solo_AggroBot.user.js --generations 3 --population 4 --parallel 4 --trainSeeds 2 --evalSeeds 4 --nations 1,4 --maps World --ticks 18000 --qwen true --out "%OUTPUT%" %INITIAL%
 if errorlevel 1 goto failed
 echo.
 echo Training beendet. Nur eine vorhandene champion.json hat den Aufstiegstest bestanden.
