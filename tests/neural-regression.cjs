@@ -139,7 +139,7 @@ const badRival=spawnSync(process.execPath,
   ['trainer/train.mjs','--dryRun','true','--rivals','rush,rush'],
   {cwd:root,encoding:'utf8'});
 assert.notEqual(badRival.status,0);
-assert.match(mixed.scenario,/NOT humans/);
+assert.match(mixed.scenario,/NOT real humans/);
 const noOpponents=spawnSync(process.execPath,
   ['trainer/train.mjs','--dryRun','true','--nations','0','--bots','0'],
   {cwd:root,encoding:'utf8'});
