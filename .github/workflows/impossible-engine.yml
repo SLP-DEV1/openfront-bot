@@ -43,6 +43,16 @@ jobs:
             --bots 2 --nations 1 --seed tribes-ci-001 --ticks 1800 \
             --profile autonomous --out benchmark-results/tribes-ci
           node -e "const m=require('./benchmark-results/tribes-ci/match.json');if(m.benchmarkMeta.gameConfig.bots!==2||m.run.termination==='error'||!m.run.spawned)process.exit(1)"
+      - name: Verify scripted local clients spawned through official game intents
+        run: |
+          node tools/benchmark/engine-match.mjs \
+            --engine ../OpenFrontIO \
+            --engineCommit bb8af015b515b3b717bd4d901074c5f4c16641cb \
+            --map World --size Compact --difficulty Medium \
+            --bots 0 --nations 1 --rivals rush,economy \
+            --seed scripted-ci-001 --ticks 2200 \
+            --profile autonomous --out benchmark-results/scripted-ci
+          node -e "const m=require('./benchmark-results/scripted-ci/match.json');if(m.run.termination==='error'||m.run.scriptedIntents<2||m.run.scriptedAlive.length!==2||!m.run.scriptedAlive.every(x=>x.spawned)||m.benchmarkMeta.scriptedRivals.join(',')!=='rush,economy')process.exit(1)"
       - name: Exercise one neural evolution generation with real Impossible games
         run: |
           node trainer/train.mjs --schema 4 \
@@ -58,5 +68,6 @@ jobs:
           path: |
             benchmark-results/impossible-ci
             benchmark-results/tribes-ci
+            benchmark-results/scripted-ci
             benchmark-results/neural-ci
           if-no-files-found: ignore
