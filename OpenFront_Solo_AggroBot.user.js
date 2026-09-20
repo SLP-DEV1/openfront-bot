@@ -159,14 +159,22 @@
     return result;
   }
   function exportDiagnostics() {
-    const details={bot:VERSION,gameType:game?.config?.().gameConfig?.().gameType,
-      difficulty:game?.config?.().gameConfig?.().difficulty,
+    const config=game?.config?.().gameConfig?.()||{};
+    const details={bot:VERSION,gameType:config.gameType,
+      difficulty:config.difficulty,
+      benchmarkMeta:{gameMap:config.gameMap??null,
+        gameMapSize:config.gameMapSize??null,gameMode:config.gameMode??null,
+        seed:config.seed??null,engineCommit:window.BOOTSTRAP_CONFIG?.gitCommit??null,
+        matchEndObserved:gameEnd!==null,resultsVerifiedByBrowser:false},
       options:{...opts,enabled:false},intents:intentHealth(),tuning:{...autoTuning,enabled:!!opts.fullAuto,
         effective:{aggressive:setting('aggressive'),reserve:setting('reserve'),
           actionsPerMinute:setting('actionsPerMinute'),maxTargets:setting('maxTargets')}},attackReceipts, pendingAttack,
       construction:{pending:economicPending,blocked:[...economicBlocked.entries()],failedProbes:failedEconomyProbes,lastConfirmed:successfulEconomyTick,investment:investmentStatus},
-      validation:{forecastAudits,incomeAttribution,terrainMethod:'nuke-cubic-bezier-conservative',railMethod:'owned-land-corridor-proxy',
-        fullBrowserMatchValidated:false},
+      validation:{forecastAudits,incomeAttribution,
+        terrainMethod:'nuke-cubic-bezier-conservative',
+        railMethod:'owned-land-corridor-proxy',
+        fullBrowserMatchValidated:false,
+        note:'Die Datei ist ein Spielmitschnitt; Sieg und echte Mehrkarten-Benchmarks erfordern vollständige Browser-Matches.'},
       war:{...warState},gameEnd,spawn:{...spawnState,best:spawnCache?{...spawnCache}:null},victory:winStatus,income:incomeStatus,fleet:fleetStatus,marine:{stats:marineStats,pendingBoat,pendingWarship,portProbeFailures},strategicTelemetry,military:troopSnapshot,
       defense:{status:defenseStatus,stats:defenseStats,pendingRetreats:[...retreatRequests.values()]},
       rockets:{confirmed:nukeShots,attempts:nukeAttempts,unconfirmed:nukeUnconfirmed,pending:nukePending},
