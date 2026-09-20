@@ -1544,8 +1544,8 @@ function boot(benchmarkOptions={}) {
     const plan=x.b.economicNeeds(x.me,units,[5500]);
     assert.equal(plan.saveForSilo,true);
     assert.equal(plan.portMilestone,true);
-    assert.equal(plan.savingsTarget,500000,
-      'fund first harbor before deferring to silo savings');
+    assert.equal(plan.savingsTarget,0,
+      'unquoted 500k fund is withheld on Impossible until proven');
     assert.equal(await x.b.economy(x.me,2400,0,[5500]),true);
     assert.equal(x.sent[0].unit,'Port');
   });
@@ -2252,6 +2252,7 @@ function boot(benchmarkOptions={}) {
   });
   await check('v1.18.2 first Port gets provisional funds before worker offers a price', async () => {
     const x=boot();x.setTick(500);x.setGold(350000);
+    x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Medium'});
     x.game.isShore=t=>t===5500;
     const units=['City','City','Factory','Factory'].map((type,i)=>({
       type:()=>type,isActive:()=>true,tile:()=>5000+i*20,
