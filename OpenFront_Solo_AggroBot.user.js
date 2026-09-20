@@ -2301,6 +2301,7 @@
     // nearby opponent has a silo; keep the first City/Factory affordable.
     const proactiveSAM=!basic&&intel.uncovered.length>0&&
       intel.assets.length>=2&&gold>=350000&&
+      troopSnapshot.incoming<troops*.10&&
       (hostileFronts>0||late);
     const threat=!!(enemySilos||enemyNukes);
     const wantedSAM=opts.antiNuke&&game.config().isUnitDisabled?.('SAM Launcher')!==true?
