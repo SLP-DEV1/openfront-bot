@@ -16,8 +16,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-          cache: npm
-          cache-dependency-path: ../OpenFrontIO/package-lock.json
       - name: Fetch exact official Impossible code and maps
         run: |
           git clone --depth 1 https://github.com/openfrontio/OpenFrontIO.git ../OpenFrontIO
