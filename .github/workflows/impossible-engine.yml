@@ -26,13 +26,14 @@ jobs:
           npm ci --ignore-scripts
       - name: Run actual official-engine Impossible game (integration smoke)
         run: |
-          node -e "require('fs').writeFileSync('zero-policy.json', JSON.stringify(require('./trainer/policy.cjs').zero()))"
+          node -e "require('fs').writeFileSync('zero-policy.json', JSON.stringify(require('./trainer/action-policy.cjs').zero()))"
           node tools/benchmark/engine-match.mjs \
             --engine ../OpenFrontIO \
             --engineCommit bb8af015b515b3b717bd4d901074c5f4c16641cb \
             --map World --size Compact --difficulty Impossible \
             --bots 0 --nations 1 --seed impossible-ci-001 --ticks 2200 \
             --profile autonomous --policy zero-policy.json --out benchmark-results/impossible-ci
+          node -e "const m=require('./benchmark-results/impossible-ci/match.json'); const p=require('./trainer/action-policy.cjs');if(m.benchmarkMeta.policySHA256!==require('crypto').createHash('sha256').update(JSON.stringify(p.zero())).digest('hex')||!m.trajectory?.samples?.length||!m.trajectory.summary)process.exit(1)"
       - name: Exercise one neural evolution generation with real Impossible games
         run: |
           node trainer/train.mjs \

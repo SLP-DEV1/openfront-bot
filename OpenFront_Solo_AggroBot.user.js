@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.14.1
+// @version      1.15.0
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.14.1', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.15.0', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, brainEnabled:false, brainToken:'', fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -40,8 +40,11 @@
   const NEURAL_LENGTH=90,NEURAL_STORAGE='of-aggrobot-neural-policy-v1';
   let neuralModel=null;
   function neuralValidate(data){
-    if(!data||data.schema!==1||data.arch!=='8x8x2-tanh'||
-      !Array.isArray(data.weights)||data.weights.length!==NEURAL_LENGTH||
+    const old=data?.schema===1&&data.arch==='8x8x2-tanh'&&
+      data.weights?.length===NEURAL_LENGTH;
+    const actions=data?.schema===2&&data.arch==='16x12x1-tanh'&&
+      data.weights?.length===217;
+    if((!old&&!actions)||!Array.isArray(data.weights)||
       data.weights.some(v=>typeof v!=='number'||!Number.isFinite(v)||Math.abs(v)>5))
       return null;
     return data;
@@ -54,7 +57,7 @@
       NEURAL_BUNDLED_MODEL);
   }catch(_){neuralModel=null;}
   function neuralAdjust(v,base,me,s,items,emergency){
-    if(!opts.neuralEnabled||!opts.fullAuto||!neuralModel||emergency||
+    if(!opts.neuralEnabled||!opts.fullAuto||neuralModel?.schema!==1||emergency||
       s.incoming>0||recentHostilePressure(number(()=>game.ticks(),0))||
       s.strongest>s.home*1.25)return v;
     const home=Math.max(1,s.home),cap=Math.max(1,s.max);
@@ -84,6 +87,42 @@
     return {...v,
       aggressive:clamp(v.aggressive+Math.round(out[0]*8),base.aggressive-8,base.aggressive+8),
       reserve:clamp(v.reserve+Math.round(out[1]*8),base.reserve-8,base.reserve+8)};
+  }
+  // Schema 2 re-ranks ONLY candidates already admitted by the original
+  // planner; legalTarget(), worker actions, reserve and alliance rechecks
+  // retain complete authority. No direct AI-generated game intents.
+  function neuralActionDelta(kind,score,me,s=troopSnapshot,candidate={}) {
+    if(!opts.neuralEnabled||!opts.fullAuto||neuralModel?.schema!==2||
+      s.incoming>0||recentHostilePressure(number(()=>game.ticks(),0))||
+      s.strongest>Math.max(1,s.home)*1.25)return 0;
+    const kinds=['attack','economy','naval'],index=kinds.indexOf(kind);
+    if(index<0)return 0;
+    const home=Math.max(1,s.home),max=Math.max(1,s.max);
+    const vector=[
+      clamp(home/max,0,1.5)/1.5,
+      clamp(s.incoming/home,0,2)/2,
+      clamp(s.strongest/home,0,3)/3,
+      clamp(s.committed/home,0,2)/2,
+      clamp(number(()=>Number(me.gold()),0)/1000000,0,1),
+      clamp(number(()=>me.numTilesOwned(),0)/20000,0,1),
+      lateGame(me)?1:0,
+      strategic.groups.some(x=>x.id===null&&!x.fallout)?1:0,
+      ...kinds.map((_,i)=>i===index?1:0),
+      clamp(score,-150,150)/150,
+      clamp(candidate.magnitude??0,0,1),
+      clamp(candidate.opportunity??0,0,1),
+      clamp(candidate.cost??0,0,1),
+      clamp(candidate.risk??0,0,1)
+    ];
+    const w=neuralModel.weights,h=[];
+    for(let j=0;j<12;j++){
+      let z=w[192+j];
+      for(let i=0;i<16;i++)z+=vector[i]*w[i*12+j];
+      h.push(Math.tanh(z));
+    }
+    let z=w[216];
+    for(let j=0;j<12;j++)z+=h[j]*w[204+j];
+    return Math.tanh(z)*14;
   }
   // Hybrid learning: bounded contextual adjustments; keep existing combat safety checks.
   const LEARN_KEY='of-aggrobot-learning-v1';
@@ -1649,7 +1688,15 @@
         if(forecast.loss>amount*.78)score-=40;
       }
       if(isNeutral && winStatus.urgent)score+=24;
-      return [{...item,key,score,forecast,amount:Math.min(available,Math.floor(amount))}];
+      const baseScore=score,neuralDelta=neuralActionDelta('attack',score,me,s,{
+        magnitude:clamp(enemyTroops/Math.max(1,s.home)/3,0,1),
+        opportunity:clamp(item.front/120,0,1),
+        cost:clamp(amount/Math.max(1,s.home),0,1),
+        risk:isNeutral?(item.fallout?1:0):
+          clamp(enemyTroops/Math.max(1,s.home)/3,0,1)
+      });
+      return [{...item,key,score:score+neuralDelta,baseScore,neuralDelta,forecast,
+        amount:Math.min(available,Math.floor(amount))}];
     }).sort((a,b)=>b.score-a.score);
   }
   async function legalTarget(me,item,serial) {
@@ -1852,7 +1899,9 @@
         lastSelection=label+' · score '+item.score.toFixed(0)+
           (item.fallout?' · Fallout-Fallback':'');
         telemetry('attack_intent','Angriff angefordert – wartet auf Bestätigung',
-          {target:item.id,troops:amount});
+          {target:item.id,troops:amount,baseScore:item.baseScore,
+            neuralDelta:item.neuralDelta,chosenScore:item.score,
+            kind:item.id===null?'neutral':'enemy'});
         return true;
       }
     }
@@ -2483,6 +2532,16 @@
           unaffordable:probe.unaffordable,invalidSite:probe.invalidSite,
           lowestCost:Number.isFinite(probe.lowestCost)?probe.lowestCost:null});
       economicLastPlan=entries.slice(0,3).map(x=>x.type).join(' › ');return false;}
+    for(const item of proposals){
+      item.baseScore=item.siteValue;
+      item.neuralDelta=neuralActionDelta('economy',item.siteValue,me,troopSnapshot,{
+        magnitude:clamp((STRUCTURE_TYPES.indexOf(item.type)+1)/STRUCTURE_TYPES.length,0,1),
+        opportunity:clamp(item.siteValue/150,0,1),
+        cost:clamp(item.cost/Math.max(1,number(()=>Number(me.gold()),0)),0,1),
+        risk:item.kind==='upgrade'?0.25:0
+      });
+      item.siteValue+=item.neuralDelta;
+    }
     proposals.sort((a,b)=>b.siteValue-a.siteValue);
     const chosen=proposals[0];
     if(!live(serial))return false;
@@ -2495,6 +2554,9 @@
           {tile:chosen.tile,gold:requirements.gold,cost:chosen.cost,
             coastCandidates:coastal.length});
       }
+      telemetry('neural_economy_choice','Gepruefte Bauoption gewaehlt',
+        {kind:chosen.kind,type:chosen.type,baseScore:chosen.baseScore,
+          neuralDelta:chosen.neuralDelta,chosenScore:chosen.siteValue});
       economicStatus='Anfrage: '+chosen.type+(chosen.kind==='upgrade'?' (Upgrade)':'');
       economicLastPlan=entries.slice(0,3).map(x=>x.type).join(' › ');
       return true;
@@ -3198,6 +3260,15 @@
         }catch(_){}
       }
     }
+    for(const site of result){
+      site.baseScore=site.score;
+      site.neuralDelta=neuralActionDelta('naval',site.score,me,troopSnapshot,{
+        opportunity:clamp(site.score/150,0,1),
+        cost:clamp(site.distance/Math.max(1,game.width()+game.height()),0,1),
+        risk:clamp((site.score<0?-site.score:0)/150,0,1)
+      });
+      site.score+=site.neuralDelta;
+    }
     result.sort((a,b)=>b.score-a.score||a.distance-b.distance);
     return result.slice(0,limit).map(x=>x.tile);
   }
@@ -3214,7 +3285,20 @@
       !friendly(p,me)&&Number.isInteger(p.state?.spawnTile)&&
       // The naval planner must obey the single-front war director as well.
       (!coordinatedWar() || !isWar() || safeID(p)===warState.id));
-    foes.sort((a,b)=>number(()=>a.troops())-number(()=>b.troops()));
+    foes.sort((a,b)=>{
+      const baseA=-Math.min(150,number(()=>a.troops())/Math.max(1,navyState.home)*40);
+      const baseB=-Math.min(150,number(()=>b.troops())/Math.max(1,navyState.home)*40);
+      return (baseB+neuralActionDelta('naval',baseB,me,navyState,{
+          magnitude:clamp(number(()=>b.troops())/Math.max(1,navyState.home)/3,0,1),
+          opportunity:clamp(number(()=>b.numTilesOwned())/20000,0,1),
+          risk:clamp(number(()=>b.troops())/Math.max(1,navyState.home)/3,0,1)
+        }))-
+        (baseA+neuralActionDelta('naval',baseA,me,navyState,{
+          magnitude:clamp(number(()=>a.troops())/Math.max(1,navyState.home)/3,0,1),
+          opportunity:clamp(number(()=>a.numTilesOwned())/20000,0,1),
+          risk:clamp(number(()=>a.troops())/Math.max(1,navyState.home)/3,0,1)
+        }));
+    });
     for(const foe of foes.slice(0,6)){
       if(navyState.strongest>=navyState.home*.85)break;
       if((navalCooldown.get('player:'+safeID(foe))||0)>tick)continue;
@@ -3543,7 +3627,7 @@
       <div>${b('learningEnabled','Lernen')} ${b('brainEnabled','🧠 Lokaler Brain')} ${b('qwenPolicy','Qwen-Hinweise (Test)')} ${b('neuralEnabled','Neurales Netz')} ${b('impossibleMode','Unmöglich-Taktik')}</div>
       </details>
       <details data-section="brain"${openFor('brain')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Lokaler Brain &amp; Token</summary>
-      <div style="color:#9bd0e4">Neurales Modell: ${neuralModel?'geladen (max. ±8 Punkte)':'nicht geladen'} · nur bei freigegebener Partie</div>
+      <div style="color:#9bd0e4">Neurales Modell: ${neuralModel?.schema===2?'Aktionsranking (max. ±14 Punkte)':neuralModel?.schema===1?'Slider (max. ±8 Punkte)':'nicht geladen'} · nur bei freigegebener Partie</div>
       <div style="color:#9bd0e4">Brain: ${escapeHTML(brainState.status)}${brainState.lastError?' · '+escapeHTML(brainState.lastError):''} · ${escapeHTML(BRAIN_URL)}</div>
       <label>Brain-Token: <input type="password" data-option="brainToken" placeholder="${opts.brainToken?'Gespeichert – neu einfügen zum Ändern':'Aus Terminal einfügen'}" autocomplete="off" style="width:100%;box-sizing:border-box"></label>
       </details>
