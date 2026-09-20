@@ -35,22 +35,38 @@ const [{createGameRunner},{Config},{GameMapType,GameMapSize,Difficulty,GameType,
   mod('src/client/view/GameView.ts'),mod('src/core/game/TerrainMapLoader.ts'),
   mod('tests/perf/fullgame/NodeGameMapLoader.ts'),mod('src/core/EventBus.ts'),mod('src/core/Schemas.ts')]);
 const resolve=(values,input)=>{const key=Object.keys(values).find(k=>k.toLowerCase()===input.toLowerCase());if(!key)throw Error('Unknown enum '+input);return values[key];};
+const gameType=resolve(GameType,opts.gameType),gameMode=resolve(GameMode,opts.gameMode);
+const scriptedProfiles=['rush','balanced','defender','opportunist'];
+const profileFor=i=>opts.opponentProfile==='mixed'?
+  scriptedProfiles[i%scriptedProfiles.length]:opts.opponentProfile;
 const config=GameConfigSchema.parse({gameMap:resolve(GameMapType,opts.map),gameMapSize:resolve(GameMapSize,opts.size),
-  gameMode:GameMode.FFA,gameType:GameType.Singleplayer,difficulty:resolve(Difficulty,opts.difficulty),
-  nations:opts.nations===0?'disabled':opts.nations,bots:opts.bots,donateGold:false,donateTroops:false,
-  infiniteGold:false,infiniteTroops:false,instantBuild:false,randomSpawn:false});
+  gameMode,gameType,difficulty:resolve(Difficulty,opts.difficulty),
+  nations:opts.nations===0?'disabled':opts.nations,bots:opts.bots,
+  donateGold:gameMode===GameMode.Team,donateTroops:gameMode===GameMode.Team,
+  infiniteGold:false,infiniteTroops:false,instantBuild:false,
+  randomSpawn:opts.scriptedHumans>0,
+  ...(gameMode===GameMode.Team?{playerTeams:2}:{})});
 const dir=common.outputDir(opts),source=fs.readFileSync(opts.bot,'utf8');
-const clientID='aggrobot',players=[{clientID,username:'AggroBot Benchmark',clanTag:null}];
+const clientID='aggrobot';
+const players=[{clientID,username:'AggroBot Benchmark',clanTag:null,
+  ...(gameMode===GameMode.Team?{teamIndex:0}:{})},
+  ...Array.from({length:opts.scriptedHumans},(_,i)=>({
+    clientID:'scripted'+String(i+1).padStart(2,'0'),username:'Scripted '+profileFor(i)+' '+(i+1),clanTag:null,
+    ...(gameMode===GameMode.Team?{teamIndex:i%3===0?0:1}:{})
+  }))];
 const start={gameID:opts.seed,lobbyCreatedAt:0,players,config};
 const loader=new NodeGameMapLoader(path.join(opts.engine,'resources/maps'));
 let update=null,fatal=null,now=0,queue=[],observedWinner=null;
 const recordsFile=fs.openSync(path.join(dir,'events.jsonl'),'wx');
 const intentsFile=fs.openSync(path.join(dir,'turns.jsonl'),'wx');
 let recordsCount=0,emitted=0;
-const meta={harness:'engine-gameview-v1',engineCommit,botSHA256:common.digest(source),policySHA256:policyHash,seed:opts.seed,
+const meta={harness:'engine-gameview-v2',engineCommit,botSHA256:common.digest(source),policySHA256:policyHash,seed:opts.seed,
   seedSource:'GameStartInfo.gameID',profile:opts.profile,settings:common.profiles[opts.profile],
+  opponentProfile:opts.opponentProfile,scriptedHumans:opts.scriptedHumans,
   gameConfig:config,maxTicks:opts.ticks,clock:'100ms simulation clock; serial awaited bot cycles',
-  worker:'real GameRunner queries via async in-process adapter',browser:false};
+  worker:'real GameRunner queries via async in-process adapter',browser:false,
+  scriptedOpponents:opts.scriptedHumans>0?
+    'deterministic human-client intents; heuristic profiles, not real human behavior':null};
 common.writeJSON(path.join(dir,'run.json'),meta);
 const runner=await createGameRunner(start,clientID,loader,gu=>{'errMsg' in gu?fatal=gu.errMsg:update=gu;});
 const clientMap=await loadTerrainMap(config.gameMap,config.gameMapSize,loader,false);
@@ -90,6 +106,45 @@ for(const [name,convert] of Object.entries(adapters)){
   bus.on(eventExports[name],e=>{queue.push(StampedIntentSchema.parse({...convert(e),clientID}));emitted++;});
 }
 let timers=[],timerID=0,rng=parseInt(common.digest(opts.seed).slice(0,8),16);
+const scriptedStats={intents:0,attacks:0,neutral:0,skipped:0,profiles:{}};
+for(let i=0;i<opts.scriptedHumans;i++)scriptedStats.profiles[profileFor(i)]=(scriptedStats.profiles[profileFor(i)]||0)+1;
+function scriptedHumanIntents(turn){
+  if(opts.scriptedHumans<=0)return [];
+  const out=[];
+  for(let i=0;i<opts.scriptedHumans;i++){
+    const cid='scripted'+String(i+1).padStart(2,'0'),p=runner.game.playerByClientID(cid),profile=profileFor(i);
+    if(!p?.isAlive?.()||!p.hasSpawned?.()){scriptedStats.skipped++;continue;}
+    const active=(p.outgoingAttacks?.()||[]).filter(a=>!a.retreating&&a.troops>0);
+    const settings=profile==='rush'?{period:38,fraction:.42,max:2,start:110}:
+      profile==='defender'?{period:92,fraction:.19,max:1,start:420}:
+      profile==='opportunist'?{period:55,fraction:.34,max:1,start:240}:
+      {period:68,fraction:.27,max:2,start:220};
+    if(turn<settings.start||active.length>=settings.max||
+      (turn+i*13)%settings.period!==0)continue;
+    const nearby=(p.nearby?.()||[]);
+    const hostile=nearby.filter(x=>x?.isPlayer?.()&&x.isAlive?.()&&!p.isFriendly?.(x));
+    const bot=runner.game.playerByClientID(clientID);
+    let target=null;
+    if(profile==='rush'&&bot&&hostile.includes(bot))target=bot;
+    else if(profile==='opportunist'&&hostile.length)
+      target=hostile.slice().sort((a,b)=>a.troops()-b.troops())[0];
+    else if(profile!=='defender'&&hostile.length)
+      target=hostile.slice().sort((a,b)=>b.numTilesOwned()-a.numTilesOwned())[0];
+    const home=Math.max(0,p.troops?.()||0);
+    const troops=Math.floor(home*settings.fraction);
+    if(troops<120)continue;
+    if(target&&p.canAttackPlayer?.(target)){
+      out.push(StampedIntentSchema.parse({type:'attack',targetID:target.id(),troops,clientID:cid}));
+      scriptedStats.attacks++;
+    } else if(nearby.some(x=>x&&!x.isPlayer?.())){
+      out.push(StampedIntentSchema.parse({type:'attack',targetID:null,
+        troops:Math.max(120,Math.floor(troops*(profile==='defender'?.72:1))),clientID:cid}));
+      scriptedStats.neutral++;
+    } else {scriptedStats.skipped++;continue;}
+    scriptedStats.intents++;
+  }
+  return out;
+}
 const math=Object.create(Math);math.random=()=>{rng=(Math.imul(rng,1664525)+1013904223)>>>0;return rng/4294967296;};
 class Clock extends Date{constructor(...args){super(...(args.length?args:[now]));}static now(){return now;}}
 const win={location:{hostname:'localhost'},addEventListener(){},__OF_BENCHMARK_CONFIG__:{enabled:true,onRecord(record){
@@ -119,7 +174,7 @@ try{
     // A bounded timer batch prevents a runaway timer from hanging a test.
     const due=timers.filter(t=>t.due<=now);timers=timers.filter(t=>t.due>now);
     if(due.length>1000)throw Error('Timer overflow');for(const task of due)await task.fn();
-    const intents=queue;queue=[];
+    const intents=queue.concat(scriptedHumanIntents(turn));queue=[];
     fs.writeSync(intentsFile,JSON.stringify({turnNumber:turn,intents},(_,v)=>typeof v==='bigint'?v.toString():v)+'\n');
     update=null;runner.addTurn({turnNumber:turn,intents});
     if(!runner.executeNextTick()||fatal||!update)throw Error(fatal||'Engine tick produced no update');
@@ -139,7 +194,8 @@ try{
 finally{
   const report=bot.snapshot(),me=view.myPlayer();
   report.benchmarkMeta={...report.benchmarkMeta,...meta,gameMap:config.gameMap,gameMapSize:config.gameMapSize,gameMode:config.gameMode};
-  report.run={termination,tick:finalTick,spawned,emitted,failure,recordCount:recordsCount};
+  report.run={termination,tick:finalTick,spawned,emitted,failure,recordCount:recordsCount,
+    scriptedStats};
   report.recording={...report.recording,streamFile:'events.jsonl',streamCount:recordsCount,complete:recordsCount===report.recording.total&&report.recording.streamErrors===0};
   if(termination==='eliminated')report.gameEnd={outcome:'defeat',source:'engine-elimination',tick:finalTick,land:me?.numTilesOwned()??0,reason:'Player eliminated after confirmed spawn'};
   if(observedWinner){

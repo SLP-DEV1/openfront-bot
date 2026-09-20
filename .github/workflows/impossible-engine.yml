@@ -34,6 +34,16 @@ jobs:
             --bots 0 --nations 1 --seed impossible-ci-001 --ticks 2200 \
             --profile autonomous --policy zero-policy.json --out benchmark-results/impossible-ci
           node -e "const m=require('./benchmark-results/impossible-ci/match.json'); const p=require('./trainer/action-policy.cjs');if(m.benchmarkMeta.policySHA256!==require('crypto').createHash('sha256').update(JSON.stringify(p.zero())).digest('hex')||!m.trajectory?.samples?.length||!m.trajectory.summary)process.exit(1)"
+      - name: Run scripted-human Public FFA smoke
+        run: |
+          node tools/benchmark/engine-match.mjs \
+            --engine ../OpenFrontIO \
+            --engineCommit bb8af015b515b3b717bd4d901074c5f4c16641cb \
+            --map World --size Compact --difficulty Medium \
+            --bots 0 --nations 0 --seed multiplayer-ci-001 --ticks 2600 \
+            --gameType Public --gameMode FFA --scriptedHumans 2 --opponentProfile mixed \
+            --profile autonomous --out benchmark-results/multiplayer-ci
+          node -e "const m=require('./benchmark-results/multiplayer-ci/match.json'); if(m.benchmarkMeta.gameConfig.gameType!=='Public'||m.benchmarkMeta.scriptedHumans!==2||!m.run.scriptedStats||m.run.scriptedStats.intents<1) process.exit(1)"
       - name: Exercise one neural evolution generation with real Impossible games
         run: |
           node trainer/train.mjs --schema 4 \
@@ -48,5 +58,6 @@ jobs:
           name: impossible-engine-smoke
           path: |
             benchmark-results/impossible-ci
+            benchmark-results/multiplayer-ci
             benchmark-results/neural-ci
           if-no-files-found: ignore

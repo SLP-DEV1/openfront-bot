@@ -137,8 +137,28 @@ assert.match(invalidDifficulty.stderr,/Invalid --difficulty/);
 const batch=fs.readFileSync(path.join(root,'Train_Strategic_Neural.bat'),'utf8');
 assert.match(batch,/choice \/C 123/);
 assert.match(batch,/--difficulty %DIFFICULTY%/);
+const multiBatch=fs.readFileSync(path.join(root,'Train_Multiplayer_Neural.bat'),'utf8');
+assert.match(multiBatch,/--gameType Public/);
+assert.match(multiBatch,/--scriptedHumans 4/);
+assert.match(multiBatch,/--opponentProfile mixed/);
+assert.match(multiBatch,/--parallel %PARALLEL%/);
 const fast=JSON.parse(exec(['trainer/train.mjs','--dryRun','true','--parallel','4']));
 assert.equal(fast.parallel,4);
+const wide=JSON.parse(exec(['trainer/train.mjs','--dryRun','true','--parallel','16']));
+assert.equal(wide.parallel,16);
+const multi=JSON.parse(exec(['trainer/train.mjs','--dryRun','true','--schema','4',
+  '--gameType','Public','--gameMode','FFA','--scriptedHumans','4',
+  '--opponentProfile','mixed','--nations','0','--maps','World']));
+assert.equal(multi.gameType,'Public');
+assert.equal(multi.gameMode,'FFA');
+assert.equal(multi.scriptedHumans,4);
+assert.equal(multi.opponentProfile,'mixed');
+assert.deepEqual(multi.nations,[0]);
+const invalidHumanMode=spawnSync(process.execPath,
+  ['trainer/train.mjs','--dryRun','true','--scriptedHumans','2'],
+  {cwd:root,encoding:'utf8'});
+assert.notEqual(invalidHumanMode.status,0);
+assert.match(invalidHumanMode.stderr,/requires --gameType Public or Private/);
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),'aggrobot-neural-'));
 try{
   const model=path.join(temp,'champion.json'),out=path.join(temp,'bot.user.js');

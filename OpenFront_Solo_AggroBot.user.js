@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.18.2
+// @version      1.18.3
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.18.2', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.18.3', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, brainEnabled:false, brainToken:'', fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -474,6 +474,7 @@
         gameMapSize:config.gameMapSize??null,gameMode:config.gameMode??null,
         seed:config.seed??null,engineCommit:window.BOOTSTRAP_CONFIG?.gitCommit??null,
         matchEndObserved:gameEnd!==null,resultsVerifiedByBrowser:false},
+      matchContext:matchContext(),
       options:{...opts,brainToken:opts.brainToken?'[redacted]':'',enabled:false},intents:intentHealth(),tuning:{...autoTuning,enabled:!!opts.fullAuto,
         effective:{aggressive:setting('aggressive'),reserve:setting('reserve'),
           actionsPerMinute:setting('actionsPerMinute'),maxTargets:setting('maxTargets')}},attackReceipts, pendingAttack,
@@ -505,6 +506,22 @@
     try{return g?.config?.().gameConfig?.().gameType ?? null;}catch(_){return null;}
   };
   const multiplayerMatch = g => ['Public','Private'].includes(gameType(g));
+  function matchContext(me=myPlayer()) {
+    const cfg=game?.config?.().gameConfig?.()||{};
+    const players=(game?.playerViews?.()||[]).filter(p=>p?.isPlayer?.()&&p?.isAlive?.());
+    const selfID=safeID(me);
+    let humans=0,nations=0,hostileHumans=0,hostileNations=0;
+    for(const p of players){
+      if(safeID(p)===selfID)continue;
+      const human=typeof p.clientID?.()==='string'&&p.clientID?.().length>0;
+      if(human)humans++;else nations++;
+      if(!friendly(p,me)){if(human)hostileHumans++;else hostileNations++;}
+    }
+    return {gameType:cfg.gameType??null,gameMode:cfg.gameMode??null,
+      difficulty:cfg.difficulty??null,multiplayer:multiplayerMatch(game),
+      humans,nations,hostileHumans,hostileNations,
+      team:winStatus.mode==='Team'};
+  }
   // Allow every known playable OpenFront game type without a second opt-in.
   // Fail closed for unknown modes and recorded replays.
   const permittedMatch = g => {
@@ -1308,7 +1325,9 @@
   }
   // Retain short-lived border pressure across transient missing border scans.
   function observeFronts(me,items,tick){
-    if(!hardMode())return;
+    // Human multiplayer pressure must not disappear merely because native
+    // Nation difficulty is Medium/Hard. Impossible keeps its existing logic.
+    if(!hardMode()&&!multiplayerMatch(game))return;
     for(const item of items){
       if(item.id===null||!item.opponent?.isAlive?.()||friendly(item.opponent,me))continue;
       const troops=Math.max(0,number(()=>item.opponent.troops(),0));
@@ -1382,9 +1401,16 @@
       strongest>0 ? Math.min(home*.85,strongest*(hardMode()?.59:.53)) : 0,
       incoming>0 ? Math.min(home*.94,incoming*1.3) : 0,
       strongest>0 ? Math.min(home*.78,max*(hardMode()?.12:.14)) : 0);
-    const predicted=hardMode()?frontPressureForecast(me,items,tick):null;
-    const forecastFloor=opts.impossibleExperiment&&predicted&&predicted.pressured?
-      Math.min(home*.91,predicted.combined*.60+incoming*.30):0;
+    const context=matchContext(me);
+    const predicted=(hardMode()||context.multiplayer)?
+      frontPressureForecast(me,items,tick):null;
+    // Existing experimental Impossible coefficients remain opt-in. Public/
+    // Private receive a narrower safety floor only when visible pressure or
+    // own land loss exists; simple peaceful adjacency cannot trigger it.
+    const forecastEnabled=(hardMode()&&opts.impossibleExperiment)||context.multiplayer;
+    const forecastFloor=forecastEnabled&&predicted&&predicted.pressured?
+      Math.min(home*(context.multiplayer?.88:.91),
+        predicted.combined*(context.multiplayer?.52:.60)+incoming*.30):0;
     const reserve=Math.min(home,Math.ceil(Math.max(defensiveFloor,forecastFloor)));
     const available=Math.max(0,Math.floor(home-reserve));
     const total=home+committed;
@@ -1399,8 +1425,9 @@
   // offensive a few seconds after surviving an attack.
   function rememberHostilePressure(s,tick){
     const trend=armyTrend(tick);
-    const unexpectedLoss=hardMode() && s.strongest>s.home*.70 &&
-      trend && trend.ticks>=100 && trend.tiles< -Math.max(140,s.home*.001);
+    const unexpectedLoss=(hardMode()||multiplayerMatch(game)) &&
+      s.strongest>s.home*.70 && trend && trend.ticks>=100 &&
+      trend.tiles< -Math.max(140,s.home*.001);
     if(s.incoming>=Math.max(1200,Math.max(1,s.home)*.08)||unexpectedLoss){
       if(unexpectedLoss && tick-lastFrontWarning>150){
         lastFrontWarning=tick;
@@ -4107,7 +4134,8 @@
       brainSend(tick,me,s);
       if(tick-lastDiagnosticTick>=80){lastDiagnosticTick=tick;
         telemetry('snapshot','Spielzustand',{difficulty:game.config().gameConfig().difficulty,
-          gameType:game.config().gameConfig().gameType,investment:investmentStatus,
+          gameType:game.config().gameConfig().gameType,matchContext:matchContext(me),
+          investment:investmentStatus,
           cities:ownStructures(me).filter(u=>u.type?.()==='City').length,
           factories:ownStructures(me).filter(u=>u.type?.()==='Factory').length,
           borders:tiles.length,tuning:{...autoTuning,enabled:!!opts.fullAuto},defense:{status:defenseStatus,incoming:s.incoming,
@@ -4312,7 +4340,8 @@
         spawned:!!myPlayer()?.hasSpawned?.(),alive:myPlayer()?.isAlive?.()??null,
         gameOver:!!game?.gameOver?.(),status}),
       start:(settings={})=>{
-        if(!connected()||gameType(game)!=='Singleplayer')throw new Error('Benchmark requires a local Singleplayer match');
+        if(!connected()||!permittedMatch(game))
+          throw new Error('Benchmark requires a local permitted match');
         const allowed={aggressive:[40,100],reserve:[5,65],actionsPerMinute:[15,120],maxTargets:[4,25]};
         for(const [key,value] of Object.entries(settings)){
           if(key==='fullAuto'&&typeof value==='boolean')continue;

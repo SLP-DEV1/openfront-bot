@@ -7,7 +7,8 @@ function compare(incumbent,candidate){
     incumbentWins:0,candidateWins:0,improved:0,regressed:0,survivalTicks:0};
   if(!Array.isArray(incumbent)||!Array.isArray(candidate)||
     incumbent.length<2||incumbent.length!==candidate.length)return invalid;
-  const signature=x=>[x.difficulty,x.map,x.nation,x.seed].join('|');
+  const signature=x=>[x.difficulty,x.map,x.nation,x.gameType??'Singleplayer',
+    x.gameMode??'FFA',x.scriptedHumans??0,x.opponentProfile??'none',x.seed].join('|');
   const seen=new Set();
   for(let i=0;i<incumbent.length;i++){
     const a=incumbent[i],b=candidate[i],key=signature(a);

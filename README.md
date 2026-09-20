@@ -2,7 +2,7 @@
 
 Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscript für [OpenFront](https://openfront.io/).
 
-**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.15.0**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
+**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.18.3**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
 
 ## AggroBot 2.0 – erster lokaler Brain-Baustein (v1.11.0)
 
@@ -57,6 +57,28 @@ Kompatibilitaetsgruenden weiterhin gelesen, aber **nicht mehr trainiert**.
 Ohne ein validiertes und eingebettetes Modell ist der Live-Bot unveraendert.
 
 [Trainingsanleitung und Versionierung](docs/NEURAL_TRAINING.md).
+
+### Multiplayer-Trainingsharness (1.18.3)
+
+Der lokale Engine-Harness kann optional zusätzliche **scripted Human-Clients**
+erzeugen. Diese Clients laufen als echte Human-Spielerobjekte in derselben
+offiziellen OpenFront-Engine und senden deterministische Angriffsintents.
+Verfügbare Profile: `rush`, `balanced`, `defender`, `opportunist` und
+`mixed`. Sie sind absichtlich nur Testgegner und **kein Ersatz für echte
+menschliche Spieler**.
+
+Windows-Start:
+
+```bat
+Train_Multiplayer_Neural.bat 8 FFA
+Train_Multiplayer_Neural.bat 8 Team
+```
+
+Das erste Argument ist die Parallelität (1-16), das zweite `FFA` oder
+`Team`. Der Starter trainiert Schema 4 im Public-Kontext mit vier scripted
+Human-Clients, getrennten Train-/Evaluation-Seeds und einem gepinnten
+OpenFront-Engine-Commit. Ohne bestätigte Promotion wird kein deploybares
+Champion-Userscript erzeugt.
 
 ## Sichtbarer OpenFront-Browsertest mit Qwen Code
 
