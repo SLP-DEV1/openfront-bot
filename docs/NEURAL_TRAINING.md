@@ -10,7 +10,7 @@ Die Nullgewicht-Policy ist exakt die bestehende regelbasierte Strategie. Live-Mo
 
 ## Windows-Schnellstart
 
-1. Im Bot-Repo `git pull --ff-only` ausfuehren; Node.js 24 und Git benoetigt. Qwen Code optional in PATH und mit deinem lokalen llama.cpp-Server konfiguriert. Die separate offizielle Engine liegt unter `..\OpenFrontIO`; das Batch-Skript klont sie bei Fehlen, wechselt aber einen bereits vorhandenen Checkout mit anderem Commit **nicht** ungefragt um.
+1. Im Bot-Repo `git pull --ff-only` ausfuehren; Node.js 24 und Git benoetigt. Qwen Code optional in PATH und mit deinem lokalen llama.cpp-Server konfiguriert. Das Batch-Skript benutzt den eigenen Trainings-Checkout `..\OpenFrontIO-Impossible` und klont ihn bei Fehlen. Der bisherige `..\OpenFrontIO`-Checkout mit dem alten Benchmark-Commit bleibt unveraendert. Ein bereits vorhandener Trainings-Checkout mit anderem Commit wird ebenfalls nicht automatisch umgestellt.
 2. `Start_Training.bat` doppelklicken. Es installiert bei Bedarf die Engine-Abhaengigkeiten, spielt standardmaessig 3 Generationen gegen eine und vier Impossible-Nationen und fragt nach jeder Generation Qwen Code nach einer *begrenzten* Mutation-Streuung (Sigma). Ein fehlendes oder fehlerhaftes Qwen blockiert den Trainingsprozess nicht.
 3. Berichte stehen unter `benchmark-results/neural-.../history.json`, detaillierte `generation-N.json` und einzelne Match-Ordner unter `matches/`. Im Match-Ordner stehen die echten `match.json`, `events.jsonl`, `turns.jsonl` sowie das getrennte Runner-Log.
 
