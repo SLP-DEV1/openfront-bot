@@ -3,6 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {spawnSync}=require('node:child_process');
 const p=require('../trainer/policy.cjs');
+const {parallelMap}=require('../trainer/parallel.cjs');
 const {compare}=require('../trainer/evaluation.cjs');
 const pair=(seed,outcome,confirmed=true)=>({map:'World',nation:1,seed,outcome,confirmed});
 assert.equal(compare([pair('one','defeat')],[pair('one','victory')]).promoted,true);
@@ -34,6 +35,9 @@ const dry=JSON.parse(exec(['trainer/train.mjs','--dryRun','true',
   '--generations','2','--population','2','--trainSeeds','1',
   '--evalSeeds','2','--nations','1','--maps','World']));
 assert.equal(dry.matches,2*(1*(1*(2+1)+2*2)));
+assert.equal(dry.parallel,2);
+const fast=JSON.parse(exec(['trainer/train.mjs','--dryRun','true','--parallel','4']));
+assert.equal(fast.parallel,4);
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),'aggrobot-neural-'));
 try{
   const model=path.join(temp,'champion.json'),out=path.join(temp,'bot.user.js');
@@ -46,4 +50,18 @@ try{
     {cwd:root,encoding:'utf8'});
   assert.notEqual(bad.status,0,'do not overwrite existing deployed bot');
 }finally{fs.rmSync(temp,{recursive:true,force:true});}
-console.log('Neural policy, dry-run, deployment regression: PASS');
+(async()=>{
+  let active=0,peak=0;
+  const tasks=Array.from({length:11},(_,i)=>i);
+  const actual=await parallelMap(tasks,4,async i=>{
+    active++;peak=Math.max(peak,active);
+    await new Promise(resolve=>setTimeout(resolve,(i%3+1)*3));
+    active--;
+    return i*i;
+  });
+  assert(peak<=4&&peak>1,'match pool must actually run concurrently, but remain bounded');
+  assert.deepEqual(actual,tasks.map(i=>i*i),'completion order must not reorder seeds');
+  assert.deepEqual(await parallelMap([],4,async()=>0),[]);
+  await assert.rejects(parallelMap([1,2],0,async()=>0));
+  console.log('Neural policy, concurrent match pool, dry-run and deployment: PASS');
+})().catch(e=>{console.error(e);process.exitCode=1;});
