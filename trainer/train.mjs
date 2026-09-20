@@ -6,6 +6,7 @@ import path from 'node:path';
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import policy from './strategic-policy.cjs';
+import policyV4 from './strategic-policy-v4.cjs';
 import common from '../tools/benchmark/common.cjs';
 import {reviewGeneration} from './qwen-review.mjs';
 import evaluation from './evaluation.cjs';
@@ -15,7 +16,7 @@ import parallelPool from './parallel.cjs';
 const cfg={engine:null,engineCommit:common.IMPOSSIBLE_REFERENCE_COMMIT,
   bot:'OpenFront_Solo_AggroBot.user.js',initialModel:null,maps:'World',size:'Compact',nations:'1,4',difficulty:'Impossible',
   generations:'3',population:'4',trainSeeds:'2',evalSeeds:'4',ticks:'18000',
-  sigma:'0.12',parallel:'2',out:'benchmark-results/neural-training',qwen:'false',dryRun:'false'};
+  sigma:'0.12',parallel:'2',schema:'3',out:'benchmark-results/neural-training',qwen:'false',dryRun:'false'};
 for(let i=2;i<process.argv.length;i++){
   const key=process.argv[i];
   if(!key.startsWith('--')||!Object.hasOwn(cfg,key.slice(2)))throw Error('Unknown option '+key);
@@ -28,6 +29,7 @@ const integer=(key,min,max)=>{
   if(!Number.isSafeInteger(n)||n<min||n>max)throw Error('Invalid '+key);
   return n;
 };
+const modelSchema=integer('schema',3,4),selectedPolicy=modelSchema===4?policyV4:policy;
 const generations=integer('generations',1,500),population=integer('population',2,16),
   trainSeeds=integer('trainSeeds',1,12),evalSeeds=integer('evalSeeds',2,20),
   ticks=integer('ticks',100,72000),parallel=integer('parallel',1,8);
@@ -51,7 +53,7 @@ const runsPerGeneration=maps.length*nations.length*(trainSeeds*(population+1)+ev
 if(runsPerGeneration>200)throw Error('Too many matches per generation (>200)');
 const total=runsPerGeneration*generations;
 const plan={engineCommit:cfg.engineCommit,difficulty,maps,nations,generations,population,
-  trainSeeds,evalSeeds,ticks,sigma,parallel,matches:total,policySchema:3,
+  trainSeeds,evalSeeds,ticks,sigma,parallel,matches:total,policySchema:modelSchema,
   promotion:'verified complete paired holdout: more victories or consistent survival gains without regressions'};
 if(cfg.dryRun==='true'){console.log(JSON.stringify(plan,null,2));process.exit(0);}
 if(!cfg.engine)throw Error('Provide --engine or --dryRun true');
@@ -63,14 +65,14 @@ fs.mkdirSync(out,{recursive:true});
 common.writeJSON(path.join(out,'plan.json'),plan);
 const runner=fileURLToPath(new URL('../tools/benchmark/engine-match.mjs',import.meta.url));
 const save=(p,data)=>common.writeJSON(path.join(out,p),data);
-let incumbent=cfg.initialModel?policy.validate(JSON.parse(fs.readFileSync(path.resolve(cfg.initialModel),'utf8'))):policy.zero(),parent=incumbent,incumbentWins=0;
+let incumbent=cfg.initialModel?selectedPolicy.validate(JSON.parse(fs.readFileSync(path.resolve(cfg.initialModel),'utf8'))):selectedPolicy.zero(),parent=incumbent,incumbentWins=0;
 const history=[];
 async function match(model,phase,g,index,map,nation,seed){
   const id=[phase,g,index,difficulty,map,nation,seed].join('-');
   const folder=path.join(out,'matches',id),modelFile=path.join(out,'models',id+'.json');
   fs.mkdirSync(path.dirname(folder),{recursive:true});
   fs.mkdirSync(path.dirname(modelFile),{recursive:true});
-  common.writeJSON(modelFile,policy.validate(model));
+  common.writeJSON(modelFile,selectedPolicy.validate(model));
   const log=folder+'.log',fd=fs.openSync(log,'wx');
   let proc;
   try{
@@ -111,7 +113,7 @@ async function match(model,phase,g,index,map,nation,seed){
     elapsed=Math.max(0,Number(state?.run?.tick)||0);
   const reward=scoring.reward({validSample,confirmed,outcome,land,
     endTick:elapsed,ticks,trajectory:state?.trajectory});
-  const row={phase,generation:g,index,map,nation,difficulty,seed,model:policy.sha(model),
+  const row={phase,generation:g,index,map,nation,difficulty,seed,model:selectedPolicy.sha(model),
     dir:path.relative(out,folder),termination,outcome:confirmed?outcome:'incomplete',
     confirmed,validSample,land,endTick:elapsed,trajectory:state?.trajectory?.summary??null,
     reward:Math.round(reward*1e6)/1e6,
@@ -135,7 +137,7 @@ const score=rows=>rows.every(x=>x.validSample)?
 for(let g=1;g<=generations;g++){
   const candidates=Array.from({length:population},(_,i)=>({
     index:'p'+i,
-    model:policy.mutate(parent,'neural-'+g+'-'+Math.floor(i/2),sigma,i%2?-1:1)
+    model:selectedPolicy.mutate(parent,'neural-'+g+'-'+Math.floor(i/2),sigma,i%2?-1:1)
   }));
   // Independent official-engine processes run together; every candidate and
   // parent sees the same seed suite. The pool bounds CPU/RAM consumption.
@@ -165,11 +167,11 @@ for(let g=1;g<=generations;g++){
   }
   parent=provisional;
   save('provisional.json',parent);
-  const report={generation:g,sigma,proposals:proposals.map(p=>({model:policy.sha(p.model),score:p.score})),
+  const report={generation:g,sigma,proposals:proposals.map(p=>({model:selectedPolicy.sha(p.model),score:p.score})),
     parentScore:score(previous),trainScore:top.score,
     evaluation:{incumbent:{wins:wins(incumbentRows),rows:incumbentRows},
       candidate:{wins:wins(candidateRows),rows:candidateRows},comparison},
-    promoted,difficulty,championModel:policy.sha(incumbent),provisionalModel:policy.sha(parent),
+    promoted,difficulty,championModel:selectedPolicy.sha(incumbent),provisionalModel:selectedPolicy.sha(parent),
     note:valid?'Completed paired evaluation; '+comparison.reason:'Incomplete or failed evaluation; no promotion'};
   history.push(report);save('generation-'+g+'.json',report);
   save('history.json',{plan,history,published:fs.existsSync(path.join(out,'champion.json'))});
