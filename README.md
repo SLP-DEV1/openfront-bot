@@ -2,7 +2,7 @@
 
 Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscript für [OpenFront](https://openfront.io/).
 
-**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.14.1**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
+**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.15.0**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
 
 ## AggroBot 2.0 – erster lokaler Brain-Baustein (v1.11.0)
 
@@ -37,30 +37,26 @@ ansonsten gilt weiter der ältere historische Fixpunkt. Der zusätzliche
 GitHub-Workflow `Impossible Engine Smoke` überprüft den offiziellen
 Engine-/GameView-Pfad; lange Siege/Niederlagen müssen separat gemessen werden.
 
-## Neural Impossible Trainer (1.14.0, experimentell)
+## Neural Impossible Trainer (1.15.0, experimentell)
 
-Ein neues kleines **8→8→2-Neuronales-Netz** kann innerhalb enger Grenzen
-Aggressivität und Reserve anpassen; die vorhandene Spiel- und Worker-Logik
-bleibt die Sicherheitsgrenze. Im normalen Userscript ist das neuronale Netz
-ohne einen bestätigten und ausdrücklich eingebetteten Champion **AUS**.
+Das neue **16→12→1-Aktionsnetz (Schema 2)** priorisiert innerhalb der
+vorhandenen, regelgeprueften Listen geeignete neutrale/gegnerische Angriffe,
+Bauoptionen und Marineziele. Es bewertet beobachtbare Kandidatenmerkmale
+und verschiebt die heuristische Reihenfolge um maximal ±14 Punkte.
+**Es erzeugt keine eigenen Intents und umgeht keine Worker-, Allianz-
+oder Reservechecks.** Notfallverteidigung und die Aufteilung in
+Attack-/Economy-/Marine-Scheduler bleiben regelbasiert.
 
-`Start_Training.bat` startet einen reproduzierbaren Neuroevolution-Trainingslauf
-mit echten Impossible-Engine-Partien. Standardmäßig laufen **vier unabhängige
-Engine-Matches gleichzeitig** (einstellbar mit `--parallel 1` bis `8`),
-auf deinem Ryzen 9 9950X3D und 64 GB RAM zunächst mit `--parallel 4`. Ein optionales Qwen Code CLI bewertet
-nach jeder Generation die **aggregierten Resultate** und kann ausschließlich
-die Mutationsstärke für die nächste Generation vorschlagen. Nur mehr
-**bestätigte Siege auf getrennten Evaluations-Seeds** können eine
-`champion.json` veröffentlichen. Training ohne Champion gilt ausdrücklich
-nicht als erfolgreicher Trainingsnachweis.
+Der Trainer verwendet dieselbe Modelldatei im offiziellen Engine-Harness,
+vier parallele Simulationen im Windows-Startskript und einen
+GameView-Verlauf fuer den Such-Reward (gehaltenes Land, Hoechststand,
+Retention). Aufstieg nur bei mehr bestaetigten Impossible-Siegen auf
+getrennten Evaluation-Seeds; die bisherigen 108 Niederlagen sind kein
+Nachweis eines Erfolgs. Das alte Schema-1-Slidermodell wird aus
+Kompatibilitaetsgruenden weiterhin gelesen, aber **nicht mehr trainiert**.
+Ohne ein validiertes und eingebettetes Modell ist der Live-Bot unveraendert.
 
-[Einrichtung, Qwen Code, Tests und Modelleinsatz](docs/NEURAL_TRAINING.md).
-
-## Änderung 1.14.1 – Match-Autostart und kompakte Oberfläche
-
-- **Auto-Start standardmäßig AN:** Ein neuer erkannter Singleplayer-, Public- oder Private-Match startet nach Verfügbarkeit des EventBus automatisch. Bei fehlendem EventBus wartet der Bot, statt vorzeitig Befehle zu senden. Replays und beendete Partien bleiben ausgeschlossen.
-- **Manuelle Kontrolle:** Pause hält bis zum Matchwechsel; Not-Aus deaktiviert zusätzlich den künftigen Auto-Start. Über den Schalter **Auto-Start** lässt sich das Verhalten jederzeit ändern.
-- **Kompaktes Panel:** Start/Pause, Auto-Start, Strategie und Status direkt sichtbar; Module einschließlich neuralem Modell, Brain-Token, Lage, Feintuning und Diagnose stecken in aufklappbaren Bereichen. Geöffnete Bereiche bleiben beim regelmäßigen Redraw offen.
+[Trainingsanleitung und Versionierung](docs/NEURAL_TRAINING.md).
 
 ## Installation
 
