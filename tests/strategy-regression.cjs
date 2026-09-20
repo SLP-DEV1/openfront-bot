@@ -1529,6 +1529,44 @@ function boot() {
       .find(r=>r.id==='weak')?.score;
     assert(Number.isFinite(unexposed)&&exposed>unexposed+30,{unexposed,exposed});
   });
+
+  await check('v1.10.7 new alliance during naval worker probe cancels player landing', async () => {
+    const x=boot();x.b.setBoats(true);
+    class Boat{constructor(dst,troops){this.dst=dst;this.troops=troops;}}
+    x.b.setBoatCtor(Boat);
+    x.me.actions=async()=>{x.me.isFriendly=p=>p===x.weak;
+      return {buildableUnits:[{type:'Transport',canBuild:1,cost:0n}]};};
+    assert.equal(await x.b.naval(x.me,300,0),false);
+    assert.equal(x.sent.length,0);
+    assert(x.b.state().diagnostics.some(d=>d.kind==='naval_allied_skip'));
+  });
+  await check('v1.10.7 owner change during naval worker probe cancels landing', async () => {
+    const x=boot();x.b.setBoats(true);
+    class Boat{constructor(dst,troops){this.dst=dst;this.troops=troops;}}
+    x.b.setBoatCtor(Boat);
+    x.me.actions=async()=>{x.game.owner=()=>x.me;
+      return {buildableUnits:[{type:'Transport',canBuild:1,cost:0n}]};};
+    assert.equal(await x.b.naval(x.me,300,0),false);
+    assert.equal(x.sent.length,0);
+  });
+  await check('v1.10.7 lost home troops during naval worker probe veto landings', async () => {
+    const x=boot();x.b.setBoats(true);
+    class Boat{constructor(dst,troops){this.dst=dst;this.troops=troops;}}
+    x.b.setBoatCtor(Boat);
+    x.me.actions=async()=>{x.setHome(8000);
+      return {buildableUnits:[{type:'Transport',canBuild:1,cost:0n}]};};
+    assert.equal(await x.b.naval(x.me,300,0),false);
+    assert.equal(x.sent.length,0);
+  });
+  await check('v1.10.7 new war lock during naval worker probe forbids second front', async () => {
+    const x=boot();x.b.setBoats(true);
+    class Boat{constructor(dst,troops){this.dst=dst;this.troops=troops;}}
+    x.b.setBoatCtor(Boat);
+    x.me.actions=async()=>{x.b.setWar('strong','strong');
+      return {buildableUnits:[{type:'Transport',canBuild:1,cost:0n}]};};
+    assert.equal(await x.b.naval(x.me,300,0),false);
+    assert.equal(x.sent.length,0);
+  });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
 })();
