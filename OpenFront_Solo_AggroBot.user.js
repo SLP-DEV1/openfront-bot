@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.18.3
+// @version      1.18.4
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.18.3', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.18.4', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, brainEnabled:false, brainToken:'', fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -459,7 +459,10 @@
           const ids=winner.slice(winner[0]==='player'?1:2);
           // Winner tuples contain ClientID, not PlayerID or numeric smallID.
           const clientID=me?.clientID?.();
-          if(typeof clientID==='string'&&clientID.length)
+          if(winner[0]==='team'&&me?.team?.()!==null&&
+            me?.team?.()!==undefined&&String(winner[1])===String(me.team()))
+            result.outcome='victory';
+          else if(typeof clientID==='string'&&clientID.length)
             result.outcome=winner[0]==='nation'?'defeat':ids.includes(clientID)?'victory':'defeat';
         }
       }
@@ -506,6 +509,34 @@
     try{return g?.config?.().gameConfig?.().gameType ?? null;}catch(_){return null;}
   };
   const multiplayerMatch = g => ['Public','Private'].includes(gameType(g));
+  // Ranked 2v2 is an explicit OpenFront gameConfig marker. A normal Duos
+  // lobby must keep its old economy and combat tuning.
+  function rankedDuo(me=myPlayer()) {
+    const gc=game?.config?.().gameConfig?.()||{};
+    if(!me||gc.rankedType!=='2v2'||gc.gameMode!=='Team')return null;
+    const team=me.team?.();
+    if(team===null||team===undefined)return null;
+    const views=game?.playerViews?.()||[];
+    const partners=views.filter(p=>p&&safeID(p)!==safeID(me)&&
+      p.isAlive?.()&&p.team?.()===team&&me.isOnSameTeam?.(p));
+    if(partners.length!==1)return null;
+    const enemies=views.filter(p=>p?.isAlive?.()&&p.isPlayer?.()&&
+      safeID(p)!==safeID(me)&&!friendly(p,me));
+    return {partner:partners[0],enemies,team,
+      ownID:safeID(me),partnerID:safeID(partners[0])};
+  }
+  function duoFocus(me,enemy){
+    const duo=rankedDuo(me);
+    if(!duo||!enemy||friendly(enemy,me))return null;
+    const outgoing=(duo.partner.outgoingAttacks?.()||[])
+      .filter(a=>!a.retreating&&a.troops>0);
+    const on=outgoing.filter(a=>attackTargets(a.targetID,enemy))
+      .reduce((sum,a)=>sum+number(()=>a.troops,0),0);
+    const elsewhere=outgoing.filter(a=>a.targetID!==null&&a.targetID!==0&&
+      !attackTargets(a.targetID,enemy))
+      .reduce((sum,a)=>sum+number(()=>a.troops,0),0);
+    return {on,elsewhere,partner:duo.partnerID};
+  }
   function matchContext(me=myPlayer()) {
     const cfg=game?.config?.().gameConfig?.()||{};
     const players=(game?.playerViews?.()||[]).filter(p=>p?.isPlayer?.()&&p?.isAlive?.());
@@ -519,7 +550,8 @@
     }
     return {gameType:cfg.gameType??null,gameMode:cfg.gameMode??null,
       difficulty:cfg.difficulty??null,multiplayer:multiplayerMatch(game),
-      humans,nations,hostileHumans,hostileNations,
+      rankedType:cfg.rankedType??null,ranked2v2:cfg.rankedType==='2v2'&&
+        cfg.gameMode==='Team',humans,nations,hostileHumans,hostileNations,
       team:winStatus.mode==='Team'};
   }
   // Allow every known playable OpenFront game type without a second opt-in.
@@ -903,6 +935,15 @@
     const teamScore=!ally.length?0:
       Math.min(1,Math.max(0,(nearestAlly-minimum)/(minimum*2.5)))*
         Math.min(1,190/Math.max(60,nearestAlly));
+    // In ranked duo, independently running bots use the already visible
+    // teammate spawn to converge on a shared lane without overlapping cores.
+    // Keep legal spawn footprint and minimum-distance veto authoritative.
+    const gc=g?.config?.().gameConfig?.()||{};
+    const rankedPair=gc.rankedType==='2v2'&&gc.gameMode==='Team';
+    const allyBand=rankedPair&&ally.length?
+      nearestAlly<=minimum+115?
+        Math.max(-.09,.12-Math.abs(nearestAlly-(minimum+45))*.0015):
+        -.15:0;
     const openScore=core/coreTotal;
     const edge=Math.min(x,y,w-1-x,h-1-y);
     const edgeScore=Math.min(1,edge/Math.max(22,scale));
@@ -916,7 +957,7 @@
     const score=openScore*.19+density*.32+
       (plain/Math.max(1,core)*.45+plains/Math.max(1,weight)*.55)*.18+
       enemyScore*.16+edgeScore*.05+coastScore*.04+
-      (ally.length?teamScore*.06:0)-crowdPenalty;
+      (ally.length?teamScore*.06:0)+allyBand-crowdPenalty;
     return {tile,x,y,score,density,core:openScore,
       coast:coastScore,enemy:Number.isFinite(nearestEnemy)?nearestEnemy:null,
       teammate:Number.isFinite(nearestAlly)?nearestAlly:null};
@@ -1915,6 +1956,12 @@
           !opening.exposed && !isWar())score-=35;
         if(enemy.isDisconnected?.()===true)score+=18;
         if(allyAssistTarget(me,enemy))score+=22;
+        const focus=duoFocus(me,enemy);
+        if(focus){
+          if(focus.on>0)score+=Math.min(42,24+focus.on/
+            Math.max(1,number(()=>enemy.troops(),1))*13);
+          else if(focus.elsewhere>0)score-=12;
+        }
         if(winStatus.urgent)score+=18;
         if(me.hasTransitiveTarget?.(enemy.smallID?.()))score+=12;
         if(plan?.id===item.id && tick<plan.until)score+=23;
@@ -3725,6 +3772,34 @@
     const partners=(game.playerViews?.()||[]).filter(p=>
       p!==me&&p.isAlive?.()&&p.team?.()===team&&me.isOnSameTeam?.(p));
     if(!partners.length)return false;
+    const duo=rankedDuo(me);
+    if(duo){
+      const partner=duo.partner;
+      const inbound=(partner.incomingAttacks?.()||[]).filter(a=>!a.retreating)
+        .reduce((n,a)=>n+Math.max(0,number(()=>a.troops,0)),0);
+      const partnerHome=Math.max(1,number(()=>partner.troops(),1));
+      const ownDanger=s.incoming>Math.max(1200,s.home*.08);
+      // Donating from two symmetric bots must not form a back-and-forth
+      // loop. Only donate on observed pressure and concrete troop shortage.
+      const shortage=Math.max(0,inbound*1.55-partnerHome);
+      const floor=Math.max(s.reserve,s.incoming*1.5,s.strongest*.60,s.home*.35);
+      const safe=Math.max(0,Math.floor(s.home-floor));
+      const amount=Math.floor(Math.min(shortage,s.available*.22,
+        s.home*.10,safe));
+      if(!ownDanger&&inbound>partnerHome*.20&&amount>=1000&&
+        ctors.donateTroops&&(!me.canDonateTroops||me.canDonateTroops(partner))&&
+        send('donateTroops',[partner,amount],
+          'RANKED 2V2 · TEAMHILFE → '+nameOf(partner))){
+        lastDonation=tick;
+        telemetry('duo_donation','Notfallhilfe gegen beobachtete Partnerfront',
+          {partner:duo.partnerID,partnerIncoming:inbound,
+            partnerHome,amount,ownHome:s.home,remaining:s.home-amount,floor});
+        return true;
+      }
+      // No speculative donation to a full-strength ally. Preserve both
+      // independent economies and skip legacy absolute-incoming selection.
+      return false;
+    }
     const needy=partners.map(p=>({p,incoming:(p.incomingAttacks?.()||[])
       .filter(a=>!a.retreating).reduce((n,a)=>n+number(()=>a.troops,0),0)}))
       .sort((a,b)=>b.incoming-a.incoming)[0];
