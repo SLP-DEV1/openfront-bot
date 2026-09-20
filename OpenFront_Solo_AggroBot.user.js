@@ -2524,7 +2524,7 @@
       economicLastPlan=entries.slice(0,3).map(x=>x.type).join(' › ');return false;}
     for(const item of proposals){
       item.baseScore=item.siteValue;
-      item.neuralDelta=neuralActionDelta('economy',item.siteValue,me,triageState);
+      item.neuralDelta=neuralActionDelta('economy',item.siteValue,me, troopSnapshot);
       item.siteValue+=item.neuralDelta;
     }
     proposals.sort((a,b)=>b.siteValue-a.siteValue);
