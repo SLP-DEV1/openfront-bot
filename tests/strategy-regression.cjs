@@ -2314,7 +2314,7 @@ function boot(benchmarkOptions={}) {
     const calm=x.b.multiplayerCommitment(x.me,s,900000,'weak','land');
     assert.equal(calm.amount,900000,
       'a peaceful neighbor alone must not create persistent hostile memory');
-    x.incoming.push({attackerID:3,troops:1000000,retreating:false});
+    x.me.incomingAttacks().push({attackerID:3,troops:1000000,retreating:false});
     x.b.observeFronts(x.me,groups,320);
     assert(x.b.state().diagnostics.some(r=>r.kind==='front_contact'));
     s=x.b.military(x.me,[]);
@@ -2322,7 +2322,7 @@ function boot(benchmarkOptions={}) {
     assert(threatened.amount<900000);
     assert.equal(threatened.otherIncoming,1000000);
     assert(s.home-threatened.amount>=threatened.floor);
-    x.incoming.length=0;x.setTick(610);
+    x.me.incomingAttacks().length=0;x.setTick(610);
     x.b.observeFronts(x.me,groups,610);
     s=x.b.military(x.me,[]);
     const expired=x.b.multiplayerCommitment(x.me,s,900000,'weak','land');
@@ -2330,7 +2330,7 @@ function boot(benchmarkOptions={}) {
   });
   await check('v1.18.3 shared public guard preserves Singleplayer baseline', () => {
     const x=boot();x.setHome(2000000);
-    x.incoming.push({attackerID:3,troops:1100000,retreating:false});
+    x.me.incomingAttacks().push({attackerID:3,troops:1100000,retreating:false});
     const s=x.b.military(x.me,[]);
     const check=x.b.multiplayerCommitment(x.me,s,900000,'weak','naval');
     assert.equal(check.amount,900000);
