@@ -22,9 +22,12 @@ if not exist "%ENGINE%\node_modules\tsx" (
   echo Installiere offizielle Engine-Abhaengigkeiten...
   pushd "%ENGINE%" || exit /b 1
   call npm ci --ignore-scripts
-  set "NPM_STATUS=%ERRORLEVEL%"
+  if errorlevel 1 (
+    popd
+    echo Engine-Abhaengigkeiten konnten nicht installiert werden.
+    exit /b 1
+  )
   popd
-  if not "%NPM_STATUS%"=="0" exit /b %NPM_STATUS%
 )
 for /f %%I in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmmss"') do set "STAMP=%%I"
 if not defined STAMP (echo Kein Trainings-Zeitstempel verfuegbar. & exit /b 1)
