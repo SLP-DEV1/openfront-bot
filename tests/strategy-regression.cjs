@@ -2238,6 +2238,7 @@ function boot(benchmarkOptions={}) {
     const x=boot(),city={type:()=> 'City',tile:()=>5000,isActive:()=>true},
       factory={type:()=> 'Factory',tile:()=>5020,isActive:()=>true};
     x.me.units=()=>[city,factory];
+    x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Medium'});
     x.me.isFriendly=p=>p===x.weak;
     x.game.units=()=>[{type:()=> 'City',tile:()=>6000,isActive:()=>true,
       owner:()=>x.weak},{type:()=> 'Missile Silo',tile:()=>6,
