@@ -12,6 +12,9 @@ const {createServer}=require('../brain/server.cjs');
     assert.equal(API_URL,'http://127.0.0.1:8080/v1/chat/completions');
     assert.equal(MODEL,'qwen38-27b-gsq-mtp');
     assert.throws(()=>candidate('not json'));
+    assert.equal(candidate('<think>internal trace</think>\n```json\n'+JSON.stringify({
+      strategy:'HOLD',reasonCode:'OTHER',explanation:'Gegenwärtige Lage beobachten.'
+    })+'\n```').strategy,'HOLD');
     assert.throws(()=>candidate(JSON.stringify({strategy:'EXECUTE_CODE',reasonCode:'OTHER',explanation:'any code'})));
     assert.throws(()=>candidate(JSON.stringify({strategy:'NAVAL',reasonCode:'OTHER',explanation:'x'.repeat(370)})));
     let calls=0,body=null,url=null,headers=null;
@@ -39,11 +42,14 @@ const {createServer}=require('../brain/server.cjs');
     assert.equal(body.messages[1].content.includes('shadowmatch123456'),false,
       'model sees aggregate state, not session identifier');
     assert.equal(advisor.status().lastResult,null,'result is not available before model finishes');
+    // When the game ends while Qwen is busy, the final summary must be queued.
+    advisor.onFinish(matchId,'defeat');
     await advisor.waitForIdle();
     assert.equal(advisor.status().lastError,null);
     assert.equal(advisor.status().lastResult.strategy,'HOLD');
-    assert.equal(store.recentQwen().length,1);
-    assert.equal(store.recentQwen()[0].reasonCode,'STAGNATION');
+    assert.equal(store.recentQwen().length,2);
+    assert.equal(store.recentQwen()[0].kind,'postmatch');
+    assert.equal(store.recentQwen()[1].reasonCode,'STAGNATION');
     // Persistent, independent from rewards and never dispatched to the game client.
     assert.equal(store.report().experiences,3);
     const server=createServer({store,token:'z'.repeat(64),advisor});
@@ -55,7 +61,7 @@ const {createServer}=require('../brain/server.cjs');
       assert.equal(report.status,200);
       const output=await report.json();
       assert.equal(output.status.enabled,true);
-      assert.equal(output.recent.length,1);
+      assert.equal(output.recent.length,2);
       assert.equal(JSON.stringify(output).includes('Bearer local'),false);
       const obs=await fetch(base+'/v1/observe',{method:'POST',
         headers:{'Content-Type':'application/json','X-Aggrobot-Token':'z'.repeat(64)},
