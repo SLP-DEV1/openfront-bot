@@ -370,6 +370,7 @@
   let lastEconomicAction=-Infinity, lastNeutralSend=-Infinity, lastEnemySend=-Infinity,lastHostilePressure=-Infinity;
   let consecutiveIdle=0;
   let economicPending=null, economicBlocked=new Map(), economicNegative=new Map(), economicStatus='Bauplanung bereit', economicLastPlan='—';
+  let samQuotedCost=0,portQuotedCost=0;
   let economyBusy=false, borderInflight=null, legalNegative=new Map();
   let runtime={borderMs:0,combatMs:0,economyMs:0,attackProbes:0,buildProbes:0};
   let strategic={mode:'EXPAND',reason:'Startphase',buildStyle:'Ausgewogen',since:-Infinity,groups:[]};
@@ -646,6 +647,7 @@
     failedEconomyProbes=0;successfulEconomyTick=-Infinity;warWaitSince=-Infinity;
     lastEconomicAction=-Infinity;lastNeutralSend=-Infinity;lastEnemySend=-Infinity;lastHostilePressure=-Infinity;consecutiveIdle=0;
     economicPending=null;economicBlocked.clear();economicNegative.clear();economicStatus='Bauplanung bereit';economicLastPlan='—';
+    samQuotedCost=0;portQuotedCost=0;
     economyBusy=false;borderInflight=null;legalNegative.clear();runtime={borderMs:0,combatMs:0,economyMs:0,attackProbes:0,buildProbes:0};
     strategic={mode:'EXPAND',reason:'Startphase',buildStyle:'Ausgewogen',since:-Infinity,groups:[]};
     diplomacyHandled.clear();diplomacyPending.clear();diplomacyMissingLogged.clear();lastDiplomaticEmit=0;
@@ -2362,13 +2364,15 @@
     const sites=[],seen=new Set(),w=game.width(),h=game.height();
     const assets=intel.uncovered.filter(u=>Number.isInteger(u.tile?.())&&
       ownedTile(u.tile(),me)).sort((a,b)=>assetValue(b.type?.())-assetValue(a.type?.()));
+    const start=assets.length?Math.floor(tick/70)*5%assets.length:0;
+    const sampled=assets.slice(start).concat(assets.slice(0,start));
     const add=(x,y)=>{
       if(sites.length>=limit||x<0||y<0||x>=w||y>=h)return;
       const ref=game.ref(x,y);
       if(!seen.has(ref)&&ownedTile(ref,me)){seen.add(ref);sites.push(ref);}
     };
     const phase=Math.floor(tick/45)%8;
-    for(const u of assets.slice(0,18)){
+    for(const u of sampled.slice(0,18)){
       if(sites.length>=limit)break;
       const x=game.x(u.tile()),y=game.y(u.tile());
       add(x,y);
@@ -2500,15 +2504,21 @@
     const firstRocketFund=game.config().isUnitDisabled?.('Atom Bomb')===true?
       (game.config().isUnitDisabled?.('Hydrogen Bomb')===true?
         (game.config().isUnitDisabled?.('MIRV')===true?0:26000000):6400000):1100000;
-    const savingsTarget=portMilestone|| (threat&&intel.uncovered.length>0&&wantedSAM>0)?0:
+    const samFund=threat&&intel.uncovered.length>0&&wantedSAM>0?samQuotedCost:0;
+    const portFund=portMilestone?portQuotedCost:0;
+    const savingsTarget=samFund>0?samFund:portFund>0?portFund:
+      portMilestone||(threat&&intel.uncovered.length>0&&wantedSAM>0)?0:
       saveForSilo?1150000:saveForNuke?firstRocketFund:0;
     investmentStatus=startup?'Erste Stadt/Fabrik':
+      samFund>0&&gold<samFund?'SAM-Schutz '+Math.round(samFund).toLocaleString()+' Gold':
       threat&&intel.uncovered.length>0&&wantedSAM>0?'SAM-Schutz vor Raketenfonds':
+      portFund>0&&gold<portFund?'Hafen-Fonds '+Math.round(portFund).toLocaleString()+' Gold':
       portMilestone?'Hafen vor Silo':basic?'Zwei Städte und zwei Fabriken':
       saveForSilo?'Silo-Fonds 1,15 Mio.':saveForNuke?'Raketen-Fonds '+firstRocketFund.toLocaleString():'Wirtschaft & Offensive';
     return {list:value,threatened,gold,cities,factories,mine,pressure,nuclearThreat:threat,incomingNukes:enemyNukes,intel,
       startup,basic,emergency,immediate,savingsTarget,saveForSilo,saveForNuke,siloCount,
-      enemySilos,proactiveSAM,wantedDefense,wantedSAM,portMilestone,coastSites:coastSites.length,portProbeFailures,posture};
+      enemySilos,proactiveSAM,wantedDefense,wantedSAM,portMilestone,coastSites:coastSites.length,portProbeFailures,
+      samQuotedCost,portQuotedCost,posture};
   }
   function economicAnchors(me,tiles,units,tick) {
     const w=game.width(),h=game.height(),anchors=[],seen=new Set();
@@ -2884,6 +2894,10 @@
           const gold=number(()=>Number(me.gold()),0);
           const infinite=game.config().infiniteGold?.()===true;
           if(Number.isFinite(cost))probe.lowestCost=Math.min(probe.lowestCost,cost);
+          if(Number.isFinite(cost)&&cost>0){
+            if(item.type==='SAM Launcher')samQuotedCost=cost;
+            if(item.type==='Port'&&!isUpgrade&&requirements.portMilestone)portQuotedCost=cost;
+          }
           if(!infinite && (!Number.isFinite(cost)||cost>gold)){
             probe.unaffordable++;
             if(item.type==='SAM Launcher')probe.samUnaffordable++;
@@ -2937,7 +2951,7 @@
             candidates:probe.samSites,queries:probe.samQueries,legal:probe.samLegal,
             unaffordable:probe.samUnaffordable,unsafe:probe.samUnsafe,
             unavailable:probe.samNoWorkerBuild,gold:requirements.gold,
-            lowestCost:Number.isFinite(probe.lowestCost)?probe.lowestCost:null});
+            quotedCost:samQuotedCost,lowestCost:Number.isFinite(probe.lowestCost)?probe.lowestCost:null});
       if(requirements.portMilestone && probe.portQueries>0 &&
         probe.portLegal===0){
         portProbeFailures++;
@@ -2962,10 +2976,12 @@
             proactiveSAM:requirements.proactiveSAM},
           queries:probe.queries,workerErrors:probe.errors,legal:probe.legal,
           port:{coastCandidates:coastal.length,queries:probe.portQueries,
-            legal:probe.portLegal,failures:portProbeFailures},
+            legal:probe.portLegal,failures:portProbeFailures,
+            quotedCost:portQuotedCost},
           sam:{candidates:probe.samSites,queries:probe.samQueries,
             legal:probe.samLegal,unaffordable:probe.samUnaffordable,
-            unsafe:probe.samUnsafe,unavailable:probe.samNoWorkerBuild},
+            unsafe:probe.samUnsafe,unavailable:probe.samNoWorkerBuild,
+            quotedCost:samQuotedCost},
           unaffordable:probe.unaffordable,invalidSite:probe.invalidSite,
           lowestCost:Number.isFinite(probe.lowestCost)?probe.lowestCost:null});
       economicLastPlan=entries.slice(0,3).map(x=>x.type).join(' › ');return false;}
