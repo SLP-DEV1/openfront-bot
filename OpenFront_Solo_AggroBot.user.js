@@ -3762,10 +3762,16 @@
     const partners=(game.playerViews?.()||[]).filter(p=>
       p!==me&&p.isAlive?.()&&p.team?.()===team&&me.isOnSameTeam?.(p));
     if(!partners.length)return false;
-    const needy=partners.map(p=>({p,incoming:(p.incomingAttacks?.()||[])
-      .filter(a=>!a.retreating).reduce((n,a)=>n+number(()=>a.troops,0),0)}))
-      .sort((a,b)=>b.incoming-a.incoming)[0];
-    if(!needy || needy.incoming<number(()=>needy.p.troops(),1)*.35 ||
+    // A 16k attack is catastrophic for a 10k teammate, but barely matters
+    // to a 200k teammate. Choose the most threatened viable ally first.
+    const needy=partners.map(p=>{
+      const incoming=(p.incomingAttacks?.()||[])
+        .filter(a=>!a.retreating).reduce((n,a)=>n+number(()=>a.troops,0),0);
+      const home=Math.max(1,number(()=>p.troops(),1));
+      return {p,incoming,home,ratio:incoming/home};
+    }).filter(p=>p.ratio>=.35)
+      .sort((a,b)=>b.ratio-a.ratio||b.incoming-a.incoming)[0];
+    if(!needy ||
       s.incoming>0 || s.strongest>=s.home*.85)return false;
     const requested=Math.floor(Math.min(s.available*.18,s.home*.08));
     const giftGuard=multiplayerCommitment(me,s,requested,null,'team-aid');
