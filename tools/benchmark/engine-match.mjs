@@ -6,6 +6,7 @@ import {createRequire} from 'node:module';
 import {pathToFileURL} from 'node:url';
 import common from './common.cjs';
 import policyModel from '../../trainer/policy.cjs';
+import actionModel from '../../trainer/action-policy.cjs';
 
 const opts=common.parse(process.argv.slice(2));
 const engineCommit=common.engineInfo(opts.engine,opts.engineCommit);
@@ -17,7 +18,8 @@ const storage=new Map();
 let policyHash=null;
 if(opts.policy){
   const policySource=fs.readFileSync(path.resolve(opts.policy),'utf8');
-  const policy=policyModel.validate(JSON.parse(policySource));
+  const decoded=JSON.parse(policySource);
+  const policy=decoded?.schema===2?actionModel.validate(decoded):policyModel.validate(decoded);
   policyHash=common.digest(JSON.stringify(policy));
   storage.set('of-aggrobot-neural-policy-v1',JSON.stringify(policy));
   storage.set('of-solo-aggrobot-v1111',JSON.stringify({neuralEnabled:true,fullAuto:true}));
@@ -97,6 +99,16 @@ const context={window:win,localStorage:globalThis.localStorage,Math:math,Date:Cl
 vm.runInNewContext(source,context,{timeout:5000});
 const bot=win.__OF_BENCHMARK__;if(!bot)throw Error('Userscript has no loopback benchmark bridge (requires v1.10.9+)');
 let started=false,spawned=false,termination='tick-limit',failure=null,finalTick=0;
+const visibleSamples=[];
+function sampleVisible(turn,me){
+  if(!me?.hasSpawned?.())return;
+  const num=fn=>{try{const v=Number(fn());return Number.isFinite(v)?v:0;}catch(_){return 0;}};
+  const enemies=(view.playerViews?.()||[]).filter(p=>p!==me&&p?.isAlive?.());
+  const snapshot={tick:turn,land:num(()=>me.numTilesOwned()),home:num(()=>me.troops()),
+    gold:num(()=>me.gold()),enemyLand:enemies.reduce((v,p)=>v+num(()=>p.numTilesOwned()),0),
+    enemyTroops:enemies.reduce((v,p)=>v+num(()=>p.troops()),0)};
+  if(visibleSamples.at(-1)?.tick!==turn)visibleSamples.push(snapshot);
+}
 try{
   for(let turn=0;turn<opts.ticks;turn++){
     now=turn*100;
@@ -112,6 +124,7 @@ try{
     if(winUpdate)observedWinner=winUpdate;
     if(turn%4===0||winUpdate){await bot.pump();if(!started&&bot.status().connected){bot.start(common.profiles[opts.profile]);started=true;}}
     const me=view.myPlayer();spawned ||= !!me?.hasSpawned();
+    if(turn%200===0||winUpdate||!me?.isAlive?.())sampleVisible(turn,me);
     if(winUpdate){termination='game-over';break;}
     if(spawned&&me&&!me.isAlive()){termination='eliminated';break;}
     if(started&&!bot.status().enabled){termination='bot-stopped';break;}
@@ -132,6 +145,18 @@ finally{
     report.gameEnd={outcome:winner==null?'incomplete':ids.includes(me?.clientID())?'victory':'defeat',source:'engine-WinUpdate',tick:finalTick,land:me?.numTilesOwned()??0};
   }
   report.engineWinner=observedWinner?.winner??null;
+  if(visibleSamples.length){
+    const xs=visibleSamples,peakLand=Math.max(...xs.map(x=>x.land));
+    const mean=key=>xs.reduce((v,x)=>v+x[key],0)/xs.length;
+    const end=xs.at(-1),start=xs[0];
+    report.trajectory={source:'bot GameView visible samples, every 200 engine ticks',
+      samples:xs,summary:{peakLand,meanLand:mean('land'),
+        endLand:end.land,firstLand:start.land,landChange:end.land-start.land,
+        retention:peakLand>0?end.land/peakLand:0,
+        peakHome:Math.max(...xs.map(x=>x.home)),
+        meanHome:mean('home'),meanEnemyLand:mean('enemyLand'),
+        finalEnemyLand:end.enemyLand,sampleCount:xs.length}};
+  }
   report.finalState={tick:finalTick,land:me?.numTilesOwned()??0,alive:me?.isAlive()??null,gold:String(me?.gold()??0),
     units:me?.units().map(u=>({type:u.type(),id:u.id()}))??[]};
   common.writeJSON(path.join(dir,'match.json'),report);
