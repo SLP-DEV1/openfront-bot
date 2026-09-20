@@ -1993,13 +1993,14 @@ function boot(benchmarkOptions={}) {
     assert.equal(boot({location:{hostname:'openfront.io'},__OF_BENCHMARK_CONFIG__:{enabled:true}}).win.__OF_BENCHMARK__,undefined);
     assert.equal(boot({location:{hostname:'localhost'}}).win.__OF_BENCHMARK__,undefined);
   });
-  await check('benchmark refuses multiplayer and invalid settings without enabling',()=>{
+  await check('benchmark loopback may exercise Public while invalid settings remain blocked',()=>{
     const x=boot({location:{hostname:'localhost'},__OF_BENCHMARK_CONFIG__:{enabled:true}});
     x.b.opts.enabled=false;
-    x.game.config().gameConfig=()=>({gameType:'Public'});
-    assert.throws(()=>x.win.__OF_BENCHMARK__.start(),/Singleplayer/);
+    x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Medium',gameMode:'FFA'});
+    x.win.__OF_BENCHMARK__.start();
+    assert.equal(x.b.opts.enabled,true);
+    x.win.__OF_BENCHMARK__.stop();
     assert.equal(x.b.opts.enabled,false);
-    x.game.config().gameConfig=()=>({gameType:'Singleplayer'});
     assert.throws(()=>x.win.__OF_BENCHMARK__.start({reserve:99}),/Invalid/);
     assert.equal(x.b.opts.enabled,false);
   });
@@ -2308,10 +2309,10 @@ function boot(benchmarkOptions={}) {
     const x=boot();
     x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Medium',gameMode:'FFA'});
     x.strong.clientID=()=> 'human-strong';
+    x.strong.troops=()=>90000;
     x.b.setGroups([{id:'strong',opponent:x.strong,tiles:[6]}]);
     x.b.observeFronts(x.me,[{id:'strong',opponent:x.strong,tiles:[6]}],300);
     x.setHome(100000);
-    x.strong.troops=()=>90000;
     const s=x.b.military(x.me,[]);
     assert(s.strongest>=64800,
       'recent Public human front must remain in home-risk snapshot after border scan disappears');
