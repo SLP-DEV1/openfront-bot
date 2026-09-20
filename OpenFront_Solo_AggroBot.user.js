@@ -42,8 +42,8 @@
   function neuralValidate(data){
     const old=data?.schema===1&&data.arch==='8x8x2-tanh'&&
       data.weights?.length===NEURAL_LENGTH;
-    const actions=data?.schema===2&&data.arch==='12x12x1-tanh'&&
-      data.weights?.length===169;
+    const actions=data?.schema===2&&data.arch==='16x12x1-tanh'&&
+      data.weights?.length===217;
     if((!old&&!actions)||!Array.isArray(data.weights)||
       data.weights.some(v=>typeof v!=='number'||!Number.isFinite(v)||Math.abs(v)>5))
       return null;
@@ -91,7 +91,7 @@
   // Schema 2 re-ranks ONLY candidates already admitted by the original
   // planner; legalTarget(), worker actions, reserve and alliance rechecks
   // retain complete authority. No direct AI-generated game intents.
-  function neuralActionDelta(kind,score,me,s=troopSnapshot) {
+  function neuralActionDelta(kind,score,me,s=troopSnapshot,candidate={}) {
     if(!opts.neuralEnabled||!opts.fullAuto||neuralModel?.schema!==2||
       s.incoming>0||recentHostilePressure(number(()=>game.ticks(),0))||
       s.strongest>Math.max(1,s.home)*1.25)return 0;
@@ -108,16 +108,20 @@
       lateGame(me)?1:0,
       strategic.groups.some(x=>x.id===null&&!x.fallout)?1:0,
       ...kinds.map((_,i)=>i===index?1:0),
-      clamp(score,-150,150)/150
+      clamp(score,-150,150)/150,
+      clamp(candidate.magnitude??0,0,1),
+      clamp(candidate.opportunity??0,0,1),
+      clamp(candidate.cost??0,0,1),
+      clamp(candidate.risk??0,0,1)
     ];
     const w=neuralModel.weights,h=[];
     for(let j=0;j<12;j++){
-      let z=w[144+j];
-      for(let i=0;i<12;i++)z+=vector[i]*w[i*12+j];
+      let z=w[192+j];
+      for(let i=0;i<16;i++)z+=vector[i]*w[i*12+j];
       h.push(Math.tanh(z));
     }
-    let z=w[168];
-    for(let j=0;j<12;j++)z+=h[j]*w[156+j];
+    let z=w[216];
+    for(let j=0;j<12;j++)z+=h[j]*w[204+j];
     return Math.tanh(z)*14;
   }
   // Hybrid learning: bounded contextual adjustments; keep existing combat safety checks.
@@ -1684,7 +1688,13 @@
         if(forecast.loss>amount*.78)score-=40;
       }
       if(isNeutral && winStatus.urgent)score+=24;
-      const baseScore=score,neuralDelta=neuralActionDelta('attack',score,me,s);
+      const baseScore=score,neuralDelta=neuralActionDelta('attack',score,me,s,{
+        magnitude:clamp(enemyTroops/Math.max(1,s.home)/3,0,1),
+        opportunity:clamp(item.front/120,0,1),
+        cost:clamp(amount/Math.max(1,s.home),0,1),
+        risk:isNeutral?(item.fallout?1:0):
+          clamp(enemyTroops/Math.max(1,s.home)/3,0,1)
+      });
       return [{...item,key,score:score+neuralDelta,baseScore,neuralDelta,forecast,
         amount:Math.min(available,Math.floor(amount))}];
     }).sort((a,b)=>b.score-a.score);
@@ -2524,7 +2534,12 @@
       economicLastPlan=entries.slice(0,3).map(x=>x.type).join(' › ');return false;}
     for(const item of proposals){
       item.baseScore=item.siteValue;
-      item.neuralDelta=neuralActionDelta('economy',item.siteValue,me, troopSnapshot);
+      item.neuralDelta=neuralActionDelta('economy',item.siteValue,me,troopSnapshot,{
+        magnitude:clamp((STRUCTURE_TYPES.indexOf(item.type)+1)/STRUCTURE_TYPES.length,0,1),
+        opportunity:clamp(item.siteValue/150,0,1),
+        cost:clamp(item.cost/Math.max(1,number(()=>Number(me.gold()),0)),0,1),
+        risk:item.kind==='upgrade'?0.25:0
+      });
       item.siteValue+=item.neuralDelta;
     }
     proposals.sort((a,b)=>b.siteValue-a.siteValue);
@@ -3247,7 +3262,11 @@
     }
     for(const site of result){
       site.baseScore=site.score;
-      site.neuralDelta=neuralActionDelta('naval',site.score,me,troopSnapshot);
+      site.neuralDelta=neuralActionDelta('naval',site.score,me,troopSnapshot,{
+        opportunity:clamp(site.score/150,0,1),
+        cost:clamp(site.distance/Math.max(1,game.width()+game.height()),0,1),
+        risk:clamp((site.score<0?-site.score:0)/150,0,1)
+      });
       site.score+=site.neuralDelta;
     }
     result.sort((a,b)=>b.score-a.score||a.distance-b.distance);
@@ -3269,8 +3288,16 @@
     foes.sort((a,b)=>{
       const baseA=-Math.min(150,number(()=>a.troops())/Math.max(1,navyState.home)*40);
       const baseB=-Math.min(150,number(()=>b.troops())/Math.max(1,navyState.home)*40);
-      return (baseB+neuralActionDelta('naval',baseB,me,navyState))-
-        (baseA+neuralActionDelta('naval',baseA,me,navyState));
+      return (baseB+neuralActionDelta('naval',baseB,me,navyState,{
+          magnitude:clamp(number(()=>b.troops())/Math.max(1,navyState.home)/3,0,1),
+          opportunity:clamp(number(()=>b.numTilesOwned())/20000,0,1),
+          risk:clamp(number(()=>b.troops())/Math.max(1,navyState.home)/3,0,1)
+        }))-
+        (baseA+neuralActionDelta('naval',baseA,me,navyState,{
+          magnitude:clamp(number(()=>a.troops())/Math.max(1,navyState.home)/3,0,1),
+          opportunity:clamp(number(()=>a.numTilesOwned())/20000,0,1),
+          risk:clamp(number(()=>a.troops())/Math.max(1,navyState.home)/3,0,1)
+        }));
     });
     for(const foe of foes.slice(0,6)){
       if(navyState.strongest>=navyState.home*.85)break;
