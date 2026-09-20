@@ -4,6 +4,15 @@ const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {spawnSync}=require('node:child_process');
 const p=require('../trainer/policy.cjs');
 const {parallelMap}=require('../trainer/parallel.cjs');
+const {reward}=require('../trainer/reward.cjs');
+const defeat=reward({validSample:true,confirmed:true,outcome:'defeat',land:30000,endTick:14000,ticks:18000});
+const censored=reward({validSample:true,confirmed:false,outcome:'incomplete',land:97691,endTick:18000,ticks:18000});
+const victory=reward({validSample:true,confirmed:true,outcome:'victory',land:0,endTick:100,ticks:18000});
+assert(defeat<censored&&censored<victory,'confirmed loss < censored match < confirmed win');
+assert(reward({validSample:false,confirmed:false,land:0,endTick:0,ticks:18000})<defeat);
+assert(reward({validSample:true,confirmed:true,outcome:'defeat',land:0,endTick:1000,ticks:18000})<
+  reward({validSample:true,confirmed:true,outcome:'defeat',land:0,endTick:9000,ticks:18000}));
+
 const {compare}=require('../trainer/evaluation.cjs');
 const pair=(seed,outcome,confirmed=true)=>({map:'World',nation:1,seed,outcome,confirmed});
 assert.equal(compare([pair('one','defeat')],[pair('one','victory')]).promoted,true);
