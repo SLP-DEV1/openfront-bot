@@ -55,6 +55,11 @@ function createServer({token,store,advisor=null}){
       }
       const data=JSON.parse(raw);
       const output=req.url==='/v1/observe'?store.observe(data):store.finish(data);
+      // Only a previously persisted same-match advisory can be returned.
+      // Qwen inference is fire-and-forget and never delays this response.
+      if(req.url==='/v1/observe'&&advisor?.status().enabled&&
+        typeof store.latestQwen==='function')
+        output.qwen=store.latestQwen(output.matchId,data.tick);
       // Fire-and-forget: slow/occupied llama.cpp cannot hold open a game request.
       if(advisor){
         if(req.url==='/v1/observe')advisor.onObservation(data);

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.12.0
+// @version      1.13.0
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,12 +14,12 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.12.0', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.13.0', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, learningEnabled:true, brainEnabled:false, brainToken:'', fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
     autoStrategy:true, diplomacy:true, offerAlliances:true, nukes:true, antiNuke:true, lateOffense:true,
-    impossibleMode:true};
+    impossibleMode:true,qwenPolicy:false};
   let opts;
   try { opts = {...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; }
   catch (_) {opts = {...defaults};}
@@ -94,7 +94,7 @@
   const BRAIN_URL='http://127.0.0.1:8765';
   let brainMatchId='match-'+Date.now().toString(36)+'-'+Math.floor(Math.random()*0xffffffff).toString(36).padStart(8,'0');
   let brainSeq=0,brainLastTick=-Infinity,brainLastSampleTick=-Infinity,brainBusy=false,brainBackoff=0;
-  let brainState={status:'Aus',advice:null,receivedTick:-Infinity,lastError:null};
+  let brainState={status:'Aus',advice:null,receivedTick:-Infinity,lastError:null,qwen:null};
   function brainReady(){
     return opts.brainEnabled&&opts.learningEnabled&&opts.fullAuto&&opts.enabled&&
       typeof fetch==='function'&&typeof opts.brainToken==='string'&&opts.brainToken.length>=24;
@@ -139,9 +139,18 @@
           !Number.isInteger(data.samples)||data.samples<0)
           throw Error('Ungültige Brain-Antwort');
         if(matchId!==brainMatchId||!opts.brainEnabled)return;
+        const q=data.qwen,allowedKinds=['periodic','stagnation','threat'];
+        const validatedQwen=q&&q.matchId===brainMatchId &&
+          Number.isSafeInteger(q.tick)&&q.tick>=0&&q.tick<=tick &&
+          tick-q.tick<=480&&allowedKinds.includes(q.kind) &&
+          ['DEFEND','ECONOMY','EXPAND'].includes(q.strategy) &&
+          ['THREAT','STAGNATION','RESOURCE','EXPANSION','OTHER'].includes(q.reasonCode)?
+          {matchId:q.matchId,tick:q.tick,kind:q.kind,
+            strategy:q.strategy,reasonCode:q.reasonCode}:null;
         brainState={status:'Verbunden · '+data.samples+' Erfahrungen',
           advice:{context:data.context,aggressiveDelta:data.aggressiveDelta,
-            reserveDelta:data.reserveDelta},receivedTick:tick,lastError:null};
+            reserveDelta:data.reserveDelta},receivedTick:tick,lastError:null,
+          qwen:validatedQwen};
       }).catch(e=>{
         if(matchId!==brainMatchId)return;
         brainState={status:'Offline · lokaler Bot aktiv',advice:null,
@@ -205,7 +214,7 @@
   let troopSnapshot={home:0,max:0,committed:0,incoming:0,enemy:0,ratio:0,reserve:0,available:0};
   let lastEconomicAction=-Infinity, lastNeutralSend=-Infinity, lastEnemySend=-Infinity,lastHostilePressure=-Infinity;
   let consecutiveIdle=0;
-  let economicPending=null, economicBlocked=new Map(), economicStatus='Bauplanung bereit', economicLastPlan='—';
+  let economicPending=null, economicBlocked=new Map(), economicNegative=new Map(), economicStatus='Bauplanung bereit', economicLastPlan='—';
   let economyBusy=false, borderInflight=null, legalNegative=new Map();
   let runtime={borderMs:0,combatMs:0,economyMs:0,attackProbes:0,buildProbes:0};
   let strategic={mode:'EXPAND',reason:'Startphase',buildStyle:'Ausgewogen',since:-Infinity,groups:[]};
@@ -215,7 +224,7 @@
   let goldSamples=[],incomeStatus={train:null,trade:null,gold:null,observed:false};
   let winStatus={mode:'FFA',progress:null,threshold:null,remaining:null,urgent:false};
   let fleetStatus='Keine Marineaktivität',lastFleet=-Infinity,lastDonation=-Infinity,navalSweep=0;
-  let pendingBoat=null,pendingWarship=null,navalCooldown=new Map(),navalBackoffUntil=-Infinity,portProbeFailures=0,lastPortRetryTick=-Infinity;
+  let pendingBoat=null,pendingWarship=null,navalCooldown=new Map(),navalBackoffUntil=-Infinity,portProbeFailures=0,lastPortRetryTick=-Infinity,navalSiteNegative=new Map();
   let marineStats={transportSent:0,transportConfirmed:0,transportArrived:0,
     transportUnconfirmed:0,transportUnresolved:0,warshipSent:0,
     warshipConfirmed:0,warshipUnconfirmed:0};
@@ -230,7 +239,7 @@
   let failedEconomyProbes=0,successfulEconomyTick=-Infinity,warWaitSince=-Infinity;
   let investmentStatus='Grundaufbau',lastWarReview=-Infinity;
   let defenseStatus='Keine Bedrohung',lastEmergencyRetreat=-Infinity,lastDefenseLog=-Infinity;
-  let targetIntelCache=new Map();
+  let targetIntelCache=new Map(),frontMemory=new Map(),lastFrontWarning=-Infinity;
   let retreatRequests=new Map(),defenseStats={retreatsOrdered:0,retreatsObserved:0,unknown:0,unconfirmed:0};
   // Manual slider values remain saved; fullAuto computes independent live values.
   let autoTuning={aggressive:85,reserve:35,actionsPerMinute:72,maxTargets:16,
@@ -329,7 +338,7 @@
     const details=diagnosticSnapshot();
     const blob=new Blob([JSON.stringify(details,null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download='OpenFront_AggroBot_1.11.1_Diagnose.json';document.body.append(a);a.click();a.remove();
+    a.href=url;a.download='OpenFront_AggroBot_'+VERSION+'_Diagnose.json';document.body.append(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),2000);
   }
 
@@ -463,18 +472,18 @@
     buildCursor=0;spawnCache=null;spawnJob=null;spawnRetryAt=0;spawnAlternatives=[];spawnState={scanned:0,phase:'idle',lastSent:null,attempts:0,blocked:null,deadline:null};cooldowns.clear();rejected.clear();
     plan=null;lastSelection='';lastEmission=0;borderOffset=0;lastBorderRefresh=0;
     totalSent=0;totalFailed=0;actions=[];errors=0;troopSamples=[];
-    lastRecoveryReason='';lastBattle=null;pendingAttack=null;targetIntelCache.clear();
+    lastRecoveryReason='';lastBattle=null;pendingAttack=null;targetIntelCache.clear();frontMemory.clear();lastFrontWarning=-Infinity;
     attackReceipts={confirmed:0,unconfirmed:0,territoryGained:0};blockedTargets.clear();
     failedEconomyProbes=0;successfulEconomyTick=-Infinity;warWaitSince=-Infinity;
     lastEconomicAction=-Infinity;lastNeutralSend=-Infinity;lastEnemySend=-Infinity;lastHostilePressure=-Infinity;consecutiveIdle=0;
-    economicPending=null;economicBlocked.clear();economicStatus='Bauplanung bereit';economicLastPlan='—';
+    economicPending=null;economicBlocked.clear();economicNegative.clear();economicStatus='Bauplanung bereit';economicLastPlan='—';
     economyBusy=false;borderInflight=null;legalNegative.clear();runtime={borderMs:0,combatMs:0,economyMs:0,attackProbes:0,buildProbes:0};
     strategic={mode:'EXPAND',reason:'Startphase',buildStyle:'Ausgewogen',since:-Infinity,groups:[]};
     diplomacyHandled.clear();diplomacyPending.clear();diplomacyMissingLogged.clear();lastDiplomaticEmit=0;
     lastDiplomacyTick=-Infinity;lastProposalTick=-Infinity;diplomacyStatus='Noch keine Anfrage';
     diplomacyStats={accepted:0,rejected:0,offered:0};goldSamples=[];incomeStatus={train:null,trade:null,gold:null,observed:false};
     winStatus={mode:'FFA',progress:null,threshold:null,remaining:null,urgent:false};fleetStatus='Keine Marineaktivität';lastFleet=-Infinity;lastDonation=-Infinity;navalSweep=0;
-    pendingBoat=null;pendingWarship=null;navalCooldown.clear();navalBackoffUntil=-Infinity;portProbeFailures=0;lastPortRetryTick=-Infinity;
+    pendingBoat=null;pendingWarship=null;navalCooldown.clear();navalBackoffUntil=-Infinity;portProbeFailures=0;lastPortRetryTick=-Infinity;navalSiteNegative.clear();
     marineStats={transportSent:0,transportConfirmed:0,transportArrived:0,
       transportUnconfirmed:0,transportUnresolved:0,warshipSent:0,
       warshipConfirmed:0,warshipUnconfirmed:0};
@@ -1062,6 +1071,24 @@
       Math.min(s.available*.14,s.home*.025):s.available*fraction;
     return Math.floor(Math.min(safeBudget,Math.max(base,surplus)));
   }
+  // Retain short-lived border pressure across transient missing border scans.
+  function observeFronts(me,items,tick){
+    if(!hardMode())return;
+    for(const item of items){
+      if(item.id===null||!item.opponent?.isAlive?.()||friendly(item.opponent,me))continue;
+      const troops=Math.max(0,number(()=>item.opponent.troops(),0));
+      const old=frontMemory.get(item.id);
+      frontMemory.set(item.id,{troops,lastTick:tick,
+        peak:old&&tick-old.lastTick<=180?Math.max(troops,old.peak*.94):troops,
+        land:number(()=>item.opponent.numTilesOwned(),0)});
+    }
+    for(const [id,value] of frontMemory)
+      if(tick-value.lastTick>360)frontMemory.delete(id);
+    if(frontMemory.size>40){
+      const ordered=[...frontMemory].sort((a,b)=>a[1].lastTick-b[1].lastTick);
+      for(const [id] of ordered.slice(0,frontMemory.size-40))frontMemory.delete(id);
+    }
+  }
   function military(me,items=[]) {
     const home=number(()=>me.troops());
     // Singleplayer's native infinite-troops option reports an artificial
@@ -1075,7 +1102,11 @@
     const committed=out.reduce((sum,a)=>sum+a.troops,0);
     const incoming=inc.reduce((sum,a)=>sum+a.troops,0);
     const hostile=items.filter(t=>t.id!==null && t.opponent?.isAlive?.());
-    const strongest=hostile.reduce((s,t)=>Math.max(s,number(()=>t.opponent.troops())),0);
+    const tick=number(()=>game?.ticks?.(),0);
+    const historical=[...frontMemory.values()].reduce((v,x)=>
+      Math.max(v,tick-x.lastTick<=240?x.peak*.72:0),0);
+    const strongest=Math.max(historical,
+      hostile.reduce((v,t)=>Math.max(v,number(()=>t.opponent.troops())),0));
     const ratio=home/max;
     const adaptiveOffset=opts.autoStrategy?(strategic.mode==='RECOVER'||strategic.mode==='DEFEND'?8:
       strategic.mode==='EXPAND'&&!incoming&&!strongest?-5:0):0;
@@ -1105,7 +1136,17 @@
   // pressure so the bot cannot declare the coast clear and launch a large
   // offensive a few seconds after surviving an attack.
   function rememberHostilePressure(s,tick){
-    if(s.incoming>=Math.max(1200,Math.max(1,s.home)*.08))lastHostilePressure=tick;
+    const trend=armyTrend(tick);
+    const unexpectedLoss=hardMode() && s.strongest>s.home*.70 &&
+      trend && trend.ticks>=100 && trend.tiles< -Math.max(140,s.home*.001);
+    if(s.incoming>=Math.max(1200,Math.max(1,s.home)*.08)||unexpectedLoss){
+      if(unexpectedLoss && tick-lastFrontWarning>150){
+        lastFrontWarning=tick;
+        telemetry('front_loss_warning','Gebietsverlust neben starkem Nachbarn: Wiederaufbau schützen',
+          {lostTiles:trend.tiles,strongest:s.strongest,home:s.home});
+      }
+      lastHostilePressure=tick;
+    }
     return tick-lastHostilePressure<220;
   }
   function recentHostilePressure(tick,window=220){
@@ -1319,11 +1360,16 @@
     const other=items.filter(x=>x.id!==null&&x.id!==targetID&&
       x.opponent?.isAlive?.()).reduce((v,x)=>Math.max(v,
       number(()=>x.opponent.troops(),0)),0);
-    const danger=other>s.home*1.15;
+    const tick=number(()=>game?.ticks?.(),0);
+    const remembered=[...frontMemory].reduce((v,[id,x])=>
+      id!==targetID&&tick-x.lastTick<=240?
+        Math.max(v,x.peak*.72):v,0);
+    const otherThreat=Math.max(other,remembered);
+    const danger=otherThreat>s.home*1.15;
     const pressure=s.incoming>Math.max(1200,s.home*.08);
     const floor=Math.max(s.reserve,s.incoming*1.3,
-      other>0?Math.min(s.home,other*(hardMode()?.63:.55)):0);
-    return {other,danger,pressure,floor,
+      otherThreat>0?Math.min(s.home,otherThreat*(hardMode()?.63:.55)):0);
+    return {other:otherThreat,danger,pressure,floor,
       safeStrike:Math.max(0,Math.floor(s.home-floor)),
       emergency:danger||pressure};
   }
@@ -1371,6 +1417,22 @@
     }
     return {ready:true,reason:'Kriegsfreigabe'};
   }
+  // Optional conservative policy hint: never runs game intents, never opens
+  // wars and never overrides a threat/recovery or a manual strategy.
+  function qwenStrategyHint(me,items,s,tick,wanted){
+    if(!opts.qwenPolicy||!brainReady()||!opts.autoStrategy||
+      ['RECOVER','DEFEND','TECH','ASSAULT'].includes(wanted)||
+      s.incoming>0||recentHostilePressure(tick)||isWar())return wanted;
+    const q=brainState.qwen;
+    if(!q||q.matchId!==brainMatchId||tick<q.tick||tick-q.tick>480)return wanted;
+    const neutral=items.some(x=>x.id===null&&!x.fallout);
+    if(q.strategy==='DEFEND'&&
+      q.reasonCode==='THREAT'&&s.strongest>=s.home*.78)return 'DEFEND';
+    if(q.strategy==='EXPAND'&&neutral&&s.ratio>=.58&&
+      s.strongest<s.home*.60)return 'EXPAND';
+    if(q.strategy==='ECONOMY'&&s.strongest<s.home*.80)return 'ECONOMY';
+    return wanted;
+  }
   function strategy(me,items,s) {
     const tick=number(()=>game.ticks());
     const coolingDown=recentHostilePressure(tick);
@@ -1398,6 +1460,10 @@
     if(rebuilding){wanted='RECOVER';reason='Truppenverlust oder geringe Reserve';}
     else if(coolingDown){wanted='RECOVER';reason='Nach Großangriff Heimatarmee stabilisieren';}
     else if(danger&&seriousAttack){wanted='DEFEND';reason='Erhebliche eingehende Angriffe';}
+    else if(danger&&s.strongest>s.home*1.08 && !weak.length &&
+      !(fullLate&&nuclearReady)){
+      wanted='DEFEND';reason='Überlegener Nachbar: keine neue Kriegsfront';
+    }
     else if(late && weak.length && s.ratio>.30 && !seriousAttack && readiness.ready){
       wanted='ASSAULT';reason='Late Game: günstige Offensivchance';
     }
@@ -1414,6 +1480,7 @@
     else if(danger){wanted='DEFEND';reason='Starker Nachbar an der Grenze';}
     else if(neutral){wanted='EXPAND';reason='Landnahme vor riskanter Offensive';}
     else {wanted='ECONOMY';reason='Aufbauen und auf sichere Angriffsgelegenheit warten';}
+    if(opts.fullAuto&&opts.autoStrategy)wanted=qwenStrategyHint(me,items,s,tick,wanted);
     if(!opts.autoStrategy){
       if(rebuilding)wanted='RECOVER';
       else if(seriousAttack)wanted='DEFEND';
@@ -2157,6 +2224,7 @@
     if(tick-lastEconomy<35 || tick-lastEconomyProbe<18)return false;
     lastEconomyProbe=tick;
     for(const [k,expiry] of economicBlocked)if(tick>=expiry)economicBlocked.delete(k);
+    for(const [k,expiry] of economicNegative)if(tick>=expiry)economicNegative.delete(k);
     const requirements=economicNeeds(me,units,tiles);
     const entries=requirements.list;
     // Do not waste worker queries or count failed builds while deliberately
@@ -2231,12 +2299,20 @@
       const kind=slot.entry.type+':'+!!slot.entry.upgrade;
       if((perKind.get(kind)||0)>=(recovery?5:3))continue;
       const key=kind+':'+slot.site.ref;
-      if(seen.has(key))continue;
+      if(seen.has(key)||(economicNegative.get(key)??0)>tick)continue;
       seen.add(key);work.push(slot);
       perKind.set(kind,(perKind.get(kind)||0)+1);
     }
-    // At most twelve worker requests, three simultaneously. Stop after the
-    // first successful batch instead of waiting for every possible building.
+    // A first-port milestone gets a dedicated legal search even if cheaper
+    // City/Factory sites happen to rank above the few usable coastal anchors.
+    if(requirements.portMilestone && coastal.length &&
+      !work.some(x=>x.entry.type==='Port'&&!x.entry.upgrade)){
+      const portEntry=entries.find(x=>x.type==='Port'&&!x.upgrade);
+      const portSite=portEntry&&coastal.find(x=>
+        (economicNegative.get('Port:false:'+x)??0)<=tick);
+      if(Number.isInteger(portSite))work.unshift({entry:portEntry,site:{ref:portSite,coast:true,dist:Infinity}});
+    }
+    // Worker probes stay bounded; record individual negative site/type checks.
     for(let offset=0;offset<work.length;offset+=3){
       if(!live(serial))return false;
       const batch=work.slice(offset,offset+3);
@@ -2250,6 +2326,13 @@
       for(const {slot,legal} of answers){
         if(!legal)continue;
         const {entry,site}=slot;
+        if(entry.type!=='Port' && !legal.buildableUnits?.some(u=>u.type===entry.type &&
+          (entry.upgrade?u.canUpgrade!==false&&u.canUpgrade!==undefined:
+            Number.isInteger(u.canBuild)))){
+          const key=entry.type+':'+!!entry.upgrade+':'+site.ref;
+          if(economicNegative.size>500)economicNegative.clear();
+          economicNegative.set(key,tick+100);
+        }
         for(const item of entries.slice(0,8)){
           // The answer belongs to THIS build/upgrade candidate only; otherwise
           // low-priority buildings steal time and sites from high-priority ones.
@@ -2992,6 +3075,30 @@
   // Bounded rotating grid: seek actual unowned LAND shore tiles on islands.
   // The worker validates water access and the real Transport deployment.
   // A sample may miss a tiny island this pass; successive calls rotate phase.
+  // Bounded island-size estimate from the client-visible terrain. Never infer
+  // a large beachhead merely from one reachable coastal tile.
+  function neutralIslandEstimate(tile,limit=1800){
+    if(typeof game?.neighbors4!=='function')return null;
+    const pending=[tile],seen=new Set([tile]);let counted=0,hadNeighbors=false;
+    while(pending.length&&counted<limit){
+      const cur=pending.pop();
+      if(!game.isLand(cur)||game.isImpassable?.(cur)||
+        game.hasFallout?.(cur)||safeID(game.owner(cur))!==null)continue;
+      counted++;
+      const adjacent=[];
+      const n=game.neighbors4(cur,adjacent)||0;
+      if(n>0)hadNeighbors=true;
+      for(let i=0;i<n;i++){
+        const next=adjacent[i];
+        if(!Number.isInteger(next)||seen.has(next))continue;
+        seen.add(next);
+        if(game.isLand(next)&&!game.isImpassable?.(next)&&
+          !game.hasFallout?.(next)&&safeID(game.owner(next))===null)
+          pending.push(next);
+      }
+    }
+    return hadNeighbors?counted:null;
+  }
   function neutralNavalCandidates(me,limit=12){
     if(!game.isShore||!game.width||!game.height)return [];
     const w=game.width(),h=game.height();
@@ -3011,11 +3118,22 @@
           if(owner?.isPlayer?.()||safeID(owner)!==null)continue;
           const distance=Number.isInteger(own)?
             Math.hypot(x-game.x(own),y-game.y(own)):0;
-          result.push({tile,distance});
+          const neighbors=[];
+          let nearbyNeutral=0,nearbyHostile=0;
+          try{
+            const n=game.neighbors4?.(tile,neighbors)||0;
+            for(let i=0;i<n;i++){
+              const other=game.owner(neighbors[i]);
+              if(safeID(other)===null&&game.isLand(neighbors[i]))nearbyNeutral++;
+              else if(other?.isPlayer?.()&&!friendly(other,me))nearbyHostile++;
+            }
+          }catch(_){}
+          const score=nearbyNeutral*22-nearbyHostile*34-distance*.008;
+          result.push({tile,distance,score});
         }catch(_){}
       }
     }
-    result.sort((a,b)=>a.distance-b.distance);
+    result.sort((a,b)=>b.score-a.score||a.distance-b.distance);
     return result.slice(0,limit).map(x=>x.tile);
   }
   async function naval(me,tick,serial) {
@@ -3023,15 +3141,17 @@
     lastBoat=tick;
     // Use the SAME complete threat snapshot as ground combat. Using military(me)
     // without front groups underestimates the reserve near stronger neighbors.
+    for(const [tile,until] of navalSiteNegative)if(tick>=until)navalSiteNegative.delete(tile);
     const navyState=military(me,strategic.groups),spare=navyState.available;
     if(spare<1300 || navyState.incoming>0 || navyState.activeEnemy>0 ||
-      recentHostilePressure(tick,260) || navyState.strongest>=navyState.home*.85)return false;
+      recentHostilePressure(tick,260))return false;
     const foes=game.playerViews().filter(p=>safeID(p)!==safeID(me)&&p.isAlive?.()&&
       !friendly(p,me)&&Number.isInteger(p.state?.spawnTile)&&
       // The naval planner must obey the single-front war director as well.
       (!coordinatedWar() || !isWar() || safeID(p)===warState.id));
     foes.sort((a,b)=>number(()=>a.troops())-number(()=>b.troops()));
     for(const foe of foes.slice(0,6)){
+      if(navyState.strongest>=navyState.home*.85)break;
       if((navalCooldown.get('player:'+safeID(foe))||0)>tick)continue;
       if(spare<number(()=>foe.troops(),Infinity)*1.9 ||
         number(()=>me.troops())<number(()=>game.config().maxTroops(me),1)*.47)continue;
@@ -3078,7 +3198,10 @@
         const committedWar=isWar()&&warState.id===safeID(current);
         const amount=Math.floor(Math.min(fresh.available*(committedWar ? .60 : .36),
           fresh.home*(committedWar ? .58 : .30)));
-        if(amount<1000 || fresh.home-amount<fresh.reserve)continue;
+        // Having a large spare army is not sufficient: the ACTUAL landing
+        // contingent must plausibly beat the enemy's fresh home force.
+        if(amount<1000||amount<number(()=>current.troops(),Infinity)*
+          (hardMode()?1.05:.85) || fresh.home-amount<fresh.reserve)continue;
         if(sendMarineTransport(me,dest,amount,
           tick,'LANDUNG → '+nameOf(current),'player:'+safeID(current)))return true;
       }
@@ -3088,10 +3211,11 @@
     // this branch to bypass the single-front director or homeland reserve.
     if(!isWar() && !strategic.groups.some(g=>g.id===null&&!g.fallout) &&
       navyState.activeNeutral===0 && navyState.ratio>=.52 &&
-      navyState.strongest<navyState.home*.70 &&
-      spare>=Math.max(1400,navyState.home*.22)){
+      navyState.strongest<navyState.home*1.20 &&
+      spare>=Math.max(1400,navyState.home*.06)){
       for(const dest of neutralNavalCandidates(me)){
         if(!live(serial))return false;
+        if((navalSiteNegative.get(dest)||0)>tick)continue;
         let legal;
         try{legal=await me.actions(dest,['Transport']);}catch(_){continue;}
         if(!live(serial))return false;
@@ -3099,11 +3223,26 @@
           x.type==='Transport'&&Number.isInteger(x.canBuild));
         if(!ship||!game.isLand(dest)||game.hasFallout?.(dest)||
           game.owner(dest)?.isPlayer?.()||
-          safeID(game.owner(dest))!==null)continue;
+          safeID(game.owner(dest))!==null){
+          if(navalSiteNegative.size>300)navalSiteNegative.clear();
+          navalSiteNegative.set(dest,tick+240);
+          continue;
+        }
         if(!game.config().infiniteGold?.() &&
           Number(me.gold())<Number(ship.cost))continue;
-        const amount=Math.floor(Math.min(spare*.32,navyState.home*.16));
-        if(amount<1000 || navyState.home-amount<navyState.reserve)continue;
+        const area=neutralIslandEstimate(dest);
+        if(area!==null&&area<24){
+          navalSiteNegative.set(dest,tick+480);
+          continue;
+        }
+        // Small islands need scouting-size contingents, not six-figure stacks.
+        const areaBudget=area===null?navyState.home*.10:
+          Math.max(1300,area*35);
+        const amount=Math.floor(Math.min(spare*.22,navyState.home*.075,areaBudget));
+        // A new neutral beachhead may be worth taking beside a near-peer,
+        // but the actual landing must leave a viable army at the home border.
+        if(amount<1000 || navyState.home-amount<
+          Math.max(navyState.reserve,navyState.strongest*.78))continue;
         if(sendMarineTransport(me,dest,amount,tick,
           'INSEL-EXPANSION → neutrales Küstenland','neutral:'+dest)){
           strategicTelemetry.neutralLandings++;
@@ -3198,6 +3337,7 @@
       const tiles=await borders(me,tick);
       if(!live(serial))return;
       const groups=targetsFromBorder(me,tiles);
+      observeFronts(me,groups,tick);
       let s=military(me,groups);rememberHostilePressure(s,tick);troopSnapshot=s;
       manageWar(me,groups,s,tick);
       const context=strategy(me,groups,s);
@@ -3286,7 +3426,7 @@
         opts.fullAuto=!opts.fullAuto;
         if(opts.fullAuto){opts.autoStrategy=true;autoTuning.tick=-Infinity;}
       }else if(key==='autoStrategy'&&opts.fullAuto){opts.fullAuto=false;opts.autoStrategy=false;}
-      else if(['economy','boats','autoSpawn','defense','stopOnError','upgrades','safeMode','autoStrategy','diplomacy','offerAlliances','nukes','antiNuke','lateOffense','impossibleMode','learningEnabled','brainEnabled'].includes(key))opts[key]=!opts[key];
+      else if(['economy','boats','autoSpawn','defense','stopOnError','upgrades','safeMode','autoStrategy','diplomacy','offerAlliances','nukes','antiNuke','lateOffense','impossibleMode','learningEnabled','brainEnabled','qwenPolicy'].includes(key))opts[key]=!opts[key];
       else if(key==='plan'){opts.fullAuto=false;opts.autoStrategy=false;opts.plan=opts.plan==='Blitz'?'Adaptiv':opts.plan==='Adaptiv'?'Ökonomie':'Blitz';}
       else if(key==='buildStyle'){opts.fullAuto=false;opts.autoStrategy=false;opts.buildStyle=opts.buildStyle==='Ausgewogen'?'Wirtschaft':opts.buildStyle==='Wirtschaft'?'Defensiv':'Ausgewogen';}
       persist();lastPaint=0;paint();
@@ -3324,7 +3464,7 @@
       <div>${b('upgrades','Upgrades')} ${b('safeMode','Not-Aus')} ${b('autoStrategy','Auto-Strategie '+(opts.autoStrategy?'AN':'AUS'))} ${b('fullAuto','Vollautonom '+(opts.fullAuto?'AN':'AUS'))}</div>
       <div>${b('diplomacy','Diplomatie')} ${b('offerAlliances','Bündnisse anbieten')}</div>
       <div>${b('nukes','Auto-Nukes')} ${b('antiNuke','Intelligente SAMs')} ${b('lateOffense','Late-Game-Offensive')}</div>
-      <div>${b('learningEnabled','Lernen')} ${b('brainEnabled','🧠 Lokaler Brain')} ${b('impossibleMode','Unmöglich-Taktik')} <button data-key="export" style="border:1px solid #73acdd;border-radius:5px;background:#235078;color:white;padding:5px 7px;cursor:pointer">📄 Diagnose JSON</button></div>
+      <div>${b('learningEnabled','Lernen')} ${b('brainEnabled','🧠 Lokaler Brain')} ${b('qwenPolicy','Qwen-Hinweise (Test)')} ${b('impossibleMode','Unmöglich-Taktik')} <button data-key="export" style="border:1px solid #73acdd;border-radius:5px;background:#235078;color:white;padding:5px 7px;cursor:pointer">📄 Diagnose JSON</button></div>
       <div style="color:#9bd0e4">Brain: ${escapeHTML(brainState.status)}${brainState.lastError?' · '+escapeHTML(brainState.lastError):''} · ${escapeHTML(BRAIN_URL)}</div>
       <label>Brain-Token: <input type="password" data-option="brainToken" placeholder="${opts.brainToken?'Gespeichert – neu einfügen zum Ändern':'Aus Terminal einfügen'}" autocomplete="off" style="width:100%;box-sizing:border-box"></label>
       <div style="color:#a9efc9">Hauptfront: ${escapeHTML(warState.name)} · Krieg ${isWar()?'aktiv':'frei'} · ${escapeHTML(lastRecoveryReason||'bereit')}</div>

@@ -66,13 +66,14 @@ function boot(benchmarkOptions={}) {
     setInterval: () => 1, clearInterval: () => {}, setTimeout: fn => {timers.push(fn);return 1;},
     performance: {now: () => 0},
     URL: {createObjectURL: () => '', revokeObjectURL: () => {}},
-    Blob: class {}
+    Blob: class {},fetch:async()=>{throw Error('No live Brain in regression');}
   };
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
+    'railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,observeFronts,qwenStrategyHint,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
+    'getBrainMatchId:()=>brainMatchId,setQwen:q=>{brainState.qwen=q;},',
     'setPortBackoff:(fail,tick)=>{portProbeFailures=fail;lastPortRetryTick=tick;},',
     'setWarWait:n=>warWaitSince=n,setEconFails:n=>failedEconomyProbes=n,',
     'setPending:p=>pendingAttack=p,setLastBattle:p=>lastBattle=p,',
@@ -125,6 +126,36 @@ function boot(benchmarkOptions={}) {
     x.setTick(3350);
     const resumed=x.b.economicNeeds(x.me,units,[]);
     assert.equal(resumed.portProbeFailures,0);
+  });
+  await check('Impossible: transient missing frontier retains bounded risk', () => {
+    const x=boot(),groups=[{id:'strong',opponent:x.strong,front:12,tiles:[6]}];
+    x.setTick(400);x.b.observeFronts(x.me,groups,400);
+    const old=x.b.military(x.me,[]),risk=x.b.frontRiskPlan([],old,'weak');
+    assert(old.strongest>=85000*.7);
+    assert(risk.other>=85000*.7);
+    x.setTick(700);
+    const stale=x.b.military(x.me,[]);
+    assert.equal(stale.strongest,0,'a forgotten border is not a permanent threat');
+  });
+  await check('Qwen policy is disabled until explicit local opt-in', () => {
+    const x=boot(),mode=x.b.qwenStrategyHint(x.me,[{id:null}],x.b.military(x.me,[]),300,'ECONOMY');
+    assert.equal(mode,'ECONOMY');
+  });
+  await check('Qwen hint requires matching match, freshness and safe state', () => {
+    const x=boot(),id=x.b.getBrainMatchId();
+    x.b.opts.qwenPolicy=true;x.b.opts.brainEnabled=true;
+    x.b.opts.brainToken='a'.repeat(64);
+    const g=[{id:null,tiles:[176],front:8}],s=x.b.military(x.me,[]);
+    x.b.setQwen({matchId:id,tick:300,kind:'periodic',
+      strategy:'EXPAND',reasonCode:'STAGNATION'});
+    assert.equal(x.b.qwenStrategyHint(x.me,g,s,300,'ECONOMY'),'EXPAND');
+    assert.equal(x.b.qwenStrategyHint(x.me,g,s,800,'ECONOMY'),'ECONOMY');
+    x.b.setQwen({matchId:'other-match',tick:300,strategy:'EXPAND'});
+    assert.equal(x.b.qwenStrategyHint(x.me,g,s,300,'ECONOMY'),'ECONOMY');
+    x.b.setQwen({matchId:id,tick:300,strategy:'EXPAND'});
+    const threatened={...s,incoming:8000,strongest:110000};
+    assert.equal(x.b.qwenStrategyHint(x.me,g,threatened,300,'RECOVER'),'RECOVER');
+    assert.equal(x.b.qwenStrategyHint(x.me,g,threatened,300,'ECONOMY'),'ECONOMY');
   });
   await check('unbuildable structures do not block war forever', () => {
     const x=boot(); x.setTick(1150); x.b.setEconFails(6); x.b.setWarWait(800);
@@ -1011,6 +1042,37 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.sent[0].dst,176);
     assert(x.sent[0].troops>=1000);
     assert.equal(x.b.state().strategicTelemetry.neutralLandings,1);
+  });
+  await check('Impossible: low-cost island landing beside near-peer preserves home', async () => {
+    const x=boot();x.b.setBoats(true);x.strong.troops=()=>81000;
+    x.game.isShore=t=>t===176;
+    x.game.owner=t=>t===176?null:t===5?x.weak:t===6?x.strong:x.me;
+    x.game.hasFallout=()=>false;
+    x.me.actions=async tile=>({buildableUnits:tile===176?
+      [{type:'Transport',canBuild:9999,cost:0n}]:[]});
+    class Boat{constructor(dst,troops){this.dst=dst;this.troops=troops;}}
+    x.b.setBoatCtor(Boat);
+    const groups=[{id:'strong',opponent:x.strong,front:8,tiles:[6]}];
+    x.b.setGroups(groups);
+    const before=x.b.military(x.me,groups);
+    assert.equal(await x.b.naval(x.me,300,0),true);
+    assert.equal(x.sent[0].dst,176);
+    assert(x.sent[0].troops>=1000&&x.sent[0].troops<=x.me.troops()*.075);
+    assert(x.me.troops()-x.sent[0].troops>=
+      Math.max(before.reserve,before.strongest*.78));
+  });
+  await check('Impossible: discard tiny verified neutral island before transport', async () => {
+    const x=boot();x.b.setBoats(true);x.game.isShore=t=>t===176;
+    x.game.owner=t=>t===176||t===177?null:t===5?x.weak:t===6?x.strong:x.me;
+    x.game.hasFallout=()=>false;
+    x.game.neighbors4=(tile,out)=>{if(tile===176){out.push(177);return 1;}
+      if(tile===177){out.push(176);return 1;}return 0;};
+    x.me.actions=async tile=>({buildableUnits:tile===176?
+      [{type:'Transport',canBuild:9999,cost:0n}]:[]});
+    class Boat{constructor(dst,troops){this.dst=dst;this.troops=troops;}}
+    x.b.setBoatCtor(Boat);
+    assert.equal(await x.b.naval(x.me,300,0),false);
+    assert.equal(x.sent.length,0);
   });
   await check('issue #10 island fallback respects locked war and worker refusal', async () => {
     const x=boot();x.b.setBoats(true);x.game.isShore=t=>t===176;

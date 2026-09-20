@@ -32,6 +32,10 @@ function makeStore(filename=':memory:'){
   const recentQwen=db.prepare(`SELECT match_id AS matchId,tick,kind,strategy,
     reason_code AS reasonCode,explanation,created_at AS createdAt
     FROM qwen_advice ORDER BY id DESC LIMIT 20`);
+  const latestQwen=db.prepare(`SELECT match_id AS matchId,tick,kind,strategy,
+    reason_code AS reasonCode FROM qwen_advice
+    WHERE match_id=? AND kind IN ('periodic','stagnation','threat')
+    AND tick<=? ORDER BY tick DESC,id DESC LIMIT 1`);
   function saveQwenAdvice(entry){
     if(!entry||!/^([A-Za-z0-9_-]{8,96})$/.test(entry.matchId||'')||
       !Number.isSafeInteger(entry.tick)||entry.tick<0||
@@ -101,6 +105,8 @@ function makeStore(filename=':memory:'){
       finished:db.prepare('SELECT outcome,COUNT(*) AS count FROM sessions WHERE finished=1 GROUP BY outcome').all(),
       contexts:db.prepare('SELECT context,samples,mean FROM context_stats ORDER BY context').all()};
   }
-  return {db,observe,finish,report,saveQwenAdvice,recentQwen:()=>recentQwen.all(),hasMatch:id=>!!findSession.get(id),close:()=>db.close()};
+  return {db,observe,finish,report,saveQwenAdvice,recentQwen:()=>recentQwen.all(),
+    latestQwen:(id,tick)=>latestQwen.get(id,tick)||null,
+    hasMatch:id=>!!findSession.get(id),close:()=>db.close()};
 }
 module.exports={makeStore};

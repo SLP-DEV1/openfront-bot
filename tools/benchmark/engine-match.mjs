@@ -7,7 +7,7 @@ import {pathToFileURL} from 'node:url';
 import common from './common.cjs';
 
 const opts=common.parse(process.argv.slice(2));
-const engineCommit=common.engineInfo(opts.engine);
+const engineCommit=common.engineInfo(opts.engine,opts.engineCommit);
 const requireEngine=createRequire(path.join(opts.engine,'package.json'));
 requireEngine('tsx/esm/api').register({tsconfig:path.join(opts.engine,'tsconfig.json')});
 const mod=p=>import(pathToFileURL(path.join(opts.engine,p)).href);

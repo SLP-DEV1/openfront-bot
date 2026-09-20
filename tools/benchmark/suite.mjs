@@ -28,7 +28,7 @@ function run(profile,seed,split){
   const log=path.join(dir,path.basename(out)+'.log');const fd=fs.openSync(log,'wx');
   console.log(`Match ${index}: ${split}, ${profile}, ${seed}`);
   let result;
-  try{result=spawnSync(process.execPath,[runner,'--engine',opts.engine,'--map',opts.map,'--size',opts.size,
+  try{result=spawnSync(process.execPath,[runner,'--engine',opts.engine,'--engineCommit',opts.engineCommit,'--map',opts.map,'--size',opts.size,
     '--difficulty',opts.difficulty,'--bots',String(opts.bots),'--nations',String(opts.nations),
     '--ticks',String(opts.ticks),'--seed',seed,'--profile',profile,'--bot',opts.bot,'--out',out],
     {stdio:['ignore',fd,fd],timeout:30*60*1000});}finally{fs.closeSync(fd);}

@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import {createRequire} from 'node:module';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import common from './common.cjs';
-const opts=common.parse(process.argv.slice(2)),engineCommit=common.engineInfo(opts.engine);
+const opts=common.parse(process.argv.slice(2)),engineCommit=common.engineInfo(opts.engine,opts.engineCommit);
 const requireEngine=createRequire(path.join(opts.engine,'package.json'));
 requireEngine('tsx/esm/api').register({tsconfig:path.join(opts.engine,'tsconfig.json')});
 const enums=await import(pathToFileURL(path.join(opts.engine,'src/core/game/Game.ts')).href);

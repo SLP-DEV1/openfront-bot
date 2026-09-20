@@ -8,7 +8,7 @@ import common from './common.cjs';
 const values={engine:null,candidate:'OpenFront_Solo_AggroBot.user.js',baseline:null,
   maps:'World',size:'Compact',nations:'1,4,8',bots:'0',
   seeds:'impossible-101,impossible-102,impossible-103',ticks:'18000',
-  out:'benchmark-results/impossible-matrix',dryRun:'false'};
+  out:'benchmark-results/impossible-matrix',dryRun:'false',engineCommit:common.ENGINE_COMMIT};
 for(let i=2;i<process.argv.length;i++){
   const arg=process.argv[i],name=arg.slice(2);
   if(!arg.startsWith('--')||!Object.hasOwn(values,name))throw Error('Unknown option '+arg);
@@ -28,6 +28,7 @@ for(const n of nationCounts)if(!Number.isInteger(n)||n<1||n>100)throw Error('Bad
 const bots=Number(values.bots),ticks=Number(values.ticks);
 if(!Number.isInteger(bots)||bots<0||bots>400||!Number.isInteger(ticks)||ticks<1||ticks>72000)
   throw Error('Invalid bots/ticks');
+if(!/^[a-f0-9]{40}$/.test(values.engineCommit))throw Error('Invalid engineCommit');
 if(!/^[A-Za-z0-9_-]{1,40}$/.test(values.size))throw Error('Bad size');
 const variants=[...(values.baseline?[['baseline',values.baseline]]:[]),
   ['candidate',values.candidate]].map(([name,file])=>({name,file:path.resolve(file)}));
@@ -38,13 +39,13 @@ for(const map of maps)for(const nations of nationCounts)for(const seed of seeds)
       variant:variant.name,bot:variant.file});
 if(plan.length>80)throw Error('Matrix exceeds 80 runs; narrow maps/nations/seeds');
 const summary={description:'Official engine Impossible; paired by map, size, seed, nation/bot count',
-  engineCommit:common.ENGINE_COMMIT,plan,runs:[],note:
+  engineCommit:values.engineCommit,plan,runs:[],note:
   'Only observed victory/defeat counts as completed. Tick-limit and errors remain incomplete.'};
 if(values.dryRun==='true'){
   process.stdout.write(JSON.stringify(summary,null,2)+'\n');process.exit(0);
 }
 if(values.dryRun!=='false'||!values.engine)throw Error('Set --engine or --dryRun true');
-common.engineInfo(path.resolve(values.engine));
+common.engineInfo(path.resolve(values.engine),values.engineCommit);
 for(const v of variants)if(!fs.existsSync(v.file))throw Error('Missing bot '+v.file);
 const dir=path.resolve(values.out);
 if(fs.existsSync(path.join(dir,'matrix.json')))throw Error('Output exists: '+dir);
@@ -60,7 +61,7 @@ for(const test of plan){
   let result;
   try{
     result=spawnSync(process.execPath,[script,'--engine',engine,
-      '--map',test.map,'--size',test.size,'--difficulty','Impossible',
+      '--engineCommit',values.engineCommit,'--map',test.map,'--size',test.size,'--difficulty','Impossible',
       '--bots',String(test.bots),'--nations',String(test.nations),
       '--seed',test.seed,'--ticks',String(test.ticks),'--profile','autonomous',
       '--bot',test.bot,'--out',runDir],

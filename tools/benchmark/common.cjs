@@ -4,9 +4,10 @@ const path=require('node:path');
 const crypto=require('node:crypto');
 const {execFileSync}=require('node:child_process');
 const ENGINE_COMMIT='13b403387af01d388f8c8ed8c953b6d3a11d1457';
+const IMPOSSIBLE_REFERENCE_COMMIT='bb8af015b515b3b717bd4d901074c5f4c16641cb';
 function parse(argv){
   const out={engine:null,map:'World',size:'Compact',difficulty:'Medium',bots:40,nations:8,
-    seed:'aggro-train-001',ticks:18000,out:null,profile:'autonomous',bot:null,port:5173};
+    seed:'aggro-train-001',ticks:18000,out:null,profile:'autonomous',bot:null,port:5173,engineCommit:ENGINE_COMMIT};
   for(let i=0;i<argv.length;i++){
     const key=argv[i].replace(/^--/,'');
     if(!argv[i].startsWith('--')||!Object.hasOwn(out,key))throw Error('Unknown option '+argv[i]);
@@ -16,6 +17,7 @@ function parse(argv){
   for(const [key,min,max] of [['ticks',1,72000],['bots',0,400],['nations',0,100],['port',1024,65535]])
     if(!Number.isInteger(out[key])||out[key]<min||out[key]>max)throw Error('Invalid '+key);
   if(!out.engine)throw Error('--engine /path/to/OpenFrontIO is required');
+  if(!/^[a-f0-9]{40}$/.test(out.engineCommit))throw Error('Invalid --engineCommit SHA');
   if(!/^[a-zA-Z0-9_-]{1,64}$/.test(out.seed))throw Error('Seed must contain 1–64 letters, digits, _ or -');
   if(!profiles[out.profile])throw Error('Unknown profile '+out.profile);
   out.engine=path.resolve(out.engine);out.bot=path.resolve(out.bot||path.join(__dirname,'../../OpenFront_Solo_AggroBot.user.js'));
@@ -26,9 +28,10 @@ const profiles=Object.freeze({autonomous:{fullAuto:true},
   balanced:{fullAuto:false,aggressive:80,reserve:35,actionsPerMinute:72,maxTargets:16},
   cautious:{fullAuto:false,aggressive:65,reserve:50,actionsPerMinute:60,maxTargets:16},
   expansion:{fullAuto:false,aggressive:95,reserve:25,actionsPerMinute:90,maxTargets:20}});
-function engineInfo(dir){
+function engineInfo(dir,expected=ENGINE_COMMIT){
+  if(!/^[a-f0-9]{40}$/.test(expected))throw Error('Invalid pinned Engine SHA');
   const commit=execFileSync('git',['-C',dir,'rev-parse','HEAD'],{encoding:'utf8'}).trim();
-  if(commit!==ENGINE_COMMIT)throw Error(`Engine mismatch: expected ${ENGINE_COMMIT}, got ${commit}. Use the documented pinned revision.`);
+  if(commit!==expected)throw Error(`Engine mismatch: expected ${expected}, got ${commit}. Use the documented pinned revision.`);
   const dirty=execFileSync('git',['-C',dir,'status','--porcelain','--untracked-files=no'],{encoding:'utf8'}).trim();
   if(dirty)throw Error('Engine has tracked changes; use a clean checkout for reproducible tests');
   return commit;
@@ -41,4 +44,4 @@ function outputDir(opts){
   return dir;
 }
 function writeJSON(file,data){fs.writeFileSync(file,JSON.stringify(data,(_,v)=>typeof v==='bigint'?v.toString():v,2)+'\n');}
-module.exports={parse,profiles,engineInfo,digest,outputDir,writeJSON,ENGINE_COMMIT};
+module.exports={parse,profiles,engineInfo,digest,outputDir,writeJSON,ENGINE_COMMIT,IMPOSSIBLE_REFERENCE_COMMIT};
