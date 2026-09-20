@@ -6,6 +6,7 @@ import {createRequire} from 'node:module';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import common from './common.cjs';
 import {makeLiveCoach} from './live-qwen.mjs';
+import {startBackend} from './openfront-backend.mjs';
 const opts=common.parse(process.argv.slice(2)),engineCommit=common.engineInfo(opts.engine,opts.engineCommit);
 const requireEngine=createRequire(path.join(opts.engine,'package.json'));
 requireEngine('tsx/esm/api').register({tsconfig:path.join(opts.engine,'tsconfig.json')});
@@ -23,6 +24,12 @@ common.writeJSON(path.join(dir,'run.json'),metadata);
 let lastSeq=0,finalized=false;
 const here=path.dirname(fileURLToPath(import.meta.url));
 const {createServer}=await import(pathToFileURL(requireEngine.resolve('vite')).href);
+let backend=null;
+if(process.env.AGGROBOT_START_BACKEND==='1'){
+  backend=await startBackend({engine:opts.engine,dir});
+  // On early startup errors and Ctrl+C, stop only the backend we started.
+  process.once('exit',()=>backend?.stop());
+}
 process.chdir(opts.engine);
 const plugin={name:'aggrobot-local-test',configureServer(server){server.middlewares.use(async(req,res,next)=>{
   const route=req.url?.split('?')[0];if(!route?.startsWith('/__aggrobot/'))return next();
@@ -78,4 +85,6 @@ if(process.env.AGGROBOT_OPEN_BROWSER==='1'&&process.platform==='win32'){
   browser.on('error',e=>console.warn('Browser did not open automatically: '+e.message));
   browser.unref();
 }
-for(const signal of ['SIGINT','SIGTERM'])process.on(signal,async()=>{await server.close();process.exit(0);});
+for(const signal of ['SIGINT','SIGTERM'])process.once(signal,async()=>{
+  try{await server.close();}finally{backend?.stop();process.exit(0);}
+});
