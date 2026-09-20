@@ -71,7 +71,7 @@ function boot() {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'military,warReadiness,targetOpportunity,targetEconomics,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
+    'military,warReadiness,targetOpportunity,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'setWarWait:n=>warWaitSince=n,setEconFails:n=>failedEconomyProbes=n,',
     'setPending:p=>pendingAttack=p,setLastBattle:p=>lastBattle=p,',
@@ -1455,6 +1455,79 @@ function boot() {
       'Aktiver Konflikt');
     assert.notEqual(x.b.diplomacyScore(x.me,x.strong,state).reason,
       'Aktiver Konflikt', 'unrelated player is not the active target');
+  });
+
+  await check('v1.10.7 identifies third-party human troop commitments by small ID', () => {
+    const x=boot();x.weak.type=()=> 'HUMAN';
+    x.weak.outgoingAttacks=()=>[
+      {targetID:3,troops:16000,retreating:false},
+      {targetID:1,troops:5000,retreating:false},
+      {targetID:3,troops:9000,retreating:true}];
+    x.weak.incomingAttacks=()=>[
+      {attackerID:1,troops:15000,retreating:false},
+      {attackerID:3,troops:4000,retreating:false}];
+    const w=x.b.adversaryWindow(x.me,x.weak);
+    assert.equal(w.elsewhere,16000);
+    assert.equal(w.incomingOthers,4000);
+    assert.equal(w.ratio,.8);
+    assert.equal(w.exposed,true);
+    assert.equal(w.human,true);
+  });
+  await check('v1.10.7 opponent attacking us is not a third-party opportunity', () => {
+    const x=boot();x.weak.type=()=> 'HUMAN';
+    x.weak.outgoingAttacks=()=>[{targetID:1,troops:30000,retreating:false}];
+    x.weak.incomingAttacks=()=>[{attackerID:1,troops:17000,retreating:false}];
+    assert.equal(x.b.adversaryWindow(x.me,x.weak).elsewhere,0);
+    assert.equal(x.b.adversaryWindow(x.me,x.weak).incomingOthers,0);
+    assert.equal(x.b.adversaryWindow(x.me,x.weak).exposed,false);
+    assert.equal(x.b.enemyUnderAttack(x.weak),false);
+  });
+  await check('v1.10.7 third-party attack opens a moderate human attack window', () => {
+    const x=boot();x.weak.type=()=> 'HUMAN';
+    const ordinary=x.b.enemyOpportunityRatio(x.weak,false,90000);
+    x.weak.outgoingAttacks=()=>[{targetID:3,troops:16000,retreating:false}];
+    const opened=x.b.enemyOpportunityRatio(x.weak,false,90000);
+    assert(opened<ordinary,{opened,ordinary});
+    assert(opened>=1.23,{opened});
+    assert.equal(x.b.targetOpportunity(x.me,
+      [{id:'weak',opponent:x.weak},{id:'strong',opponent:x.strong}],
+      x.b.military(x.me,[{id:'weak',opponent:x.weak},{id:'strong',opponent:x.strong}]),
+      {id:'strong',opponent:x.strong}),false,'strong unrelated neighbor must not become a soft target');
+  });
+  await check('v1.10.7 exposure is not a free attack discount against a nation', () => {
+    const x=boot();x.weak.type=()=> 'NATION';
+    const ordinary=x.b.enemyOpportunityRatio(x.weak,false,90000);
+    x.weak.outgoingAttacks=()=>[{targetID:3,troops:16000,retreating:false}];
+    assert.equal(x.b.enemyOpportunityRatio(x.weak,false,90000),ordinary);
+  });
+  await check('v1.10.7 exposed human receives a target-priority bonus', () => {
+    const x=boot();x.weak.type=()=> 'HUMAN';
+    x.strong.troops=()=>10000;
+    const groups=[{id:'weak',opponent:x.weak,front:10,tiles:[5]}];
+    const state=x.b.military(x.me,groups);
+    const ctx={wanted:'ASSAULT',foes:1,neutral:false,
+      readiness:{ready:true},underAttack:false,rebuilding:false};
+    const regular=x.b.rankedTargets(groups,x.me,300,state,ctx)[0]?.score;
+    x.weak.outgoingAttacks=()=>[{targetID:3,troops:16000,retreating:false}];
+    const exposed=x.b.rankedTargets(groups,x.me,300,state,ctx)[0]?.score;
+    assert(Number.isFinite(regular)&&exposed>regular+15,{regular,exposed});
+    x.b.setWar('strong','strong');
+    assert.equal(x.b.rankedTargets(groups,x.me,300,state,ctx).length,0,
+      'the main war lock must still forbid another front');
+  });
+  await check('v1.10.7 early neutral growth discourages unexposed human war', () => {
+    const x=boot();x.setLand(420);x.weak.type=()=> 'HUMAN';
+    const groups=[{id:null,opponent:null,front:30,tiles:[2]},
+      {id:'weak',opponent:x.weak,front:10,tiles:[5]}];
+    const state=x.b.military(x.me,groups);
+    const ctx={wanted:'EXPAND',foes:1,neutral:true,
+      readiness:{ready:true},underAttack:false,rebuilding:false};
+    const unexposed=x.b.rankedTargets(groups,x.me,300,state,ctx)
+      .find(r=>r.id==='weak')?.score;
+    x.weak.outgoingAttacks=()=>[{targetID:3,troops:16000,retreating:false}];
+    const exposed=x.b.rankedTargets(groups,x.me,300,state,ctx)
+      .find(r=>r.id==='weak')?.score;
+    assert(Number.isFinite(unexposed)&&exposed>unexposed+30,{unexposed,exposed});
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
