@@ -8,7 +8,7 @@ Dies ist **lokaler Singleplayer**, kein Multiplayer gegen Menschen, kein Qwen al
 
 Voraussetzungen: Node.js 24+, Git und Qwen Code im PATH. Das in Qwen Code konfigurierte lokale llama.cpp-Modell muss bereits laufen.
 
-1. Im Bot-Repository git pull --ff-only ausfuehren.
+1. Im Bot-Repository git pull --ff-only ausfuehren. Das Startskript startet nun zusaetzlich den offiziellen OpenFront-Dev-Backend-Verbund (Port 3000, 3001 und 3002) und wartet, bis alle drei Ports antworten. Der Backend-Log liegt als openfront-backend.log im Ergebnisordner. Bei bereits belegten Ports wird der Start abgebrochen, statt sich mit einem unbekannten Backend zu verbinden. Beim Beenden mit Strg+C wird der vom Test gestartete Backend-Prozessbaum ebenfalls beendet.
 2. Start_Live_Qwen.bat doppelklicken. Es erstellt bei Bedarf den separaten offiziellen Engine-Checkout ..\OpenFrontIO-Impossible mit dem festgelegten Commit bb8af015b515b3b717bd4d901074c5f4c16641cb. Ein vorhandener Checkout auf einem anderen Commit wird absichtlich NICHT veraendert.
 3. Der Browser sollte http://127.0.0.1:5173/__aggrobot/?autostart=1 oeffnen und das Spiel automatisch starten. Sonst URL manuell aufrufen.
 4. Im Serverterminal Strg+C zum Beenden. Browser und Server lokal auf 127.0.0.1 belassen.
@@ -17,6 +17,7 @@ Neuen Seed manuell aus PowerShell starten:
 
 ~~~powershell
 cd C:\Users\SPK\Desktop\openfront
+$env:AGGROBOT_START_BACKEND="1"
 $env:AGGROBOT_LIVE_QWEN="1"
 $env:AGGROBOT_OPEN_BROWSER="1"
 node tools/benchmark/serve-browser.mjs --engine ../OpenFrontIO-Impossible --engineCommit bb8af015b515b3b717bd4d901074c5f4c16641cb --difficulty Impossible --nations 4 --bots 0 --seed visible-qwen-002 --ticks 18000
@@ -39,3 +40,7 @@ node tools/benchmark/propose-live-fix.mjs --run "benchmark-results/DEIN-LAUF-ORD
 Dieses Tool prueft den SHA-256 des damals gespielten Userscripts. Qwen Code bekommt eine temporaere Kopie mit dem Report und darf im Auto-Edit-Modus **nur dort** einen kleinen Verbesserungsvorschlag umsetzen. Wenn eine Aenderung existiert und node --check besteht, wird proposed-AggroBot.user.js im Ergebnisordner abgelegt. Original-Userscript, Tampermonkey und main werden nicht ueberschrieben. Es gibt keine automatische Uebernahme oder Endlosschleife.
 
 Mit dem normalen Browser-Test und --bot PFAD-ZUM-KANDIDATEN kannst du dieselbe Konfiguration mit anderem Seed wiederholen. Vergleichstests mit denselben Seeds fuer Kandidat und Baseline und unabhaengige Evaluation bleiben erforderlich, bevor man Verbesserungen behauptet.
+
+## Fehlerdiagnose: WebSocket ECONNREFUSED
+
+Die offizielle OpenFront-Vite-Konfiguration leitet /lobbies an Port 3000 und /w0, /w1 an 3001 und 3002 weiter. Ein startender Vite-Server auf Port 5173 allein startet diese Dienste nicht. Das Windows-Skript setzt jetzt AGGROBOT_START_BACKEND=1; es startet npm run start:server-dev im Engine-Checkout, prueft die Ports und schreibt den Backend-Log in den Ergebnisordner. WARN-Meldungen zu Ressourcen-Imports sind von fehlenden Backend-Ports zu unterscheiden. Wenn der Backend-Log Fehler meldet, erst deren Ursache beheben. Den offiziellen Dev-Backend-Verbund nicht unbedacht ins Internet freigeben; nur in einer vertrauenswuerdigen lokalen Testumgebung betreiben.

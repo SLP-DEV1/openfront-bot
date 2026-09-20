@@ -24,9 +24,10 @@ if not exist "%ENGINE%\node_modules\tsx" (
   if errorlevel 1 (popd&goto failed)
   popd
 )
+set "AGGROBOT_START_BACKEND=1"
 set "AGGROBOT_LIVE_QWEN=1"
 set "AGGROBOT_OPEN_BROWSER=1"
-echo Starte sichtbares LOKALES OpenFront-Testmatch mit Qwen Code.
+echo Starte offiziellen OpenFront-Backend-Server und sichtbares LOKALES Testmatch mit Qwen Code.
 echo Qwen bleibt read-only. Match startet im Browser automatisch.
 echo Browser: http://127.0.0.1:5173/__aggrobot/?autostart=1
 node tools\benchmark\serve-browser.mjs --engine "%ENGINE%" --engineCommit %SHA% --map World --size Compact --difficulty Impossible --nations 4 --bots 0 --ticks 18000 --seed visible-qwen-001 --profile autonomous
