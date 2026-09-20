@@ -1,0 +1,41 @@
+name: Impossible Paired Evaluation
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/impossible-paired.yml'
+      - 'tools/benchmark/**'
+      - 'OpenFront_Solo_AggroBot.user.js'
+  workflow_dispatch:
+
+jobs:
+  paired-impossible:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Fetch historical baseline and exact Impossible engine
+        run: |
+          git fetch --depth 1 origin e07288007d27bd0d5ad253b64d2758cb6682b310
+          git show e07288007d27bd0d5ad253b64d2758cb6682b310:OpenFront_Solo_AggroBot.user.js > baseline.user.js
+          git clone --depth 1 https://github.com/openfrontio/OpenFrontIO.git ../OpenFrontIO
+          git -C ../OpenFrontIO fetch --depth 1 origin bb8af015b515b3b717bd4d901074c5f4c16641cb
+          git -C ../OpenFrontIO checkout --detach bb8af015b515b3b717bd4d901074c5f4c16641cb
+          cd ../OpenFrontIO
+          npm ci --ignore-scripts
+      - name: Compare 1.12 and 1.13 using official Impossible opponents and same seeds
+        run: |
+          node tools/benchmark/impossible-matrix.mjs \
+            --engine ../OpenFrontIO --engineCommit bb8af015b515b3b717bd4d901074c5f4c16641cb \
+            --baseline baseline.user.js --candidate OpenFront_Solo_AggroBot.user.js \
+            --maps World --size Compact --nations 1,4 --bots 0 \
+            --seeds impossible-101,impossible-102 --ticks 18000 \
+            --out benchmark-results/impossible-paired-ci
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: impossible-paired-results
+          path: benchmark-results/impossible-paired-ci
+          if-no-files-found: ignore
