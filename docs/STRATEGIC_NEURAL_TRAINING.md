@@ -22,7 +22,9 @@ Das frühere Schema 1 änderte nur zwei Slider. Schema 2 sortierte bereits zugel
 
 ## Windows: Training beginnen
 
-Aus dem Repository `Train_Strategic_Neural.bat` starten. Das Skript findet `../OpenFrontIO` oder klont die offizielle Engine, pinnt den exakten Referenz-Commit, installiert gegebenenfalls Node-Abhängigkeiten, startet den Trainingslauf und erzeugt **nur bei bestandenem Holdout** ein eigenständiges Tampermonkey-Skript.
+Aus dem Repository `Train_Strategic_Neural.bat` starten. **Vor dem Training erscheint eine Auswahl für die Gegner-Schwierigkeit:** `1 = Mittel (Medium)`, `2 = Schwer (Hard)`, `3 = Unmöglich (Impossible)`. Die Auswahl gilt für alle Trainings- **und** Vergleichsmatches desselben Laufs; sie ändert nicht die Aggressivitäts-Slider unseres eigenen Bots. Das Skript findet `../OpenFrontIO` oder klont die offizielle Engine, pinnt den exakten Referenz-Commit, installiert gegebenenfalls Node-Abhängigkeiten, startet den Trainingslauf und erzeugt **nur bei bestandenem Holdout** ein eigenständiges Tampermonkey-Skript.
+
+Die Startdatei kann auch ohne Menü per `Train_Strategic_Neural.bat Medium`, `Train_Strategic_Neural.bat Hard` oder `Train_Strategic_Neural.bat Impossible` aufgerufen werden. Ohne Angabe im Node-Trainer bleibt `Impossible` der Standard.
 
 Manuell auf Windows/Linux:
 
@@ -31,9 +33,12 @@ node trainer/train.mjs --engine ../OpenFrontIO \
   --engineCommit bb8af015b515b3b717bd4d901074c5f4c16641cb \
   --maps World,Europe --nations 1,4 --generations 3 \
   --population 4 --trainSeeds 2 --evalSeeds 4 \
+  --difficulty Hard \
   --ticks 18000 --parallel 2 --sigma 0.12 \
   --out benchmark-results/strategic-run
 ```
+
+Der Trainingsplan (`plan.json`), die Match-Zeilen und die Generationsberichte enthalten die gewählte Schwierigkeit. Unterschiedliche Schwierigkeitsstufen werden beim Paarvergleich nicht vermischt. **Bei Wechsel der Schwierigkeit ein neues Training beginnen**; einen `--initialModel`-Champion von einer anderen Stufe nur mit eigener Vergleichsvalidierung übernehmen.
 
 Der Trainingslauf erzeugt für jede Generation Kandidaten und testet alle auf denselben Training-Seeds. Nur der ausgewählte vorläufige Kandidat tritt auf **separaten Evaluation-Seeds** gegen das aktuelle Champion-Modell an. Unvollständige Spiele sind keine Siege. Ein Champion wird nur bei mehr bestätigten Siegen oder bei mehrfachen eindeutigen Überlebensgewinnen ohne Regression veröffentlicht. Nicht jede Generation führt zu einem Champion.
 

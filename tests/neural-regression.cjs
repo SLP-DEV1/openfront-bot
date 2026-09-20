@@ -22,7 +22,7 @@ assert(reward({validSample:true,confirmed:true,outcome:'defeat',land:0,endTick:1
 
 const {compare}=require('../trainer/evaluation.cjs');
 const pair=(seed,outcome,confirmed=true,endTick=4000,land=1000)=>
-  ({map:'World',nation:1,seed,outcome,confirmed,validSample:confirmed,
+  ({map:'World',nation:1,difficulty:'Impossible',seed,outcome,confirmed,validSample:confirmed,
     exitCode:0,endTick,land});
 assert.equal(compare([pair('one','defeat'),pair('two','defeat')],
   [pair('one','victory'),pair('two','defeat')]).promoted,true);
@@ -34,6 +34,8 @@ assert.equal(compare([pair('one','victory'),pair('two','defeat')],
   [pair('one','victory'),pair('two','defeat')]).promoted,false);
 assert.equal(compare([pair('one','defeat'),pair('two','defeat')],
   [pair('one','victory'),pair('one','victory')]).valid,false);
+assert.equal(compare([pair('one','defeat'),pair('two','defeat')],
+  [{...pair('one','victory'),difficulty:'Hard'},pair('two','victory')]).valid,false);
 assert.equal(compare([pair('one','defeat'),pair('two','defeat')],
   [pair('one','defeat',true,4400),pair('two','defeat',true,4400)]).reason,
   'consistent-survival-improvement');
@@ -102,6 +104,23 @@ const dry=JSON.parse(exec(['trainer/train.mjs','--dryRun','true',
 assert.equal(dry.matches,2*(1*(1*(2+1)+2*2)));
 assert.equal(dry.parallel,2);
 assert.equal(dry.policySchema,3);
+assert.equal(dry.difficulty,'Impossible');
+for(const difficulty of ['Medium','Hard','Impossible']){
+  const plan=JSON.parse(exec(['trainer/train.mjs','--dryRun','true',
+    '--difficulty',difficulty,'--maps','World','--nations','1']));
+  assert.equal(plan.difficulty,difficulty);
+}
+const germanCase=JSON.parse(exec(['trainer/train.mjs','--dryRun','true',
+  '--difficulty','hard']));
+assert.equal(germanCase.difficulty,'Hard');
+const invalidDifficulty=spawnSync(process.execPath,
+  ['trainer/train.mjs','--dryRun','true','--difficulty','Easy'],
+  {cwd:root,encoding:'utf8'});
+assert.notEqual(invalidDifficulty.status,0);
+assert.match(invalidDifficulty.stderr,/Invalid --difficulty/);
+const batch=fs.readFileSync(path.join(root,'Train_Strategic_Neural.bat'),'utf8');
+assert.match(batch,/choice \/C 123/);
+assert.match(batch,/--difficulty %DIFFICULTY%/);
 const fast=JSON.parse(exec(['trainer/train.mjs','--dryRun','true','--parallel','4']));
 assert.equal(fast.parallel,4);
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),'aggrobot-neural-'));
