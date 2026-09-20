@@ -1,6 +1,7 @@
 'use strict';
 const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const {makeStore}=require('./store.cjs');
+const {makeAdvisor,configFromEnv}=require('./qwen.cjs');
 const ORIGIN=/^https:\/\/(?:[a-z0-9-]+\.)*openfront\.io$/i;
 const LOCAL_ORIGIN=/^http:\/\/(?:127\.0\.0\.1|localhost)(?::[0-9]{1,5})?$/i;
 function authToken(dir){
@@ -17,7 +18,7 @@ function authToken(dir){
   fs.writeFileSync(filename,token+'\n',{flag:'wx',mode:0o600});
   return token;
 }
-function createServer({token,store}){
+function createServer({token,store,advisor=null}){
   if(typeof token!=='string'||token.length<24)throw Error('A token of at least 24 characters is required');
   if(!store)throw Error('A store is required');
   return http.createServer(async(req,res)=>{
@@ -37,6 +38,7 @@ function createServer({token,store}){
     if(req.method==='GET'&&req.url==='/health')return send(200,{status:'ready',schema:1});
     if(req.headers['x-aggrobot-token']!==token)return send(401,{error:'Invalid token'});
     if(req.method==='GET'&&req.url==='/v1/report')return send(200,store.report());
+    if(req.method==='GET'&&req.url==='/v1/qwen')return send(200,{status:advisor?.status()||{enabled:false},recent:store.recentQwen()});
     if(req.method!=='POST'||!['/v1/observe','/v1/finish'].includes(req.url))
       return send(404,{error:'Not found'});
     let raw='';
@@ -47,6 +49,11 @@ function createServer({token,store}){
       }
       const data=JSON.parse(raw);
       const output=req.url==='/v1/observe'?store.observe(data):store.finish(data);
+      // Fire-and-forget: slow/occupied llama.cpp cannot hold open a game request.
+      if(advisor){
+        if(req.url==='/v1/observe')advisor.onObservation(data);
+        else if(output.recorded)advisor.onFinish(data.matchId,data.outcome);
+      }
       return send(200,output);
     }catch(e){
       if(e instanceof TypeError||e instanceof RangeError||e instanceof SyntaxError)
@@ -62,11 +69,15 @@ if(require.main===module){
   const port=args.length===2?Number(args[1]):8765;
   if(!Number.isInteger(port)||port<1024||port>65535)throw Error('Invalid port');
   const dir=path.resolve(__dirname,'data'),token=authToken(dir),store=makeStore(path.join(dir,'experiences.sqlite'));
-  const server=createServer({token,store});
+  const qwenConfig=configFromEnv();
+  const advisor=makeAdvisor({store,config:qwenConfig,logger:(label,value)=>console.log(label,value)});
+  const server=createServer({token,store,advisor});
   server.listen(port,'127.0.0.1',()=>{
     console.log('AggroBot Brain listening on http://127.0.0.1:'+port);
     console.log('Browser token (paste into Tampermonkey panel): '+token);
     console.log('Brain DB: '+path.join(dir,'experiences.sqlite'));
+    console.log('Qwen shadow advisor: '+(qwenConfig.enabled?'ENABLED':'OFF')+
+      ' · '+qwenConfig.model+' · 127.0.0.1:8080');
   });
   for(const sig of ['SIGINT','SIGTERM'])process.once(sig,()=>server.close(()=>{store.close();process.exit(0);}));
 }
