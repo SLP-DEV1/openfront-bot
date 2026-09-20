@@ -10,7 +10,7 @@ import common from '../tools/benchmark/common.cjs';
 import {reviewGeneration} from './qwen-review.mjs';
 
 const cfg={engine:null,engineCommit:common.IMPOSSIBLE_REFERENCE_COMMIT,
-  bot:'OpenFront_Solo_AggroBot.user.js',maps:'World',size:'Compact',nations:'1,4',
+  bot:'OpenFront_Solo_AggroBot.user.js',initialModel:null,maps:'World',size:'Compact',nations:'1,4',
   generations:'3',population:'4',trainSeeds:'2',evalSeeds:'4',ticks:'18000',
   sigma:'0.3',out:'benchmark-results/neural-training',qwen:'false',dryRun:'false'};
 for(let i=2;i<process.argv.length;i++){
@@ -56,7 +56,7 @@ fs.mkdirSync(out,{recursive:true});
 common.writeJSON(path.join(out,'plan.json'),plan);
 const runner=fileURLToPath(new URL('../tools/benchmark/engine-match.mjs',import.meta.url));
 const save=(p,data)=>common.writeJSON(path.join(out,p),data);
-let incumbent=policy.zero(),parent=incumbent,incumbentWins=0;
+let incumbent=cfg.initialModel?policy.validate(JSON.parse(fs.readFileSync(path.resolve(cfg.initialModel),'utf8'))):policy.zero(),parent=incumbent,incumbentWins=0;
 const history=[];
 function match(model,phase,g,index,map,nation,seed){
   const id=[phase,g,index,map,nation,seed].join('-');
