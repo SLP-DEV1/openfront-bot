@@ -2,7 +2,7 @@
 
 Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscript für [OpenFront](https://openfront.io/).
 
-**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.11.1**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
+**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.12.0**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
 
 ## AggroBot 2.0 – erster lokaler Brain-Baustein (v1.11.0)
 
@@ -12,8 +12,21 @@ Start: `node brain/server.cjs`, Token aus der Terminalausgabe im Tampermonkey-Pa
 
 [Einrichtung, Sicherheit und Trainingsbefehle](docs/BRAIN.md) · [Bestehendes Browser-Lernen](docs/LEARNING.md)
 
-**Optionale Qwen-Beratung:** Der lokale Brain kann dein bestehendes llama.cpp unter `127.0.0.1:8080` mit Modell-Alias `qwen38-27b-gsq-mtp` verwenden. Qwen wird ausschließlich bei Stagnation und zum Spielende für validierte, gespeicherte Strategievorschläge im **Shadow-Modus** aufgerufen; keine direkten Spielaktionen oder ungetestete Strategieübernahme. Im Brain-Terminal vor `node brain/server.cjs`: `$env:AGGROBOT_QWEN_ENABLED="1"`; optional `$env:AGGROBOT_QWEN_API_KEY="local"`. Details und Status-Abfrage stehen in [BRAIN.md](docs/BRAIN.md).
+**Optionale Qwen-Beratung:** Der lokale Brain kann dein bestehendes llama.cpp unter `127.0.0.1:8080` mit Modell-Alias `qwen38-27b-gsq-mtp` verwenden. Qwen wird bei Bedrohung, Stagnation, seltener regelmäßiger Lageanalyse und zum Spielende für validierte, gespeicherte Strategievorschläge im **Shadow-Modus** aufgerufen; keine direkten Spielaktionen oder ungetestete Strategieübernahme. Im Brain-Terminal vor `node brain/server.cjs`: `$env:AGGROBOT_QWEN_ENABLED="1"`; optional `$env:AGGROBOT_QWEN_API_KEY="local"`. Details und Status-Abfrage stehen in [BRAIN.md](docs/BRAIN.md).
 
+
+## Impossible Counterplay (1.12.0)
+
+Die erste Ausbaustufe schützt Angriffe vor **anderen** übermächtigen Grenzgegnern,
+begrenzt neutrale Expansion unter Bedrohung und versucht Hafenstandorte nach
+einer begrenzten Sperrzeit erneut. Das sind Schutzmaßnahmen, **kein Nachweis**
+einer hohen Impossible-Siegquote. Kontrolliertes Qwen-Shadow-Training bleibt
+unverändert; Empfehlungen werden nicht automatisch übernommen.
+
+[Implementierte Regeln, offene Phasen und paarweise Impossible-Matrix](docs/IMPOSSIBLE.md).
+Die Matrix benötigt einen passenden offiziellen Engine-Checkout. Die bisherige
+Engine-Fixierung ist älter als der zuletzt untersuchte Impossible-Quellcode:
+ein Versionsabgleich ist vor einem belastbaren aktuellen KI-Vergleich erforderlich.
 
 ## Installation
 

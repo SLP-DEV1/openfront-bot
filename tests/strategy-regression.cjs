@@ -71,8 +71,9 @@ function boot(benchmarkOptions={}) {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
+    'railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
+    'setPortBackoff:(fail,tick)=>{portProbeFailures=fail;lastPortRetryTick=tick;},',
     'setWarWait:n=>warWaitSince=n,setEconFails:n=>failedEconomyProbes=n,',
     'setPending:p=>pendingAttack=p,setLastBattle:p=>lastBattle=p,',
     'setWar:(id,name)=>warState={id,name,since:game.ticks(),blockedUntil:-Infinity},',
@@ -96,6 +97,34 @@ function boot(benchmarkOptions={}) {
     const x=boot(),s=x.b.military(x.me,[{id:'weak',opponent:x.weak},{id:'strong',opponent:x.strong}]);
     assert.equal(s.strongest,85000);
     assert(s.available>35000&&s.available<42000,s.available);
+  });
+  await check('Impossible: unrelated giant closes the offensive budget before attacks', () => {
+    const x=boot(),groups=[{id:'weak',opponent:x.weak,front:8,tiles:[5]},
+      {id:'strong',opponent:x.strong,front:8,tiles:[6]}];
+    x.setHome(120000);x.strong.troops=()=>350000;x.weak.troops=()=>15000;
+    const st=x.b.military(x.me,groups),risk=x.b.frontRiskPlan(groups,st,'weak');
+    assert.equal(risk.danger,true);
+    assert.equal(risk.safeStrike,0);
+    assert.equal(x.b.targetOpportunity(x.me,groups,st,groups[0]),false);
+    const context={wanted:'ASSAULT',foes:2,underAttack:false,rebuilding:false,readiness:{ready:true}};
+    assert(!x.b.rankedTargets(groups,x.me,300,st,context).some(v=>v.id==='weak'));
+  });
+  await check('Impossible: cheap neutral expansion does not empty home near a rival', () => {
+    const x=boot(),groups=[{id:'strong',opponent:x.strong,front:8,tiles:[6]}];
+    const s=x.b.military(x.me,groups);
+    const small=x.b.neutralAttackAmount(s,.9);
+    assert(small>0&&small<=Math.floor(s.home*.025),small);
+    assert(x.b.neutralAttackAmount(x.b.military(x.me,[]),.9)>small);
+  });
+  await check('first port planning retries after a bounded failed-coast backoff', () => {
+    const x=boot();x.b.setBoats(true);x.setTick(3200);
+    const units=[{type:()=> 'City'}, {type:()=> 'Factory'}];
+    x.b.setPortBackoff(8,2500);
+    const stalled=x.b.economicNeeds(x.me,units,[]);
+    assert.equal(stalled.portProbeFailures,8);
+    x.setTick(3350);
+    const resumed=x.b.economicNeeds(x.me,units,[]);
+    assert.equal(resumed.portProbeFailures,0);
   });
   await check('unbuildable structures do not block war forever', () => {
     const x=boot(); x.setTick(1150); x.b.setEconFails(6); x.b.setWarWait(800);

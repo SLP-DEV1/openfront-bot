@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.11.1
+// @version      1.12.0
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.11.1', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.12.0', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, learningEnabled:true, brainEnabled:false, brainToken:'', fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -215,7 +215,7 @@
   let goldSamples=[],incomeStatus={train:null,trade:null,gold:null,observed:false};
   let winStatus={mode:'FFA',progress:null,threshold:null,remaining:null,urgent:false};
   let fleetStatus='Keine Marineaktivität',lastFleet=-Infinity,lastDonation=-Infinity,navalSweep=0;
-  let pendingBoat=null,pendingWarship=null,navalCooldown=new Map(),navalBackoffUntil=-Infinity,portProbeFailures=0;
+  let pendingBoat=null,pendingWarship=null,navalCooldown=new Map(),navalBackoffUntil=-Infinity,portProbeFailures=0,lastPortRetryTick=-Infinity;
   let marineStats={transportSent:0,transportConfirmed:0,transportArrived:0,
     transportUnconfirmed:0,transportUnresolved:0,warshipSent:0,
     warshipConfirmed:0,warshipUnconfirmed:0};
@@ -474,7 +474,7 @@
     lastDiplomacyTick=-Infinity;lastProposalTick=-Infinity;diplomacyStatus='Noch keine Anfrage';
     diplomacyStats={accepted:0,rejected:0,offered:0};goldSamples=[];incomeStatus={train:null,trade:null,gold:null,observed:false};
     winStatus={mode:'FFA',progress:null,threshold:null,remaining:null,urgent:false};fleetStatus='Keine Marineaktivität';lastFleet=-Infinity;lastDonation=-Infinity;navalSweep=0;
-    pendingBoat=null;pendingWarship=null;navalCooldown.clear();navalBackoffUntil=-Infinity;portProbeFailures=0;
+    pendingBoat=null;pendingWarship=null;navalCooldown.clear();navalBackoffUntil=-Infinity;portProbeFailures=0;lastPortRetryTick=-Infinity;
     marineStats={transportSent:0,transportConfirmed:0,transportArrived:0,
       transportUnconfirmed:0,transportUnresolved:0,warshipSent:0,
       warshipConfirmed:0,warshipUnconfirmed:0};
@@ -1055,7 +1055,12 @@
     const base=Math.max(130,s.home*(hardMode()?(.055+aggression*.035):(.09+aggression*.08)));
     const surplus=growthPressure(s)?Math.max(0,s.home-s.max*.48)*.46:0;
     const fraction=growthPressure(s)?(hardMode()?.49:.55):(hardMode()?.31:.55);
-    return Math.floor(Math.min(s.available*fraction,Math.max(base,surplus)));
+    const exposed=s.strongest>=s.home*.85||s.incoming>=s.home*.10;
+    // Cheap expansion may continue near a strong rival, but never consume
+    // a third of the army immediately before a probable counterattack.
+    const safeBudget=hardMode()&&exposed?
+      Math.min(s.available*.14,s.home*.025):s.available*fraction;
+    return Math.floor(Math.min(safeBudget,Math.max(base,surplus)));
   }
   function military(me,items=[]) {
     const home=number(()=>me.troops());
@@ -1308,6 +1313,20 @@
     return allies.some(ally=>ally?.isAlive?.() && friendly(ally,me) &&
       (ally.targets?.()||[]).some(target=>safeID(target)===safeID(enemy)));
   }
+  // Attack budget against OTHER fronts, independent of the chosen victim.
+  // These checks cannot be bypassed by target scores or AI suggestions.
+  function frontRiskPlan(items,s,targetID=null) {
+    const other=items.filter(x=>x.id!==null&&x.id!==targetID&&
+      x.opponent?.isAlive?.()).reduce((v,x)=>Math.max(v,
+      number(()=>x.opponent.troops(),0)),0);
+    const danger=other>s.home*1.15;
+    const pressure=s.incoming>Math.max(1200,s.home*.08);
+    const floor=Math.max(s.reserve,s.incoming*1.3,
+      other>0?Math.min(s.home,other*(hardMode()?.63:.55)):0);
+    return {other,danger,pressure,floor,
+      safeStrike:Math.max(0,Math.floor(s.home-floor)),
+      emergency:danger||pressure};
+  }
   function targetOpportunity(me,items,s,item) {
     if(!item?.opponent?.isAlive?.()||friendly(item.opponent,me))return false;
     const late=lateGame(me),troops=number(()=>item.opponent.troops(),Infinity);
@@ -1315,13 +1334,11 @@
     const minRatio=enemyOpportunityRatio(item.opponent,late,s.home);
     if(s.available<troops*minRatio ||
       s.home<troops*(hardMode()?(late?1.45:1.85):(late?1.24:1.45)))return false;
-    const otherThreat=items.filter(x=>x.id!==null&&x.id!==item.id&&x.opponent?.isAlive?.())
-      .reduce((v,x)=>Math.max(v,number(()=>x.opponent.troops(),0)),0);
+    const front=frontRiskPlan(items,s,item.id);
+    if(front.danger||front.pressure)return false;
     const strike=Math.min(s.available*(hardMode()?.76:.80),
       Math.max(troops*(hardMode()?1.57:1.40),s.available*.48));
-    // Do not cap the other neighbor's reserve to a percentage of our own
-    // army: that would incorrectly approve suicidal attacks against giants.
-    return s.home-strike>=Math.max(s.home*.22,otherThreat*(hardMode()?.58:.50));
+    return strike<=front.safeStrike;
   }
   function warReadiness(me,items,s,tick,target=null) {
     if(!hardMode())return {ready:true,reason:'Normal'};
@@ -1444,15 +1461,15 @@
       const enemyTroops=enemy?number(()=>enemy.troops(),Infinity):0;
       // One target cannot be evaluated as isolated when other large enemies
       // still border our home. This was the main multi-front failure in 1.4.
-      const otherThreat=enemy?items.filter(x=>x.id!==null && x.id!==item.id)
-        .reduce((v,x)=>Math.max(v,number(()=>x.opponent?.troops(),0)),0):0;
+      const front=enemy?frontRiskPlan(items,s,item.id):null;
       const enemyTiles=enemy?number(()=>enemy.numTilesOwned(),0):0;
       if(!isNeutral) {
         const minimumRatio=enemyOpportunityRatio(enemy,late,s.home,effectivePlan()==='Blitz');
         if(s.ratio<(late?.29:.40) || available<enemyTroops*minimumRatio ||
           s.home<enemyTroops*(hardMode()?(late?1.45:1.85):(late?1.24:1.45)) ||
-          (coordinatedWar() && s.home-Math.min(available*.76,
-            Math.max(enemyTroops*1.57,available*.48))<otherThreat*.58) ||
+          front.danger||front.pressure||
+          Math.min(available*(hardMode()?.76:.80),
+            Math.max(enemyTroops*(hardMode()?1.57:1.40),available*.48))>front.safeStrike||
           enemyTroops<=0 && enemyTiles<=0)return [];
       }
       let score=isNeutral?75:52;
@@ -1492,7 +1509,8 @@
       }
       const amount=isNeutral ?
         Math.floor(neutralAttackAmount(s,aggression)*(item.fallout?.48:1)) :
-        Math.min(available*(hardMode()?.76:.80),Math.max(enemyTroops*(hardMode()?1.57:(1.25+aggression*.20)),available*.48));
+        Math.min(front.safeStrike,available*(hardMode()?.76:.80),
+          Math.max(enemyTroops*(hardMode()?1.57:(1.25+aggression*.20)),available*.48));
       const forecast=!isNeutral?attackForecast(me,item,Math.floor(amount)):null;
       if(forecast){
         score-=Math.min(60,forecast.loss/Math.max(1,amount)*78);
@@ -1665,7 +1683,9 @@
       }
       // The game state may advance during the async worker legality probe.
       const fresh=military(me,strategic.groups); // Never forget stronger OTHER neighbors on recheck.
-      if(item.id!==null && (fresh.incoming>fresh.home*(lateGame(me)?.15:.04) ||
+      const freshFront=item.id!==null?frontRiskPlan(strategic.groups,fresh,item.id):null;
+      if(item.id!==null && (freshFront.danger||freshFront.pressure||
+        fresh.incoming>fresh.home*(lateGame(me)?.15:.04) ||
         fresh.activeEnemy>=(lateGame(me)&&fresh.strongest<fresh.home*.55?2:1) ||
         fresh.available<Math.max(100,number(()=>item.opponent.troops(),Infinity)*(lateGame(me)?1.15:1.3))))continue;
       if(item.id===null && fresh.activeNeutral>=1)continue;
@@ -1676,7 +1696,8 @@
         !targetOpportunity(me,strategic.groups,fresh,item) ||
         (isWar()&&warState.id!==item.id)))continue;
       const amount=Math.min(item.amount,fresh.available,
-        item.id===null ? neutralAttackAmount(fresh,clamp(setting('aggressive'),40,100)/100) : Math.floor(fresh.available*(hardMode()?.76:.8)));
+        item.id===null ? neutralAttackAmount(fresh,clamp(setting('aggressive'),40,100)/100) :
+        Math.min(freshFront.safeStrike,Math.floor(fresh.available*(hardMode()?.76:.8))));
       if(amount<100)continue;
       const label=item.opponent?nameOf(item.opponent):'neutrales Land';
       if(send('attack',[item.id,amount],`ANGRIFF → ${label} (${Math.floor(amount/10)} Tr.)`)){
@@ -1875,6 +1896,13 @@
     const wantedPort=!portEnabled?0:opts.boats?Math.min(3,Math.max(1,Math.floor(mine/1800)+1)):
       (factories>=1 && mine>600?Math.min(2,Math.floor(mine/2700)+1):0);
     const startup=(cityEnabled&&cities<1)||(factoryEnabled&&factories<1);
+    const nowTick=number(()=>game.ticks(),0);
+    // Eight failed coast scans used to disable first-port planning forever.
+    // Retry after a bounded pause: territory and legal build sites can change.
+    if(portProbeFailures>=8 && Number.isFinite(lastPortRetryTick) &&
+      nowTick-lastPortRetryTick>=800){
+      portProbeFailures=0;lastPortRetryTick=nowTick;
+    }
     const coastSites=ports===0&&opts.boats?
       portCoastalAnchors(me,tiles,number(()=>game.ticks(),0),8):[];
     const portMilestone=!!(opts.boats&&portEnabled&&ports===0&&!startup&&
@@ -2280,7 +2308,10 @@
     }
     if(!proposals.length){failedEconomyProbes++;
       if(requirements.portMilestone && probe.portQueries>0 &&
-        probe.portLegal===0)portProbeFailures++;
+        probe.portLegal===0){
+        portProbeFailures++;
+        if(portProbeFailures===8)lastPortRetryTick=tick;
+      }
       if(requirements.portMilestone && probe.portQueries>0 &&
         (portProbeFailures===1||portProbeFailures===4||portProbeFailures===8))
         telemetry('port_probe','Hafen-Bauplätze im Worker geprüft',
