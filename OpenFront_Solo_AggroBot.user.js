@@ -19,7 +19,7 @@
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
     autoStrategy:true, diplomacy:true, offerAlliances:true, nukes:true, antiNuke:true, lateOffense:true,
-    impossibleMode:true};
+    impossibleMode:true,qwenPolicy:false};
   let opts;
   try { opts = {...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; }
   catch (_) {opts = {...defaults};}
@@ -94,7 +94,7 @@
   const BRAIN_URL='http://127.0.0.1:8765';
   let brainMatchId='match-'+Date.now().toString(36)+'-'+Math.floor(Math.random()*0xffffffff).toString(36).padStart(8,'0');
   let brainSeq=0,brainLastTick=-Infinity,brainLastSampleTick=-Infinity,brainBusy=false,brainBackoff=0;
-  let brainState={status:'Aus',advice:null,receivedTick:-Infinity,lastError:null};
+  let brainState={status:'Aus',advice:null,receivedTick:-Infinity,lastError:null,qwen:null};
   function brainReady(){
     return opts.brainEnabled&&opts.learningEnabled&&opts.fullAuto&&opts.enabled&&
       typeof fetch==='function'&&typeof opts.brainToken==='string'&&opts.brainToken.length>=24;
@@ -139,9 +139,18 @@
           !Number.isInteger(data.samples)||data.samples<0)
           throw Error('Ungültige Brain-Antwort');
         if(matchId!==brainMatchId||!opts.brainEnabled)return;
+        const q=data.qwen,allowedKinds=['periodic','stagnation','threat'];
+        const validatedQwen=q&&q.matchId===brainMatchId &&
+          Number.isSafeInteger(q.tick)&&q.tick>=0&&q.tick<=tick &&
+          tick-q.tick<=480&&allowedKinds.includes(q.kind) &&
+          ['DEFEND','ECONOMY','EXPAND'].includes(q.strategy) &&
+          ['THREAT','STAGNATION','RESOURCE','EXPANSION','OTHER'].includes(q.reasonCode)?
+          {matchId:q.matchId,tick:q.tick,kind:q.kind,
+            strategy:q.strategy,reasonCode:q.reasonCode}:null;
         brainState={status:'Verbunden · '+data.samples+' Erfahrungen',
           advice:{context:data.context,aggressiveDelta:data.aggressiveDelta,
-            reserveDelta:data.reserveDelta},receivedTick:tick,lastError:null};
+            reserveDelta:data.reserveDelta},receivedTick:tick,lastError:null,
+          qwen:validatedQwen};
       }).catch(e=>{
         if(matchId!==brainMatchId)return;
         brainState={status:'Offline · lokaler Bot aktiv',advice:null,
@@ -1408,6 +1417,22 @@
     }
     return {ready:true,reason:'Kriegsfreigabe'};
   }
+  // Optional conservative policy hint: never runs game intents, never opens
+  // wars and never overrides a threat/recovery or a manual strategy.
+  function qwenStrategyHint(me,items,s,tick,wanted){
+    if(!opts.qwenPolicy||!brainReady()||!opts.autoStrategy||
+      ['RECOVER','DEFEND','TECH','ASSAULT'].includes(wanted)||
+      s.incoming>0||recentHostilePressure(tick)||isWar())return wanted;
+    const q=brainState.qwen;
+    if(!q||q.matchId!==brainMatchId||tick<q.tick||tick-q.tick>480)return wanted;
+    const neutral=items.some(x=>x.id===null&&!x.fallout);
+    if(q.strategy==='DEFEND'&&
+      q.reasonCode==='THREAT'&&s.strongest>=s.home*.78)return 'DEFEND';
+    if(q.strategy==='EXPAND'&&neutral&&s.ratio>=.58&&
+      s.strongest<s.home*.60)return 'EXPAND';
+    if(q.strategy==='ECONOMY'&&s.strongest<s.home*.80)return 'ECONOMY';
+    return wanted;
+  }
   function strategy(me,items,s) {
     const tick=number(()=>game.ticks());
     const coolingDown=recentHostilePressure(tick);
@@ -1455,6 +1480,7 @@
     else if(danger){wanted='DEFEND';reason='Starker Nachbar an der Grenze';}
     else if(neutral){wanted='EXPAND';reason='Landnahme vor riskanter Offensive';}
     else {wanted='ECONOMY';reason='Aufbauen und auf sichere Angriffsgelegenheit warten';}
+    if(opts.fullAuto&&opts.autoStrategy)wanted=qwenStrategyHint(me,items,s,tick,wanted);
     if(!opts.autoStrategy){
       if(rebuilding)wanted='RECOVER';
       else if(seriousAttack)wanted='DEFEND';
@@ -3361,7 +3387,7 @@
         opts.fullAuto=!opts.fullAuto;
         if(opts.fullAuto){opts.autoStrategy=true;autoTuning.tick=-Infinity;}
       }else if(key==='autoStrategy'&&opts.fullAuto){opts.fullAuto=false;opts.autoStrategy=false;}
-      else if(['economy','boats','autoSpawn','defense','stopOnError','upgrades','safeMode','autoStrategy','diplomacy','offerAlliances','nukes','antiNuke','lateOffense','impossibleMode','learningEnabled','brainEnabled'].includes(key))opts[key]=!opts[key];
+      else if(['economy','boats','autoSpawn','defense','stopOnError','upgrades','safeMode','autoStrategy','diplomacy','offerAlliances','nukes','antiNuke','lateOffense','impossibleMode','learningEnabled','brainEnabled','qwenPolicy'].includes(key))opts[key]=!opts[key];
       else if(key==='plan'){opts.fullAuto=false;opts.autoStrategy=false;opts.plan=opts.plan==='Blitz'?'Adaptiv':opts.plan==='Adaptiv'?'Ökonomie':'Blitz';}
       else if(key==='buildStyle'){opts.fullAuto=false;opts.autoStrategy=false;opts.buildStyle=opts.buildStyle==='Ausgewogen'?'Wirtschaft':opts.buildStyle==='Wirtschaft'?'Defensiv':'Ausgewogen';}
       persist();lastPaint=0;paint();
@@ -3399,7 +3425,7 @@
       <div>${b('upgrades','Upgrades')} ${b('safeMode','Not-Aus')} ${b('autoStrategy','Auto-Strategie '+(opts.autoStrategy?'AN':'AUS'))} ${b('fullAuto','Vollautonom '+(opts.fullAuto?'AN':'AUS'))}</div>
       <div>${b('diplomacy','Diplomatie')} ${b('offerAlliances','Bündnisse anbieten')}</div>
       <div>${b('nukes','Auto-Nukes')} ${b('antiNuke','Intelligente SAMs')} ${b('lateOffense','Late-Game-Offensive')}</div>
-      <div>${b('learningEnabled','Lernen')} ${b('brainEnabled','🧠 Lokaler Brain')} ${b('impossibleMode','Unmöglich-Taktik')} <button data-key="export" style="border:1px solid #73acdd;border-radius:5px;background:#235078;color:white;padding:5px 7px;cursor:pointer">📄 Diagnose JSON</button></div>
+      <div>${b('learningEnabled','Lernen')} ${b('brainEnabled','🧠 Lokaler Brain')} ${b('qwenPolicy','Qwen-Hinweise (Test)')} ${b('impossibleMode','Unmöglich-Taktik')} <button data-key="export" style="border:1px solid #73acdd;border-radius:5px;background:#235078;color:white;padding:5px 7px;cursor:pointer">📄 Diagnose JSON</button></div>
       <div style="color:#9bd0e4">Brain: ${escapeHTML(brainState.status)}${brainState.lastError?' · '+escapeHTML(brainState.lastError):''} · ${escapeHTML(BRAIN_URL)}</div>
       <label>Brain-Token: <input type="password" data-option="brainToken" placeholder="${opts.brainToken?'Gespeichert – neu einfügen zum Ändern':'Aus Terminal einfügen'}" autocomplete="off" style="width:100%;box-sizing:border-box"></label>
       <div style="color:#a9efc9">Hauptfront: ${escapeHTML(warState.name)} · Krieg ${isWar()?'aktiv':'frei'} · ${escapeHTML(lastRecoveryReason||'bereit')}</div>
