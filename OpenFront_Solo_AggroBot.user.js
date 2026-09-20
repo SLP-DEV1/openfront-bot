@@ -740,7 +740,11 @@
   }
   function enemyUnderAttack(enemy){
     const own=number(()=>enemy.troops?.(),0);
-    const incoming=(enemy.incomingAttacks?.()||[]).filter(a=>!a.retreating)
+    const ourSmall=number(()=>myPlayer()?.smallID?.(),-1);
+    // Only a third-party assault is an opportunity. Our own attack against
+    // this player cannot justify launching another underpriced offensive.
+    const incoming=(enemy.incomingAttacks?.()||[]).filter(a=>
+      !a.retreating && a.attackerID!==ourSmall)
       .reduce((n,a)=>n+number(()=>a.troops,0),0);
     return own>0 && incoming>=own*.50;
   }
