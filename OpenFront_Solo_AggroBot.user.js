@@ -710,6 +710,24 @@
       ownTiles:ours,teamTiles:land};
     return winStatus;
   }
+  function checkIncomeAttribution(me,tick){
+    for(const sample of incomeAttribution){
+      if(sample.finished||tick-sample.tick<120)continue;
+      const train=number(()=>me.trainGold?.(),NaN),
+        trade=number(()=>me.tradeGold?.(),NaN);
+      sample.finished=true;sample.afterTick=tick;
+      sample.trainDelta=Number.isFinite(train)&&
+        Number.isFinite(sample.beforeTrain)?
+        Math.max(0,train-sample.beforeTrain):null;
+      sample.tradeDelta=Number.isFinite(trade)&&
+        Number.isFinite(sample.beforeTrade)?
+        Math.max(0,trade-sample.beforeTrade):null;
+      sample.method='interval-income-observation-not-causal';
+      telemetry('income_after_build',
+        'Bahn-/Schiffseinkommen nach Bau gemessen (keine kausale Zuordnung)',
+        {incomeSample:sample});
+    }
+  }
   function sampleIncome(me,tick){
     const cur={tick,gold:number(()=>Number(me.gold()),0),
       train:number(()=>me.trainGold?.(),NaN),trade:number(()=>me.tradeGold?.(),NaN)};
@@ -723,6 +741,7 @@
       goldSamples.shift();
     }
     if(!goldSamples.length)goldSamples.push(cur);
+    checkIncomeAttribution(me,tick);
   }
   function enemyUnderAttack(enemy){
     const own=number(()=>enemy.troops?.(),0);
@@ -1485,6 +1504,15 @@
       telemetry('build_confirmed',economicStatus,{type:economicPending.type,kind:economicPending.kind});
       if(economicPending.type==='Port')telemetry('port_confirmed','Hafen im Spielzustand bestätigt',
         {tile:economicPending.tile,buildKind:economicPending.kind});
+      if(['City','Factory','Port'].includes(economicPending.type)){
+        const me=myPlayer();
+        const sample={tick,type:economicPending.type,
+          tile:economicPending.tile,buildKind:economicPending.kind,
+          beforeTrain:number(()=>me?.trainGold?.(),NaN),
+          beforeTrade:number(()=>me?.tradeGold?.(),NaN),finished:false};
+        incomeAttribution.push(sample);
+        if(incomeAttribution.length>40)incomeAttribution.shift();
+      }
       economicPending=null;
       return false;
     }
@@ -2862,7 +2890,10 @@
           borders:tiles.length,tuning:{...autoTuning,enabled:!!opts.fullAuto},defense:{status:defenseStatus,incoming:s.incoming,
             committed:s.committed,pendingRetreats:retreatRequests.size},enemies:groups.filter(g=>g.id!==null).map(g=>({name:nameOf(g.opponent),troops:number(()=>g.opponent.troops()),land:number(()=>g.opponent.numTilesOwned())})),
           readiness:context.readiness?.reason,ratio:s.ratio,maxTroops:s.max,growthPotential:s.growthPotential,
-          victory:winStatus,income:incomeStatus,strategicTelemetry,fleet:fleetStatus,
+          victory:winStatus,income:incomeStatus,strategicTelemetry,
+          forecastAudit:lastForecastAudit,
+          recentIncomeSamples:incomeAttribution.slice(-4).map(v=>({...v})),
+          fleet:fleetStatus,
           marine:{stats:{...marineStats},pendingBoat:pendingBoat?{...pendingBoat}:null,
             pendingWarship:pendingWarship?{...pendingWarship}:null,
             ports:ownStructures(me).filter(u=>u.type?.()==='Port').length,
