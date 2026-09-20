@@ -23,8 +23,14 @@ all the same defects. This change set is incremental, not a rewrite.
   rather than choosing the largest raw incoming stack first.
 - `trainer/train.mjs --bots 0,4` evaluates fixed mixtures of official Nation
   opponents and native OpenFront tribe bots using disjoint paired seeds.
-  Each result and evaluation signature includes the native-tribe count;
-  mixed populations are not mislabeled as humans.
+  Each result and evaluation signature includes the native-tribe count.
+- The optional `--rivals rush,economy` launches **scripted local clients**
+  with separate official GameViews; their spawn/attack/build commands go
+  through the same stamped engine-intent validation. Available profiles:
+  `rush`, `economy`, `defense`, `opportunist` (up to four, no repeats).
+  Holdouts also check the exact scripted-rival mix. Their in-game type is
+  Human because they are client-controlled, but there is **no person** behind
+  these reproducible scripts.
 
 ## Not implemented / not established by these tests
 
@@ -33,10 +39,12 @@ all the same defects. This change set is incremental, not a rewrite.
   does not simulate public human lobbies, live diplomacy, team donations or
   adversarial human behavioral profiles. Do not train or publish a
   “human-multiplayer champion” based on this harness alone.
-- The audit's larger plans for a multi-client GameView runner, scripted
-  human-like rival agents, controlled Team/FFA tournaments, peace negotiation,
-  operation-specific war goals, long multi-window opponent memory and
-  post-landing occupation tracking require separate implementation and tests.
+- This is a first, deliberately simple multi-client GameView runner,
+  **not** a full approximation of skilled human behavior. Scripted clients
+  use basic fixed strategies and the test remains Singleplayer FFA. Controlled
+  Team/FFA tournaments with donations, peace negotiation, operation-specific
+  war goals, long multi-window opponent memory and post-landing occupation
+  tracking require additional implementation and full-browser tests.
 - A pass in CI is not an observed victory in Impossible or Public.
 
 ## Native tribe + Nation training
@@ -61,7 +69,9 @@ node trainer/train.mjs `
 
 These settings schedule **432** full-engine match attempts (2 maps × 2 nation
 counts × 2 tribe counts × [2 training seeds × 5 models + 4 holdout seeds ×
-2 models] × 3 generations). Never reuse an existing `--out` directory.
+2 models] × 3 generations). To add two fixed scripted rivals to every one
+of these scenarios, pass `--rivals rush,economy`; use a **new** output folder.
 Completed paired holdouts, not unverified timeouts, determine model promotion.
-The native-tribe integration smoke uses the pinned official engine and
-verifies that a game actually spawned without execution errors.
+The native-tribe and scripted-client integration smokes use the pinned
+official engine and verify a game actually spawned without execution errors.
+Neither smoke measures real Public-Medium win rate.
