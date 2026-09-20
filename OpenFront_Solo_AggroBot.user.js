@@ -46,7 +46,9 @@
       data.weights?.length===217;
     const strategic=data?.schema===3&&data.arch==='16x16x16-tanh'&&
       data.weights?.length===544;
-    if((!old&&!actions&&!strategic)||!Array.isArray(data.weights)||
+    const strategic4=data?.schema===4&&data.arch==='24x24x16-tanh'&&
+      data.weights?.length===1000;
+    if((!old&&!actions&&!strategic&&!strategic4)||!Array.isArray(data.weights)||
       data.weights.some(v=>typeof v!=='number'||!Number.isFinite(v)||Math.abs(v)>5))
       return null;
     return data;
@@ -59,14 +61,14 @@
       NEURAL_BUNDLED_MODEL);
   }catch(_){neuralModel=null;}
   // Deployed v3 is active on a fresh install; an explicit saved off-switch wins.
-  if(neuralModel?.schema===3 && !localStorage.getItem(KEY))opts.neuralEnabled=true;
+  if([3,4].includes(neuralModel?.schema) && !localStorage.getItem(KEY))opts.neuralEnabled=true;
   const NEURAL_CHANNELS=['reserve','aggression','neutralCommit','enemyCommit',
     'warThreshold','navalThreshold','landPriority','navalPriority',
     'holdPriority','cityPriority','factoryPriority','portPriority',
     'defensePriority','nuclearPriority','diplomacyPriority','fleetPriority'];
   let neuralPolicyCache={key:null,output:null};
   function neuralStrategicSignals(me,s,tick=number(()=>game?.ticks?.(),0)){
-    if(!opts.neuralEnabled||!opts.fullAuto||neuralModel?.schema!==3||
+    if(!opts.neuralEnabled||!opts.fullAuto||![3,4].includes(neuralModel?.schema)||
       !me||!s||s.home<=0)return null;
     const home=Math.max(1,s.home),max=Math.max(1,s.max||home);
     const gold=number(()=>Number(me.gold?.()),0),
@@ -86,17 +88,31 @@
       clamp((s.growthPotential||0)/Math.max(1,max*.01),0,1),
       clamp(cities/8,0,1),clamp(ports/4,0,1),isWar()?1:0,thirdParty?1:0
     ];
+    if(neuralModel.schema===4){
+      const pressure=frontPressureForecast(me,groups,tick);
+      const losses=Math.max(0,-(armyTrend(tick)?.tiles||0));
+      const uncovered=nuclearIntel(me,units).uncovered.length;
+      vector.push(clamp(pressure.secondary/home,0,3)/3,
+        clamp(losses/Math.max(1,land),0,1),
+        clamp((incomeStatus.train||0)/1000000,0,1),
+        clamp((incomeStatus.trade||0)/1000000,0,1),
+        clamp(uncovered/8,0,1),recentHostilePressure(tick)?1:0,
+        clamp(units.filter(u=>u.type?.()==='Defense Post').length/12,0,1),
+        clamp((marineStats.transportUnconfirmed+marineStats.transportUnresolved)/12,0,1));
+    }
     const key=tick+':'+vector.join(',');
     if(neuralPolicyCache.key===key)return neuralPolicyCache.output;
     const w=neuralModel.weights,h=[],output={};
-    for(let j=0;j<16;j++){
-      let z=w[256+j];
-      for(let i=0;i<16;i++)z+=vector[i]*w[i*16+j];
+    const size=neuralModel.schema===4?24:16;
+    const start=size*size,outputs=start+size,bias=outputs+size*16;
+    for(let j=0;j<size;j++){
+      let z=w[start+j];
+      for(let i=0;i<size;i++)z+=vector[i]*w[i*size+j];
       h.push(Math.tanh(z));
     }
     for(let k=0;k<16;k++){
-      let z=w[528+k];
-      for(let j=0;j<16;j++)z+=h[j]*w[272+j*16+k];
+      let z=w[bias+k];
+      for(let j=0;j<size;j++)z+=h[j]*w[outputs+j*16+k];
       output[NEURAL_CHANNELS[k]]=Math.tanh(z);
     }
     neuralPolicyCache={key,output};
