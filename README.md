@@ -2,13 +2,13 @@
 
 Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscript für [OpenFront](https://openfront.io/).
 
-**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.13.0**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
+**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.13.1**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
 
 ## AggroBot 2.0 – erster lokaler Brain-Baustein (v1.11.0)
 
-**Tampermonkey bleibt die Spielsteuerung.** Optionaler lokaler Node.js-24-Brain mit SQLite-Gedächtnis, abgesicherten aggregierten Beobachtungen, eng begrenzten Strategieempfehlungen und einem Engine-Trainings-/Import-Werkzeug. Das autonome Userscript spielt bei nicht erreichbarem Brain mit seinen bisherigen Regeln weiter. Kein automatischer Start, keine direkten Game-Intents durch den Brain und keine Selbstlern-Gewinnratenbehauptung.
+**Tampermonkey bleibt die Spielsteuerung.** Optionaler lokaler Node.js-24-Brain mit SQLite-Gedächtnis, abgesicherten aggregierten Beobachtungen, eng begrenzten Strategieempfehlungen und einem Engine-Trainings-/Import-Werkzeug. Das autonome Userscript spielt bei nicht erreichbarem Brain mit seinen bisherigen Regeln weiter. Kein eigenständiger Match-Start durch den Brain, keine direkten Game-Intents durch den Brain und keine Selbstlern-Gewinnratenbehauptung.
 
-Start: `node brain/server.cjs`, Token aus der Terminalausgabe im Tampermonkey-Panel einfügen, `Lernen`, `Vollautonom` und `🧠 Lokaler Brain` einschalten und dann den Bot im Match manuell starten. Das neue Brain-Feature ist nach der Aktualisierung zunächst **AUS**.
+Start: `node brain/server.cjs`, Token aus der Terminalausgabe im Tampermonkey-Panel einfügen, `Lernen`, `Vollautonom` und `🧠 Lokaler Brain` einschalten und auf die automatische Matcherkennung warten (oder den Bot manuell starten, wenn Auto-Start deaktiviert ist). Das neue Brain-Feature ist nach der Aktualisierung zunächst **AUS**.
 
 [Einrichtung, Sicherheit und Trainingsbefehle](docs/BRAIN.md) · [Bestehendes Browser-Lernen](docs/LEARNING.md)
 
@@ -37,14 +37,20 @@ ansonsten gilt weiter der ältere historische Fixpunkt. Der zusätzliche
 GitHub-Workflow `Impossible Engine Smoke` überprüft den offiziellen
 Engine-/GameView-Pfad; lange Siege/Niederlagen müssen separat gemessen werden.
 
+## Änderung 1.13.1 – Match-Autostart und kompakte Oberfläche
+
+- **Auto-Start standardmäßig AN:** Ein neuer erkannter Singleplayer-, Public- oder Private-Match startet nach Verfügbarkeit des EventBus automatisch. Bei fehlendem EventBus wartet der Bot, statt vorzeitig Befehle zu senden. Replays und beendete Partien bleiben ausgeschlossen.
+- **Manuelle Kontrolle:** Pause hält bis zum Matchwechsel; Not-Aus deaktiviert zusätzlich den künftigen Auto-Start. Über den Schalter **Auto-Start** lässt sich das Verhalten jederzeit ändern.
+- **Kompaktes Panel:** Start/Pause, Auto-Start, Strategie und Status direkt sichtbar; Module, Brain-Token, Lage, Feintuning und Diagnose stecken in aufklappbaren Bereichen. Geöffnete Bereiche bleiben beim regelmäßigen Redraw offen.
+
 ## Installation
 
 1. In Tampermonkey ein **neues Skript** erstellen und den gesamten Inhalt von `OpenFront_Solo_AggroBot.user.js` einfügen. In einem privaten GitHub-Repository darf man sich nicht darauf verlassen, dass Tampermonkey einen GitHub-Raw-Link ohne Anmeldung automatisch aktualisieren kann.
 2. Alle älteren Solo-AggroBot-Skripte deaktivieren.
 3. Wenn der Spawn Advisor 10.4.0 parallel läuft, dort **Auto-Spawn**, **Smart Attack** und **Auto-Accept Alliances** ausschalten.
-4. OpenFront neu laden, eine Singleplayer-, Public- oder Private-Partie starten und den Bot im Menü **manuell** einschalten. Ein zusätzlicher Multiplayer-Schalter ist nicht mehr erforderlich.
+4. OpenFront neu laden und eine Singleplayer-, Public- oder Private-Partie starten. Sobald Spielzustand und EventBus erkannt werden, startet der Bot automatisch und kann während der Spawnphase selbst eine Position wählen. Ein zusätzlicher Multiplayer-Schalter ist nicht erforderlich.
 
-**Not-Aus:** `Alt+Shift+X`. **Start/Pause:** `Alt+Shift+P`. Nach jedem Seitenladen und beim Wechsel in ein neues Match bleibt der Bot aus, bis du ihn startest. **Public/Private-Multiplayer benötigt keinen separaten Testschalter mehr; Replays und unbekannte Spieltypen bleiben gesperrt.** Beachte vor dem Einsatz die Regeln der jeweiligen Lobby bzw. des Servers.
+**Not-Aus:** `Alt+Shift+X` stoppt den Bot und schaltet zusätzlich **Auto-Start AUS**, bis du ihn im Panel wieder aktivierst. **Start/Pause:** `Alt+Shift+P`. Standardmäßig startet jeder neu erkannte spielbare Match automatisch; eine manuelle Pause gilt bis zum nächsten Match und wird nicht vom Polling aufgehoben. **Public/Private-Multiplayer benötigt keinen separaten Testschalter; Replays und unbekannte Spieltypen bleiben gesperrt.** Beachte vor dem Einsatz die Regeln der jeweiligen Lobby bzw. des Servers.
 
 ## Strategie & Diagnose
 
