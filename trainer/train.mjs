@@ -9,6 +9,7 @@ import policy from './policy.cjs';
 import common from '../tools/benchmark/common.cjs';
 import {reviewGeneration} from './qwen-review.mjs';
 import evaluation from './evaluation.cjs';
+import scoring from './reward.cjs';
 import parallelPool from './parallel.cjs';
 
 const cfg={engine:null,engineCommit:common.IMPOSSIBLE_REFERENCE_COMMIT,
@@ -99,14 +100,12 @@ async function match(model,phase,g,index,map,nation,seed){
   const confirmed=verified&&['game-over','eliminated'].includes(termination)&&
     ['victory','defeat'].includes(outcome);
   const validSample=confirmed||(verified&&termination==='tick-limit');
-  // Tick-limit is NEVER a win; a small, negative auxiliary signal lets the
-  // exploratory search move without licensing a false model promotion.
+  // Confirmed defeat and right-censored tick-limit have separate search
+  // rewards. Only evaluation.compare may promote a model, never this reward.
   const land=Math.max(0,Number(state?.finalState?.land)||0),
     elapsed=Math.max(0,Number(state?.run?.tick)||0);
-  const reward=!validSample?-1:confirmed?
-    (outcome==='victory'?1:0)+Math.min(.035,land/1000000)+
-      Math.min(.015,elapsed/ticks*.015):
-    -.25+Math.min(.035,land/1000000)+Math.min(.01,elapsed/ticks*.01);
+  const reward=scoring.reward({validSample,confirmed,outcome,land,
+    endTick:elapsed,ticks});
   const row={phase,generation:g,index,map,nation,seed,model:policy.sha(model),
     dir:path.relative(out,folder),termination,outcome:confirmed?outcome:'incomplete',
     confirmed,validSample,land,endTick:elapsed,reward:Math.round(reward*1e6)/1e6,

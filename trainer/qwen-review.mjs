@@ -16,6 +16,29 @@ export function qwenCommand(platform=process.platform,env=process.env){
   }
   return {command:'qwen',args:[...QWEN_FLAGS]};
 }
+// Qwen Code 0.24 JSON output is a transcript: its trailing type=result may
+// contain result:"" even though the assistant's final text contains valid JSON.
+export function parseQwenOutput(stdout){
+  const transcript=JSON.parse(stdout);
+  const replies=Array.isArray(transcript)?[
+    ...transcript.filter(e=>e?.type==='result'&&typeof e.result==='string'&&e.result.trim()).map(e=>e.result),
+    ...transcript.filter(e=>e?.type==='assistant').flatMap(e=>
+      Array.isArray(e.message?.content)?e.message.content.filter(c=>
+        c?.type==='text'&&typeof c.text==='string').map(c=>c.text):[])
+  ]:[typeof transcript?.result==='string'?transcript.result:'',
+    typeof transcript?.sigma==='number'?JSON.stringify(transcript):''];
+  const final=Array.isArray(transcript)&&replies.length?
+    [...replies].reverse().find(x=>typeof x==='string'&&x.trim()):
+    replies.find(x=>typeof x==='string'&&x.trim());
+  if(!final)throw Error('Qwen returned no final text');
+  const object=JSON.parse(final.trim());
+  if(!object||typeof object!=='object'||Array.isArray(object)||
+    Object.keys(object).some(k=>!['sigma','note'].includes(k))||
+    typeof object.sigma!=='number'||!Number.isFinite(object.sigma)||
+    object.sigma<.02||object.sigma>.75||typeof object.note!=='string'||
+    object.note.length>350)throw Error('Invalid Qwen recommendation');
+  return {sigma:object.sigma,note:object.note};
+}
 export function reviewGeneration(report,out){
   const g=report.generation;
   const prompt=[
@@ -50,15 +73,7 @@ export function reviewGeneration(report,out){
   fs.writeFileSync(path.join(out,'qwen-review-'+g+'.json'),
     String(result.stdout||'').slice(0,400000));
   try{
-    const messages=JSON.parse(result.stdout);
-    const reply=Array.isArray(messages)?
-      [...messages].reverse().find(x=>x.type==='result')?.result:null;
-    const object=JSON.parse(String(reply||'').trim());
-    if(!object||typeof object!=='object'||
-      Object.keys(object).some(k=>!['sigma','note'].includes(k))||
-      typeof object.sigma!=='number'||!Number.isFinite(object.sigma)||
-      object.sigma<.02||object.sigma>.75||typeof object.note!=='string'||
-      object.note.length>350)throw Error('Invalid Qwen recommendation');
+    const object=parseQwenOutput(result.stdout);
     console.log('Qwen: next sigma '+object.sigma+'; '+object.note.slice(0,150));
     return {sigma:object.sigma,note:object.note};
   }catch(e){
