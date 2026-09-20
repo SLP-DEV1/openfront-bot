@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.10.8
+// @version      1.10.9
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -11,10 +11,10 @@
 
 (() => {
   'use strict';
-  if (window.__ofSoloAggroBot1108) return;
-  window.__ofSoloAggroBot1108 = true;
+  if (window.__ofSoloAggroBot1109) return;
+  window.__ofSoloAggroBot1109 = true;
 
-  const VERSION = '1.10.8', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1108';
+  const VERSION = '1.10.9', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1109';
   const defaults = {enabled:false, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -24,7 +24,7 @@
   try { opts = {...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; }
   catch (_) {opts = {...defaults};}
   try {if(!localStorage.getItem(KEY)){
-    opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v1107')||localStorage.getItem('of-solo-aggrobot-v1106')||localStorage.getItem('of-solo-aggrobot-v1105')||localStorage.getItem('of-solo-aggrobot-v1104')||localStorage.getItem('of-solo-aggrobot-v1103')||localStorage.getItem('of-solo-aggrobot-v1102')||localStorage.getItem('of-solo-aggrobot-v1101')||localStorage.getItem('of-solo-aggrobot-v1100')||localStorage.getItem('of-solo-aggrobot-v199')||localStorage.getItem('of-solo-aggrobot-v198')||localStorage.getItem('of-solo-aggrobot-v197')||localStorage.getItem('of-solo-aggrobot-v196')||localStorage.getItem('of-solo-aggrobot-v195')||localStorage.getItem('of-solo-aggrobot-v194')||localStorage.getItem('of-solo-aggrobot-v193')||localStorage.getItem('of-solo-aggrobot-v192')||localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
+    opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v1108')||localStorage.getItem('of-solo-aggrobot-v1107')||localStorage.getItem('of-solo-aggrobot-v1106')||localStorage.getItem('of-solo-aggrobot-v1105')||localStorage.getItem('of-solo-aggrobot-v1104')||localStorage.getItem('of-solo-aggrobot-v1103')||localStorage.getItem('of-solo-aggrobot-v1102')||localStorage.getItem('of-solo-aggrobot-v1101')||localStorage.getItem('of-solo-aggrobot-v1100')||localStorage.getItem('of-solo-aggrobot-v199')||localStorage.getItem('of-solo-aggrobot-v198')||localStorage.getItem('of-solo-aggrobot-v197')||localStorage.getItem('of-solo-aggrobot-v196')||localStorage.getItem('of-solo-aggrobot-v195')||localStorage.getItem('of-solo-aggrobot-v194')||localStorage.getItem('of-solo-aggrobot-v193')||localStorage.getItem('of-solo-aggrobot-v192')||localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
     // Only import user-adjustable preferences, never a previously enabled bot.
   }}catch(_){}
   opts.enabled = false;                         // Never auto-start after reload.
@@ -115,6 +115,11 @@
   // Difficulty-specific troop ratios remain tied to actual difficulty.
   const coordinatedWar=()=>opts.impossibleMode;
   const isWar=()=>warState.id!==null;
+  // Test control exists only on loopback and only after explicit harness opt-in.
+  const benchmark = ['localhost','127.0.0.1','[::1]'].includes(window.location?.hostname) &&
+    window.__OF_BENCHMARK_CONFIG__?.enabled===true ? window.__OF_BENCHMARK_CONFIG__ : null;
+  let recordSequence=0,recordCounts={},recordsDropped=0,streamErrors=0;
+  const jsonCopy=value=>JSON.parse(JSON.stringify(value,(_,v)=>typeof v==='bigint'?v.toString():v));
   function telemetry(kind,message,extra={}) {
     if(!opts.enabled || !permittedMatch(game))return;
     let m=myPlayer(),tick=number(()=>game.ticks(),0);
@@ -126,11 +131,19 @@
         typeof v==='bigint'?v.toString():v));}
       catch(_){frozen={snapshotError:'Daten konnten nicht eingefroren werden'};}
     }
-    diagnostics.push({time:new Date().toISOString(),tick,kind,message,mode:strategic.mode,
+    const record={...frozen,detailKind:frozen.kind,seq:++recordSequence,time:new Date().toISOString(),tick,kind,message,mode:strategic.mode,
       warTarget:warState.name,home:number(()=>m?.troops?.()),gold:number(()=>Number(m?.gold?.())),
       land:number(()=>m?.numTilesOwned?.()),committed:troopSnapshot.committed,
-      incoming:troopSnapshot.incoming,...frozen});
-    if(diagnostics.length>1400)diagnostics.splice(0,diagnostics.length-1400);
+      incoming:troopSnapshot.incoming};
+    diagnostics.push(record);
+    recordCounts[kind]=(recordCounts[kind]||0)+1;
+    if(benchmark && typeof benchmark.onRecord==='function'){
+      try{benchmark.onRecord(jsonCopy(record));}catch(_){streamErrors++;}
+    }
+    if(diagnostics.length>1400){
+      const dropped=diagnostics.length-1400;recordsDropped+=dropped;
+      diagnostics.splice(0,dropped);
+    }
   }
   function gameOutcome(g,me){
     const result={outcome:'unknown',source:'gameOver',tick:number(()=>g?.ticks?.(),-1),
@@ -152,13 +165,16 @@
         if(winner===null||winner===undefined)result.outcome='incomplete';
         else if(Array.isArray(winner)&&['player','team','nation'].includes(winner[0])){
           const ids=winner.slice(winner[0]==='player'?1:2);
-          result.outcome=ids.includes(safeID(me))?'victory':'defeat';
+          // Winner tuples contain ClientID, not PlayerID or numeric smallID.
+          const clientID=me?.clientID?.();
+          if(typeof clientID==='string'&&clientID.length)
+            result.outcome=winner[0]==='nation'?'defeat':ids.includes(clientID)?'victory':'defeat';
         }
       }
     }catch(_){}
     return result;
   }
-  function exportDiagnostics() {
+  function diagnosticSnapshot() {
     const config=game?.config?.().gameConfig?.()||{};
     const details={bot:VERSION,gameType:config.gameType,
       difficulty:config.difficulty,
@@ -179,9 +195,15 @@
       defense:{status:defenseStatus,stats:defenseStats,pendingRetreats:[...retreatRequests.values()]},
       rockets:{confirmed:nukeShots,attempts:nukeAttempts,unconfirmed:nukeUnconfirmed,pending:nukePending},
       diplomacy:{status:diplomacyStatus,stats:diplomacyStats,pending:[...diplomacyPending.values()]},records:diagnostics,createdAt:new Date().toISOString()};
+    details.recording={total:recordSequence,counts:{...recordCounts},dropped:recordsDropped,
+      firstSequence:diagnostics[0]?.seq??null,streamErrors};
+    return jsonCopy(details);
+  }
+  function exportDiagnostics() {
+    const details=diagnosticSnapshot();
     const blob=new Blob([JSON.stringify(details,null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download='OpenFront_AggroBot_1.10.8_Diagnose.json';document.body.append(a);a.click();a.remove();
+    a.href=url;a.download='OpenFront_AggroBot_1.10.9_Diagnose.json';document.body.append(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),2000);
   }
 
@@ -198,7 +220,7 @@
       ['Singleplayer','Public','Private'].includes(gameType(g));}
     catch(_){return false;}
   };
-  const conflicts = () => !!(window.__ofSoloAggroBot1 || window.__ofSoloAggroBot11 || window.__ofSoloAggroBot12 || window.__ofSoloAggroBot13 || window.__ofSoloAggroBot14 || window.__ofSoloAggroBot15 || window.__ofSoloAggroBot16 || window.__ofSoloAggroBot17 || window.__ofSoloAggroBot18 || window.__ofSoloAggroBot181 || window.__ofSoloAggroBot190 || window.__ofSoloAggroBot191 || window.__ofSoloAggroBot192 || window.__ofSoloAggroBot193 || window.__ofSoloAggroBot194 || window.__ofSoloAggroBot195 || window.__ofSoloAggroBot196 || window.__ofSoloAggroBot197 || window.__ofSoloAggroBot198 || window.__ofSoloAggroBot199 || window.__ofSoloAggroBot1100 || window.__ofSoloAggroBot1101 || window.__ofSoloAggroBot1102 || window.__ofSoloAggroBot1103 || window.__ofSoloAggroBot1104 || window.__ofSoloAggroBot1105 || window.__ofSoloAggroBot1106 || window.__ofSoloAggroBot1107);
+  const conflicts = () => !!(window.__ofSoloAggroBot1108 || window.__ofSoloAggroBot1 || window.__ofSoloAggroBot11 || window.__ofSoloAggroBot12 || window.__ofSoloAggroBot13 || window.__ofSoloAggroBot14 || window.__ofSoloAggroBot15 || window.__ofSoloAggroBot16 || window.__ofSoloAggroBot17 || window.__ofSoloAggroBot18 || window.__ofSoloAggroBot181 || window.__ofSoloAggroBot190 || window.__ofSoloAggroBot191 || window.__ofSoloAggroBot192 || window.__ofSoloAggroBot193 || window.__ofSoloAggroBot194 || window.__ofSoloAggroBot195 || window.__ofSoloAggroBot196 || window.__ofSoloAggroBot197 || window.__ofSoloAggroBot198 || window.__ofSoloAggroBot199 || window.__ofSoloAggroBot1100 || window.__ofSoloAggroBot1101 || window.__ofSoloAggroBot1102 || window.__ofSoloAggroBot1103 || window.__ofSoloAggroBot1104 || window.__ofSoloAggroBot1105 || window.__ofSoloAggroBot1106 || window.__ofSoloAggroBot1107);
   function advisorConflict() {
     if (!window.__openfrontSpawnAdvisorV104) return false;
     try {const s=JSON.parse(localStorage.getItem('openfront-spawn-advisor-10.4')||'{}');
@@ -315,7 +337,7 @@
       warshipConfirmed:0,warshipUnconfirmed:0};
     strategicTelemetry={favorableVictims:0,falloutSkipped:0,falloutFallback:0,afkTargets:0,assists:0,neutralLandings:0,forecastCount:0,engineForecasts:0,proxyForecasts:0,forecastComparisons:0,forecastUnavailable:0};
     nukeBusy=false;lastNuke=-Infinity;nukePending=null;nukeStatus='Warte auf Silo';nukeShots=0;nukeAttempts=0;nukeUnconfirmed=0;nuclearCache=null;nuclearCacheTick=-Infinity;
-    warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};diagnostics=[];lastDiagnosticTick=-Infinity;gameEnd=null;forecastAudits=[];lastForecastAudit=null;incomeAttribution=[];
+    warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};diagnostics=[];recordSequence=0;recordCounts={};recordsDropped=0;streamErrors=0;lastDiagnosticTick=-Infinity;gameEnd=null;forecastAudits=[];lastForecastAudit=null;incomeAttribution=[];
     investmentStatus='Grundaufbau';lastWarReview=-Infinity;
     defenseStatus='Keine Bedrohung';lastEmergencyRetreat=-Infinity;lastDefenseLog=-Infinity;
     retreatRequests.clear();defenseStats={retreatsOrdered:0,retreatsObserved:0,unknown:0,unconfirmed:0};
@@ -1521,8 +1543,8 @@
     }
     return false;
   }
-  // v1.9: The game returns the ACTUAL building tile via canBuild, and
-  // the actual upgradable unit id via canUpgrade. These are alternatives, not
+  // canBuild predicts the resulting building tile; the intent retains the queried
+  // request tile so the engine resolves it once. canUpgrade is a unit ID, not
   // interchangeable. Own tiles INSIDE the country matter more than border-only probes.
   const STRUCTURE_TYPES=['City','Factory','Port','Defense Post','SAM Launcher','Missile Silo'];
   const ECON_PENDING_TTL=100; // 10 game seconds; new builds appear before construction completes.
@@ -2082,7 +2104,7 @@
           if(isUpgrade)siteValue-=Math.max(0,number(()=>units.find(u=>u.id?.()===b.canUpgrade)?.level(),1)-2)*6;
           if(!isUpgrade && item.count>=item.desired)continue;
           const old=units.find(u=>u.id?.()===b.canUpgrade);
-          proposals.push({kind:isUpgrade?'upgrade':'build',type:item.type,tile,
+          proposals.push({kind:isUpgrade?'upgrade':'build',type:item.type,tile,requestTile:site.ref,
             unitId:b.canUpgrade,level:number(()=>old?.level(),0),cost,siteValue});
         }
       }
@@ -2117,7 +2139,7 @@
     proposals.sort((a,b)=>b.siteValue-a.siteValue);
     const chosen=proposals[0];
     if(!live(serial))return false;
-    const args=chosen.kind==='upgrade'?[chosen.unitId,chosen.type,1]:[chosen.type,chosen.tile];
+    const args=chosen.kind==='upgrade'?[chosen.unitId,chosen.type,1]:[chosen.type,chosen.requestTile];
     if(send(chosen.kind,args,`${chosen.kind==='upgrade'?'UPGRADE':'BAU'} ${chosen.type} · ${chosen.cost.toLocaleString()} Gold`)){
       economicPending={...chosen,tick};failedEconomyProbes=0;lastEconomy=tick;lastEconomicAction=tick;
       if(chosen.type==='Port'){
@@ -2685,14 +2707,15 @@
           const cost=Number(ship.cost);
           if(!game.config().infiniteGold?.() &&
             (!Number.isFinite(cost)||gold<cost))continue;
-          if(send('build',['Warship',ship.canBuild],
+          // canBuild is the launch PORT; the intent expects the queried WATER patrol tile.
+          if(send('build',['Warship',tile],
             (active?'KÜSTENSCHUTZ':'FLOTTENAUFBAU')+' → Kriegsschiff')){
-            pendingWarship={tick,tile:ship.canBuild,cost,
+            pendingWarship={tick,tile,spawnTile:ship.canBuild,cost,
               beforeIds:ownWarships.map(u=>u.id?.())};
             marineStats.warshipSent++;lastFleet=tick;
             fleetStatus='Kriegsschiff angefordert · Bestätigung ausstehend';
             telemetry('warship_intent','Kriegsschiff-Bau angefordert',
-              {tile:ship.canBuild,cost,ports:ports.length,
+              {tile,spawnTile:ship.canBuild,cost,ports:ports.length,
                 priorWarships:ownWarships.length,emergency:!!active});
             return true;
           }
@@ -3100,5 +3123,31 @@
   const diplomacyInterval=setInterval(diplomacyTick,950);
   const nukeInterval=setInterval(nukeStep,1100);
   window.addEventListener('beforeunload',()=>{clearInterval(interval);clearInterval(economyInterval);clearInterval(diplomacyInterval);clearInterval(nukeInterval);});
+  if(benchmark){
+    window.__OF_BENCHMARK__=Object.freeze({
+      snapshot:diagnosticSnapshot,
+      status:()=>({version:VERSION,connected:!!connected(),enabled:opts.enabled,
+        gameType:gameType(game),tick:number(()=>game.ticks(),-1),
+        spawned:!!myPlayer()?.hasSpawned?.(),alive:myPlayer()?.isAlive?.()??null,
+        gameOver:!!game?.gameOver?.(),status}),
+      start:(settings={})=>{
+        if(!connected()||gameType(game)!=='Singleplayer')throw new Error('Benchmark requires a local Singleplayer match');
+        const allowed={aggressive:[40,100],reserve:[5,65],actionsPerMinute:[15,120],maxTargets:[4,25]};
+        for(const [key,value] of Object.entries(settings)){
+          if(key==='fullAuto'&&typeof value==='boolean')continue;
+          if(!allowed[key]||typeof value!=='number'||!Number.isFinite(value)||value<allowed[key][0]||value>allowed[key][1])
+            throw new Error('Invalid benchmark setting: '+key);
+        }
+        Object.assign(opts,settings);if(opts.fullAuto)opts.autoStrategy=true;
+        autoTuning.tick=-Infinity;opts.enabled=true;generation++;
+        telemetry('benchmark_start','Lokaler Testlauf gestartet',{settings});
+        reportIntents(true);
+      },
+      stop:()=>{telemetry('benchmark_stop','Lokaler Testlauf gestoppt');opts.enabled=false;generation++;},
+      // Engine harness awaits every cycle; ordinary browser timers stay unchanged.
+      pump:async()=>{await step();await economyStep();await diplomacyTick();await nukeStep();}
+    });
+  }
   console.info(PREFIX,'v'+VERSION,'ready; Singleplayer/Public/Private, OFF by default');
 })();
+

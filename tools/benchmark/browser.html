@@ -1,0 +1,64 @@
+<!doctype html><html lang="de"><meta charset="utf-8"><title>AggroBot Match-Test</title>
+<style>body{margin:0;background:#111827;color:#e5e7eb;font:15px system-ui}header{padding:16px}button{padding:10px 18px;margin-right:12px}iframe{width:100%;height:76vh;border:0}pre{white-space:pre-wrap;font-size:12px}#status{font-weight:bold}</style>
+<header><h1>AggroBot – lokaler Match-Test</h1><p>Originaler OpenFront-Client mit Spiel-Worker. Aufzeichnung erfolgt automatisch auf dem lokalen Testserver.</p>
+<button id="start">Testpartie starten</button><button id="stop" disabled>Beenden und sichern</button>
+<p id="status">Bereit</p><pre id="details"></pre></header><div id="game"></div>
+<script>
+const config=/*BENCHMARK_CONFIG*/;
+const $=id=>document.getElementById(id);
+$('details').textContent=JSON.stringify(config.metadata,null,2);
+let frame,bot,pending=[],busy=false,done=false,spawned=false,started=false,poll,startTime,lastCheckpoint=0;
+const post=async(route,data)=>{
+  const response=await fetch('/__aggrobot/'+route,{method:'POST',headers:{'Content-Type':'application/json','X-Benchmark-Token':config.token},body:JSON.stringify(data)});
+  if(!response.ok)throw Error('Aufzeichnung fehlgeschlagen: '+await response.text());
+};
+async function flush(){if(pending.length){const batch=pending;pending=[];try{await post('events',batch);}catch(e){pending.unshift(...batch);throw e;}}}
+async function finish(reason,error){
+  if(done)return;done=true;clearInterval(poll);$('stop').disabled=true;
+  const finalStatus=bot?.status();
+  const snapshot=bot?.snapshot()||{records:[],recording:{total:0,streamErrors:0}};
+  bot?.stop(); // Stop after snapshot: the match counters exclude this controller action.
+  pending=pending.filter(r=>r.seq<=snapshot.recording.total);
+  await flush();
+  if(reason==='eliminated'&&spawned&&finalStatus?.alive===false)
+    snapshot.gameEnd={outcome:'defeat',source:'browser-GameView-elimination',tick:finalStatus.tick,land:0};
+  snapshot.run={tick:finalStatus?.tick??null,termination:reason,error:error?String(error):null,spawned,elapsedMs:Date.now()-startTime};
+  await post('finish',snapshot);
+  $('status').textContent='Gesichert: '+reason+' · Ergebnis: '+(snapshot.gameEnd?.outcome||'unknown');
+  $('details').textContent=JSON.stringify({run:snapshot.run,gameEnd:snapshot.gameEnd,recording:snapshot.recording},null,2);
+}
+$('start').onclick=async()=>{
+  $('start').disabled=true;startTime=Date.now();$('status').textContent='OpenFront wird geladen …';
+  // Dedicated loopback origin. No existing game/account is touched.
+  localStorage.setItem('username','AggroBot Benchmark');
+  frame=document.createElement('iframe');frame.title='OpenFront Testpartie';frame.src='/';$('game').append(frame);
+  frame.onload=async()=>{try{
+    const w=frame.contentWindow;
+    w.__OF_BENCHMARK_CONFIG__={enabled:true,onRecord:r=>pending.push(r)};
+    const script=w.document.createElement('script');script.src='/__aggrobot/bot.js';
+    const loaded=new Promise((resolve,reject)=>{script.onload=resolve;script.onerror=reject;});w.document.head.append(script);await loaded;
+    bot=w.__OF_BENCHMARK__;
+    await Promise.race([w.customElements.whenDefined('single-player-modal'),new Promise((_,reject)=>setTimeout(()=>reject(Error('Client startup timeout')),60000))]);
+    // Main registers join-lobby during initialization. Wait for its UI to settle.
+    await new Promise(resolve=>setTimeout(resolve,1500));
+    w.document.dispatchEvent(new w.CustomEvent('join-lobby',{detail:{source:'singleplayer',gameID:config.metadata.gameID,
+      gameStartInfo:{gameID:config.metadata.gameID,lobbyCreatedAt:0,players:[{clientID:'aggrobot',username:'AggroBot Benchmark',clanTag:null}],config:config.metadata.gameConfig}}}));
+    $('stop').disabled=false;
+    poll=setInterval(async()=>{if(busy||done)return;busy=true;try{
+      const state=bot.status();
+      if(!started&&state.connected){bot.start(config.metadata.settings);started=true;}
+      spawned ||= state.spawned;
+      $('status').textContent=`Tick ${state.tick} · Spawn ${spawned?'bestätigt':'ausstehend'} · ${state.status}`;
+      await flush();
+      if(Date.now()-lastCheckpoint>10000){await post('checkpoint',bot.snapshot());lastCheckpoint=Date.now();}
+      if(state.gameOver)await finish('game-over');
+      else if(spawned&&state.alive===false)await finish('eliminated');
+      else if(started&&!state.enabled)await finish('bot-stopped');
+      else if(!spawned&&Date.now()-startTime>120000)await finish('spawn-timeout');
+      else if(state.tick>=config.metadata.maxTicks)await finish('tick-limit');
+      else if(Date.now()-startTime>config.metadata.maxTicks*150+120000)await finish('wall-timeout');
+    }catch(e){$('status').textContent=String(e);try{await finish('error',e);}catch(saveError){$('status').textContent=String(saveError);}}finally{busy=false;}},500);
+  }catch(error){await finish('startup-error',error);}};
+};
+$('stop').onclick=async()=>{if(!busy)await finish('manual-stop');};
+</script></html>

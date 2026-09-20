@@ -11,11 +11,11 @@ async function check(name, test) {
   try { await test(); ++pass; console.log('PASS', name); }
   catch (error) { ++fail; console.error('FAIL', name, error.stack); }
 }
-function boot() {
+function boot(benchmarkOptions={}) {
   let tick = 300, land = 1200, gold = 1000000, home = 90000, enemyLand = 900, gameOver = false;
   const out = [], incoming = [], sent = [], warnings = [], infos = [], timers = [];
   const me = {
-    id: () => 'me', smallID: () => 1, troops: () => home, numTilesOwned: () => land,
+    id: () => 'me', clientID: () => 'client-me', smallID: () => 1, troops: () => home, numTilesOwned: () => land,
     gold: () => BigInt(gold), isAlive: () => true, hasSpawned: () => true,
     isPlayer: () => true, units: () => [], outgoingAttacks: () => out,
     incomingAttacks: () => incoming, isFriendly: () => false,
@@ -56,7 +56,7 @@ function boot() {
   const fixedDate = class extends Date { static now() { return 1789848000000; } };
   class Attack { constructor(targetID,troops) { this.targetID=targetID; this.troops=troops; } }
   class Build { constructor(unit,tile) { this.unit=unit; this.tile=tile; } }
-  const win = {addEventListener: () => {}};
+  const win = {addEventListener: () => {},...benchmarkOptions};
   const context = {
     window: win, document: {readyState: 'loading', body: null,
       addEventListener: () => {}, querySelector: () => null},
@@ -82,11 +82,11 @@ function boot() {
     'setMode:m=>strategic.mode=m,setAllianceCtor:C=>ctors.alliance=C,',
     'setNukePending:p=>nukePending=p,',
     'setPerf:(combat,border,economy)=>runtime={...runtime,combatMs:combat,borderMs:border,economyMs:economy},',
-    'state:()=>({pendingAttack,attackReceipts,warState,lastBattle,gameEnd,diagnostics,forecastAudits,incomeAttribution,spawnState,spawnCache,spawnJob,economicStatus,failedEconomyProbes,investmentStatus,pendingBoat,pendingWarship,marineStats,portProbeFailures,strategic,winStatus,incomeStatus,fleetStatus,strategicTelemetry,defenseStatus,defenseStats,autoTuning,nukeShots,nukeAttempts,nukeUnconfirmed,nukePending,lastProposalTick,diplomacyStatus,diplomacyPending:[...diplomacyPending.values()],retreatRequests:[...retreatRequests.values()]}),opts};'
+    'state:()=>({economicPending,pendingAttack,attackReceipts,warState,lastBattle,gameEnd,diagnostics,forecastAudits,incomeAttribution,spawnState,spawnCache,spawnJob,economicStatus,failedEconomyProbes,investmentStatus,pendingBoat,pendingWarship,marineStats,portProbeFailures,strategic,winStatus,incomeStatus,fleetStatus,strategicTelemetry,defenseStatus,defenseStats,autoTuning,nukeShots,nukeAttempts,nukeUnconfirmed,nukePending,lastProposalTick,diplomacyStatus,diplomacyPending:[...diplomacyPending.values()],retreatRequests:[...retreatRequests.values()]}),opts};'
   ].join('\n');
   vm.runInNewContext(source.replace(anchor, expose + '\n' + anchor), context, {timeout:2000});
   win.__test.setup(game, {emit:event=>sent.push(event)}, {attack:Attack, build:Build});
-  return {b:win.__test,game,me,weak,strong,out,sent,warnings,infos,doc:context.document,
+  return {win,b:win.__test,game,me,weak,strong,out,sent,warnings,infos,doc:context.document,
     flushTimers:(limit=40)=>{for(let i=0;i<limit&&timers.length;i++)timers.shift()();return timers.length;},
     setTick:v=>tick=v,setLand:v=>land=v,setEnemyLand:v=>enemyLand=v,
     setOver:v=>gameOver=v,setGold:v=>gold=v,setHome:v=>home=v};
@@ -1090,10 +1090,10 @@ function boot() {
   });
   await check('v1.10.2 game winner from official WinUpdate tuple', () => {
     const x=boot();
-    x.game.updatesSinceLastTick=()=>({Win:[{winner:['player','me'],
+    x.game.updatesSinceLastTick=()=>({Win:[{winner:['player','client-me'],
       allPlayersStats:{}}]});
     assert.equal(x.b.gameOutcome(x.game,x.me).outcome,'victory');
-    x.game.updatesSinceLastTick=()=>({Win:[{winner:['team','blue','weak','me'],
+    x.game.updatesSinceLastTick=()=>({Win:[{winner:['team','blue','client-weak','client-me'],
       allPlayersStats:{}}]});
     assert.equal(x.b.gameOutcome(x.game,x.me).outcome,'victory');
     x.game.updatesSinceLastTick=()=>({Win:[{winner:['player','weak'],
@@ -1638,12 +1638,66 @@ function boot() {
       gameEnd:{outcome:'defeat',tick:9000,land:20000}};
     const old=summarize(base,'old'),now=summarize(current,'new');
     assert.equal(compare([old,now]).length,0,'unknown seed not paired');
-    base.benchmarkMeta.seed=123;current.benchmarkMeta={...base.benchmarkMeta};
+    Object.assign(base.benchmarkMeta,{seed:123,seedSource:'GameStartInfo.gameID',
+      harness:'engine-gameview-v1',engineCommit:'engine-1',gameConfig:{gameMap:'Europe'},
+      maxTicks:18000,botSHA256:'source-old',profile:'autonomous'});
+    current.benchmarkMeta={...base.benchmarkMeta,botSHA256:'source-new'};
     const verified=compare([summarize(base),summarize(current)]);
     assert.equal(verified.length,1);
     assert.equal(verified[0].matches.length,2);
     assert.equal(summarize({...base,gameEnd:null}).outcome,'unknown');
   });
+  await check('benchmark bridge is absent on public origins and without opt-in',()=>{
+    assert.equal(boot().win.__OF_BENCHMARK__,undefined);
+    assert.equal(boot({location:{hostname:'openfront.io'},__OF_BENCHMARK_CONFIG__:{enabled:true}}).win.__OF_BENCHMARK__,undefined);
+    assert.equal(boot({location:{hostname:'localhost'}}).win.__OF_BENCHMARK__,undefined);
+  });
+  await check('benchmark refuses multiplayer and invalid settings without enabling',()=>{
+    const x=boot({location:{hostname:'localhost'},__OF_BENCHMARK_CONFIG__:{enabled:true}});
+    x.b.opts.enabled=false;
+    x.game.config().gameConfig=()=>({gameType:'Public'});
+    assert.throws(()=>x.win.__OF_BENCHMARK__.start(),/Singleplayer/);
+    assert.equal(x.b.opts.enabled,false);
+    x.game.config().gameConfig=()=>({gameType:'Singleplayer'});
+    assert.throws(()=>x.win.__OF_BENCHMARK__.start({reserve:99}),/Invalid/);
+    assert.equal(x.b.opts.enabled,false);
+  });
+  await check('full event stream survives ring truncation and preserves event identity',()=>{
+    const records=[];
+    const x=boot({location:{hostname:'localhost'},__OF_BENCHMARK_CONFIG__:{enabled:true,onRecord:r=>records.push(r)}});
+    for(let i=0;i<1410;i++)x.b.telemetry('build_confirmed','test',{kind:'build',seq:-1,tick:-5});
+    const data=x.win.__OF_BENCHMARK__.snapshot();
+    assert.equal(records.length,1410);assert.equal(records[0].kind,'build_confirmed');
+    assert.equal(records[0].seq,1);assert.equal(records[0].tick,300);
+    assert.equal(records[0].detailKind,'build');
+    assert.equal(data.records.length,1400);assert.equal(data.recording.dropped,10);
+    assert.equal(data.recording.counts.build_confirmed,1410);
+    records[0].kind='modified';assert.equal(data.records[0].kind,'build_confirmed');
+  });
+  await check('winner uses client ID even when another client ID equals our player ID',()=>{
+    const x=boot();x.game.updatesSinceLastTick=()=>({Win:[{winner:['player','me'],allPlayersStats:{}}]});
+    assert.equal(x.b.gameOutcome(x.game,x.me).outcome,'defeat');
+    delete x.me.clientID;
+    assert.equal(x.b.gameOutcome(x.game,x.me).outcome,'unknown');
+  });
+  await check('warship sends queried water target rather than returned launch port',async()=>{
+    const x=boot();let query;
+    x.game.isWater=t=>t!==5500;
+    x.me.units=()=>[{type:()=> 'Port',tile:()=>5500,isActive:()=>true,isUnderConstruction:()=>false}];
+    x.me.actions=async tile=>{query=tile;return {buildableUnits:[{type:'Warship',canBuild:5500,cost:250000n}]};};
+    assert.equal(await x.b.fleetDefense(x.me,300,0),true);
+    assert.equal(x.sent[0].tile,query);assert.notEqual(x.sent[0].tile,5500);
+    assert.equal(x.b.state().pendingWarship.spawnTile,5500);
+  });
+  await check('construction retains worker query tile and tracks predicted result tile',async()=>{
+    const x=boot();x.setGold(125000);const queries=new Set();
+    x.me.actions=async(tile,types)=>{queries.add(tile);return {buildableUnits:(types||[]).map(type=>({
+      type,canBuild:tile+1,canUpgrade:false,cost:125000n}))};};
+    assert.equal(await x.b.economy(x.me,300,0,[]),true);
+    assert(queries.has(x.sent[0].tile),'intent keeps the original queried tile');
+    assert.equal(x.b.state().economicPending.tile,x.sent[0].tile+1);
+  });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
 })();
+

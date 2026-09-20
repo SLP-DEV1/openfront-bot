@@ -17,3 +17,10 @@ jobs:
         run: node --check tools/match-report.cjs
       - name: Test bot strategy
         run: node tests/strategy-regression.cjs
+
+      - name: Check benchmark tools
+        run: |
+          node --check tools/benchmark/engine-match.mjs
+          node --check tools/benchmark/serve-browser.mjs
+          node --check tools/benchmark/suite.mjs
+          node tests/benchmark-regression.cjs
