@@ -21,6 +21,11 @@ jobs:
       - name: Test bot strategy
         run: node tests/strategy-regression.cjs
 
+      - name: Test match auto-start and panel
+        run: |
+          node --check tests/autostart-regression.cjs
+          node tests/autostart-regression.cjs
+
       - name: Test hybrid learning
         run: node tests/learning-regression.cjs
 
