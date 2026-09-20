@@ -71,7 +71,7 @@ function boot(benchmarkOptions={}) {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,warReadiness,targetOpportunity,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
+    'railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'setWarWait:n=>warWaitSince=n,setEconFails:n=>failedEconomyProbes=n,',
     'setPending:p=>pendingAttack=p,setLastBattle:p=>lastBattle=p,',
@@ -79,10 +79,10 @@ function boot(benchmarkOptions={}) {
     'setGroups:groups=>strategic.groups=groups,',
     'setBoats:yes=>opts.boats=yes,setBoatCtor:C=>ctors.boat=C,',
     'setCancelCtor:C=>ctors.cancel=C,setTroopSnapshot:t=>troopSnapshot=t,setCtor:(key,C)=>ctors[key]=C,',
-    'setMode:m=>strategic.mode=m,setAllianceCtor:C=>ctors.alliance=C,',
+    'setMode:m=>strategic.mode=m,setAllianceCtor:C=>ctors.alliance=C,setHostilePressure:t=>lastHostilePressure=t,',
     'setNukePending:p=>nukePending=p,',
     'setPerf:(combat,border,economy)=>runtime={...runtime,combatMs:combat,borderMs:border,economyMs:economy},',
-    'state:()=>({economicPending,pendingAttack,attackReceipts,warState,lastBattle,gameEnd,diagnostics,forecastAudits,incomeAttribution,spawnState,spawnCache,spawnJob,economicStatus,failedEconomyProbes,investmentStatus,pendingBoat,pendingWarship,marineStats,portProbeFailures,strategic,winStatus,incomeStatus,fleetStatus,strategicTelemetry,defenseStatus,defenseStats,autoTuning,nukeShots,nukeAttempts,nukeUnconfirmed,nukePending,lastProposalTick,diplomacyStatus,diplomacyPending:[...diplomacyPending.values()],retreatRequests:[...retreatRequests.values()]}),opts};'
+    'state:()=>({economicPending,pendingAttack,attackReceipts,warState,lastBattle,gameEnd,diagnostics,forecastAudits,incomeAttribution,spawnState,spawnCache,spawnJob,economicStatus,failedEconomyProbes,investmentStatus,pendingBoat,pendingWarship,marineStats,portProbeFailures,strategic,winStatus,incomeStatus,fleetStatus,strategicTelemetry,defenseStatus,defenseStats,autoTuning,nukeShots,nukeAttempts,nukeUnconfirmed,nukePending,lastHostilePressure,lastProposalTick,diplomacyStatus,diplomacyPending:[...diplomacyPending.values()],retreatRequests:[...retreatRequests.values()]}),opts};'
   ].join('\n');
   vm.runInNewContext(source.replace(anchor, expose + '\n' + anchor), context, {timeout:2000});
   win.__test.setup(game, {emit:event=>sent.push(event)}, {attack:Attack, build:Build});
@@ -137,15 +137,14 @@ function boot(benchmarkOptions={}) {
     assert.equal(await x.b.naval(x.me,300,0),true);
     assert.equal(x.sent[0].dst,6);
   });
-  await check('navy keeps reserves against all border enemies', async () => {
+  await check('navy refuses commitment beside near-peer border enemy', async () => {
     const x=boot();x.b.setBoats(true);x.b.setWar('weak','weak');
     x.b.setGroups([{id:'weak',opponent:x.weak},{id:'strong',opponent:x.strong}]);
     x.me.actions=async()=>({buildableUnits:[{type:'Transport',canBuild:1,cost:0n}]});
     class Boat{constructor(dst,troops){this.dst=dst;this.troops=troops;}}
     x.b.setBoatCtor(Boat);
-    assert.equal(await x.b.naval(x.me,300,0),true);
-    assert.equal(x.sent[0].dst,5);
-    assert(x.sent[0].troops<26000,x.sent[0].troops);
+    assert.equal(await x.b.naval(x.me,300,0),false);
+    assert.equal(x.sent.length,0);
   });
   await check('no orders after match ended', () => {
     const x=boot();x.setOver(true);assert.equal(x.b.connected(),false);
@@ -1629,6 +1628,24 @@ function boot(benchmarkOptions={}) {
       return {buildableUnits:[{type:'Transport',canBuild:1,cost:0n}]};};
     assert.equal(await x.b.naval(x.me,300,0),false);
     assert.equal(x.sent.length,0);
+  });
+  await check('v1.10.11 recent major attack keeps strategy in recovery', () => {
+    const x=boot();x.setTick(300);
+    x.b.rememberHostilePressure({home:90000,incoming:20000},300);
+    x.setTick(400);
+    const s={home:90000,max:100000,ratio:.9,incoming:0,strongest:0,
+      available:70000,committed:0,activeEnemy:0,activeNeutral:0,out:[],inc:[]};
+    const context=x.b.strategy(x.me,[],s);
+    assert.equal(context.wanted,'RECOVER');
+    assert.match(context.reason,/Großangriff/);
+  });
+  await check('v1.10.11 naval offense waits after hostile pressure', async () => {
+    const x=boot();x.b.setBoats(true);let probes=0;
+    class Boat{constructor(dst,troops){this.dst=dst;this.troops=troops;}}
+    x.b.setBoatCtor(Boat);x.b.setHostilePressure(250);
+    x.me.actions=async()=>{probes++;return {buildableUnits:[{type:'Transport',canBuild:1,cost:0n}]};};
+    assert.equal(await x.b.naval(x.me,300,0),false);
+    assert.equal(probes,0);
   });
   await check('issue #12: true cubic trajectory flags SAM off the straight chord', () => {
     const x=boot();x.game.config().samRange=()=>7;

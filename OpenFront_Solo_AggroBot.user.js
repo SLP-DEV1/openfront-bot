@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.11.0
+// @version      1.11.1
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -11,10 +11,10 @@
 
 (() => {
   'use strict';
-  if (window.__ofSoloAggroBot1110) return;
-  window.__ofSoloAggroBot1110 = true;
+  if (window.__ofSoloAggroBot1111) return;
+  window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.11.0', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1110';
+  const VERSION = '1.11.1', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, learningEnabled:true, brainEnabled:false, brainToken:'', fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -24,7 +24,7 @@
   try { opts = {...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; }
   catch (_) {opts = {...defaults};}
   try {if(!localStorage.getItem(KEY)){
-    opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v11010')||localStorage.getItem('of-solo-aggrobot-v1109')||localStorage.getItem('of-solo-aggrobot-v1108')||localStorage.getItem('of-solo-aggrobot-v1107')||localStorage.getItem('of-solo-aggrobot-v1106')||localStorage.getItem('of-solo-aggrobot-v1105')||localStorage.getItem('of-solo-aggrobot-v1104')||localStorage.getItem('of-solo-aggrobot-v1103')||localStorage.getItem('of-solo-aggrobot-v1102')||localStorage.getItem('of-solo-aggrobot-v1101')||localStorage.getItem('of-solo-aggrobot-v1100')||localStorage.getItem('of-solo-aggrobot-v199')||localStorage.getItem('of-solo-aggrobot-v198')||localStorage.getItem('of-solo-aggrobot-v197')||localStorage.getItem('of-solo-aggrobot-v196')||localStorage.getItem('of-solo-aggrobot-v195')||localStorage.getItem('of-solo-aggrobot-v194')||localStorage.getItem('of-solo-aggrobot-v193')||localStorage.getItem('of-solo-aggrobot-v192')||localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
+    opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v1110')||localStorage.getItem('of-solo-aggrobot-v11010')||localStorage.getItem('of-solo-aggrobot-v1109')||localStorage.getItem('of-solo-aggrobot-v1108')||localStorage.getItem('of-solo-aggrobot-v1107')||localStorage.getItem('of-solo-aggrobot-v1106')||localStorage.getItem('of-solo-aggrobot-v1105')||localStorage.getItem('of-solo-aggrobot-v1104')||localStorage.getItem('of-solo-aggrobot-v1103')||localStorage.getItem('of-solo-aggrobot-v1102')||localStorage.getItem('of-solo-aggrobot-v1101')||localStorage.getItem('of-solo-aggrobot-v1100')||localStorage.getItem('of-solo-aggrobot-v199')||localStorage.getItem('of-solo-aggrobot-v198')||localStorage.getItem('of-solo-aggrobot-v197')||localStorage.getItem('of-solo-aggrobot-v196')||localStorage.getItem('of-solo-aggrobot-v195')||localStorage.getItem('of-solo-aggrobot-v194')||localStorage.getItem('of-solo-aggrobot-v193')||localStorage.getItem('of-solo-aggrobot-v192')||localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
     // Only import user-adjustable preferences, never a previously enabled bot.
   }}catch(_){}
   opts.enabled = false;                         // Never auto-start after reload.
@@ -203,7 +203,7 @@
   let recent=[], actions=[], cooldowns=new Map(), lastPaint=0, errors=0;
   let troopSamples=[], lastRecoveryReason='', lastBattle=null, blockedTargets=new Map();
   let troopSnapshot={home:0,max:0,committed:0,incoming:0,enemy:0,ratio:0,reserve:0,available:0};
-  let lastEconomicAction=-Infinity, lastNeutralSend=-Infinity, lastEnemySend=-Infinity;
+  let lastEconomicAction=-Infinity, lastNeutralSend=-Infinity, lastEnemySend=-Infinity,lastHostilePressure=-Infinity;
   let consecutiveIdle=0;
   let economicPending=null, economicBlocked=new Map(), economicStatus='Bauplanung bereit', economicLastPlan='—';
   let economyBusy=false, borderInflight=null, legalNegative=new Map();
@@ -329,7 +329,7 @@
     const details=diagnosticSnapshot();
     const blob=new Blob([JSON.stringify(details,null,2)],{type:'application/json'});
     const url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download='OpenFront_AggroBot_1.11.0_Diagnose.json';document.body.append(a);a.click();a.remove();
+    a.href=url;a.download='OpenFront_AggroBot_1.11.1_Diagnose.json';document.body.append(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),2000);
   }
 
@@ -346,7 +346,7 @@
       ['Singleplayer','Public','Private'].includes(gameType(g));}
     catch(_){return false;}
   };
-  const conflicts = () => !!(window.__ofSoloAggroBot1109 || window.__ofSoloAggroBot1108 || window.__ofSoloAggroBot1 || window.__ofSoloAggroBot11 || window.__ofSoloAggroBot12 || window.__ofSoloAggroBot13 || window.__ofSoloAggroBot14 || window.__ofSoloAggroBot15 || window.__ofSoloAggroBot16 || window.__ofSoloAggroBot17 || window.__ofSoloAggroBot18 || window.__ofSoloAggroBot181 || window.__ofSoloAggroBot190 || window.__ofSoloAggroBot191 || window.__ofSoloAggroBot192 || window.__ofSoloAggroBot193 || window.__ofSoloAggroBot194 || window.__ofSoloAggroBot195 || window.__ofSoloAggroBot196 || window.__ofSoloAggroBot197 || window.__ofSoloAggroBot198 || window.__ofSoloAggroBot199 || window.__ofSoloAggroBot1100 || window.__ofSoloAggroBot1101 || window.__ofSoloAggroBot1102 || window.__ofSoloAggroBot1103 || window.__ofSoloAggroBot1104 || window.__ofSoloAggroBot1105 || window.__ofSoloAggroBot1106 || window.__ofSoloAggroBot1107);
+  const conflicts = () => !!(window.__ofSoloAggroBot1110 || window.__ofSoloAggroBot11010 || window.__ofSoloAggroBot1109 || window.__ofSoloAggroBot1108 || window.__ofSoloAggroBot1 || window.__ofSoloAggroBot11 || window.__ofSoloAggroBot12 || window.__ofSoloAggroBot13 || window.__ofSoloAggroBot14 || window.__ofSoloAggroBot15 || window.__ofSoloAggroBot16 || window.__ofSoloAggroBot17 || window.__ofSoloAggroBot18 || window.__ofSoloAggroBot181 || window.__ofSoloAggroBot190 || window.__ofSoloAggroBot191 || window.__ofSoloAggroBot192 || window.__ofSoloAggroBot193 || window.__ofSoloAggroBot194 || window.__ofSoloAggroBot195 || window.__ofSoloAggroBot196 || window.__ofSoloAggroBot197 || window.__ofSoloAggroBot198 || window.__ofSoloAggroBot199 || window.__ofSoloAggroBot1100 || window.__ofSoloAggroBot1101 || window.__ofSoloAggroBot1102 || window.__ofSoloAggroBot1103 || window.__ofSoloAggroBot1104 || window.__ofSoloAggroBot1105 || window.__ofSoloAggroBot1106 || window.__ofSoloAggroBot1107);
   function advisorConflict() {
     if (!window.__openfrontSpawnAdvisorV104) return false;
     try {const s=JSON.parse(localStorage.getItem('openfront-spawn-advisor-10.4')||'{}');
@@ -466,7 +466,7 @@
     lastRecoveryReason='';lastBattle=null;pendingAttack=null;targetIntelCache.clear();
     attackReceipts={confirmed:0,unconfirmed:0,territoryGained:0};blockedTargets.clear();
     failedEconomyProbes=0;successfulEconomyTick=-Infinity;warWaitSince=-Infinity;
-    lastEconomicAction=-Infinity;lastNeutralSend=-Infinity;lastEnemySend=-Infinity;consecutiveIdle=0;
+    lastEconomicAction=-Infinity;lastNeutralSend=-Infinity;lastEnemySend=-Infinity;lastHostilePressure=-Infinity;consecutiveIdle=0;
     economicPending=null;economicBlocked.clear();economicStatus='Bauplanung bereit';economicLastPlan='—';
     economyBusy=false;borderInflight=null;legalNegative.clear();runtime={borderMs:0,combatMs:0,economyMs:0,attackProbes:0,buildProbes:0};
     strategic={mode:'EXPAND',reason:'Startphase',buildStyle:'Ausgewogen',since:-Infinity,groups:[]};
@@ -1096,6 +1096,16 @@
       growthPotential:Math.max(0,(10+Math.pow(home,.73)/4)*(1-ratio)),
       out,inc,activeEnemy,activeNeutral};
   }
+  // Incoming stacks often disappear briefly between waves. Remember material
+  // pressure so the bot cannot declare the coast clear and launch a large
+  // offensive a few seconds after surviving an attack.
+  function rememberHostilePressure(s,tick){
+    if(s.incoming>=Math.max(1200,Math.max(1,s.home)*.08))lastHostilePressure=tick;
+    return tick-lastHostilePressure<220;
+  }
+  function recentHostilePressure(tick,window=220){
+    return tick-lastHostilePressure<window;
+  }
   function sampleTroops(tick,me) {
     if(troopSamples.length && tick<=troopSamples[troopSamples.length-1].tick)return;
     troopSamples.push({tick,home:number(()=>me.troops()),tiles:number(()=>me.numTilesOwned())});
@@ -1346,6 +1356,7 @@
   }
   function strategy(me,items,s) {
     const tick=number(()=>game.ticks());
+    const coolingDown=recentHostilePressure(tick);
     const trend=armyTrend(tick), neutral=items.some(x=>x.id===null);
     const enemies=items.filter(x=>x.id!==null&&x.opponent?.isAlive?.());
     const gold=number(()=>Number(me.gold())),tiles=number(()=>me.numTilesOwned());
@@ -1368,6 +1379,7 @@
     const seriousAttack=s.incoming>s.home*(late?.15:.05);
     let wanted,reason;
     if(rebuilding){wanted='RECOVER';reason='Truppenverlust oder geringe Reserve';}
+    else if(coolingDown){wanted='RECOVER';reason='Nach Großangriff Heimatarmee stabilisieren';}
     else if(danger&&seriousAttack){wanted='DEFEND';reason='Erhebliche eingehende Angriffe';}
     else if(late && weak.length && s.ratio>.30 && !seriousAttack && readiness.ready){
       wanted='ASSAULT';reason='Late Game: günstige Offensivchance';
@@ -2981,7 +2993,8 @@
     // Use the SAME complete threat snapshot as ground combat. Using military(me)
     // without front groups underestimates the reserve near stronger neighbors.
     const navyState=military(me,strategic.groups),spare=navyState.available;
-    if(spare<1300 || navyState.incoming>0 || navyState.activeEnemy>0)return false;
+    if(spare<1300 || navyState.incoming>0 || navyState.activeEnemy>0 ||
+      recentHostilePressure(tick,260) || navyState.strongest>=navyState.home*.85)return false;
     const foes=game.playerViews().filter(p=>safeID(p)!==safeID(me)&&p.isAlive?.()&&
       !friendly(p,me)&&Number.isInteger(p.state?.spawnTile)&&
       // The naval planner must obey the single-front war director as well.
@@ -3143,6 +3156,7 @@
       learnObserve(tick,me,troopSnapshot,autoTuning.mode);
       sampleTroops(tick,me);sampleIncome(me,tick);inspectMarine(me,tick);victoryPlan(me);confirmAttack(me,tick);evaluateLastBattle(tick,me);
       let immediateState=military(me,strategic.groups);
+      rememberHostilePressure(immediateState,tick);
       // Tune immediately even if emergencyRetreat returns before the normal
       // strategy pass: a dangerous invasion must override ASSAULT right now.
       if(opts.fullAuto && immediateState.incoming>Math.max(1,immediateState.home)*.18)
@@ -3153,7 +3167,7 @@
       const tiles=await borders(me,tick);
       if(!live(serial))return;
       const groups=targetsFromBorder(me,tiles);
-      let s=military(me,groups);troopSnapshot=s;
+      let s=military(me,groups);rememberHostilePressure(s,tick);troopSnapshot=s;
       manageWar(me,groups,s,tick);
       const context=strategy(me,groups,s);
       s=tuneAutonomously(me,groups,s,tick,context);
