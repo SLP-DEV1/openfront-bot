@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.13.0
+// @version      1.13.1
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,8 +14,8 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.13.0', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
-  const defaults = {enabled:false, learningEnabled:true, brainEnabled:false, brainToken:'', fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
+  const VERSION = '1.13.1', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const defaults = {enabled:false, autoStart:true, learningEnabled:true, brainEnabled:false, brainToken:'', fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
     autoStrategy:true, diplomacy:true, offerAlliances:true, nukes:true, antiNuke:true, lateOffense:true,
@@ -27,7 +27,7 @@
     opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v1110')||localStorage.getItem('of-solo-aggrobot-v11010')||localStorage.getItem('of-solo-aggrobot-v1109')||localStorage.getItem('of-solo-aggrobot-v1108')||localStorage.getItem('of-solo-aggrobot-v1107')||localStorage.getItem('of-solo-aggrobot-v1106')||localStorage.getItem('of-solo-aggrobot-v1105')||localStorage.getItem('of-solo-aggrobot-v1104')||localStorage.getItem('of-solo-aggrobot-v1103')||localStorage.getItem('of-solo-aggrobot-v1102')||localStorage.getItem('of-solo-aggrobot-v1101')||localStorage.getItem('of-solo-aggrobot-v1100')||localStorage.getItem('of-solo-aggrobot-v199')||localStorage.getItem('of-solo-aggrobot-v198')||localStorage.getItem('of-solo-aggrobot-v197')||localStorage.getItem('of-solo-aggrobot-v196')||localStorage.getItem('of-solo-aggrobot-v195')||localStorage.getItem('of-solo-aggrobot-v194')||localStorage.getItem('of-solo-aggrobot-v193')||localStorage.getItem('of-solo-aggrobot-v192')||localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
     // Only import user-adjustable preferences, never a previously enabled bot.
   }}catch(_){}
-  opts.enabled = false;                         // Never auto-start after reload.
+  opts.enabled = false;                         // Start only after a playable match and EventBus are discovered.
   // One-time v1.10 migration: full autonomy includes marine operation;
   // a later manual choice is saved under the new key as usual.
   if(!localStorage.getItem(KEY) && opts.fullAuto)opts.boats=true;
@@ -463,8 +463,21 @@
     }
     return health;
   }
+  let autoStartGame=null;
+  function maybeAutoStart() {
+    // One attempt per game object: manual pause and Not-Aus must not be undone
+    // by the next 400-ms polling cycle. A new match clears this latch.
+    if(!opts.autoStart || opts.enabled || autoStartGame===game || !connected())return false;
+    autoStartGame=game;
+    opts.enabled=true;generation++;persist();
+    status='Neue '+(multiplayerMatch(game)?'Multiplayer-':'Singleplayer-')+'Partie · Bot automatisch gestartet';
+    log('BOT AUTO-START · '+gameType(game));
+    reportIntents(true);
+    return true;
+  }
   function reset(g,b) {
     generation++; game=g;bus=b;ctors=recognize(b);busy=false;lastWinnerSignal=null;
+    autoStartGame=null;
     bindWinnerCapture(bus,ctors);
     lastIntentHealth=null;lastIntentProbe=-Infinity;missingIntentLogged.clear();
     lastTick=-1;lastSpawn=-Infinity;lastEconomy=-Infinity;lastEconomyProbe=-Infinity;
@@ -499,10 +512,10 @@
     retreatRequests.clear();defenseStats={retreatsOrdered:0,retreatsObserved:0,unknown:0,unconfirmed:0};
     autoTuning={aggressive:85,reserve:35,actionsPerMinute:72,maxTargets:16,
       mode:'INIT',reason:'Warte auf Spielzustand',tick:-Infinity};
-    // Never auto-start in a new match, regardless of mode.
+    // The next polling cycle starts this new match as soon as EventBus is ready.
     opts.enabled=false;persist();
-    status=gameType(g)==='Singleplayer'?'Singleplayer erkannt · Bot starten':
-      multiplayerMatch(g)?'Multiplayer erkannt · Bot starten':
+    status=gameType(g)==='Singleplayer'?'Singleplayer erkannt · '+(opts.autoStart?'Autostart wartet auf EventBus':'Bot bereit'):
+      multiplayerMatch(g)?'Multiplayer erkannt · '+(opts.autoStart?'Autostart wartet auf EventBus':'Bot bereit'):
       'Replay/unbekannter Spieltyp · gesperrt';
     if(g?.config?.().isReplay?.())status='Replay · BOT GESPERRT';
     log(status);
@@ -3296,6 +3309,7 @@
     }
     if(conflicts()){opts.enabled=false;status='Andere AggroBot-Version aktiv – alte Skripte deaktivieren';paint();return;}
     if(advisorConflict()){opts.enabled=false;status='Spawn Advisor: Auto-Spawn/Smart Attack/Auto-Accept ausschalten';paint();return;}
+    maybeAutoStart();
     if(opts.enabled&&game.inSpawnPhase?.()&&opts.autoSpawn){
       if(!bus?.emit)spawnBlock('EventBus noch nicht verfügbar');
       else if(!ctors.spawn)spawnBlock('Spawn-Intent nicht erkannt');
@@ -3412,7 +3426,7 @@
   function mount() {
     if(panel||!document.body)return;
     panel=document.createElement('section');panel.id='of-solo-aggrobot';
-    panel.style.cssText='position:fixed;left:12px;bottom:12px;width:335px;max-width:calc(100vw - 24px);max-height:68vh;overflow:auto;z-index:2147483644;padding:12px;background:rgba(9,18,32,.96);border:1px solid #42a5d9;border-radius:10px;color:#f0f4fa;font:12px/1.4 system-ui,Arial,sans-serif;box-shadow:0 5px 25px #000a';
+    panel.style.cssText='position:fixed;left:12px;bottom:12px;width:302px;max-width:calc(100vw - 24px);max-height:55vh;overflow:auto;z-index:2147483644;padding:10px;background:rgba(9,18,32,.96);border:1px solid #42a5d9;border-radius:10px;color:#f0f4fa;font:12px/1.4 system-ui,Arial,sans-serif;box-shadow:0 5px 25px #000a';
     panel.addEventListener('click',e=>{
       const key=e.target.closest('button[data-key]')?.dataset.key;if(!key)return;
       if(key==='export'){exportDiagnostics();return;}
@@ -3420,8 +3434,11 @@
         if(!connected())status=conflicts()?'Alte Bot-Version deaktivieren':
           advisorConflict()?'Spawn Advisor Auto/Smart/Auto-Accept ausschalten':
           'Nur in laufender Singleplayer-, Public- oder Private-Partie mit EventBus';
-        else {opts.enabled=!opts.enabled;generation++;log(opts.enabled?'BOT START':'BOT PAUSE');
+        else {opts.enabled=!opts.enabled;autoStartGame=game;generation++;log(opts.enabled?'BOT START':'BOT PAUSE');
           if(opts.enabled)reportIntents(true);}
+      }else if(key==='autoStart'){
+        opts.autoStart=!opts.autoStart;
+        if(opts.autoStart&&!opts.enabled)autoStartGame=null;
       }else if(key==='fullAuto'){
         opts.fullAuto=!opts.fullAuto;
         if(opts.fullAuto){opts.autoStrategy=true;autoTuning.tick=-Infinity;}
@@ -3494,9 +3511,9 @@
       /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName||''))return;
     e.preventDefault();
     if(e.key.toLowerCase()==='x'){
-      opts.enabled=false;generation++;log('NOT-AUS über Hotkey');
+      opts.enabled=false;opts.autoStart=false;autoStartGame=game;generation++;log('NOT-AUS über Hotkey · Autostart AUS');
     }else if(connected()){
-      opts.enabled=!opts.enabled;generation++;log(opts.enabled?'BOT START':'BOT PAUSE');
+      opts.enabled=!opts.enabled;autoStartGame=game;generation++;log(opts.enabled?'BOT START':'BOT PAUSE');
       if(opts.enabled)reportIntents(true);
     } else status='Bot nur in laufender Singleplayer-, Public- oder Private-Partie verfügbar';
     persist();lastPaint=0;paint();
@@ -3532,5 +3549,5 @@
       pump:async()=>{await step();await economyStep();await diplomacyTick();await nukeStep();}
     });
   }
-  console.info(PREFIX,'v'+VERSION,'ready; Singleplayer/Public/Private, OFF by default');
+  console.info(PREFIX,'v'+VERSION,'ready; Singleplayer/Public/Private, auto-start after match discovery');
 })();
