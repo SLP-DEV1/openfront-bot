@@ -1854,17 +1854,27 @@
       tick-lastEnemySend>180 && s.ratio>=.52;
     const navalFirst=canSail && (stalledFront || (!land.length&&!enemy.length)) &&
       (targetAtSea || s.activeNeutral===0);
-    const order=recovering?['hold']:
-      navalFirst?['naval','land','hold']:
+    const ruleOrder=navalFirst?['naval','land','hold']:
       enemy.length||land.length?['land','naval','hold']:
-      ['naval','hold'];
+      ['naval','land','hold'];
+    const learned=neuralStrategicSignals(me,s,tick);
+    const utility={
+      land:(land.length||enemy.length?110:0)+((land.length||enemy.length)?learned?.landPriority||0:0)*65,
+      naval:(canSail?(navalFirst?120:80):-1000)+
+        (canSail?(learned?.navalPriority||0)*65:0),
+      hold:(land.length||enemy.length||canSail?-25:35)+(learned?.holdPriority||0)*60
+    };
+    // Recover/defend is an absolute gate; priority values never grant legality.
+    const order=recovering?['hold']:
+      [...ruleOrder].sort((a,b)=>utility[b]-utility[a]);
     const reason=recovering?'Heimtruppen und Grenzen stabilisieren':
       navalFirst?'Keine sichere Landexpansion: Marineweg vor Landkrieg prüfen':
       enemy.length?'Sicheren Landkrieg vor Küstenoperation prüfen':
       land.length?'Freies Land vor teurer Küstenoperation':
       'Keine freigegebene Landaktion; Seeweg prüfen';
     return {order,reason,landCandidates:land.length,enemyCandidates:enemy.length,
-      navalCandidate:canSail,threatened,economy:economyPosture(me,s,tick)};
+      navalCandidate:canSail,threatened,economy:economyPosture(me,s,tick),
+      neural:learned?{utility,weights:learned}:null};
   }
   async function legalTarget(me,item,serial) {
     // Four-at-a-time worker checks remove the old serialized waterfall.
@@ -2287,20 +2297,21 @@
     const posture=economyPosture(me,troopSnapshot,nowTick);
     const style=effectiveBuildStyle() || 'Ausgewogen';
     const defBoost=style==='Defensiv'?22:0,econBoost=style==='Wirtschaft'?24:0;
+    const neural=neuralStrategicSignals(me,troopSnapshot,nowTick);
     const list=[
-      {type:'City',desired:wantedCity,score:92+econBoost/2+(posture==='recruit'?38:0)+Math.max(0,pressure-.35)*75+
+      {type:'City',desired:wantedCity,score:92+(neural?.cityPriority||0)*90+econBoost/2+(posture==='recruit'?38:0)+Math.max(0,pressure-.35)*75+
           (pressure>.80&&!immediate?30:0)+(cities===0?115:hardMode()&&cities<2?80:0)},
-      {type:'Factory',desired:wantedFactory,score:91+econBoost+(posture==='bootstrap'?20:0)+
+      {type:'Factory',desired:wantedFactory,score:91+(neural?.factoryPriority||0)*90+econBoost+(posture==='bootstrap'?20:0)+
           (factories===0?100:hardMode()&&factories<2?85:0)+
           (gold<450000?15:0)+(pressure<.60&&factories>0?10:0)+
           (factories<2&&cities>=2?24:0)-
           (incomeStatus.observed&&incomeStatus.train===0&&factories>=2?26:0)},
       {type:'Port',desired:wantedPort,score:portMilestone?345:
-        59+econBoost/2+(posture==='breakout'?115:0)+(ports===0&&wantedPort?12:0)+
+        59+(neural?.portPriority||0)*90+econBoost/2+(posture==='breakout'?115:0)+(ports===0&&wantedPort?12:0)+
         (incomeStatus.observed&&incomeStatus.trade===0&&ports===0?13:0)},
-      {type:'Defense Post',desired:wantedDefense,score:immediate?310+defBoost:threatened?(basic?36:77)+defBoost+(posture==='defensive'?24:0):20},
+      {type:'Defense Post',desired:wantedDefense,score:immediate?310+defBoost:threatened?(basic?36:77)+(neural?.defensePriority||0)*90+defBoost+(posture==='defensive'?24:0):20},
       {type:'SAM Launcher',desired:wantedSAM,score:enemyNukes?210+defBoost:threat?151+defBoost:proactiveSAM?118:40},
-      {type:'Missile Silo',desired:wantedSilo,score:siloCount===0?305:opts.nukes?(late?131:94)+(gold>6000000?13:0):0}
+      {type:'Missile Silo',desired:wantedSilo,score:siloCount===0?305:opts.nukes?(late?131:94)+(neural?.nuclearPriority||0)*75+(gold>6000000?13:0):0}
     ];
     const value=list.filter(x=>x.desired>count(x.type)).map(x=>({...x,count:count(x.type),
       urgency:x.score+Math.min(50,35*(x.desired-count(x.type))/x.desired)}));
@@ -3006,6 +3017,7 @@
     // different nation. Never reward alliance with our active war target.
     if(offered && their>=own*.85 && !hostileIncoming && !hostileOutgoing &&
       warState.id!==safeID(p))score+=22;
+    score+=neuralChannel('diplomacyPriority',me,s)*28;
     return {score,reason:score>=58?'Schutz/Kooperation nützlich':'Strategischer Nutzen gering'};
   }
   // Diplomacy is a priority channel. The normal minute and attack-burst limits
@@ -3281,7 +3293,8 @@
     // Build one escort before the silo fund, a second only after the first
     // has appeared in the game. More hulls require a real incoming landing.
     const desired=active?Math.min(3,ports.length+1):
-      number(()=>me.numTilesOwned(),0)>=15000?2:1;
+      clamp((number(()=>me.numTilesOwned(),0)>=15000?2:1)+
+        Math.round(neuralChannel('fleetPriority',me)*1.5),1,3);
     if(ownWarships.length>=desired)return false;
     const gold=number(()=>Number(me.gold()),0);
     if(!active && gold<450000 && !game.config().infiniteGold?.())return false;
@@ -3448,7 +3461,8 @@
   function navalCommitmentRatio(me,enemy,tick){
     const trend=opponentTrend(enemy,tick),window=adversaryWindow(me,enemy);
     // Never ease naval thresholds based on a momentary third-party attack.
-    return trend.valid&&trend.sustained&&trend.falling&&window.exposed?1.35:1.9;
+    const baseline=trend.valid&&trend.sustained&&trend.falling&&window.exposed?1.35:1.9;
+    return baseline*(1-neuralChannel('navalThreshold',me)*.16);
   }
   function landingThirdPartyRisk(me,dest,target,amount){
     try{
@@ -3537,7 +3551,8 @@
         const ship=legal?.buildableUnits?.find(x=>x.type==='Transport'&&Number.isInteger(x.canBuild));
         if(!ship || (Number(me.gold())<Number(ship.cost)&&!game.config().infiniteGold?.()))continue;
         const committedWar=isWar()&&warState.id===safeID(current);
-        const exposedNavy=navalCommitmentRatio(me,current,tick)<1.9;
+        const exposedNavy=opponentTrend(current,tick).sustained&&
+          opponentTrend(current,tick).falling&&adversaryWindow(me,current).exposed;
         const amount=Math.floor(Math.min(fresh.available*(committedWar ? .60 : exposedNavy?.66:.36),
           fresh.home*(committedWar ? .58 : exposedNavy?.55:.30)));
         // Having a large spare army is not sufficient: the ACTUAL landing
