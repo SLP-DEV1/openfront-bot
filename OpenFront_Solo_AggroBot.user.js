@@ -4340,7 +4340,8 @@
         spawned:!!myPlayer()?.hasSpawned?.(),alive:myPlayer()?.isAlive?.()??null,
         gameOver:!!game?.gameOver?.(),status}),
       start:(settings={})=>{
-        if(!connected()||gameType(game)!=='Singleplayer')throw new Error('Benchmark requires a local Singleplayer match');
+        if(!connected()||!permittedMatch(game))
+          throw new Error('Benchmark requires a local permitted match');
         const allowed={aggressive:[40,100],reserve:[5,65],actionsPerMinute:[15,120],maxTargets:[4,25]};
         for(const [key,value] of Object.entries(settings)){
           if(key==='fullAuto'&&typeof value==='boolean')continue;
