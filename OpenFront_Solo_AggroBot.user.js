@@ -370,7 +370,7 @@
   let lastEconomicAction=-Infinity, lastNeutralSend=-Infinity, lastEnemySend=-Infinity,lastHostilePressure=-Infinity;
   let consecutiveIdle=0;
   let economicPending=null, economicBlocked=new Map(), economicNegative=new Map(), economicStatus='Bauplanung bereit', economicLastPlan='—';
-  let samQuotedCost=0,portQuotedCost=0;
+  let samQuotedCost=0,portQuotedCost=0,samQuotedTick=-Infinity,portQuotedTick=-Infinity;
   let economyBusy=false, borderInflight=null, legalNegative=new Map();
   let runtime={borderMs:0,combatMs:0,economyMs:0,attackProbes:0,buildProbes:0};
   let strategic={mode:'EXPAND',reason:'Startphase',buildStyle:'Ausgewogen',since:-Infinity,groups:[]};
@@ -647,7 +647,7 @@
     failedEconomyProbes=0;successfulEconomyTick=-Infinity;warWaitSince=-Infinity;
     lastEconomicAction=-Infinity;lastNeutralSend=-Infinity;lastEnemySend=-Infinity;lastHostilePressure=-Infinity;consecutiveIdle=0;
     economicPending=null;economicBlocked.clear();economicNegative.clear();economicStatus='Bauplanung bereit';economicLastPlan='—';
-    samQuotedCost=0;portQuotedCost=0;
+    samQuotedCost=0;portQuotedCost=0;samQuotedTick=-Infinity;portQuotedTick=-Infinity;
     economyBusy=false;borderInflight=null;legalNegative.clear();runtime={borderMs:0,combatMs:0,economyMs:0,attackProbes:0,buildProbes:0};
     strategic={mode:'EXPAND',reason:'Startphase',buildStyle:'Ausgewogen',since:-Infinity,groups:[]};
     diplomacyHandled.clear();diplomacyPending.clear();diplomacyMissingLogged.clear();lastDiplomaticEmit=0;
@@ -2504,8 +2504,11 @@
     const firstRocketFund=game.config().isUnitDisabled?.('Atom Bomb')===true?
       (game.config().isUnitDisabled?.('Hydrogen Bomb')===true?
         (game.config().isUnitDisabled?.('MIRV')===true?0:26000000):6400000):1100000;
-    const samFund=threat&&intel.uncovered.length>0&&wantedSAM>0?samQuotedCost:0;
-    const portFund=portMilestone?portQuotedCost:0;
+    // A former legal quote is useful for funding, but must not freeze other
+    // production forever after the front or shoreline changes.
+    const samFund=threat&&intel.uncovered.length>0&&wantedSAM>0&&
+      nowTick-samQuotedTick<=300?samQuotedCost:0;
+    const portFund=portMilestone&&nowTick-portQuotedTick<=210?portQuotedCost:0;
     const savingsTarget=samFund>0?samFund:portFund>0?portFund:
       portMilestone||(threat&&intel.uncovered.length>0&&wantedSAM>0)?0:
       saveForSilo?1150000:saveForNuke?firstRocketFund:0;
@@ -2895,8 +2898,12 @@
           const infinite=game.config().infiniteGold?.()===true;
           if(Number.isFinite(cost))probe.lowestCost=Math.min(probe.lowestCost,cost);
           if(Number.isFinite(cost)&&cost>0){
-            if(item.type==='SAM Launcher')samQuotedCost=cost;
-            if(item.type==='Port'&&!isUpgrade&&requirements.portMilestone)portQuotedCost=cost;
+            if(item.type==='SAM Launcher'){
+              samQuotedCost=cost;samQuotedTick=tick;
+            }
+            if(item.type==='Port'&&!isUpgrade&&requirements.portMilestone){
+              portQuotedCost=cost;portQuotedTick=tick;
+            }
           }
           if(!infinite && (!Number.isFinite(cost)||cost>gold)){
             probe.unaffordable++;
