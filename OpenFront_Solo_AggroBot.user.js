@@ -527,7 +527,8 @@
   }
   function duoFocus(me,enemy){
     const duo=rankedDuo(me);
-    if(!duo||!enemy||friendly(enemy,me))return null;
+    if(!duo||!enemy||safeID(enemy)===duo.partnerID||
+      friendly(enemy,me))return null;
     const outgoing=(duo.partner.outgoingAttacks?.()||[])
       .filter(a=>!a.retreating&&a.troops>0);
     const on=outgoing.filter(a=>attackTargets(a.targetID,enemy))
