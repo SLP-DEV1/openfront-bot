@@ -2,7 +2,7 @@
 
 Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscript für [OpenFront](https://openfront.io/).
 
-**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.10.8**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
+**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.10.9**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
 
 ## Installation
 
@@ -16,6 +16,19 @@ Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscr
 ## Strategie & Diagnose
 
 Strategie-, Wirtschafts-, Marine-, Diplomatie-, Nuke- und SAM-Planung sind vorhanden. Der Bot kann Befehle senden; daraus folgt **keine garantierte Gewinnrate auf „Unmöglich“**. Ein vollständiger Live-Test ist noch nicht erfolgt. „Diagnose JSON“ im Bot-Menü zeichnet unter anderem Gebietsänderungen, Truppenlage, Bauaufträge und Allianzantworten auf. Bitte den Export vor dem Neuladen erstellen.
+
+### Änderung 1.10.9 – echte Match-Tests und daraus bestätigte Fehlerbehebungen
+
+- **Automatischer Engine-Test:** `tools/benchmark/engine-match.mjs` verwendet die echte OpenFront-Engine, Produktionskarten, Gegner und `GameView` mit reproduzierbarer Uhr und dokumentiertem Seed. Befehle und Entscheidungen werden vollständig gespeichert. Das ist kein Mock-Kampftest, aber auch kein Browser-/Multiplayer-Nachweis.
+- **Browser-Controller:** `tools/benchmark/serve-browser.mjs` startet eine lokale Testoberfläche für den originalen Client und Worker. Ein Klick startet die Partie und Aufzeichnung. Dieser Pfad ist hier noch nicht Ende zu Ende geprüft: Der Cloud-Browser blockierte Loopback.
+- **Parametersuche:** `tools/benchmark/suite.mjs` vergleicht Profile auf Trainingsstarts und prüft die Auswahl auf getrennten Starts. Zeitlimits bleiben offen; keine automatische Übernahme unbelegter Verbesserungen.
+- **Kriegsschiffe repariert:** Der Worker liefert mit `canBuild` den Starthafen. Der Bau-Intent benötigt dagegen das geprüfte Wasser-/Patrouillenfeld. Im gleichen Engine-Szenario: vorher 72 Anfragen / 0 bestätigte Schiffe, danach 3 / 3.
+- **Siegerkennung repariert:** `WinUpdate.winner` enthält Client-IDs, nicht Player-IDs. Ein tatsächlich gewonnenes Testspiel wurde zuvor als Niederlage ausgegeben.
+- **Bau-Intent:** Behält den ursprünglich geprüften Zielpunkt bei; der vorhergesagte Bauplatz dient der Bestätigung. So wird die Standortsuche nicht versehentlich von einem bereits verschobenen Punkt wiederholt.
+- **Diagnose:** Ereignistyp, Sequenz und Tick können nicht mehr durch Zusatzdaten überschrieben werden; vorher wurde beispielsweise `build_confirmed` zu `build` oder `upgrade`. Kumulative Zähler bleiben trotz begrenztem UI-Puffer erhalten.
+- **Ergebnisse:** Kleine Testserie mit Siegen, einer Impossible-Niederlage und unvollständigen Partien. Kein besseres Parameterprofil belegt; Vollautomatik bleibt Standard. **Issue #12 bleibt offen.**
+
+[Einrichtung und Befehle](docs/BENCHMARKS.md) · [Gemessene Ergebnisse und Grenzen](docs/benchmarks/2026-09-20.md)
 
 ### Änderung 1.10.8 – Issue #12: Flugbahn-/Bahnprüfung und überprüfbare Live-Daten
 
