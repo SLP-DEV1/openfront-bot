@@ -330,6 +330,7 @@
   let investmentStatus='Grundaufbau',lastWarReview=-Infinity;
   let defenseStatus='Keine Bedrohung',lastEmergencyRetreat=-Infinity,lastDefenseLog=-Infinity;
   let targetIntelCache=new Map(),frontMemory=new Map(),lastFrontWarning=-Infinity;
+  let opponentHistory=new Map(),lastEconomyPosture='—',lastDirectorDecision=null;
   let retreatRequests=new Map(),defenseStats={retreatsOrdered:0,retreatsObserved:0,unknown:0,unconfirmed:0};
   // Manual slider values remain saved; fullAuto computes independent live values.
   let autoTuning={aggressive:85,reserve:35,actionsPerMinute:72,maxTargets:16,
@@ -575,7 +576,7 @@
     buildCursor=0;spawnCache=null;spawnJob=null;spawnRetryAt=0;spawnAlternatives=[];spawnState={scanned:0,phase:'idle',lastSent:null,attempts:0,blocked:null,deadline:null};cooldowns.clear();rejected.clear();
     plan=null;lastSelection='';lastEmission=0;borderOffset=0;lastBorderRefresh=0;
     totalSent=0;totalFailed=0;actions=[];errors=0;troopSamples=[];
-    lastRecoveryReason='';lastBattle=null;pendingAttack=null;targetIntelCache.clear();frontMemory.clear();lastFrontWarning=-Infinity;
+    lastRecoveryReason='';lastBattle=null;pendingAttack=null;targetIntelCache.clear();frontMemory.clear();opponentHistory.clear();lastEconomyPosture='—';lastDirectorDecision=null;lastFrontWarning=-Infinity;
     attackReceipts={confirmed:0,unconfirmed:0,territoryGained:0};blockedTargets.clear();
     failedEconomyProbes=0;successfulEconomyTick=-Infinity;warWaitSince=-Infinity;
     lastEconomicAction=-Infinity;lastNeutralSend=-Infinity;lastEnemySend=-Infinity;lastHostilePressure=-Infinity;consecutiveIdle=0;
@@ -1054,6 +1055,42 @@
       exposed:ratio>=.45 || underPressure>=.40,
       human:enemy.type?.()==='HUMAN'};
   }
+  // Track visible troop/land trajectories. Only sustained third-party wars
+  // justify a narrower opportunity window; snapshots never override legality.
+  function observeOpponents(me,tick){
+    for(const enemy of game.playerViews?.()||[]){
+      const id=safeID(enemy);
+      if(id===null||id===safeID(me)||!enemy.isAlive?.()||friendly(enemy,me))continue;
+      const old=opponentHistory.get(id);
+      const troops=Math.max(0,number(()=>enemy.troops(),0));
+      const land=Math.max(0,number(()=>enemy.numTilesOwned(),0));
+      const window=adversaryWindow(me,enemy);
+      const exposed=window.exposed &&
+        (window.elsewhere>=Math.max(500,window.home*.45) ||
+         window.incomingOthers>=Math.max(500,window.home*.40));
+      const since=exposed?(old?.exposedSince??tick):null;
+      const previous=old&&tick-old.tick>=75?{tick:old.tick,troops:old.troops,land:old.land}:
+        old?.previous||null;
+      opponentHistory.set(id,{tick,troops,land,previous,exposedSince:since});
+    }
+    for(const [id,v] of opponentHistory)
+      if(tick-v.tick>360)opponentHistory.delete(id);
+    if(opponentHistory.size>64)
+      for(const [id] of [...opponentHistory].sort((a,b)=>a[1].tick-b[1].tick)
+        .slice(0,opponentHistory.size-64))opponentHistory.delete(id);
+  }
+  function opponentTrend(enemy,tick=number(()=>game.ticks(),0)){
+    const v=opponentHistory.get(safeID(enemy)),previous=v?.previous;
+    if(!v||tick-v.tick>120||!previous||
+      v.tick-previous.tick<75||v.tick-previous.tick>360)
+      return {valid:false,falling:false,growing:false,sustained:false,change:0,landChange:0};
+    const change=(v.troops-previous.troops)/Math.max(1,previous.troops);
+    const landChange=(v.land-previous.land)/Math.max(1,previous.land);
+    return {valid:true,change,landChange,
+      falling:change<-.15||landChange<-.08,
+      growing:change>.25&&landChange>=0,
+      sustained:v.exposedSince!==null&&tick-v.exposedSince>=90};
+  }
   function enemyUnderAttack(enemy){
     const own=number(()=>enemy.troops?.(),0);
     const ourSmall=number(()=>myPlayer()?.smallID?.(),-1);
@@ -1437,6 +1474,9 @@
     const normal=hardMode()?(late?1.34:1.75):
       (late?1.18:blitz?1.30:1.55);
     if(enemyUnderAttack(enemy))return hardMode()?(late?1.12:1.24):1.12;
+    const trend=opponentTrend(enemy);
+    if(trend.valid&&trend.sustained&&trend.falling)
+      return Math.max(hardMode()?1.23:1.13,normal*.83);
     // Opportunity in a human FFA: their army is fighting someone else.
     // Never make this a blanket buff for an uncommitted player.
     const opening=adversaryWindow(myPlayer(),enemy);
@@ -1666,6 +1706,11 @@
         if(opening.exposed && opening.human)score+=Math.min(33,
           Math.round(opening.ratio*23+opening.incomingOthers/opening.home*16));
         if(enemyUnderAttack(enemy) && (!isWar()||warState.id===item.id))score+=23;
+        const trend=opponentTrend(enemy,tick);
+        if(trend.valid){
+          if(trend.sustained&&trend.falling)score+=18;
+          if(trend.growing&&!opening.exposed)score-=Math.min(22,trend.change*25);
+        }
         // Early human wars are expensive while clean free land remains.
         // A genuinely exposed player is the exception, not the default.
         if(enemy.type?.()==='HUMAN' && context.neutral && ownTiles<1100 &&
@@ -3522,6 +3567,7 @@
       if(!live(serial))return;
       const groups=targetsFromBorder(me,tiles);
       observeFronts(me,groups,tick);
+      observeOpponents(me,tick);
       let s=military(me,groups);rememberHostilePressure(s,tick);troopSnapshot=s;
       manageWar(me,groups,s,tick);
       const context=strategy(me,groups,s);
