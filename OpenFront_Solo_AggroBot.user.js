@@ -538,6 +538,14 @@
       .reduce((sum,a)=>sum+number(()=>a.troops,0),0);
     return {on,elsewhere,partner:duo.partnerID};
   }
+  // Credit only an actually observed, non-retreating partner stack. Never
+  // count an announced attack, an allied intention or the partner's whole
+  // home army. All independent home/front/worker gates remain authoritative.
+  function duoBattleCredit(me,enemy) {
+    const on=duoFocus(me,enemy)?.on||0;
+    const troops=Math.max(0,number(()=>enemy?.troops?.(),0));
+    return Math.min(on*.55,troops*.75);
+  }
   function matchContext(me=myPlayer()) {
     const cfg=game?.config?.().gameConfig?.()||{};
     const players=(game?.playerViews?.()||[]).filter(p=>p?.isPlayer?.()&&p?.isAlive?.());
@@ -1766,7 +1774,8 @@
       front.other*(hardMode()?.87:.80),
       Math.min(enemy*.35,s.home*.32));
     const amount=Math.floor(Math.min(requested,Math.max(0,s.home-floor)));
-    const minimum=enemy*(hardMode()?1.16:1.04);
+    const minimum=Math.max(enemy*.45,
+      enemy*(hardMode()?1.16:1.04)-duoBattleCredit(myPlayer(),item.opponent));
     return {amount:amount>=minimum?amount:0,capped:amount<requested,
       floor,other:front.other,minimum,reason:amount<minimum?
         'Verbleibende Truppen reichen nach Risikobegrenzung nicht für den Angriff':
@@ -1777,13 +1786,15 @@
     const late=lateGame(me),troops=number(()=>item.opponent.troops(),Infinity);
     if(!(troops>0)||s.incoming>s.home*(late?.15:.04)||s.ratio<(late?.29:.40))return false;
     const minRatio=enemyOpportunityRatio(item.opponent,late,s.home);
-    if(s.available<troops*minRatio ||
-      s.home<troops*targetHomeRatio(item.opponent,late))return false;
+    const credit=duoBattleCredit(me,item.opponent);
+    if(s.available+credit<troops*minRatio ||
+      s.home+credit<troops*targetHomeRatio(item.opponent,late))return false;
     const front=frontRiskPlan(items,s,item.id);
     if(front.danger||front.pressure)return false;
     const strike=Math.min(s.available*(hardMode()?.76:.80),
       Math.max(troops*(hardMode()?1.57:1.40),s.available*.48));
-    return strike<=front.safeStrike && strike>=troops*(hardMode()?1.18:1.08);
+    return strike<=front.safeStrike &&
+      strike+credit>=troops*(hardMode()?1.18:1.08);
   }
   function warReadiness(me,items,s,tick,target=null) {
     if(!hardMode())return {ready:true,reason:'Normal'};
@@ -1931,8 +1942,9 @@
       const enemyTiles=enemy?number(()=>enemy.numTilesOwned(),0):0;
       if(!isNeutral) {
         const minimumRatio=enemyOpportunityRatio(enemy,late,s.home,effectivePlan()==='Blitz');
-        if(s.ratio<(late?.29:.40) || available<enemyTroops*minimumRatio ||
-          s.home<enemyTroops*targetHomeRatio(enemy,late) ||
+        const partnerCredit=duoBattleCredit(me,enemy);
+        if(s.ratio<(late?.29:.40) || available+partnerCredit<enemyTroops*minimumRatio ||
+          s.home+partnerCredit<enemyTroops*targetHomeRatio(enemy,late) ||
           front.danger||front.pressure||
           Math.min(available*(hardMode()?.76:.80),
             Math.max(enemyTroops*(hardMode()?1.57:1.40),available*.48))>front.safeStrike||
@@ -2241,7 +2253,9 @@
       if(item.id!==null && (freshFront.danger||freshFront.pressure||
         fresh.incoming>fresh.home*(lateGame(me)?.15:.04) ||
         fresh.activeEnemy>=(lateGame(me)&&fresh.strongest<fresh.home*.55?2:1) ||
-        fresh.available<Math.max(100,number(()=>item.opponent.troops(),Infinity)*(lateGame(me)?1.15:1.3))))continue;
+        fresh.available+duoBattleCredit(me,item.opponent)<
+          Math.max(100,number(()=>item.opponent.troops(),Infinity)*
+            (lateGame(me)?1.15:1.3))))continue;
       if(item.id===null && fresh.activeNeutral>=1)continue;
       if(item.fallout && (fresh.incoming>0 ||
         fresh.strongest>fresh.home*.65 || fresh.ratio<.60 ||
