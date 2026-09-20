@@ -2253,7 +2253,7 @@ function boot(benchmarkOptions={}) {
   await check('v1.18.2 first Port gets provisional funds before worker offers a price', async () => {
     const x=boot();x.setTick(500);x.setGold(350000);
     x.game.isShore=t=>t===5500;
-    const units=['City','Factory'].map((type,i)=>({
+    const units=['City','City','Factory','Factory'].map((type,i)=>({
       type:()=>type,isActive:()=>true,tile:()=>5000+i*20,
       id:()=>i+1,level:()=>1}));
     x.me.units=()=>units;
