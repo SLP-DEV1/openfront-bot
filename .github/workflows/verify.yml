@@ -53,6 +53,13 @@ jobs:
           node tests/benchmark-regression.cjs
           node --check tools/benchmark/impossible-matrix.mjs
           node tools/benchmark/impossible-matrix.mjs --dryRun true > /dev/null
+      - name: Test visible browser Qwen coach
+        run: |
+          node --check tools/benchmark/live-qwen.mjs
+          node --check tools/benchmark/propose-live-fix.mjs
+          node --check tools/benchmark/serve-browser.mjs
+          node --check tests/live-qwen-regression.cjs
+          node tests/live-qwen-regression.cjs
       - name: Test neural trainer and deployer
         run: |
           node --check trainer/train.mjs
