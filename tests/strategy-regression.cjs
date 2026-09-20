@@ -1043,6 +1043,36 @@ function boot(benchmarkOptions={}) {
     assert(x.sent[0].troops>=1000);
     assert.equal(x.b.state().strategicTelemetry.neutralLandings,1);
   });
+  await check('Impossible: low-cost island landing beside near-peer preserves home', async () => {
+    const x=boot();x.b.setBoats(true);x.strong.troops=()=>81000;
+    x.game.isShore=t=>t===176;
+    x.game.owner=t=>t===176?null:t===5?x.weak:t===6?x.strong:x.me;
+    x.game.hasFallout=()=>false;
+    x.me.actions=async tile=>({buildableUnits:tile===176?
+      [{type:'Transport',canBuild:9999,cost:0n}]:[]});
+    class Boat{constructor(dst,troops){this.dst=dst;this.troops=troops;}}
+    x.b.setBoatCtor(Boat);
+    const groups=[{id:'strong',opponent:x.strong,front:8,tiles:[6]}];
+    x.b.setGroups(groups);
+    const before=x.b.military(x.me,groups);
+    assert.equal(await x.b.naval(x.me,300,0),true);
+    assert.equal(x.sent[0].dst,176);
+    assert(x.sent[0].troops>=1000&&x.sent[0].troops<=x.me.troops()*.075);
+    assert(x.me.troops()-x.sent[0].troops>=
+      Math.max(before.reserve,before.strongest*.78));
+  });
+  await check('Impossible: discard tiny verified neutral island before transport', async () => {
+    const x=boot();x.b.setBoats(true);x.game.isShore=t=>t===176;
+    x.game.owner=t=>t===176||t===177?null:t===5?x.weak:t===6?x.strong:x.me;
+    x.game.hasFallout=()=>false;
+    x.game.neighbors4=(tile,out)=>{if(tile===176){out.push(177);return 1;}
+      if(tile===177){out.push(176);return 1;}return 0;};
+    x.me.actions=async()=>({buildableUnits:[{type:'Transport',canBuild:9999,cost:0n}]});
+    class Boat{constructor(dst,troops){this.dst=dst;this.troops=troops;}}
+    x.b.setBoatCtor(Boat);
+    assert.equal(await x.b.naval(x.me,300,0),false);
+    assert.equal(x.sent.length,0);
+  });
   await check('issue #10 island fallback respects locked war and worker refusal', async () => {
     const x=boot();x.b.setBoats(true);x.game.isShore=t=>t===176;
     x.game.owner=t=>t===176?null:t===5?x.weak:t===6?x.strong:x.me;
