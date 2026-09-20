@@ -32,7 +32,7 @@ const orig={aggressive:92,reserve:29};
 const learned=api.learnAdjust(orig,'ASSAULT',soldier,false);
 assert(learned.aggressive>=92&&learned.aggressive<=97);
 assert(learned.reserve>=25&&learned.reserve<=29);
-assert.deepEqual(api.learnAdjust(orig,'ASSAULT',soldier,true),orig,'emergency bypasses learning');
+assert.equal(api.learnAdjust(orig,'ASSAULT',soldier,true),orig,'emergency bypasses learning');
 assert.equal(api.learnAdjust(orig,'ASSAULT',{...soldier,incoming:2},false).aggressive,92);
 api.learnFinish('unknown');assert.equal(api.get().lastResult,null);
 api.learnFinish('victory');assert.equal(api.get().lastResult,null,'unknown finish is idempotent');
