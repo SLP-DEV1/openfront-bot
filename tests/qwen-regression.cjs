@@ -65,7 +65,8 @@ const {createServer}=require('../brain/server.cjs');
     assert.equal(headers.Authorization,'Bearer local');
     assert.equal(body.model,MODEL);
     assert.equal(body.stream,false);
-    assert.equal(body.max_tokens,768);
+    assert.equal(body.max_tokens,1536);
+    assert.deepEqual(body.response_format,{type:'json_object'});
     const sent=JSON.parse(body.messages[1].content);
     assert.equal(sent.current.ownTerritoryTiles,1003);
     assert.equal(sent.current.ownHomeTroops,800);
@@ -109,6 +110,27 @@ const {createServer}=require('../brain/server.cjs');
     noQwen.onObservation(o(6,1200,1005));await noQwen.waitForIdle();
     assert.equal(store.recentQwen().length,before);
     assert.equal(noQwen.status().requests,0);
+    // Distinguish a broken llama.cpp HTTP JSON body from truncated model content.
+    const makeFailure=async(response,pattern)=>{
+      const test=makeAdvisor({store,config:configFromEnv({AGGROBOT_QWEN_ENABLED:'1'}),
+        fetchImpl:async()=>response});
+      const before=store.recentQwen().length;
+      assert.equal(test.manualTest().accepted,true);
+      await test.waitForIdle();
+      assert.match(test.status().lastError,pattern);
+      assert.equal(test.status().lastResult,null);
+      assert.equal(store.recentQwen().length,before);
+    };
+    await makeFailure({ok:true,json:async()=>{throw new SyntaxError('Unexpected end of JSON input');}},
+      /llama.cpp HTTP body: empty or malformed JSON/);
+    await makeFailure({ok:true,json:async()=>({choices:[{
+      finish_reason:'length',message:{content:'{"strategy":"HOLD","reasonCode":"OTHER","explanation":',
+        reasoning_content:'thinking'}}]})},
+      /Qwen content: malformed or truncated JSON/);
+    await makeFailure({ok:true,json:async()=>({choices:[{
+      finish_reason:'length',message:{content:'',reasoning_content:'thinking'}}]})},
+      /Qwen content missing/);
+
     console.log('Qwen shadow advisor regression: PASS');
   }finally{store.close();fs.rmSync(dir,{recursive:true,force:true});}
 })().catch(e=>{console.error(e);process.exitCode=1;});
