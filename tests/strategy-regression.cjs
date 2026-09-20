@@ -71,7 +71,7 @@ function boot(benchmarkOptions={}) {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'strategicDirector,economyPosture,observeOpponents,opponentTrend,navalCommitmentRatio,landingThirdPartyRisk,targetHomeRatio,railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,frontPressureForecast,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,observeFronts,qwenStrategyHint,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
+    'strategicDirector,economyPosture,observeOpponents,opponentTrend,navalCommitmentRatio,landingThirdPartyRisk,targetHomeRatio,railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,frontPressureForecast,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,offensiveCommitment,observeFronts,qwenStrategyHint,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,samBuildAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'setNeural:m=>{neuralModel=neuralValidate(m);opts.neuralEnabled=!!neuralModel;neuralPolicyCache={key:null,output:null};},neuralStrategicSignals,neuralChannel,',
     'getBrainMatchId:()=>brainMatchId,setQwen:q=>{brainState.qwen=q;},',
@@ -85,7 +85,7 @@ function boot(benchmarkOptions={}) {
     'setMode:m=>strategic.mode=m,setAllianceCtor:C=>ctors.alliance=C,setHostilePressure:t=>lastHostilePressure=t,',
     'setNukePending:p=>nukePending=p,',
     'setPerf:(combat,border,economy)=>runtime={...runtime,combatMs:combat,borderMs:border,economyMs:economy},',
-    'state:()=>({economicPending,pendingAttack,attackReceipts,warState,lastBattle,gameEnd,diagnostics,forecastAudits,incomeAttribution,spawnState,spawnCache,spawnJob,economicStatus,failedEconomyProbes,investmentStatus,pendingBoat,pendingWarship,marineStats,portProbeFailures,strategic,winStatus,incomeStatus,fleetStatus,strategicTelemetry,defenseStatus,defenseStats,autoTuning,nukeShots,nukeAttempts,nukeUnconfirmed,nukePending,lastHostilePressure,lastProposalTick,diplomacyStatus,diplomacyPending:[...diplomacyPending.values()],retreatRequests:[...retreatRequests.values()]}),opts};'
+    'state:()=>({economicPending,pendingAttack,attackReceipts,warState,lastBattle,gameEnd,diagnostics,forecastAudits,incomeAttribution,spawnState,spawnCache,spawnJob,economicStatus,failedEconomyProbes,investmentStatus,pendingBoat,pendingWarship,marineStats,portProbeFailures,navalSiteNegative:[...navalSiteNegative],strategic,winStatus,incomeStatus,fleetStatus,strategicTelemetry,defenseStatus,defenseStats,autoTuning,nukeShots,nukeAttempts,nukeUnconfirmed,nukePending,lastHostilePressure,lastProposalTick,diplomacyStatus,diplomacyPending:[...diplomacyPending.values()],retreatRequests:[...retreatRequests.values()]}),opts};'
   ].join('\n');
   vm.runInNewContext(source.replace(anchor, expose + '\n' + anchor), context, {timeout:2000});
   win.__test.setup(game, {emit:event=>sent.push(event)}, {attack:Attack, build:Build});
@@ -287,12 +287,12 @@ function boot(benchmarkOptions={}) {
     assert(x.b.neutralAttackAmount(x.b.military(x.me,[]),.9)>small);
   });
   await check('first port planning retries after a bounded failed-coast backoff', () => {
-    const x=boot();x.b.setBoats(true);x.setTick(3200);
+    const x=boot();x.b.setBoats(true);x.setTick(2600);
     const units=[{type:()=> 'City'}, {type:()=> 'Factory'}];
     x.b.setPortBackoff(8,2500);
     const stalled=x.b.economicNeeds(x.me,units,[]);
     assert.equal(stalled.portProbeFailures,8);
-    x.setTick(3350);
+    x.setTick(2690);
     const resumed=x.b.economicNeeds(x.me,units,[]);
     assert.equal(resumed.portProbeFailures,0);
   });
@@ -1556,8 +1556,8 @@ function boot(benchmarkOptions={}) {
       id:()=>i+1,level:()=>1}));
     x.me.units=()=>units;
     x.me.actions=async(tile,types)=>({buildableUnits:(types||[])
-      .filter(type=>type!=='Port').map(type=>({
-        type,canBuild:tile,canUpgrade:false,cost:250000n}))});
+      .filter(type=>type==='Missile Silo').map(type=>({
+        type,canBuild:tile,canUpgrade:false,cost:1000000n}))});
     for(let k=0;k<8;k++){
       x.setTick(2400+k*22);
       assert.equal(await x.b.economy(x.me,2400+k*22,0,[5500]),false);
@@ -2133,6 +2133,72 @@ function boot(benchmarkOptions={}) {
     trained.weights[984+11]=3; // portPriority output bias
     x.b.setNeural(trained);
     assert(x.b.neuralStrategicSignals(x.me,s,300).portPriority>.99);
+  });
+  await check('v1.18.1 emergency SAM searches separate asset-centered locations', async () => {
+    const x=boot();x.setTick(2400);x.setGold(900000);x.setLand(52000);
+    const units=['City','Factory'].map((type,i)=>({
+      type:()=>type,isActive:()=>true,tile:()=>5000+i*20,
+      id:()=>i+1,level:()=>1}));
+    x.me.units=()=>units;
+    x.game.units=()=>[{type:()=> 'Missile Silo',isActive:()=>true,
+      owner:()=>x.weak,tile:()=>6}];
+    const intel=x.b.nuclearIntel(x.me,units);
+    const generic=new Set(x.b.economicAnchors(x.me,[],units,2400));
+    const dedicated=x.b.samBuildAnchors(x.me,intel,2400);
+    assert(dedicated.length>0);
+    assert(dedicated.some(t=>!generic.has(t)),
+      'SAM grid must cover sites outside the generic worker anchors');
+    x.me.actions=async(tile,types)=>({buildableUnits:(types||[])
+      .filter(type=>type==='SAM Launcher').map(type=>({
+        type,canBuild:tile,canUpgrade:false,cost:200000n}))});
+    assert.equal(await x.b.economy(x.me,2400,0,[]),true);
+    assert.equal(x.sent[0].unit,'SAM Launcher');
+    assert(x.b.state().diagnostics.some(e=>e.kind==='sam_intent'));
+  });
+  await check('v1.18.1 no legal harbor permits core investment instead of wasting tick', async () => {
+    const x=boot();x.setTick(300);x.setGold(600000);
+    x.game.isShore=t=>t===5500;
+    const units=['City','Factory'].map((type,i)=>({
+      type:()=>type,isActive:()=>true,tile:()=>5000+i*20,
+      id:()=>i+1,level:()=>1}));
+    x.me.units=()=>units;
+    x.me.actions=async(tile,types)=>({buildableUnits:(types||[])
+      .filter(type=>type!=='Port').map(type=>({
+        type,canBuild:tile,canUpgrade:false,cost:125000n}))});
+    assert.equal(x.b.economicNeeds(x.me,units,[5500]).portMilestone,true);
+    assert.equal(await x.b.economy(x.me,300,0,[5500]),true);
+    assert.notEqual(x.sent[0].unit,'Port');
+  });
+  await check('v1.18.1 million-troop offensive preserves strongest other front', () => {
+    const x=boot();x.setHome(2500000);
+    x.strong.troops=()=>1700000;x.weak.troops=()=>450000;
+    const groups=[{id:'strong',opponent:x.strong},
+      {id:'weak',opponent:x.weak}];
+    const s=x.b.military(x.me,groups);
+    const plan=x.b.offensiveCommitment(groups,s,groups[1],1460000);
+    assert(plan.capped,JSON.stringify(plan));
+    assert(plan.amount<1460000);
+    assert(s.home-plan.amount>=plan.other*.8);
+  });
+  await check('v1.18.1 delayed ship is not failed at tick 650 but lost beach is avoided', () => {
+    const x=boot();
+    class Boat{constructor(dst,troops){this.dst=dst;this.troops=troops;}}
+    x.b.setBoatCtor(Boat);
+    assert.equal(x.b.sendMarineTransport(x.me,6,12000,300,
+      'LANDUNG → strong','player:strong'),true);
+    x.game.ownerID=t=>t===6?3:1;
+    x.game.units=()=>[{id:()=>91,type:()=> 'Transport',owner:()=>x.me,
+      targetTile:()=>6,tile:()=>42,isActive:()=>true}];
+    x.b.inspectMarine(x.me,310);
+    x.b.inspectMarine(x.me,952);
+    assert(x.b.state().pendingBoat,'still-visible ship must not be declared lost');
+    assert.equal(x.b.state().marineStats.transportUnresolved,0);
+    assert(x.b.state().diagnostics.some(e=>e.kind==='boat_delayed'));
+    x.game.units=()=>[];
+    x.b.inspectMarine(x.me,960);
+    assert.equal(x.b.state().marineStats.transportUnresolved,1);
+    assert(x.b.state().navalSiteNegative.some(([tile])=>tile===6));
+    assert.equal(x.b.state().marineStats.transportArrived,0);
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
