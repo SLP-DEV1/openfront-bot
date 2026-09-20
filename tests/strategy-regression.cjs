@@ -73,7 +73,7 @@ function boot(benchmarkOptions={}) {
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
     'railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,observeFronts,qwenStrategyHint,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
-    'getBrainMatchId:()=>brainMatchId,setQwen:q=>{brainState.qwen=q;},'
+    'getBrainMatchId:()=>brainMatchId,setQwen:q=>{brainState.qwen=q;},',
     'setPortBackoff:(fail,tick)=>{portProbeFailures=fail;lastPortRetryTick=tick;},',
     'setWarWait:n=>warWaitSince=n,setEconFails:n=>failedEconomyProbes=n,',
     'setPending:p=>pendingAttack=p,setLastBattle:p=>lastBattle=p,',
