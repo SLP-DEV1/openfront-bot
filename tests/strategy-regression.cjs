@@ -2409,6 +2409,31 @@ function boot(benchmarkOptions={}) {
       'own inbound emergency prohibits donation');
     assert.equal(y.sent.length,0);
   });
+  await check('v1.18.4 ranked gold support is one-way and preserves own funds',()=>{
+    const x=boot();class Gold{constructor(recipient,gold){
+      this.recipient=recipient;this.gold=gold;}}
+    x.game.config().gameConfig=()=>({gameType:'Public',gameMode:'Team',
+      difficulty:'Medium',rankedType:'2v2',donateGold:true});
+    x.me.team=()=>1;x.weak.team=()=>1;x.strong.team=()=>2;
+    x.me.isOnSameTeam=p=>p===x.weak;x.b.setCtor('donateGold',Gold);
+    x.b.victoryPlan(x.me);x.setGold(2000000);
+    x.weak.gold=()=>120000n;x.weak.troops=()=>40000;
+    x.weak.incomingAttacks=()=>[{troops:14000,retreating:false}];
+    const s=x.b.military(x.me,[]);
+    assert.equal(x.b.teamSupport(x.me,300,s),true);
+    assert.equal(x.sent[0].recipient,x.weak);
+    assert(x.sent[0].gold>=50000n&&x.sent[0].gold<=200000n);
+    assert(2000000-Number(x.sent[0].gold)>=1000000);
+    const y=boot();y.game.config().gameConfig=()=>({gameType:'Public',
+      gameMode:'Team',difficulty:'Medium',rankedType:'2v2',donateGold:true});
+    y.me.team=()=>1;y.weak.team=()=>1;y.strong.team=()=>2;
+    y.me.isOnSameTeam=p=>p===y.weak;y.b.setCtor('donateGold',Gold);
+    y.b.victoryPlan(y.me);y.setGold(1000000);
+    y.weak.gold=()=>1100000n;y.weak.troops=()=>40000;
+    y.weak.incomingAttacks=()=>[{troops:14000,retreating:false}];
+    assert.equal(y.b.teamSupport(y.me,300,y.b.military(y.me,[])),false);
+    assert.equal(y.sent.length,0);
+  });
   await check('v1.18.4 team WinUpdate with team marker confirms outcome',()=>{
     const x=boot();x.me.team=()=> 'Blue';
     x.game.updatesSinceLastTick=()=>({winner:[
