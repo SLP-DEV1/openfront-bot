@@ -2082,7 +2082,7 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.b.siteScore('Factory',5505,front,[],92,false),-Infinity);
   });
   await check('v1.18 multiple hostile fronts increase defensive reserve', () => {
-    const x=boot();
+    const x=boot();x.b.opts.impossibleExperiment=true;
     x.strong.troops=()=>78000;x.weak.troops=()=>71000;
     const one=[{id:'strong',opponent:x.strong}];
     const both=[...one,{id:'weak',opponent:x.weak}];
@@ -2093,7 +2093,8 @@ function boot(benchmarkOptions={}) {
     assert(x.b.frontRiskPlan(both,b,'strong').safeStrike<=b.available);
   });
   await check('v1.18 a recent hostile invasion disables opening-rush profile', () => {
-    const x=boot();x.setTick(360);x.b.setHostilePressure(350);
+    const x=boot();x.b.opts.impossibleExperiment=true;
+    x.setTick(360);x.b.setHostilePressure(350);
     const groups=[{id:null,front:20,tiles:[7]}];
     const s=x.b.military(x.me,groups);
     x.b.tuneAutonomously(x.me,groups,s,360,{wanted:'EXPAND'});
