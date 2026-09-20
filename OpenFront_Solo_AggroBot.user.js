@@ -1699,6 +1699,40 @@
         amount:Math.min(available,Math.floor(amount))}];
     }).sort((a,b)=>b.score-a.score);
   }
+  // Shared strategic director: decide which existing LEGAL planner gets first
+  // refusal. Never issues intents and never weakens any planner's safety gate.
+  function strategicDirector(me,s,context,ranked,tick) {
+    const land=ranked.filter(x=>x.id===null);
+    const enemy=ranked.filter(x=>x.id!==null);
+    const threatened=s.incoming>0 || recentHostilePressure(tick,260) ||
+      s.strongest>=s.home*.85;
+    const recovering=context.wanted==='RECOVER'||context.wanted==='DEFEND';
+    const canSail=opts.boats&&!!ctors.boat&&!pendingBoat&&!pendingAttack&&
+      s.available>=1300&&s.activeEnemy===0&&!threatened&&
+      tick>=navalBackoffUntil&&tick-lastBoat>=100;
+    // A naval target is useful only when reachable territory may exist.
+    // naval() performs the authoritative shoreline, worker and reserve checks.
+    const rivals=game.playerViews?.()||[];
+    const targetAtSea=rivals.some(p=>safeID(p)!==safeID(me)&&p.isAlive?.()&&
+      !friendly(p,me)&&Number.isInteger(p.state?.spawnTile)&&
+      (!coordinatedWar()||!isWar()||safeID(p)===warState.id));
+    const noLandGrowth=!land.length;
+    const stalledFront=!enemy.length && noLandGrowth &&
+      tick-lastEnemySend>180 && s.ratio>=.52;
+    const navalFirst=canSail && (stalledFront || (!land.length&&!enemy.length)) &&
+      (targetAtSea || s.activeNeutral===0);
+    const order=recovering?['hold']:
+      navalFirst?['naval','land','hold']:
+      enemy.length||land.length?['land','naval','hold']:
+      ['naval','hold'];
+    const reason=recovering?'Heimtruppen und Grenzen stabilisieren':
+      navalFirst?'Keine sichere Landexpansion: Marineweg vor Landkrieg prüfen':
+      enemy.length?'Sicheren Landkrieg vor Küstenoperation prüfen':
+      land.length?'Freies Land vor teurer Küstenoperation':
+      'Keine freigegebene Landaktion; Seeweg prüfen';
+    return {order,reason,landCandidates:land.length,enemyCandidates:enemy.length,
+      navalCandidate:canSail,threatened};
+  }
   async function legalTarget(me,item,serial) {
     // Four-at-a-time worker checks remove the old serialized waterfall.
     // A short negative cache prevents probing the same blocked frontier 50x/s.
@@ -3529,14 +3563,20 @@
       if(await fleetDefense(me,tick,serial))return;
       if(teamSupport(me,tick,s))return;
       // Economy has its own scheduler and cannot block the combat planner.
-      if(context.wanted==='RECOVER') {
+      const directive=strategicDirector(me,s,context,ranked,tick);
+      if(directive.order[0]==='hold') {
         status='AUFBAU · Truppen regenerieren / Verteidigung halten';
         return;
       }
-      if(await attack(me,tick,serial,ranked,s)) {consecutiveIdle=0;return;}
+      for(const channel of directive.order) {
+        if(channel==='land' && await attack(me,tick,serial,ranked,s)){
+          consecutiveIdle=0;return;
+        }
+        if(channel==='naval' && !context.underAttack &&
+          await naval(me,tick,serial)){consecutiveIdle=0;return;}
+      }
       consecutiveIdle++;
-      if(!context.underAttack && await naval(me,tick,serial))return;
-      if(consecutiveIdle>4)status='WARTEN · keine sichere Aktion (Truppen sparen)';
+      if(consecutiveIdle>4)status='WARTEN · '+directive.reason;
     } catch(e){errors++;status='Fehler: '+String(e?.message||e).slice(0,105);
       console.warn(PREFIX,e);
       if((opts.stopOnError||opts.safeMode)&&errors>=5){

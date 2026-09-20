@@ -71,7 +71,7 @@ function boot(benchmarkOptions={}) {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,observeFronts,qwenStrategyHint,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
+    'strategicDirector,railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,observeFronts,qwenStrategyHint,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'getBrainMatchId:()=>brainMatchId,setQwen:q=>{brainState.qwen=q;},',
     'setPortBackoff:(fail,tick)=>{portProbeFailures=fail;lastPortRetryTick=tick;},',
@@ -94,6 +94,31 @@ function boot(benchmarkOptions={}) {
     setOver:v=>gameOver=v,setGold:v=>gold=v,setHome:v=>home=v};
 }
 (async () => {
+  await check('director prioritizes legal land expansion over speculative shipping', () => {
+    const x=boot(),s=x.b.military(x.me,[]);
+    const result=x.b.strategicDirector(x.me,s,{wanted:'EXPAND'},
+      [{id:null,score:110}],300);
+    assert.equal(result.order[0],'land');
+  });
+  await check('director chooses naval probe when safe land growth is exhausted', () => {
+    const x=boot();x.setTick(600);x.b.setBoats(true);x.b.setBoatCtor(class {});
+    const s=x.b.military(x.me,[]);
+    const result=x.b.strategicDirector(x.me,s,{wanted:'ECONOMY'},[],600);
+    assert.equal(result.order[0],'naval');
+  });
+  await check('director never promotes naval aggression during incoming threats', () => {
+    const x=boot();x.setTick(600);x.b.setBoatCtor(class {});
+    x.me.incomingAttacks=()=>[{troops:35000,retreating:false}];
+    const s=x.b.military(x.me,[]);
+    const result=x.b.strategicDirector(x.me,s,{wanted:'DEFEND'},[],600);
+    assert.deepEqual(Array.from(result.order),['hold']);
+  });
+  await check('director keeps a land fallback if a naval candidate fails legality', () => {
+    const x=boot();x.setTick(600);x.b.setBoatCtor(class {});
+    const s=x.b.military(x.me,[]);
+    const result=x.b.strategicDirector(x.me,s,{wanted:'ECONOMY'},[],600);
+    assert.deepEqual(Array.from(result.order),['naval','land','hold']);
+  });
   await check('reserve includes stronger second neighbor', () => {
     const x=boot(),s=x.b.military(x.me,[{id:'weak',opponent:x.weak},{id:'strong',opponent:x.strong}]);
     assert.equal(s.strongest,85000);
