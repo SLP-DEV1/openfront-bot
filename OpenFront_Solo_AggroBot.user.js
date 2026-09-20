@@ -1725,22 +1725,59 @@
     }
     return false;
   }
-  // Approximate reachable rail-station candidate based on the official
-  // trainStationMinRange/MaxRange, NOT an asserted path or trade guarantee.
+  // The browser GameView does not expose the server's RailNetwork.findStationsPath.
+  // Probe ownership/terrain along bounded potential corridors instead of
+  // assuming that every station within maxRange can actually connect.
+  function railCorridor(from,to){
+    const ax=game.x(from),ay=game.y(from),bx=game.x(to),by=game.y(to),
+      dx=bx-ax,dy=by-ay,len=Math.hypot(dx,dy);
+    if(len<1)return 1;
+    const steps=Math.min(140,Math.max(4,Math.ceil(len/2)));
+    const pass=(x,y)=>{
+      const xx=Math.round(x),yy=Math.round(y);
+      if(typeof game.isValidCoord==='function'&&!game.isValidCoord(xx,yy))
+        return false;
+      if(xx<0||yy<0||xx>=game.width()||yy>=game.height())return false;
+      const tile=game.ref(xx,yy);
+      return ownedTile(tile,myPlayer())&&game.isLand?.(tile)!==false &&
+        game.isImpassable?.(tile)!==true;
+    };
+    let best=0;
+    // Try direct path and two mild bends; this is NOT a verified rail route.
+    for(const bend of [0,.12,-.12]){
+      let passed=0,longest=0,run=0;
+      for(let i=0;i<=steps;i++){
+        const t=i/steps,offset=bend*Math.sin(Math.PI*t);
+        const x=ax+dx*t-dy*offset,y=ay+dy*t+dx*offset;
+        if(pass(x,y)){passed++;run++;longest=Math.max(longest,run);}
+        else run=0;
+      }
+      best=Math.max(best,(passed/(steps+1))*.35+
+        (longest/(steps+1))*.65);
+    }
+    return best;
+  }
   function railStationScore(ref,units){
     const cfg=game.config(),min=number(()=>cfg.trainStationMinRange?.(),12);
     const max=number(()=>cfg.trainStationMaxRange?.(),110);
     const x=game.x(ref),y=game.y(ref);
     const stations=units.filter(u=>['City','Factory','Port'].includes(u.type?.()) &&
       !u.isUnderConstruction?.() && u.hasTrainStation?.()!==false);
-    let reachable=0,tooClose=0;
+    let reachable=0,tooClose=0,blocked=0;
     for(const u of stations){
-      const d=Math.hypot(x-game.x(u.tile()),y-game.y(u.tile()));
-      if(d>=min&&d<=max)reachable++;
+      const tile=number(()=>u.tile(),-1);
+      if(tile<0)continue;
+      const d=Math.hypot(x-game.x(tile),y-game.y(tile));
+      if(d>=min&&d<=max){
+        const likelihood=railCorridor(ref,tile);
+        if(likelihood>=.83)reachable++;
+        else blocked++;
+      }
       if(d<min)tooClose++;
     }
-    return {reachable,score:Math.min(40,reachable*15)-tooClose*30-
-      (stations.length>1&&reachable===0?25:0)};
+    return {reachable,blocked,method:'owned-corridor-proxy',
+      score:Math.min(40,reachable*15)-tooClose*30-blocked*7-
+        (stations.length>1&&reachable===0?25:0)};
   }
   function siteScore(type,ref,fronts,units,priority,alreadyCoastal,precomputedDist) {
     const distance=precomputedDist===undefined?frontDistance(ref,fronts):precomputedDist;
