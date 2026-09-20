@@ -2948,6 +2948,11 @@
             !(item.type==='Defense Post'&&requirements.immediate) &&
             !(item.type==='Missile Silo'&&requirements.saveForSilo) &&
             !(item.type==='Port'&&requirements.portMilestone&&!requirements.nuclearThreat) &&
+            // After fully funding the first harbor, no worker-offered Port
+            // should stall all other productive buildings this cycle.
+            !(requirements.portMilestone&&!requirements.nuclearThreat&&
+              probe.portQueries>0&&probe.portLegal===0&&
+              gold>=requirements.savingsTarget) &&
             gold-cost<requirements.savingsTarget)continue;
           const reserve=gold>650000?Math.min(220000,gold*.12):0;
           if(!infinite&&!essential&&gold-cost<reserve)continue;
