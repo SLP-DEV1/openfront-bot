@@ -27,12 +27,12 @@ export function backendCommand(platform=process.platform,env=process.env){
     {command:'npm',args:['run','start:server-dev']};
 }
 export async function startBackend({engine,dir,timeoutMs=120000,
-    ports=PORTS,intervalMs=350,log=console.log}){
+    ports=PORTS,intervalMs=350,log=console.log,launch=backendCommand()}){
   const occupied=await openPorts(ports);
   if(occupied.length)throw Error(
     'OpenFront backend port(s) already occupied: '+occupied.join(', ')+
     '. Stop the other backend first; refusing to use a possibly different engine.');
-  const command=backendCommand();
+  const command=launch;
   const output=path.join(dir,'openfront-backend.log');
   const fd=fs.openSync(output,'a');
   let child;
