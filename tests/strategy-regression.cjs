@@ -4,7 +4,7 @@ const vm = require('node:vm');
 const path = require('node:path');
 const assert = require('node:assert/strict');
 const source = fs.readFileSync(path.join(__dirname, '..', 'OpenFront_Solo_AggroBot.user.js'), 'utf8');
-const anchor = "  console.info(PREFIX,'v'+VERSION,'ready; Singleplayer/Public/Private, OFF by default');";
+const anchor = "  console.info(PREFIX,'v'+VERSION,'ready; Singleplayer/Public/Private, auto-start after match discovery');";
 assert(source.includes(anchor), 'bot test injection anchor missing');
 let pass = 0, fail = 0;
 async function check(name, test) {
