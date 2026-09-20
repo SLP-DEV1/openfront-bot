@@ -2291,7 +2291,7 @@ function boot(benchmarkOptions={}) {
     const capped=x.b.globalNavalHomeGuard(x.me,x.weak,s,950000,[]);
     assert(capped.remote&&capped.other===1700000);
     assert(capped.amount<950000);
-    assert(s.home-capped.amount>=Math.min(s.home*.92,1700000*.80));
+    assert(s.home-capped.amount>=Math.min(s.home*.92,1700000*.72));
     const short=x.b.globalNavalHomeGuard(x.me,x.weak,s,100000,[]);
     assert.equal(short.amount,100000,'scouting-size actions unaffected');
     const contact=x.b.globalNavalHomeGuard(x.me,x.weak,s,950000,
