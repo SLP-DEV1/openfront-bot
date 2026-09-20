@@ -1912,8 +1912,10 @@
     const samples=troopSamples.filter(x=>tick-x.tick<=110);
     const prev=samples[0],land=number(()=>me.numTilesOwned(),0);
     const landLoss=prev&&prev.tiles>0?Math.max(0,(prev.tiles-land)/prev.tiles):0;
+    const neuralWarning=neuralChannel('defensePriority',me,s,tick)>.7;
     return {incoming,ratio,landLoss,hostile,
-      severe:ratio>=.43||(ratio>=.23&&landLoss>=.035),
+      severe:ratio>=.43||(ratio>=.23&&landLoss>=.035)||
+        (neuralWarning&&ratio>=.33),
       critical:ratio>=.80||(ratio>=.40&&landLoss>=.075)};
   }
   function refreshRetreats(me,tick) {
@@ -2806,7 +2808,8 @@
       // Launching blindly into a SAM bubble wastes expensive rockets.
       value-=sams.reduce((sum,u)=>sum+9+number(()=>u.level?.(),1)*2,0);
       if(sams.length && kind==='Hydrogen Bomb')value-=9;
-      if(value>=(kind==='Hydrogen Bomb'||kind==='MIRV'?(lateGame(me)?11:13):(lateGame(me)?5:8)))
+      if(value>=(kind==='Hydrogen Bomb'||kind==='MIRV'?(lateGame(me)?11:13):(lateGame(me)?5:8))-
+        neuralChannel('nuclearPriority',me)*3)
         proposed.push({tile,value,hit,sams:sams.length,owner});
     }
     return proposed.sort((a,b)=>b.value-a.value).slice(0,10);
@@ -2918,7 +2921,8 @@
     const me=myPlayer(),tick=number(()=>game.ticks(),-1);
     if(!me?.isAlive?.()||!me.hasSpawned?.()||game.inSpawnPhase?.()||tick<0)return;
     if(inspectNukeLaunch(me,tick))return;
-    if(tick-lastNuke<65 || !actionBudget())return;
+    if(tick-lastNuke<clamp(65-Math.round(neuralChannel('nuclearPriority',me)*18),45,90) ||
+      !actionBudget())return;
     const intel=nuclearIntel(me),silos=ownStructures(me).filter(u=>u.type?.()==='Missile Silo' &&
       !u.isUnderConstruction?.() && !u.isInCooldown?.());
     if(!silos.length){nukeStatus='Kein geladener Silo';return;}
