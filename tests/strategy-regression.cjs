@@ -71,7 +71,7 @@ function boot(benchmarkOptions={}) {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'strategicDirector,economyPosture,observeOpponents,opponentTrend,navalCommitmentRatio,landingThirdPartyRisk,railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,observeFronts,qwenStrategyHint,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
+    'strategicDirector,economyPosture,observeOpponents,opponentTrend,navalCommitmentRatio,landingThirdPartyRisk,targetHomeRatio,railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,observeFronts,qwenStrategyHint,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'getBrainMatchId:()=>brainMatchId,setQwen:q=>{brainState.qwen=q;},',
     'setPortBackoff:(fail,tick)=>{portProbeFailures=fail;lastPortRetryTick=tick;},',
@@ -126,6 +126,7 @@ function boot(benchmarkOptions={}) {
     x.b.observeOpponents(x.me,300);
     assert.equal(x.b.opponentTrend(x.weak,300).valid,false);
     assert.equal(x.b.navalCommitmentRatio(x.me,x.weak,300),1.9);
+    assert.equal(x.b.targetHomeRatio(x.weak,false),1.85);
     x.setTick(390);troops=15000;
     x.b.observeOpponents(x.me,390);
     const t=x.b.opponentTrend(x.weak,390);
@@ -133,9 +134,11 @@ function boot(benchmarkOptions={}) {
     assert.equal(t.falling,true);
     assert.equal(t.sustained,true);
     assert.equal(x.b.navalCommitmentRatio(x.me,x.weak,390),1.35);
+    assert.equal(x.b.targetHomeRatio(x.weak,false),1.46);
     x.weak.outgoingAttacks=()=>[];
     x.setTick(391);x.b.observeOpponents(x.me,391);
     assert.equal(x.b.navalCommitmentRatio(x.me,x.weak,391),1.9);
+    assert.equal(x.b.targetHomeRatio(x.weak,false),1.85);
   });
   await check('naval landing rejects an adjacent stronger third-party player', () => {
     const x=boot();
