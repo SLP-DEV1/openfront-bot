@@ -3,6 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {spawnSync}=require('node:child_process');
 const p=require('../trainer/policy.cjs');
+const action=require('../trainer/action-policy.cjs');
 const {parallelMap}=require('../trainer/parallel.cjs');
 const {reward}=require('../trainer/reward.cjs');
 const defeat=reward({validSample:true,confirmed:true,outcome:'defeat',land:30000,endTick:14000,ticks:18000});
@@ -10,6 +11,11 @@ const censored=reward({validSample:true,confirmed:false,outcome:'incomplete',lan
 const victory=reward({validSample:true,confirmed:true,outcome:'victory',land:0,endTick:100,ticks:18000});
 assert(defeat<censored&&censored<victory,'confirmed loss < censored match < confirmed win');
 assert(reward({validSample:false,confirmed:false,land:0,endTick:0,ticks:18000})<defeat);
+const progress={summary:{peakLand:97691,meanLand:45000,retention:1}};
+assert(reward({validSample:true,confirmed:false,land:97691,endTick:18000,ticks:18000,
+  trajectory:progress})>censored);
+assert(reward({validSample:true,confirmed:true,outcome:'defeat',land:30000,
+  endTick:14000,ticks:18000,trajectory:progress})<censored);
 assert(reward({validSample:true,confirmed:true,outcome:'defeat',land:0,endTick:1000,ticks:18000})<
   reward({validSample:true,confirmed:true,outcome:'defeat',land:0,endTick:9000,ticks:18000}));
 
@@ -26,6 +32,21 @@ const exec=(args)=>{
   const r=spawnSync(process.execPath,args,{cwd:root,encoding:'utf8',timeout:30000});
   assert.equal(r.status,0,r.stderr||r.stdout);return r.stdout;
 };
+assert.equal(action.LENGTH,169);
+const a0=action.zero(),aState={home:850,max:1000,incoming:0,committed:0,
+  strongest:100,gold:600000,land:1600,late:false,neutral:true};
+const vectors=action.KINDS.map(kind=>action.features(aState,kind,30));
+assert.equal(vectors.length,3);
+assert(vectors.every(v=>v.length===12&&v.every(x=>x>=-1&&x<=1)));
+assert(vectors.every(v=>action.predict(a0,v)===0));
+const aPlus=action.mutate(a0,'action-seed',.3);
+assert.deepEqual(aPlus,action.mutate(a0,'action-seed',.3));
+assert(aPlus.weights.some(w=>w!==0));
+assert(action.predict(aPlus,vectors[0])<=1);
+assert.throws(()=>action.validate({...a0,weights:[0]}));
+assert.throws(()=>action.validate({...a0,weights:[...a0.weights.slice(0,-1),Infinity]}));
+assert.throws(()=>action.predict(a0,[3]));
+assert(action.predict({...a0,weights:a0.weights.map((w,i)=>i===168?3:w)},vectors[0])>.99);
 assert.equal(p.LENGTH,90);
 const base=p.zero(),v=p.features({home:700,max:1000,incoming:0,
   strongest:200,committed:0,neutral:true,foes:1,land:1200,late:false});
@@ -45,6 +66,7 @@ const dry=JSON.parse(exec(['trainer/train.mjs','--dryRun','true',
   '--evalSeeds','2','--nations','1','--maps','World']));
 assert.equal(dry.matches,2*(1*(1*(2+1)+2*2)));
 assert.equal(dry.parallel,2);
+assert.equal(dry.policySchema,2);
 const fast=JSON.parse(exec(['trainer/train.mjs','--dryRun','true','--parallel','4']));
 assert.equal(fast.parallel,4);
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),'aggrobot-neural-'));
@@ -58,6 +80,11 @@ try{
   const bad=spawnSync(process.execPath,['trainer/deploy.mjs','--model',model,'--out',out],
     {cwd:root,encoding:'utf8'});
   assert.notEqual(bad.status,0,'do not overwrite existing deployed bot');
+  const deployedV2=path.join(temp,'action.user.js');
+  fs.writeFileSync(model,JSON.stringify(aPlus));
+  const v2=JSON.parse(exec(['trainer/deploy.mjs','--model',model,'--out',deployedV2]));
+  assert.equal(v2.modelSHA256,action.sha(aPlus));
+  assert(fs.readFileSync(deployedV2,'utf8').includes('const NEURAL_BUNDLED_MODEL = {"schema":2'));
 }finally{fs.rmSync(temp,{recursive:true,force:true});}
 (async()=>{
   let active=0,peak=0;
