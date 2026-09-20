@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.18.0
+// @version      1.18.1
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.18.0', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.18.1', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, brainEnabled:false, brainToken:'', fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -2323,6 +2323,33 @@
     }
     return result;
   }
+  // SAMs need a dedicated asset-centered grid. Generic city/front anchors
+  // can fill their quota before an asset has a safe launcher position.
+  function samBuildAnchors(me,intel,tick,limit=180){
+    if(!opts.antiNuke||!intel?.uncovered?.length)return [];
+    const sites=[],seen=new Set(),w=game.width(),h=game.height();
+    const assets=intel.uncovered.filter(u=>Number.isInteger(u.tile?.())&&
+      ownedTile(u.tile(),me)).sort((a,b)=>assetValue(b.type?.())-assetValue(a.type?.()));
+    const add=(x,y)=>{
+      if(sites.length>=limit||x<0||y<0||x>=w||y>=h)return;
+      const ref=game.ref(x,y);
+      if(!seen.has(ref)&&ownedTile(ref,me)){seen.add(ref);sites.push(ref);}
+    };
+    const phase=Math.floor(tick/45)%8;
+    for(const u of assets.slice(0,18)){
+      if(sites.length>=limit)break;
+      const x=game.x(u.tile()),y=game.y(u.tile());
+      add(x,y);
+      for(const radius of [20,34,48,58]){
+        for(let k=0;k<8;k++){
+          const angle=Math.PI*(k+phase%2*.5)/4;
+          add(Math.round(x+radius*Math.cos(angle)),
+            Math.round(y+radius*Math.sin(angle)));
+        }
+      }
+    }
+    return sites;
+  }
   // Relative payback, derived only from observed income and validated costs.
   // Scores rank otherwise legal builds; never create a build authorization.
   function investmentValue(item,cost,requirements,units){
@@ -2362,7 +2389,7 @@
     // Eight failed coast scans used to disable first-port planning forever.
     // Retry after a bounded pause: territory and legal build sites can change.
     if(portProbeFailures>=8 && Number.isFinite(lastPortRetryTick) &&
-      nowTick-lastPortRetryTick>=800){
+      nowTick-lastPortRetryTick>=180){
       portProbeFailures=0;lastPortRetryTick=nowTick;
     }
     const coastSites=ports===0&&opts.boats?
@@ -2710,30 +2737,57 @@
       valid.sort((a,b)=>score(entry,b)-score(entry,a));
       let ordered=valid;
       if(entry.type==='Port'&&!entry.upgrade&&valid.length>1){
-        // Rotate only within highly scored coast sites. Old full-list rotation
-        // routinely preferred exposed or disconnected sites to safe harbors.
-        const best=valid.slice(0,Math.min(valid.length,recovery?18:12));
-        const offset=buildCursor%best.length;
-        ordered=best.slice(offset).concat(best.slice(0,offset));
-        buildCursor=(buildCursor+(recovery?5:3))%best.length;
+        // Keep the strongest safe harbors AND explore the rest of the coast.
+        // The old top-12-only rotation repeatedly tested illegal shore cells.
+        const best=valid.slice(0,Math.min(valid.length,4));
+        const remainder=valid.slice(best.length);
+        const offset=remainder.length?Math.floor(tick/40)*11%remainder.length:0;
+        ordered=best.concat(remainder.slice(offset),remainder.slice(0,offset));
+        buildCursor=(buildCursor+7)%valid.length;
       }
-      for(const site of ordered.slice(0,entry.upgrade?4:recovery?12:6))slots.push({entry,site});
+      for(const site of ordered.slice(0,entry.upgrade?4:
+        entry.type==='Port'?recovery?24:18:recovery?12:6))slots.push({entry,site});
     }
     // Probe best geographic options across building types; never sequentially
     // spend the entire time budget on the first City anchor.
     slots.sort((a,b)=>score(b.entry,b.site)-score(a.entry,a.site));
     const seen=new Set(), proposals=[],perKind=new Map();
-    const probe={queries:0,errors:0,legal:0,unaffordable:0,invalidSite:0,lowestCost:Infinity,portQueries:0,portLegal:0};
+    const probe={queries:0,errors:0,legal:0,unaffordable:0,invalidSite:0,
+      lowestCost:Infinity,portQueries:0,portLegal:0,samQueries:0,
+      samLegal:0,samUnaffordable:0,samUnsafe:0,samNoWorkerBuild:0,
+      samSites:0};
     const work=[];
     // A dozen City anchors must not evict every Factory / SAM / silo query.
     for(const slot of slots){
-      if(work.length>=(recovery?24:15))break;
+      if(work.length>=(recovery?30:21))break;
       const kind=slot.entry.type+':'+!!slot.entry.upgrade;
-      if((perKind.get(kind)||0)>=(recovery?5:3))continue;
+      if((perKind.get(kind)||0)>(slot.entry.type==='Port'?(recovery?15:10):(recovery?5:3)))continue;
       const key=kind+':'+slot.site.ref;
       if(seen.has(key)||(economicNegative.get(key)??0)>tick)continue;
       seen.add(key);work.push(slot);
       perKind.set(kind,(perKind.get(kind)||0)+1);
+    }
+    // Keep an independent rotation of safe SAM sites, including sites that
+    // never appear in generic inland probes or their short negative cache.
+    const samEntry=entries.find(x=>x.type==='SAM Launcher'&&!x.upgrade);
+    if(samEntry&&requirements.intel.uncovered.length){
+      const samRefs=samBuildAnchors(me,requirements.intel,tick);
+      probe.samSites=samRefs.length;
+      const ranked=samRefs.map(ref=>({ref,coast:shoreNear(ref),dist:frontDistance(ref,fronts)}))
+        .filter(site=>Number.isFinite(score(samEntry,site)))
+        .sort((a,b)=>score(samEntry,b)-score(samEntry,a));
+      const top=ranked.slice(0,6),remainder=ranked.slice(6);
+      const offset=remainder.length?Math.floor(tick/40)*13%remainder.length:0;
+      const rotated=top.concat(remainder.slice(offset),remainder.slice(0,offset));
+      const extra=[];
+      for(const site of rotated){
+        if(extra.length>=18)break;
+        const key='SAM Launcher:false:'+site.ref;
+        if((economicNegative.get(key)??0)>tick ||
+          work.some(x=>x.entry.type==='SAM Launcher'&&!x.entry.upgrade&&x.site.ref===site.ref))continue;
+        extra.push({entry:samEntry,site});
+      }
+      work.unshift(...extra);
     }
     // Nuclear emergency and immediate land defense have their own lane.
     // Never discard legal SAM/defense candidates merely because the first
@@ -2743,7 +2797,8 @@
     const urgentLand=requirements.immediate&&requirements.wantedDefense>0;
     if(requirements.portMilestone&&!urgentSAM&&!urgentLand){
       const portWork=work.filter(x=>x.entry.type==='Port'&&!x.entry.upgrade);
-      if(portWork.length)work.splice(0,work.length,...portWork);
+      if(portWork.length)work.splice(0,work.length,...portWork,
+        ...work.filter(x=>x.entry.type!=='Port'||x.entry.upgrade));
     }
     if(requirements.portMilestone && !urgentSAM && !urgentLand && coastal.length &&
       !work.some(x=>x.entry.type==='Port'&&!x.entry.upgrade)){
@@ -2760,6 +2815,7 @@
       const answers=await Promise.all(batch.map(async slot=>{
         runtime.buildProbes++;probe.queries++;
         if(slot.entry.type==='Port')probe.portQueries++;
+        if(slot.entry.type==='SAM Launcher')probe.samQueries++;
         try{return {slot,legal:await me.actions(slot.site.ref,[slot.entry.type])};}
         catch(_){probe.errors++;return {slot,legal:null};}
       }));
@@ -2767,6 +2823,8 @@
       for(const {slot,legal} of answers){
         if(!legal)continue;
         const {entry,site}=slot;
+        if(entry.type==='SAM Launcher' && !legal.buildableUnits?.some(u=>
+          u.type==='SAM Launcher'&&Number.isInteger(u.canBuild)))probe.samNoWorkerBuild++;
         if(entry.type!=='Port' && !legal.buildableUnits?.some(u=>u.type===entry.type &&
           (entry.upgrade?u.canUpgrade!==false&&u.canUpgrade!==undefined:
             Number.isInteger(u.canBuild)))){
@@ -2785,6 +2843,7 @@
           if(isUpgrade ? (b.canUpgrade===false || b.canUpgrade===undefined) : (b.canBuild===false || (b.canUpgrade!==false && b.canUpgrade!==undefined)))continue;
           probe.legal++;
           if(item.type==='Port')probe.portLegal++;
+          if(item.type==='SAM Launcher')probe.samLegal++;
           const tile=isUpgrade?site.ref:b.canBuild;
           if(!Number.isInteger(tile) || !ownedTile(tile,me)){probe.invalidSite++;continue;}
           const key=(isUpgrade?'upgrade':'build')+':'+item.type+':'+tile;
@@ -2793,7 +2852,11 @@
           const gold=number(()=>Number(me.gold()),0);
           const infinite=game.config().infiniteGold?.()===true;
           if(Number.isFinite(cost))probe.lowestCost=Math.min(probe.lowestCost,cost);
-          if(!infinite && (!Number.isFinite(cost)||cost>gold)){probe.unaffordable++;continue;}
+          if(!infinite && (!Number.isFinite(cost)||cost>gold)){
+            probe.unaffordable++;
+            if(item.type==='SAM Launcher')probe.samUnaffordable++;
+            continue;
+          }
           const essential=(item.type==='City'&&requirements.cities===0)||
             (item.type==='Factory'&&requirements.factories===0)||
             (item.type==='Defense Post'&&requirements.immediate)||
@@ -2804,7 +2867,7 @@
           // ports or upgrades. Emergency SAM / defense remain possible.
           if(requirements.startup && (!economicCore || isUpgrade) && !essential)continue;
           if(requirements.portMilestone&&!requirements.immediate&&
-            item.type!=='Port' &&
+            probe.portLegal>0 && item.type!=='Port' &&
             !(item.type==='SAM Launcher'&&requirements.nuclearThreat))
             continue;
           if(item.type==='Defense Post' && !requirements.immediate &&
@@ -2819,7 +2882,10 @@
           const reserve=gold>650000?Math.min(220000,gold*.12):0;
           if(!infinite&&!essential&&gold-cost<reserve)continue;
           let siteValue=siteScore(item.type,tile,fronts,units,item.urgency);
-          if(!Number.isFinite(siteValue))continue;
+          if(!Number.isFinite(siteValue)){
+            if(item.type==='SAM Launcher')probe.samUnsafe++;
+            continue;
+          }
           if(!infinite && gold>0)siteValue-=Math.min(36,(cost/gold)*26);
           siteValue+=investmentValue(item,cost,requirements,units);
           if(isUpgrade)siteValue-=Math.max(0,number(()=>units.find(u=>u.id?.()===b.canUpgrade)?.level(),1)-2)*6;
@@ -2832,6 +2898,14 @@
       if(proposals.length)break;
     }
     if(!proposals.length){failedEconomyProbes++;
+      if(requirements.wantedSAM>0&&requirements.intel.uncovered.length&&
+        (failedEconomyProbes===1||failedEconomyProbes%4===0))
+        telemetry('sam_probe','SAM-Standorte / Budget geprüft',
+          {enemySilos:requirements.enemySilos,uncovered:requirements.intel.uncovered.length,
+            candidates:probe.samSites,queries:probe.samQueries,legal:probe.samLegal,
+            unaffordable:probe.samUnaffordable,unsafe:probe.samUnsafe,
+            unavailable:probe.samNoWorkerBuild,gold:requirements.gold,
+            lowestCost:Number.isFinite(probe.lowestCost)?probe.lowestCost:null});
       if(requirements.portMilestone && probe.portQueries>0 &&
         probe.portLegal===0){
         portProbeFailures++;
@@ -2857,6 +2931,9 @@
           queries:probe.queries,workerErrors:probe.errors,legal:probe.legal,
           port:{coastCandidates:coastal.length,queries:probe.portQueries,
             legal:probe.portLegal,failures:portProbeFailures},
+          sam:{candidates:probe.samSites,queries:probe.samQueries,
+            legal:probe.samLegal,unaffordable:probe.samUnaffordable,
+            unsafe:probe.samUnsafe,unavailable:probe.samNoWorkerBuild},
           unaffordable:probe.unaffordable,invalidSite:probe.invalidSite,
           lowestCost:Number.isFinite(probe.lowestCost)?probe.lowestCost:null});
       economicLastPlan=entries.slice(0,3).map(x=>x.type).join(' › ');return false;}
@@ -2876,6 +2953,9 @@
     const args=chosen.kind==='upgrade'?[chosen.unitId,chosen.type,1]:[chosen.type,chosen.requestTile];
     if(send(chosen.kind,args,`${chosen.kind==='upgrade'?'UPGRADE':'BAU'} ${chosen.type} · ${chosen.cost.toLocaleString()} Gold`)){
       economicPending={...chosen,tick};failedEconomyProbes=0;lastEconomy=tick;lastEconomicAction=tick;
+      if(chosen.type==='SAM Launcher')telemetry('sam_intent','SAM-Bau angefordert',
+        {tile:chosen.tile,gold:requirements.gold,cost:chosen.cost,
+          uncovered:requirements.intel.uncovered.length});
       if(chosen.type==='Port'){
         portProbeFailures=0;
         telemetry('port_intent','Hafenbau angefordert',
