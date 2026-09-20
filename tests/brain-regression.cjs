@@ -13,7 +13,7 @@ const {parse}=require('../brain/train.cjs');
   const matchId='testmatch00000001';
   const state=(seq,tick,land,mode='EXPAND')=>({schema:1,matchId,seq,tick,mode,land,home:500,max:1000,incoming:0,strongest:300});
   assert.equal(contextOf(observation(state(1,0,1000))),'EXPAND:SAFE');
-  assert.equal(progress({land:1000,home:500,max:1000},{land:1100,home:500}),0.075);
+  assert(Math.abs(progress({land:1000,home:500,max:1000},{land:1100,home:500})-0.075)<1e-12);
   assert.deepEqual(advice({samples:0,mean:1}),{aggressiveDelta:0,reserveDelta:0});
   assert.throws(()=>observation({...state(1,0,1000),incoming:-1}),TypeError);
   assert.throws(()=>observation({...state(1,0,1000),matchId:'../../etc'}),TypeError);
