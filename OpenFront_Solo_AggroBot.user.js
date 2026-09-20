@@ -2052,18 +2052,45 @@
     }
     return proposed.sort((a,b)=>b.value-a.value).slice(0,10);
   }
-  // Official paths are parabolic. A straight chord is a conservative risk
-  // indicator, NEVER proof that a real trajectory is intercepted/safe.
+  // Mirror OpenFront PathFinder.Parabola.getParabolaControlPoints:
+  // p1/p2 lie at 1/4,3/4 of x and rise max(distance/3,50) in y,
+  // clamped to map bounds. The server may choose either rocketDirectionUp,
+  // so cover both curves; a trajectory risk is not a certain interception.
+  function nukeBezierPoints(spawn,target,up=true){
+    const ax=game.x(spawn),ay=game.y(spawn),bx=game.x(target),by=game.y(target),
+      dx=bx-ax,dy=by-ay,height=Math.max(Math.hypot(dx,dy)/3,50),
+      bound=number(()=>game.height(),Math.max(ay,by)+height+1)-1,
+      clampY=y=>Math.min(bound,Math.max(0,y)),sign=up?-1:1;
+    return [{x:ax,y:ay},
+      {x:ax+dx/4,y:clampY(ay+dy/4+sign*height)},
+      {x:ax+dx*3/4,y:clampY(ay+dy*3/4+sign*height)},
+      {x:bx,y:by}];
+  }
+  function nukeBezierPoint(points,t){
+    const q=1-t;
+    return {x:q*q*q*points[0].x+3*q*q*t*points[1].x+
+      3*q*t*t*points[2].x+t*t*t*points[3].x,
+      y:q*q*q*points[0].y+3*q*q*t*points[1].y+
+      3*q*t*t*points[2].y+t*t*t*points[3].y};
+  }
   function nukeTrajectoryRisk(spawn,target,sams){
     if(!Number.isInteger(spawn)||!Number.isInteger(target))return 0;
-    const ax=game.x(spawn),ay=game.y(spawn),bx=game.x(target),by=game.y(target);
+    const points=[nukeBezierPoints(spawn,target,true),
+      nukeBezierPoints(spawn,target,false)];
+    const dist=Math.hypot(game.x(target)-game.x(spawn),
+      game.y(target)-game.y(spawn));
+    const samples=Math.min(160,Math.max(32,Math.ceil(dist/7)));
     return sams.filter(s=>{
       if(s.isActive?.()===false || s.isUnderConstruction?.())return false;
       const x=game.x(s.tile()),y=game.y(s.tile());
-      const rad=number(()=>game.config().samRange(s.level?.()||1),70);
-      for(let i=0;i<=16;i++){
-        const t=i/16,dx=x-ax-(bx-ax)*t,dy=y-ay-(by-ay)*t;
-        if(dx*dx+dy*dy<=rad*rad)return true;
+      // Tile rounding and the actual engine speed are not a proof of safety:
+      // add a small margin, and sample both allowed orientations.
+      const rad=number(()=>game.config().samRange(s.level?.()||1),70)+4;
+      for(const path of points){
+        for(let i=0;i<=samples;i++){
+          const p=nukeBezierPoint(path,i/samples);
+          if((p.x-x)**2+(p.y-y)**2<=rad*rad)return true;
+        }
       }
       return false;
     }).length;
