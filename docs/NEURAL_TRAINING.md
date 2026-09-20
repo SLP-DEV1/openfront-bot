@@ -11,15 +11,36 @@ Die Nullgewicht-Policy ist exakt die bestehende regelbasierte Strategie. Live-Mo
 ## Windows-Schnellstart
 
 1. Im Bot-Repo `git pull --ff-only` ausfuehren; Node.js 24 und Git benoetigt. Qwen Code optional in PATH und mit deinem lokalen llama.cpp-Server konfiguriert. Das Batch-Skript benutzt den eigenen Trainings-Checkout `..\OpenFrontIO-Impossible` und klont ihn bei Fehlen. Der bisherige `..\OpenFrontIO`-Checkout mit dem alten Benchmark-Commit bleibt unveraendert. Ein bereits vorhandener Trainings-Checkout mit anderem Commit wird ebenfalls nicht automatisch umgestellt.
-2. `Start_Training.bat` doppelklicken. Es installiert bei Bedarf die Engine-Abhaengigkeiten, spielt standardmaessig 3 Generationen gegen eine und vier Impossible-Nationen und fragt nach jeder Generation Qwen Code nach einer *begrenzten* Mutation-Streuung (Sigma). Ein fehlendes oder fehlerhaftes Qwen blockiert den Trainingsprozess nicht.
+2. `Start_Training.bat` doppelklicken. Es installiert bei Bedarf die Engine-Abhaengigkeiten und startet standardmaessig **vier voneinander isolierte Engine-Partien gleichzeitig** (3 Generationen, eine und vier Impossible-Nationen). Nach jeder Generation fragt es Qwen Code nach einer *begrenzten* Mutation-Streuung (Sigma); ein fehlendes Qwen blockiert das Training nicht.
 3. Berichte stehen unter `benchmark-results/neural-.../history.json`, detaillierte `generation-N.json` und einzelne Match-Ordner unter `matches/`. Im Match-Ordner stehen die echten `match.json`, `events.jsonl`, `turns.jsonl` sowie das getrennte Runner-Log.
 
 Alternativ erst die Groesse pruefen (startet **kein** Match):
 
 ```powershell
 cd C:\Users\SPK\Desktop\openfront
-node trainer/train.mjs --dryRun true --generations 3 --population 4 --trainSeeds 2 --evalSeeds 4 --nations 1,4
+node trainer/train.mjs --dryRun true --generations 3 --population 4 --parallel 4 --trainSeeds 2 --evalSeeds 4 --nations 1,4
 ```
+
+## Parallele Simulationen (Ryzen 9 9950X3D, 64 GB)
+
+Die Engine-Matches sind separate **Node.js-Prozesse**, die gleichzeitig
+laufen, nicht mehrere simulierte Gegner in einer einzigen Partie. Jedes
+Match bekommt ein eigenes Modellfile, Seeds, Engine-GameView, Log und
+Ergebnisverzeichnis. Der Trainer fasst alle Resultate erst nach Ende der
+jeweiligen Trainings- bzw. Evaluationsphase zusammen. Qwen Code laeuft
+**zwischen** den Phasen, nicht in jedem Engine-Prozess. Die RTX 4090
+wird vom Engine-Runner nicht fuer diese Simulationen verwendet.
+
+Der Batch-Start benutzt `--parallel 4`; bei knappen 64 GB RAM oder
+parallel laufenden Spielen/llama.cpp mit `--parallel 2` beginnen.
+`--parallel 6` nur nach Beobachtung von CPU-Auslastung, RAM und
+Gesamtdurchsatz testen; bis zu 8 ist technisch erlaubt. Die Durchsatz-
+steigerung ist nicht automatisch linear. Die Anzahl der Seeds und
+die strenge Champion-Promotion bleiben bei allen Einstellungen gleich.
+
+`--parallel` beschleunigt nur den lokalen Trainingsdurchlauf. Ein
+Training ueber mehrere Start_Brain.bat-/Start_Training.bat-Fenster ist
+nicht noetig; insbesondere gleichnamige Ausgabeordner vermeiden.
 
 ## Verlaessliche Promotion
 
