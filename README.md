@@ -2,7 +2,7 @@
 
 Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscript für [OpenFront](https://openfront.io/).
 
-**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.13.0**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
+**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.14.0**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
 
 ## AggroBot 2.0 – erster lokaler Brain-Baustein (v1.11.0)
 
@@ -36,6 +36,23 @@ untersuchte aktuelle OpenFront-Commit wird über `--engineCommit` angegeben,
 ansonsten gilt weiter der ältere historische Fixpunkt. Der zusätzliche
 GitHub-Workflow `Impossible Engine Smoke` überprüft den offiziellen
 Engine-/GameView-Pfad; lange Siege/Niederlagen müssen separat gemessen werden.
+
+## Neural Impossible Trainer (1.14.0, experimentell)
+
+Ein neues kleines **8→8→2-Neuronales-Netz** kann innerhalb enger Grenzen
+Aggressivität und Reserve anpassen; die vorhandene Spiel- und Worker-Logik
+bleibt die Sicherheitsgrenze. Im normalen Userscript ist das neuronale Netz
+ohne einen bestätigten und ausdrücklich eingebetteten Champion **AUS**.
+
+`Start_Training.bat` startet einen reproduzierbaren Neuroevolution-Trainingslauf
+mit echten Impossible-Engine-Partien. Ein optionales Qwen Code CLI bewertet
+nach jeder Generation die **aggregierten Resultate** und kann ausschließlich
+die Mutationsstärke für die nächste Generation vorschlagen. Nur mehr
+**bestätigte Siege auf getrennten Evaluations-Seeds** können eine
+`champion.json` veröffentlichen. Training ohne Champion gilt ausdrücklich
+nicht als erfolgreicher Trainingsnachweis.
+
+[Einrichtung, Qwen Code, Tests und Modelleinsatz](docs/NEURAL_TRAINING.md).
 
 ## Installation
 
