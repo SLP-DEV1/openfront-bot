@@ -13,5 +13,7 @@ jobs:
         run: node --check OpenFront_Solo_AggroBot.user.js
       - name: Check regression test syntax
         run: node --check tests/strategy-regression.cjs
+      - name: Check match report syntax
+        run: node --check tools/match-report.cjs
       - name: Test bot strategy
         run: node tests/strategy-regression.cjs
