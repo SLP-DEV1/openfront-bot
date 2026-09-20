@@ -2,7 +2,23 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 (async()=>{
-  const {qwenCommand,reviewGeneration}=await import('../trainer/qwen-review.mjs');
+  const {qwenCommand,reviewGeneration,parseQwenOutput}=await import('../trainer/qwen-review.mjs');
+  const final=JSON.stringify({sigma:.3,note:'Final aus Assistant-Text'});
+  // Actual Qwen Code 0.24.1 transcript ends with a blank result field,
+  // while the answer lives in a message.content type=text entry.
+  const transcript=JSON.stringify([
+    {type:'assistant',message:{content:[{type:'thinking',thinking:'not JSON'}]}},
+    {type:'assistant',message:{content:[{type:'text',text:final}]}},
+    {type:'result',result:'',is_error:false}
+  ]);
+  assert.equal(parseQwenOutput(transcript).sigma,.3);
+  assert.equal(parseQwenOutput(JSON.stringify([{type:'result',result:final}])).sigma,.3);
+  assert.throws(()=>parseQwenOutput(JSON.stringify([{type:'result',result:''}])),
+    /no final text/);
+  assert.throws(()=>parseQwenOutput(JSON.stringify([
+    {type:'assistant',message:{content:[{type:'text',text:JSON.stringify({sigma:2,note:'bad'})}]}},
+    {type:'result',result:''}
+  ])),/Invalid Qwen recommendation/);
   const linux=qwenCommand('linux',{}),win=qwenCommand('win32',{ComSpec:'C:\\Windows\\System32\\cmd.exe'});
   assert.equal(linux.command,'qwen');
   assert.equal(win.command,'C:\\Windows\\System32\\cmd.exe');
