@@ -674,7 +674,7 @@
     const opening=tick<1000 && items.some(g=>g.id===null&&!g.fallout) &&
       s.incoming<home*.025 && s.strongest<home*.85 && s.ratio>=.27 &&
       !recentHostilePressure(tick) && !(armyTrend(tick)?.tiles< -80) &&
-      (!hardMode() || frontPressureForecast(me,items,tick).risk<.90);
+      (!hardMode() || !frontPressureForecast(me,items,tick).pressured);
     const invasion=s.incoming/home,neighbor=s.strongest/home;
     const emergency=invasion>=.18 || (invasion>=.10 && context.rebuilding);
     let mode='BALANCED',reason='Ausgeglichene Spielphase';
@@ -874,8 +874,8 @@
     const coastScore=Math.min(1,coastal/Math.max(1,weight)*3);
     // Several nearby enemy spawns are riskier than one equally close rival;
     // avoid an opening surrounded by Impossible nations even on rich land.
-    const crowding=enemy.filter(d=>d<minimum*2.5).length;
-    const crowdPenalty=Math.min(.21,Math.max(0,crowding-1)*.07);
+    const crowding=enemy.filter(d=>d<minimum*1.8).length;
+    const crowdPenalty=Math.min(.06,Math.max(0,crowding-1)*.03);
     const score=openScore*.19+density*.32+
       (plain/Math.max(1,core)*.45+plains/Math.max(1,weight)*.55)*.18+
       enemyScore*.16+edgeScore*.05+coastScore*.04+
@@ -1363,7 +1363,7 @@
       incoming>0 ? Math.min(home*.94,incoming*1.3) : 0,
       strongest>0 ? Math.min(home*.78,max*(hardMode()?.12:.14)) : 0);
     const predicted=hardMode()?frontPressureForecast(me,items,tick):null;
-    const forecastFloor=predicted&&(predicted.pressured||predicted.combined>home*1.18)?
+    const forecastFloor=predicted&&predicted.pressured?
       Math.min(home*.91,predicted.combined*.60+incoming*.30):0;
     const reserve=Math.min(home,Math.ceil(Math.max(defensiveFloor,forecastFloor)));
     const available=Math.max(0,Math.floor(home-reserve));
@@ -1635,11 +1635,14 @@
       .sort((a,b)=>b-a)[1]||0;
     const combined=otherThreat+Math.min(secondary*.35,s.home*.4);
     const danger=otherThreat>s.home*1.15 ||
-      (hardMode()&&combined>s.home*1.27);
+      (hardMode()&&combined>s.home*1.27&&
+       (s.incoming>s.home*.04 || (armyTrend(tick)?.tiles||0)< -100));
     const pressure=s.incoming>Math.max(1200,s.home*.08);
     const floor=Math.max(s.reserve,s.incoming*1.3,
       otherThreat>0?Math.min(s.home,otherThreat*(hardMode()?.63:.55)):0,
-      hardMode()&&secondary>0?Math.min(s.home*.90,combined*.58):0);
+      hardMode()&&secondary>0&&
+      (s.incoming>s.home*.04 || (armyTrend(tick)?.tiles||0)< -100)?
+        Math.min(s.home*.90,combined*.58):0);
     return {other:otherThreat,danger,pressure,floor,
       safeStrike:Math.max(0,Math.floor(s.home-floor)),
       emergency:danger||pressure};
