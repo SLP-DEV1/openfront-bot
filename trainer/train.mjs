@@ -8,6 +8,7 @@ import {fileURLToPath} from 'node:url';
 import policy from './policy.cjs';
 import common from '../tools/benchmark/common.cjs';
 import {reviewGeneration} from './qwen-review.mjs';
+import evaluation from './evaluation.cjs';
 
 const cfg={engine:null,engineCommit:common.IMPOSSIBLE_REFERENCE_COMMIT,
   bot:'OpenFront_Solo_AggroBot.user.js',initialModel:null,maps:'World',size:'Compact',nations:'1,4',
@@ -122,8 +123,8 @@ for(let g=1;g<=generations;g++){
   const incumbentRows=suite(incumbent,'evaluation',g,'champion',evalSeeds);
   const candidateRows=suite(provisional,'evaluation',g,'candidate',evalSeeds);
   const wins=rows=>rows.filter(r=>r.confirmed&&r.outcome==='victory').length;
-  const valid=incumbentRows.every(r=>r.confirmed)&&candidateRows.every(r=>r.confirmed);
-  const promoted=valid&&wins(candidateRows)>wins(incumbentRows);
+  const comparison=evaluation.compare(incumbentRows,candidateRows);
+  const valid=comparison.valid,promoted=comparison.promoted;
   if(promoted){
     incumbent=provisional;incumbentWins=wins(candidateRows);
     save('champion.json',incumbent);
