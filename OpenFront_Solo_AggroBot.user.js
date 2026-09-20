@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.15.0
+// @version      1.16.0
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.15.0', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.16.0', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, brainEnabled:false, brainToken:'', fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -330,6 +330,7 @@
   let investmentStatus='Grundaufbau',lastWarReview=-Infinity;
   let defenseStatus='Keine Bedrohung',lastEmergencyRetreat=-Infinity,lastDefenseLog=-Infinity;
   let targetIntelCache=new Map(),frontMemory=new Map(),lastFrontWarning=-Infinity;
+  let opponentHistory=new Map(),lastEconomyPosture='—',lastDirectorDecision=null;
   let retreatRequests=new Map(),defenseStats={retreatsOrdered:0,retreatsObserved:0,unknown:0,unconfirmed:0};
   // Manual slider values remain saved; fullAuto computes independent live values.
   let autoTuning={aggressive:85,reserve:35,actionsPerMinute:72,maxTargets:16,
@@ -575,7 +576,7 @@
     buildCursor=0;spawnCache=null;spawnJob=null;spawnRetryAt=0;spawnAlternatives=[];spawnState={scanned:0,phase:'idle',lastSent:null,attempts:0,blocked:null,deadline:null};cooldowns.clear();rejected.clear();
     plan=null;lastSelection='';lastEmission=0;borderOffset=0;lastBorderRefresh=0;
     totalSent=0;totalFailed=0;actions=[];errors=0;troopSamples=[];
-    lastRecoveryReason='';lastBattle=null;pendingAttack=null;targetIntelCache.clear();frontMemory.clear();lastFrontWarning=-Infinity;
+    lastRecoveryReason='';lastBattle=null;pendingAttack=null;targetIntelCache.clear();frontMemory.clear();opponentHistory.clear();lastEconomyPosture='—';lastDirectorDecision=null;lastFrontWarning=-Infinity;
     attackReceipts={confirmed:0,unconfirmed:0,territoryGained:0};blockedTargets.clear();
     failedEconomyProbes=0;successfulEconomyTick=-Infinity;warWaitSince=-Infinity;
     lastEconomicAction=-Infinity;lastNeutralSend=-Infinity;lastEnemySend=-Infinity;lastHostilePressure=-Infinity;consecutiveIdle=0;
@@ -1054,6 +1055,46 @@
       exposed:ratio>=.45 || underPressure>=.40,
       human:enemy.type?.()==='HUMAN'};
   }
+  // Track visible troop/land trajectories. Only sustained third-party wars
+  // justify a narrower opportunity window; snapshots never override legality.
+  function observeOpponents(me,tick){
+    for(const enemy of game.playerViews?.()||[]){
+      const id=safeID(enemy);
+      if(id===null||id===safeID(me)||!enemy.isAlive?.()||friendly(enemy,me))continue;
+      const old=opponentHistory.get(id);
+      const troops=Math.max(0,number(()=>enemy.troops(),0));
+      const land=Math.max(0,number(()=>enemy.numTilesOwned(),0));
+      const window=adversaryWindow(me,enemy);
+      const exposed=window.exposed &&
+        (window.elsewhere>=Math.max(500,window.home*.45) ||
+         window.incomingOthers>=Math.max(500,window.home*.40));
+      const since=exposed?(old?.exposedSince??tick):null;
+      const resample=!old||tick-old.tick>=90;
+      const previous=old&&resample?{tick:old.tick,troops:old.troops,land:old.land}:
+        old?.previous||null;
+      opponentHistory.set(id,{tick:resample?tick:old.tick,
+        troops:resample?troops:old.troops,
+        land:resample?land:old.land,previous,exposedSince:since,
+        observedTick:tick});
+    }
+    for(const [id,v] of opponentHistory)
+      if(tick-v.observedTick>360)opponentHistory.delete(id);
+    if(opponentHistory.size>64)
+      for(const [id] of [...opponentHistory].sort((a,b)=>a[1].observedTick-b[1].observedTick)
+        .slice(0,opponentHistory.size-64))opponentHistory.delete(id);
+  }
+  function opponentTrend(enemy,tick=number(()=>game.ticks(),0)){
+    const v=opponentHistory.get(safeID(enemy)),previous=v?.previous;
+    if(!v||tick-v.observedTick>120||!previous||
+      v.tick-previous.tick<75||v.tick-previous.tick>360)
+      return {valid:false,falling:false,growing:false,sustained:false,change:0,landChange:0};
+    const change=(v.troops-previous.troops)/Math.max(1,previous.troops);
+    const landChange=(v.land-previous.land)/Math.max(1,previous.land);
+    return {valid:true,change,landChange,
+      falling:change<-.15||landChange<-.08,
+      growing:change>.25&&landChange>=0,
+      sustained:v.exposedSince!==null&&tick-v.exposedSince>=90};
+  }
   function enemyUnderAttack(enemy){
     const own=number(()=>enemy.troops?.(),0);
     const ourSmall=number(()=>myPlayer()?.smallID?.(),-1);
@@ -1437,6 +1478,9 @@
     const normal=hardMode()?(late?1.34:1.75):
       (late?1.18:blitz?1.30:1.55);
     if(enemyUnderAttack(enemy))return hardMode()?(late?1.12:1.24):1.12;
+    const trend=opponentTrend(enemy);
+    if(trend.valid&&trend.sustained&&trend.falling)
+      return Math.max(hardMode()?1.23:1.13,normal*.83);
     // Opportunity in a human FFA: their army is fighting someone else.
     // Never make this a blanket buff for an uncommitted player.
     const opening=adversaryWindow(myPlayer(),enemy);
@@ -1446,6 +1490,14 @@
       number(()=>enemy.troops(),Infinity)<home*1.2)
       return Math.max(1.15,normal*.86);
     return normal;
+  }
+  function targetHomeRatio(enemy,late){
+    const normal=hardMode()?(late?1.45:1.85):(late?1.24:1.45);
+    const t=opponentTrend(enemy),window=adversaryWindow(myPlayer(),enemy);
+    // Only the SPECIFIC target's verified decline can lower the home
+    // threshold. Other-front reserve, incoming-defense and worker checks stay.
+    return t.valid&&t.sustained&&t.falling&&window.exposed?
+      hardMode()?(late?1.26:1.46):(late?1.16:1.32):normal;
   }
   // Ally-target marking is a preference, not an attack authorization.
   function allyAssistTarget(me,enemy){
@@ -1483,12 +1535,12 @@
     if(!(troops>0)||s.incoming>s.home*(late?.15:.04)||s.ratio<(late?.29:.40))return false;
     const minRatio=enemyOpportunityRatio(item.opponent,late,s.home);
     if(s.available<troops*minRatio ||
-      s.home<troops*(hardMode()?(late?1.45:1.85):(late?1.24:1.45)))return false;
+      s.home<troops*targetHomeRatio(item.opponent,late))return false;
     const front=frontRiskPlan(items,s,item.id);
     if(front.danger||front.pressure)return false;
     const strike=Math.min(s.available*(hardMode()?.76:.80),
       Math.max(troops*(hardMode()?1.57:1.40),s.available*.48));
-    return strike<=front.safeStrike;
+    return strike<=front.safeStrike && strike>=troops*(hardMode()?1.18:1.08);
   }
   function warReadiness(me,items,s,tick,target=null) {
     if(!hardMode())return {ready:true,reason:'Normal'};
@@ -1637,7 +1689,7 @@
       if(!isNeutral) {
         const minimumRatio=enemyOpportunityRatio(enemy,late,s.home,effectivePlan()==='Blitz');
         if(s.ratio<(late?.29:.40) || available<enemyTroops*minimumRatio ||
-          s.home<enemyTroops*(hardMode()?(late?1.45:1.85):(late?1.24:1.45)) ||
+          s.home<enemyTroops*targetHomeRatio(enemy,late) ||
           front.danger||front.pressure||
           Math.min(available*(hardMode()?.76:.80),
             Math.max(enemyTroops*(hardMode()?1.57:1.40),available*.48))>front.safeStrike||
@@ -1666,6 +1718,11 @@
         if(opening.exposed && opening.human)score+=Math.min(33,
           Math.round(opening.ratio*23+opening.incomingOthers/opening.home*16));
         if(enemyUnderAttack(enemy) && (!isWar()||warState.id===item.id))score+=23;
+        const trend=opponentTrend(enemy,tick);
+        if(trend.valid){
+          if(trend.sustained&&trend.falling)score+=18;
+          if(trend.growing&&!opening.exposed)score-=Math.min(22,trend.change*25);
+        }
         // Early human wars are expensive while clean free land remains.
         // A genuinely exposed player is the exception, not the default.
         if(enemy.type?.()==='HUMAN' && context.neutral && ownTiles<1100 &&
@@ -1699,6 +1756,20 @@
         amount:Math.min(available,Math.floor(amount))}];
     }).sort((a,b)=>b.score-a.score);
   }
+  // Shared investment posture; never bypasses worker building legality.
+  function economyPosture(me,s,tick=number(()=>game.ticks(),0)){
+    const units=ownStructures(me);
+    if(!units.some(u=>u.type?.()==='City')||
+       !units.some(u=>u.type?.()==='Factory'))return 'bootstrap';
+    if(s.incoming>Math.max(1200,s.home*.10)||recentHostilePressure(tick))
+      return 'defensive';
+    const noNeutral=strategic.groups.every(g=>g.id!==null||g.fallout);
+    if(opts.boats&&noNeutral&&tick-lastNeutralSend>=200&&
+      tick-lastEnemySend>=200&&!isWar()&&!s.activeEnemy&&
+      s.strongest<s.home*.85)return 'breakout';
+    if(s.ratio>=.78&&!s.incoming&&s.strongest<s.home*.70)return 'recruit';
+    return 'balanced';
+  }
   // Shared strategic director: decide which existing LEGAL planner gets first
   // refusal. Never issues intents and never weakens any planner's safety gate.
   function strategicDirector(me,s,context,ranked,tick) {
@@ -1731,7 +1802,7 @@
       land.length?'Freies Land vor teurer Küstenoperation':
       'Keine freigegebene Landaktion; Seeweg prüfen';
     return {order,reason,landCandidates:land.length,enemyCandidates:enemy.length,
-      navalCandidate:canSail,threatened};
+      navalCandidate:canSail,threatened,economy:economyPosture(me,s,tick)};
   }
   async function legalTarget(me,item,serial) {
     // Four-at-a-time worker checks remove the old serialized waterfall.
@@ -2151,20 +2222,21 @@
     const wantedSilo=siloAllowed && (!cityEnabled||cities>=2)&&(!factoryEnabled||factories>=2) && late && mine>900 ?
       (siloCount===0?1:nukeShots>0&&gold>2500000?Math.min(3,1+Math.floor(mine/18000)):1):0;
     const pressure=troops/cap;
+    const posture=economyPosture(me,troopSnapshot,nowTick);
     const style=effectiveBuildStyle() || 'Ausgewogen';
     const defBoost=style==='Defensiv'?22:0,econBoost=style==='Wirtschaft'?24:0;
     const list=[
-      {type:'City',desired:wantedCity,score:92+econBoost/2+Math.max(0,pressure-.35)*75+
+      {type:'City',desired:wantedCity,score:92+econBoost/2+(posture==='recruit'?38:0)+Math.max(0,pressure-.35)*75+
           (pressure>.80&&!immediate?30:0)+(cities===0?115:hardMode()&&cities<2?80:0)},
-      {type:'Factory',desired:wantedFactory,score:91+econBoost+
+      {type:'Factory',desired:wantedFactory,score:91+econBoost+(posture==='bootstrap'?20:0)+
           (factories===0?100:hardMode()&&factories<2?85:0)+
           (gold<450000?15:0)+(pressure<.60&&factories>0?10:0)+
           (factories<2&&cities>=2?24:0)-
           (incomeStatus.observed&&incomeStatus.train===0&&factories>=2?26:0)},
       {type:'Port',desired:wantedPort,score:portMilestone?345:
-        59+econBoost/2+(ports===0&&wantedPort?12:0)+
+        59+econBoost/2+(posture==='breakout'?115:0)+(ports===0&&wantedPort?12:0)+
         (incomeStatus.observed&&incomeStatus.trade===0&&ports===0?13:0)},
-      {type:'Defense Post',desired:wantedDefense,score:immediate?310+defBoost:threatened?(basic?36:77)+defBoost:20},
+      {type:'Defense Post',desired:wantedDefense,score:immediate?310+defBoost:threatened?(basic?36:77)+defBoost+(posture==='defensive'?24:0):20},
       {type:'SAM Launcher',desired:wantedSAM,score:enemyNukes?210+defBoost:threat?151+defBoost:proactiveSAM?118:40},
       {type:'Missile Silo',desired:wantedSilo,score:siloCount===0?305:opts.nukes?(late?131:94)+(gold>6000000?13:0):0}
     ];
@@ -2193,7 +2265,7 @@
       saveForSilo?'Silo-Fonds 1,15 Mio.':saveForNuke?'Raketen-Fonds '+firstRocketFund.toLocaleString():'Wirtschaft & Offensive';
     return {list:value,threatened,gold,cities,factories,mine,pressure,nuclearThreat:threat,incomingNukes:enemyNukes,intel,
       startup,basic,emergency,immediate,savingsTarget,saveForSilo,saveForNuke,siloCount,
-      enemySilos,proactiveSAM,wantedDefense,wantedSAM,portMilestone,coastSites:coastSites.length,portProbeFailures};
+      enemySilos,proactiveSAM,wantedDefense,wantedSAM,portMilestone,coastSites:coastSites.length,portProbeFailures,posture};
   }
   function economicAnchors(me,tiles,units,tick) {
     const w=game.width(),h=game.height(),anchors=[],seen=new Set();
@@ -2375,6 +2447,11 @@
     for(const [k,expiry] of economicNegative)if(tick>=expiry)economicNegative.delete(k);
     const requirements=economicNeeds(me,units,tiles);
     const entries=requirements.list;
+    if(lastEconomyPosture!==requirements.posture){
+      lastEconomyPosture=requirements.posture;
+      telemetry('economy_posture','Investitionsziel: '+requirements.posture,
+        {posture:requirements.posture,priorities:entries.slice(0,3).map(e=>e.type)});
+    }
     // Do not waste worker queries or count failed builds while deliberately
     // accumulating funds for the first silo / first atomic strike.
     if(requirements.savingsTarget>0 && !requirements.immediate && requirements.incomingNukes===0 &&
@@ -3306,6 +3383,23 @@
     result.sort((a,b)=>b.score-a.score||a.distance-b.distance);
     return result.slice(0,limit).map(x=>x.tile);
   }
+  function navalCommitmentRatio(me,enemy,tick){
+    const trend=opponentTrend(enemy,tick),window=adversaryWindow(me,enemy);
+    // Never ease naval thresholds based on a momentary third-party attack.
+    return trend.valid&&trend.sustained&&trend.falling&&window.exposed?1.35:1.9;
+  }
+  function landingThirdPartyRisk(me,dest,target,amount){
+    try{
+      const neighbors=[],count=game.neighbors4(dest,neighbors);
+      for(let i=0;i<count;i++){
+        const owner=game.owner(neighbors[i]);
+        if(!owner?.isPlayer?.()||safeID(owner)===safeID(target)||
+          safeID(owner)===safeID(me)||friendly(owner,me))continue;
+        if(number(()=>owner.troops(),Infinity)>amount*.85)return true;
+      }
+    }catch(_){return true;}
+    return false;
+  }
   async function naval(me,tick,serial) {
     if(!opts.boats||!ctors.boat||tick-lastBoat<100||tick<navalBackoffUntil||pendingAttack||pendingBoat)return false;
     lastBoat=tick;
@@ -3336,7 +3430,8 @@
     for(const foe of foes.slice(0,6)){
       if(navyState.strongest>=navyState.home*.85)break;
       if((navalCooldown.get('player:'+safeID(foe))||0)>tick)continue;
-      if(spare<number(()=>foe.troops(),Infinity)*1.9 ||
+      const navyRatio=navalCommitmentRatio(me,foe,tick);
+      if(spare<number(()=>foe.troops(),Infinity)*navyRatio ||
         number(()=>me.troops())<number(()=>game.config().maxTroops(me),1)*.47)continue;
       let points=[];
       // Prefer the opponent's actual coastal border. An inland spawn is legal
@@ -3374,19 +3469,26 @@
         }
         const fresh=military(me,strategic.groups);
         if(fresh.incoming>0 || fresh.activeEnemy>0 ||
-          fresh.available<number(()=>current.troops(),Infinity)*1.9 ||
+          fresh.available<number(()=>current.troops(),Infinity)*
+           navalCommitmentRatio(me,current,tick) ||
           fresh.ratio<.47)continue;
         const ship=legal?.buildableUnits?.find(x=>x.type==='Transport'&&Number.isInteger(x.canBuild));
         if(!ship || (Number(me.gold())<Number(ship.cost)&&!game.config().infiniteGold?.()))continue;
         const committedWar=isWar()&&warState.id===safeID(current);
-        const amount=Math.floor(Math.min(fresh.available*(committedWar ? .60 : .36),
-          fresh.home*(committedWar ? .58 : .30)));
+        const exposedNavy=navalCommitmentRatio(me,current,tick)<1.9;
+        const amount=Math.floor(Math.min(fresh.available*(committedWar ? .60 : exposedNavy?.66:.36),
+          fresh.home*(committedWar ? .58 : exposedNavy?.55:.30)));
         // Having a large spare army is not sufficient: the ACTUAL landing
         // contingent must plausibly beat the enemy's fresh home force.
         if(amount<1000||amount<number(()=>current.troops(),Infinity)*
-          (hardMode()?1.05:.85) || fresh.home-amount<fresh.reserve)continue;
+          (hardMode()?1.05:.85) || fresh.home-amount<fresh.reserve ||
+          landingThirdPartyRisk(me,dest,current,amount))continue;
         if(sendMarineTransport(me,dest,amount,
-          tick,'LANDUNG → '+nameOf(current),'player:'+safeID(current)))return true;
+          tick,'LANDUNG → '+nameOf(current),'player:'+safeID(current))){
+          if(exposedNavy)telemetry('naval_window','Anhaltende Drittfront bestätigt',
+            {target:safeID(current),amount,trend:opponentTrend(current,tick)});
+          return true;
+        }
       }
     }
     // No separate war: transport a safe neutral-expansion force to verified
@@ -3522,6 +3624,7 @@
       if(!live(serial))return;
       const groups=targetsFromBorder(me,tiles);
       observeFronts(me,groups,tick);
+      observeOpponents(me,tick);
       let s=military(me,groups);rememberHostilePressure(s,tick);troopSnapshot=s;
       manageWar(me,groups,s,tick);
       const context=strategy(me,groups,s);
@@ -3537,6 +3640,7 @@
             committed:s.committed,pendingRetreats:retreatRequests.size},enemies:groups.filter(g=>g.id!==null).map(g=>({name:nameOf(g.opponent),troops:number(()=>g.opponent.troops()),land:number(()=>g.opponent.numTilesOwned())})),
           readiness:context.readiness?.reason,ratio:s.ratio,maxTroops:s.max,growthPotential:s.growthPotential,
           victory:winStatus,income:incomeStatus,strategicTelemetry,
+           director:lastDirectorDecision,economyPosture:lastEconomyPosture,
           forecastAudit:lastForecastAudit,
           recentIncomeSamples:incomeAttribution.slice(-4).map(v=>({...v})),
           fleet:fleetStatus,
@@ -3564,6 +3668,13 @@
       if(teamSupport(me,tick,s))return;
       // Economy has its own scheduler and cannot block the combat planner.
       const directive=strategicDirector(me,s,context,ranked,tick);
+      if(!lastDirectorDecision||lastDirectorDecision.order[0]!==directive.order[0]||
+        lastDirectorDecision.economy!==directive.economy){
+        telemetry('director_decision',directive.reason,{order:directive.order,
+          economy:directive.economy,landCandidates:directive.landCandidates,
+          enemyCandidates:directive.enemyCandidates,threatened:directive.threatened});
+      }
+      lastDirectorDecision=directive;
       if(directive.order[0]==='hold') {
         status='AUFBAU · Truppen regenerieren / Verteidigung halten';
         return;

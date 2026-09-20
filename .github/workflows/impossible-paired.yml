@@ -16,21 +16,24 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Fetch historical baseline and exact Impossible engine
+      - name: Fetch PR base bot and exact Impossible engine
+        env:
+          BASELINE_SHA: ${{ github.event.pull_request.base.sha || '101be8d4b9e4e2ace855d67d5c159f8a69b0e71a' }}
         run: |
-          git fetch --depth 1 origin e07288007d27bd0d5ad253b64d2758cb6682b310
-          git show e07288007d27bd0d5ad253b64d2758cb6682b310:OpenFront_Solo_AggroBot.user.js > baseline.user.js
+          git fetch --depth 1 origin "$BASELINE_SHA"
+          git show "$BASELINE_SHA:OpenFront_Solo_AggroBot.user.js" > baseline.user.js
+          echo "Comparing bot baseline $BASELINE_SHA against candidate $GITHUB_SHA"
           git clone --depth 1 https://github.com/openfrontio/OpenFrontIO.git ../OpenFrontIO
           git -C ../OpenFrontIO fetch --depth 1 origin bb8af015b515b3b717bd4d901074c5f4c16641cb
           git -C ../OpenFrontIO checkout --detach bb8af015b515b3b717bd4d901074c5f4c16641cb
           cd ../OpenFrontIO
           npm ci --ignore-scripts
-      - name: Compare 1.12 and 1.13 using official Impossible opponents and same seeds
+      - name: Compare PR base against candidate on matching Impossible seeds
         run: |
           node tools/benchmark/impossible-matrix.mjs \
             --engine ../OpenFrontIO --engineCommit bb8af015b515b3b717bd4d901074c5f4c16641cb \
             --baseline baseline.user.js --candidate OpenFront_Solo_AggroBot.user.js \
-            --maps World --size Compact --nations 1,4 --bots 0 \
+            --maps World,Europe --size Compact --nations 4 --bots 0 \
             --seeds impossible-101,impossible-102 --ticks 18000 \
             --out benchmark-results/impossible-paired-ci
       - uses: actions/upload-artifact@v4
