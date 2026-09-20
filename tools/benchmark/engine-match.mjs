@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import {createRequire} from 'node:module';
 import {pathToFileURL} from 'node:url';
 import common from './common.cjs';
+import policyModel from '../../trainer/policy.cjs';
 
 const opts=common.parse(process.argv.slice(2));
 const engineCommit=common.engineInfo(opts.engine,opts.engineCommit);
@@ -13,6 +14,14 @@ requireEngine('tsx/esm/api').register({tsconfig:path.join(opts.engine,'tsconfig.
 const mod=p=>import(pathToFileURL(path.join(opts.engine,p)).href);
 // Upstream GameView reads preferences. No auth, account or real browser storage.
 const storage=new Map();
+let policyHash=null;
+if(opts.policy){
+  const policySource=fs.readFileSync(path.resolve(opts.policy),'utf8');
+  const policy=policyModel.validate(JSON.parse(policySource));
+  policyHash=common.digest(JSON.stringify(policy));
+  storage.set('of-aggrobot-neural-policy-v1',JSON.stringify(policy));
+  storage.set('of-solo-aggrobot-v1111',JSON.stringify({neuralEnabled:true,fullAuto:true}));
+}
 globalThis.localStorage={getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,String(v)),removeItem:k=>storage.delete(k)};
 const [{createGameRunner},{Config},{GameMapType,GameMapSize,Difficulty,GameType,GameMode},
  {GameView},{loadTerrainMap},{NodeGameMapLoader},{EventBus},{GameConfigSchema,StampedIntentSchema}]=await Promise.all([
@@ -32,7 +41,7 @@ let update=null,fatal=null,now=0,queue=[],observedWinner=null;
 const recordsFile=fs.openSync(path.join(dir,'events.jsonl'),'wx');
 const intentsFile=fs.openSync(path.join(dir,'turns.jsonl'),'wx');
 let recordsCount=0,emitted=0;
-const meta={harness:'engine-gameview-v1',engineCommit,botSHA256:common.digest(source),seed:opts.seed,
+const meta={harness:'engine-gameview-v1',engineCommit,botSHA256:common.digest(source),policySHA256:policyHash,seed:opts.seed,
   seedSource:'GameStartInfo.gameID',profile:opts.profile,settings:common.profiles[opts.profile],
   gameConfig:config,maxTicks:opts.ticks,clock:'100ms simulation clock; serial awaited bot cycles',
   worker:'real GameRunner queries via async in-process adapter',browser:false};

@@ -7,7 +7,7 @@ const ENGINE_COMMIT='13b403387af01d388f8c8ed8c953b6d3a11d1457';
 const IMPOSSIBLE_REFERENCE_COMMIT='bb8af015b515b3b717bd4d901074c5f4c16641cb';
 function parse(argv){
   const out={engine:null,map:'World',size:'Compact',difficulty:'Medium',bots:40,nations:8,
-    seed:'aggro-train-001',ticks:18000,out:null,profile:'autonomous',bot:null,port:5173,engineCommit:ENGINE_COMMIT};
+    seed:'aggro-train-001',ticks:18000,out:null,profile:'autonomous',bot:null,policy:null,port:5173,engineCommit:ENGINE_COMMIT};
   for(let i=0;i<argv.length;i++){
     const key=argv[i].replace(/^--/,'');
     if(!argv[i].startsWith('--')||!Object.hasOwn(out,key))throw Error('Unknown option '+argv[i]);
