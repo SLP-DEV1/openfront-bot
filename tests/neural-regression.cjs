@@ -3,6 +3,14 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {spawnSync}=require('node:child_process');
 const p=require('../trainer/policy.cjs');
+const {compare}=require('../trainer/evaluation.cjs');
+const pair=(seed,outcome,confirmed=true)=>({map:'World',nation:1,seed,outcome,confirmed});
+assert.equal(compare([pair('one','defeat')],[pair('one','victory')]).promoted,true);
+assert.equal(compare([pair('one','defeat')],[pair('one','incomplete',false)]).promoted,false);
+assert.equal(compare([pair('one','defeat')],[pair('other','victory')]).valid,false);
+assert.equal(compare([pair('one','victory')],[pair('one','victory')]).promoted,false);
+assert.equal(compare([pair('one','defeat'),pair('two','defeat')],
+  [pair('one','victory'),pair('one','victory')]).valid,false);
 const root=path.resolve(__dirname,'..');
 const exec=(args)=>{
   const r=spawnSync(process.execPath,args,{cwd:root,encoding:'utf8',timeout:30000});
