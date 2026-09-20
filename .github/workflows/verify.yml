@@ -60,3 +60,5 @@ jobs:
           node --check trainer/qwen-review.mjs
           node --check trainer/policy.cjs
           node tests/neural-regression.cjs
+          node --check tests/qwen-review-regression.cjs
+          node tests/qwen-review-regression.cjs
