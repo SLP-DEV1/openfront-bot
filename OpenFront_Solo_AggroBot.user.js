@@ -2539,6 +2539,9 @@
           {tile:chosen.tile,gold:requirements.gold,cost:chosen.cost,
             coastCandidates:coastal.length});
       }
+      telemetry('neural_economy_choice','Gepruefte Bauoption gewaehlt',
+        {kind:chosen.kind,type:chosen.type,baseScore:chosen.baseScore,
+          neuralDelta:chosen.neuralDelta,chosenScore:chosen.siteValue});
       economicStatus='Anfrage: '+chosen.type+(chosen.kind==='upgrade'?' (Upgrade)':'');
       economicLastPlan=entries.slice(0,3).map(x=>x.type).join(' › ');
       return true;
@@ -3242,6 +3245,11 @@
         }catch(_){}
       }
     }
+    for(const site of result){
+      site.baseScore=site.score;
+      site.neuralDelta=neuralActionDelta('naval',site.score,me,troopSnapshot);
+      site.score+=site.neuralDelta;
+    }
     result.sort((a,b)=>b.score-a.score||a.distance-b.distance);
     return result.slice(0,limit).map(x=>x.tile);
   }
@@ -3258,7 +3266,12 @@
       !friendly(p,me)&&Number.isInteger(p.state?.spawnTile)&&
       // The naval planner must obey the single-front war director as well.
       (!coordinatedWar() || !isWar() || safeID(p)===warState.id));
-    foes.sort((a,b)=>number(()=>a.troops())-number(()=>b.troops()));
+    foes.sort((a,b)=>{
+      const baseA=-Math.min(150,number(()=>a.troops())/Math.max(1,navyState.home)*40);
+      const baseB=-Math.min(150,number(()=>b.troops())/Math.max(1,navyState.home)*40);
+      return (baseB+neuralActionDelta('naval',baseB,me,navyState))-
+        (baseA+neuralActionDelta('naval',baseA,me,navyState));
+    });
     for(const foe of foes.slice(0,6)){
       if(navyState.strongest>=navyState.home*.85)break;
       if((navalCooldown.get('player:'+safeID(foe))||0)>tick)continue;
