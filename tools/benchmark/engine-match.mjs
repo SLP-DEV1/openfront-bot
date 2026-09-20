@@ -103,7 +103,7 @@ const visibleSamples=[];
 function sampleVisible(turn,me){
   if(!me?.hasSpawned?.())return;
   const num=fn=>{try{const v=Number(fn());return Number.isFinite(v)?v:0;}catch(_){return 0;}};
-  const enemies=(view.playerViews?.()||[]).filter(p=>p!==me&&p?.isAlive?.());
+  const enemies=(view.playerViews?.()||[]).filter(p=>p?.clientID?.()!==me?.clientID?.()&&p?.isAlive?.());
   const snapshot={tick:turn,land:num(()=>me.numTilesOwned()),home:num(()=>me.troops()),
     gold:num(()=>me.gold()),enemyLand:enemies.reduce((v,p)=>v+num(()=>p.numTilesOwned()),0),
     enemyTroops:enemies.reduce((v,p)=>v+num(()=>p.troops()),0)};
