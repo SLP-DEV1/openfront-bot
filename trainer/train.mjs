@@ -13,7 +13,7 @@ import scoring from './reward.cjs';
 import parallelPool from './parallel.cjs';
 
 const cfg={engine:null,engineCommit:common.IMPOSSIBLE_REFERENCE_COMMIT,
-  bot:'OpenFront_Solo_AggroBot.user.js',initialModel:null,maps:'World',size:'Compact',nations:'1,4',
+  bot:'OpenFront_Solo_AggroBot.user.js',initialModel:null,maps:'World',size:'Compact',nations:'1,4',difficulty:'Impossible',
   generations:'3',population:'4',trainSeeds:'2',evalSeeds:'4',ticks:'18000',
   sigma:'0.12',parallel:'2',out:'benchmark-results/neural-training',qwen:'false',dryRun:'false'};
 for(let i=2;i<process.argv.length;i++){
@@ -36,6 +36,10 @@ if(!Number.isFinite(sigma)||sigma<.02||sigma>.75)throw Error('Invalid sigma');
 if(!['true','false'].includes(cfg.qwen)||!['true','false'].includes(cfg.dryRun))
   throw Error('Invalid qwen/dryRun toggle');
 if(!/^[a-f0-9]{40}$/.test(cfg.engineCommit))throw Error('Invalid engine SHA');
+const difficulty=({medium:'Medium',hard:'Hard',impossible:'Impossible'})[
+  String(cfg.difficulty).toLowerCase()];
+if(!difficulty)throw Error('Invalid --difficulty: use Medium, Hard or Impossible');
+cfg.difficulty=difficulty;
 const list=(name,rx)=>{
   const a=cfg[name].split(',').map(s=>s.trim());
   if(!a.length||a.some(s=>!rx.test(s))||new Set(a).size!==a.length)
@@ -46,7 +50,7 @@ const maps=list('maps',/^[A-Za-z0-9_-]{1,40}$/),nations=list('nations',/^[1-9][0
 const runsPerGeneration=maps.length*nations.length*(trainSeeds*(population+1)+evalSeeds*2);
 if(runsPerGeneration>200)throw Error('Too many matches per generation (>200)');
 const total=runsPerGeneration*generations;
-const plan={engineCommit:cfg.engineCommit,maps,nations,generations,population,
+const plan={engineCommit:cfg.engineCommit,difficulty,maps,nations,generations,population,
   trainSeeds,evalSeeds,ticks,sigma,parallel,matches:total,policySchema:3,
   promotion:'verified complete paired holdout: more victories or consistent survival gains without regressions'};
 if(cfg.dryRun==='true'){console.log(JSON.stringify(plan,null,2));process.exit(0);}
@@ -62,7 +66,7 @@ const save=(p,data)=>common.writeJSON(path.join(out,p),data);
 let incumbent=cfg.initialModel?policy.validate(JSON.parse(fs.readFileSync(path.resolve(cfg.initialModel),'utf8'))):policy.zero(),parent=incumbent,incumbentWins=0;
 const history=[];
 async function match(model,phase,g,index,map,nation,seed){
-  const id=[phase,g,index,map,nation,seed].join('-');
+  const id=[phase,g,index,difficulty,map,nation,seed].join('-');
   const folder=path.join(out,'matches',id),modelFile=path.join(out,'models',id+'.json');
   fs.mkdirSync(path.dirname(folder),{recursive:true});
   fs.mkdirSync(path.dirname(modelFile),{recursive:true});
@@ -75,7 +79,7 @@ async function match(model,phase,g,index,map,nation,seed){
       try{
         child=spawn(process.execPath,[runner,'--engine',engine,
           '--engineCommit',cfg.engineCommit,'--bot',bot,'--policy',modelFile,
-          '--map',map,'--size',cfg.size,'--difficulty','Impossible',
+          '--map',map,'--size',cfg.size,'--difficulty',difficulty,
           '--bots','0','--nations',String(nation),'--seed',seed,
           '--ticks',String(ticks),'--profile','autonomous','--out',folder],
         {stdio:['ignore',fd,fd]});
@@ -96,7 +100,8 @@ async function match(model,phase,g,index,map,nation,seed){
   const termination=state?.run?.termination||'no-report',outcome=state?.gameEnd?.outcome;
   const verified=proc.status===0&&!proc.error&&
     state?.benchmarkMeta?.policySHA256===common.digest(JSON.stringify(model)) &&
-    state?.benchmarkMeta?.engineCommit===cfg.engineCommit;
+    state?.benchmarkMeta?.engineCommit===cfg.engineCommit &&
+    state?.benchmarkMeta?.gameConfig?.difficulty===difficulty;
   const confirmed=verified&&['game-over','eliminated'].includes(termination)&&
     ['victory','defeat'].includes(outcome);
   const validSample=confirmed||(verified&&termination==='tick-limit');
@@ -106,7 +111,7 @@ async function match(model,phase,g,index,map,nation,seed){
     elapsed=Math.max(0,Number(state?.run?.tick)||0);
   const reward=scoring.reward({validSample,confirmed,outcome,land,
     endTick:elapsed,ticks,trajectory:state?.trajectory});
-  const row={phase,generation:g,index,map,nation,seed,model:policy.sha(model),
+  const row={phase,generation:g,index,map,nation,difficulty,seed,model:policy.sha(model),
     dir:path.relative(out,folder),termination,outcome:confirmed?outcome:'incomplete',
     confirmed,validSample,land,endTick:elapsed,trajectory:state?.trajectory?.summary??null,
     reward:Math.round(reward*1e6)/1e6,
@@ -164,7 +169,7 @@ for(let g=1;g<=generations;g++){
     parentScore:score(previous),trainScore:top.score,
     evaluation:{incumbent:{wins:wins(incumbentRows),rows:incumbentRows},
       candidate:{wins:wins(candidateRows),rows:candidateRows},comparison},
-    promoted,championModel:policy.sha(incumbent),provisionalModel:policy.sha(parent),
+    promoted,difficulty,championModel:policy.sha(incumbent),provisionalModel:policy.sha(parent),
     note:valid?'Completed paired evaluation; '+comparison.reason:'Incomplete or failed evaluation; no promotion'};
   history.push(report);save('generation-'+g+'.json',report);
   save('history.json',{plan,history,published:fs.existsSync(path.join(out,'champion.json'))});
