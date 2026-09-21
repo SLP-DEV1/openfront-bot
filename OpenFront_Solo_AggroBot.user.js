@@ -948,7 +948,7 @@
       needHelp:!!(state&&state.incoming>Math.max(1200,state.home*.1)),
       allied:!!(peer&&actualFriendly(peer,me)),
       available:state?.available??null,reserve:state?.reserve??null,
-      role:state?.incoming>Math.max(1200,state.home*.1)?'defend':
+      role:state&&state.incoming>Math.max(1200,state.home*.1)?'defend':
         operation?'attack':game?.inSpawnPhase?.()?'spawn':
         duoPlan?.role?.includes('entlasten')?'support':'build'};
   }
