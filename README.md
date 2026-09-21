@@ -1,10 +1,26 @@
 # OpenFront Solo AggroBot
 
-**Version 1.20.7** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) · Singleplayer, Public und Private · [offene Validierungspunkte](https://github.com/SLP-DEV1/openfront-bot/issues/12)
+**Version 1.20.8** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) · Singleplayer, Public und Private · [offene Validierungspunkte](https://github.com/SLP-DEV1/openfront-bot/issues/12)
 
 Der Bot erkennt neue spielbare Matches, wählt bei manuellem Spawn eine Position und steuert Expansion, Verteidigung, Wirtschaft, Flotte, Handel und Diplomatie. Die trainierte Neural-Policy kann optional *begrenzt* mitentscheiden; es gibt keine localhost-Brain- oder Live-Qwen-Anbindung mehr. **Es gibt keine belegte garantierte Impossible- oder Multiplayer-Siegquote.**
 
 ## Schnellstart / Update
+
+**1.20.8 – Handel und gegenseitige Verstärkung:** OpenFront erzeugt Hafenhandel
+automatisch; der Bot erfindet deshalb keine eigene Handelsroute. Stattdessen
+steuert er die reale Handelsbeziehung: bestätigte Verbündete/Duo-Partner werden
+von eigenen Embargos befreit, aktive Kriegsgegner können über den offiziellen
+`SendEmbargoIntentEvent` bzw. das verifizierte Spielerpanel vom Handel
+ausgeschlossen werden, und vom Bot gesetzte Embargos werden nach Konfliktende
+wieder geöffnet. Ein erster legaler Hafen erhält zusätzliche Priorität, wenn
+der bestätigte Duo-Partner bereits einen fertigen Hafen besitzt. Bei einer
+bestätigten Partnerkrise darf Truppenhilfe früher wiederholt und etwas größer
+ausfallen, aber weiterhin nur über `canDonateTroops`, mit eigener
+Front-/Reserve-Untergrenze und ohne Ping-Pong-Spenden. Kritische eigene
+Bedrohung blockiert jede automatische Truppenspende. Diagnose und Panel zeigen
+Handelsstatus, Auto-Embargos und die tatsächliche Spendenmenge auf
+Spielanzeige-Skala.
+
 
 **1.20.7 – Replay-belegte Lernimpulse aus Italia Duos:** [ProfessorSployers Replay-Auswertung](docs/replays/professor-sployer-cR8SRtEEcR.md) trennt beobachtete Intents von Interpretation. Ein zweiter Landangriff kann jetzt bei genügender eigener Reserve dieselbe **bereits aktive und erklärte** Kriegsfront verstärken, aber nie eine neue Front öffnen oder ein Bündnis übergehen. Bei sehr hohem Überschuss kann der Duo-Partner statt 200.000 bis zu 2 Mio. Gold erhalten, sofern der eigene Aufbau, Truppenpuffer und bedrohte Grenzen geschützt sind. Beide Userscripts und die Run3-Champion-Gewichte bleiben synchron. **Ein Matchgewinn beweist keinen kausalen Vorteil dieser Regeln; lokale Tests und gepaarte Live-/Engine-Vergleiche stehen noch aus.**
 
