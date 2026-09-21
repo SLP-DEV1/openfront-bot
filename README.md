@@ -1,10 +1,12 @@
 # OpenFront Solo AggroBot
 
-**Version 1.19.3** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) · Singleplayer, Public und Private · [offene Validierungspunkte](https://github.com/SLP-DEV1/openfront-bot/issues/12)
+**Version 1.19.4** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) · Singleplayer, Public und Private · [offene Validierungspunkte](https://github.com/SLP-DEV1/openfront-bot/issues/12)
 
 Der Bot erkennt neue spielbare Matches, wählt bei manuellem Spawn eine Position und steuert Expansion, Verteidigung, Wirtschaft, Flotte, Handel und Diplomatie. Die trainierte Neural-Policy kann optional *begrenzt* mitentscheiden; es gibt keine localhost-Brain- oder Live-Qwen-Anbindung mehr. **Es gibt keine belegte garantierte Impossible- oder Multiplayer-Siegquote.**
 
 ## Schnellstart / Update
+
+**1.19.4 – Audit- und Datenintegrität:** Der optionale lokale Monitor erhält Match-IDs und schreibt verschiedene Partien/Tabs getrennt; aktuelle Entscheidungswerte überschreiben nicht mehr rückwirkend veraltete Snapshots. Die persönliche Eliminierung wird vor dem gesamten Spielende erkannt, im Teamspiel bleibt das offizielle Teamergebnis abwartbar. Wirtschaft, Flotte, Nukes und Goldspenden prüfen gemeinsam ausstehende Ausgaben und den SAM-Fonds; Browsertest-Abschluss und Ereigniswiederholungen sind wiederholbar. Benchmarks koppeln nur identische Gegnerkontexte, der Trainer verwendet einen eingefrorenen Bot-Hash und einen strengen Nachweisprüfer; bei zusätzlichen Siegen ist ebenfalls die dokumentierte No-Regression-Regel verbindlich. **Dies ist keine nachgewiesene Steigerung der Impossible- oder Human-Multiplayer-Siegquote.** Der seit 1.19.3 entfernte localhost-Brain/Qwen-Berater wird nicht wieder eingeführt.
 
 **1.19.3:** Externen localhost-Brain und Qwen-Live-Berater samt Token/UI aus dem Bot und lokalen Benchmark entfernt. Neural-Policy, Browser-Lernen und eigenständiges Offline-Training bleiben erhalten; das frühere Qwen-Trainingsreview wurde anschließend ebenfalls entfernt. Ein möglicherweise noch laufender alter Brain-Prozess wird durch ein Git-Update nicht automatisch beendet.
 
