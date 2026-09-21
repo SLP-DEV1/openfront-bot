@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.20.10
+// @version      1.20.11
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.20.10', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.20.11', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -1806,8 +1806,15 @@
     if(previous&&tick>previous.tick&&tick-previous.tick>=80){
       const rate=(v)=>Number.isFinite(cur[v])&&Number.isFinite(previous[v])?
         Math.max(0,(cur[v]-previous[v])/(tick-previous.tick)*600):null;
-      incomeStatus={train:rate('train'),trade:rate('trade'),
-        gold:Math.max(0,(cur.gold-previous.gold)/(tick-previous.tick)*600),
+      // Gold-stock movement includes purchases, donations and conquest:
+      // it is a signed NET change, not gross income (negative != zero).
+      const netGold=(cur.gold-previous.gold)/(tick-previous.tick)*600;
+      const train=rate('train'),trade=rate('trade');
+      incomeStatus={train,trade,gold:netGold,netGold,
+        otherNetAfterTradeTrain:
+          train!==null&&trade!==null?netGold-train-trade:null,
+        // Residual includes spending and other receipts; NEVER assign it
+        // to one building or label it as additional earned gold.
         observed:true};
       goldSamples.shift();
     }
@@ -5208,11 +5215,15 @@
         }
       }catch(_){tradeStats.skipped++;}
     }
+    // An intended target is not yet a proven trade adversary.
+    // Embargo costs our own port income too; require observed fighting.
     const hostile=players.filter(p=>{
-      const id=safeID(p);if(friendly(p,me)||me.hasEmbargoAgainst?.(p))return false;
-      return id===warState.id||id===plan?.id||id===operation?.target||
-        (me.outgoingAttacks?.()||[]).some(a=>!a.retreating&&attackTargets(a.targetID,p))||
-        (me.incomingAttacks?.()||[]).some(a=>!a.retreating&&attackTargetID(a.attackerID)===id);
+      const id=safeID(p);
+      if(friendly(p,me)||me.hasEmbargoAgainst?.(p))return false;
+      return (me.outgoingAttacks?.()||[]).some(a=>
+        !a.retreating&&attackTargets(a.targetID,p))||
+        (me.incomingAttacks?.()||[]).some(a=>
+          !a.retreating&&attackTargetID(a.attackerID)===id);
     });
     if(hostile.length){
       const p=hostile.sort((a,b)=>number(()=>b.troops?.(),0)-number(()=>a.troops?.(),0))[0],
@@ -5230,9 +5241,10 @@
     for(const id of [...botEmbargoes]){
       const p=players.find(x=>safeID(x)===id);
       if(!p){botEmbargoes.delete(id);continue;}
-      const active=id===warState.id||id===plan?.id||id===operation?.target||
-        (me.outgoingAttacks?.()||[]).some(a=>!a.retreating&&attackTargets(a.targetID,p))||
-        (me.incomingAttacks?.()||[]).some(a=>!a.retreating&&attackTargetID(a.attackerID)===id);
+      const active=(me.outgoingAttacks?.()||[]).some(a=>
+        !a.retreating&&attackTargets(a.targetID,p))||
+        (me.incomingAttacks?.()||[]).some(a=>
+          !a.retreating&&attackTargetID(a.attackerID)===id);
       if(active||!me.hasEmbargoAgainst?.(p))continue;
       const tile=tradeAnchor(p);if(!Number.isInteger(tile))continue;
       lastTradeTick=tick;try{
@@ -5833,6 +5845,16 @@
       if(emergencyRetreat(me,tick,immediateState))return;
       const tiles=await borders(me,tick);
       if(!live(serial))return;
+      // Refuse a slow worker result from an older decision window.
+      const observedTick=number(()=>game?.ticks?.(),-1);
+      if(observedTick<tick||observedTick-tick>40||
+        safeID(myPlayer())!==safeID(me)){
+        telemetry('decision_snapshot_expired',
+          'Worker-Ergebnis veraltet; neue Entscheidungsrunde abwarten',
+          {requestedTick:tick,observedTick,player:safeID(me),
+            currentPlayer:safeID(myPlayer())});
+        return;
+      }
       const groups=targetsFromBorder(me,tiles);
       observeFronts(me,groups,tick);
       observeOpponents(me,tick);
