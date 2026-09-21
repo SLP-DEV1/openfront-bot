@@ -14,8 +14,10 @@ jobs:
           node-version: '24'
       - name: Check userscript syntax
         run: node --check OpenFront_Solo_AggroBot.user.js
-      - name: Verify bundled Impossible Run3 live userscript
+      - name: Verify deterministic Run3 bundle and model/source fingerprints
         run: |
+          node --check tools/build-run3-bundle.cjs
+          node tools/build-run3-bundle.cjs --check
           node --check tests/bundled-run3-regression.cjs
           node tests/bundled-run3-regression.cjs
       - name: Check regression test syntax
