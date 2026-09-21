@@ -8,7 +8,6 @@ import {fileURLToPath} from 'node:url';
 import policy from './strategic-policy.cjs';
 import policyV4 from './strategic-policy-v4.cjs';
 import common from '../tools/benchmark/common.cjs';
-import {reviewGeneration} from './qwen-review.mjs';
 import evaluation from './evaluation.cjs';
 import scoring from './reward.cjs';
 import parallelPool from './parallel.cjs';
@@ -16,7 +15,7 @@ import parallelPool from './parallel.cjs';
 const cfg={engine:null,engineCommit:common.IMPOSSIBLE_REFERENCE_COMMIT,
   bot:'OpenFront_Solo_AggroBot.user.js',initialModel:null,maps:'World',size:'Compact',nations:'1,4',difficulty:'Impossible',
   generations:'3',population:'4',trainSeeds:'2',evalSeeds:'4',ticks:'18000',
-  sigma:'0.12',parallel:'2',schema:'3',out:'benchmark-results/neural-training',qwen:'false',dryRun:'false',
+  sigma:'0.12',parallel:'2',schema:'3',out:'benchmark-results/neural-training',dryRun:'false',
   gameType:'Singleplayer',gameMode:'FFA',scriptedHumans:'0',opponentProfile:'balanced'};
 for(let i=2;i<process.argv.length;i++){
   const key=process.argv[i];
@@ -37,8 +36,8 @@ const generations=integer('generations',1,500),population=integer('population',2
   scriptedHumans=integer('scriptedHumans',0,12);
 let sigma=Number(cfg.sigma);
 if(!Number.isFinite(sigma)||sigma<.02||sigma>.75)throw Error('Invalid sigma');
-if(!['true','false'].includes(cfg.qwen)||!['true','false'].includes(cfg.dryRun))
-  throw Error('Invalid qwen/dryRun toggle');
+if(!['true','false'].includes(cfg.dryRun))
+  throw Error('Invalid dryRun toggle');
 if(!/^[a-f0-9]{40}$/.test(cfg.engineCommit))throw Error('Invalid engine SHA');
 const difficulty=({medium:'Medium',hard:'Hard',impossible:'Impossible'})[
   String(cfg.difficulty).toLowerCase()];
@@ -197,11 +196,6 @@ for(let g=1;g<=generations;g++){
   save('history.json',{plan,history,published:fs.existsSync(path.join(out,'champion.json'))});
   console.log(JSON.stringify({generation:g,promoted,incumbentWins,
     candidateWins:wins(candidateRows),report:path.join(out,'generation-'+g+'.json')}));
-  if(cfg.qwen==='true'){
-    const suggestion=reviewGeneration(report,out);
-    if(suggestion?.sigma!==undefined&&Number.isFinite(suggestion.sigma)&&
-      suggestion.sigma>=.02&&suggestion.sigma<=.75)sigma=suggestion.sigma;
-  }
 }
 console.log(JSON.stringify({finished:true,championPublished:
   fs.existsSync(path.join(out,'champion.json')),out}));
