@@ -3673,6 +3673,33 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.b.teamSupport(x.me,300,x.b.military(x.me,[])),false);
     assert.equal(x.sent.length,0);
   });
+  await check('1.20.10 P0 emits unique action IDs and links observed attack results',()=>{
+    const x=boot();
+    x.b.setMonitorSession('test-session');
+    assert.equal(x.b.send('attack',['strong',1500],'trace attack one',true),true);
+    assert.equal(x.b.send('attack',['weak',1200],'trace attack two',true),true);
+    const snapshot=x.b.diagnosticSnapshot();
+    const emitted=snapshot.records.filter(r=>r.kind==='action'&&r.intent==='attack');
+    const commands=snapshot.records.filter(r=>r.kind==='attack_command');
+    assert.equal(emitted.length,2);
+    assert.equal(commands.length,2);
+    assert.equal(emitted[0].actionId,'test-session:a1');
+    assert.equal(emitted[1].actionId,'test-session:a2');
+    assert.equal(commands[0].actionId,emitted[0].actionId);
+    assert.equal(commands[1].actionId,emitted[1].actionId);
+    assert.equal(emitted[0].effect,'unconfirmed');
+    assert.equal(snapshot.actionTrace.lastActionId,emitted[1].actionId);
+    const pending={actionId:emitted[0].actionId,id:'strong',name:'strong',
+      tick:300,amount:1500,ownLand:1200,enemyLand:1200,
+      beforeIds:[],beforeTroops:0};
+    x.b.setPending(pending);
+    x.out.push({id:'stack',targetID:'strong',troops:1500,retreating:false});
+    x.b.confirmAttack(x.me,301);
+    const confirmed=x.b.diagnosticSnapshot().records.find(r=>
+      r.kind==='attack_confirmed');
+    assert.equal(confirmed.actionId,emitted[0].actionId);
+    assert.equal(confirmed.evidence,'observed-change-not-causal-proof');
+  });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
 })();
