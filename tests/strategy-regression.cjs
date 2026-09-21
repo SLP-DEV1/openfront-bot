@@ -3379,6 +3379,73 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.b.coordinateDuo(x.me,army,350).strikeTick,345);
     assert(x.b.duoJointOpportunity(x.me,groups,army,groups[0],350,true));
   });
+  await check('1.20.6 Duo lock survives benign strategy change, but invasion cancels',()=>{
+    const x=boot();
+    x.weak.troops=()=>90000;x.strong.troops=()=>42000;
+    const groups=[{id:'strong',opponent:x.strong,tiles:[6],front:8}];
+    x.b.setGroups(groups);x.weak.isFriendly=()=>true;
+    const peer={id:'weak',state:{tick:300,home:90000,incoming:0,
+      fronts:['strong'],target:'strong',strikeTick:null,allied:true,
+      available:40000,reserve:45000,ready:true,warning:0,needHelp:false}};
+    x.b.setDuo('weak','KITSU_DUO_123',peer);
+    const army=x.b.military(x.me,groups);
+    const first=x.b.coordinateDuo(x.me,army,300);
+    assert.equal(first.strikeTick,345);
+    x.b.setMode('ECONOMY');
+    peer.state.warning=1;peer.state.tick=305;
+    x.setTick(305);
+    assert.equal(x.b.coordinateDuo(x.me,army,305).strikeTick,345,
+      'a mild partner warning / economic posture is not an invasion');
+    x.setTick(315);peer.state.tick=315;
+    x.incoming.push({attackerID:'strong',troops:11000,retreating:false});
+    const danger=x.b.military(x.me,groups);
+    const canceled=x.b.coordinateDuo(x.me,danger,315);
+    assert.equal(canceled.strikeTick,null);
+    assert.equal(canceled.role,'Heimat verteidigen');
+  });
+  await check('1.20.6 early warning uses the engine troop scale and preserves defense reserve',()=>{
+    const x=boot();
+    const army=x.b.military(x.me,[]);
+    assert.equal(x.b.duoWarningLevel(army,300),0);
+    assert.equal(x.b.duoWarningLevel({...army,incoming:2700},300),1);
+    assert.equal(x.b.duoWarningLevel({...army,incoming:11000},300),2);
+    assert.equal(x.b.duoWarningLevel({...army,strongest:85000},300),1);
+    assert.equal(x.b.military(x.me,[]).reserve,army.reserve,
+      'warning must not lower the independent home reserve');
+  });
+  await check('1.20.6 optional alliance uses verified official PlayerPanel fallback',()=>{
+    const x=boot();
+    const panel={g:x.game,eventBus:x.b.eventBus(),
+      handleAllianceClick(event,requestor,recipient){
+        event.stopPropagation();x.sent.push({requestor,recipient});
+      }};
+    x.doc.querySelector=tag=>tag==='player-panel'?panel:null;
+    assert.equal(x.b.allianceOfferPath(),'player-panel');
+    assert.equal(x.b.sendAllianceOffer(x.me,x.strong,'Duo-Offer-Test'),true);
+    assert.equal(x.sent.length,1);
+    assert.equal(x.sent[0].recipient,x.strong);
+    panel.g={};assert.equal(x.b.allianceOfferPath(),null,
+      'never call a stale / mismatched panel');
+  });
+  await check('1.20.6 connected leader may originate a new safe outside alliance',async()=>{
+    const x=boot();
+    x.weak.isFriendly=()=>true;
+    x.strong.troops=()=>150000;
+    x.strong.numTilesOwned=()=>3000;
+    x.me.actions=async()=>({interaction:{canSendAllianceRequest:true}});
+    x.b.setGroups([{id:'strong',opponent:x.strong,tiles:[6],front:5}]);
+    x.b.setMode('ECONOMY');
+    x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{
+      target:null,warTarget:null,allies:[],warning:0,allied:true}});
+    x.b.setAllianceCtor(class Alliance {
+      constructor(requestor,recipient){this.requestor=requestor;this.recipient=recipient;}
+    });
+    x.b.diplomacyTickSafe();
+    await Promise.resolve();await Promise.resolve();await Promise.resolve();
+    assert.equal(x.sent.length,1,'leader must initiate rather than wait forever');
+    assert.equal(x.sent[0].recipient,x.strong);
+    assert.equal(x.b.state().diplomacyStatus.includes('Bestätigung'),true);
+  });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
 })();
