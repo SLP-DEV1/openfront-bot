@@ -789,8 +789,10 @@ function boot(benchmarkOptions={}) {
     assert.equal(await x.b.economy(x.me,300,0,[]),true);
     assert(['City','Factory'].includes(x.sent[0].unit),x.sent[0].unit);
   });
+  // Savings tests exercise a non-capped army; near >=85% capacity the
+  // separate cap-relief regressions correctly prioritize City instead.
   await check('late game accumulates funds without treating saving as failed construction', async () => {
-    const x=boot();x.setTick(2400);x.setLand(51613);x.setGold(900000);
+    const x=boot();x.setTick(2400);x.setLand(51613);x.setGold(900000);x.setHome(70000);
     const units=['City','City','Factory','Factory'].map((type,i)=>({
       type:()=>type,isActive:()=>true,tile:()=>100+i*20,id:()=>i+1,level:()=>1}));
     x.me.units=()=>units;
@@ -801,7 +803,7 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.b.state().failedEconomyProbes,0);
   });
   await check('first silo is funded and built at threshold', async () => {
-    const x=boot();x.setTick(2400);x.setLand(51613);x.setGold(1200000);
+    const x=boot();x.setTick(2400);x.setLand(51613);x.setGold(1200000);x.setHome(70000);
     const units=['City','City','Factory','Factory'].map((type,i)=>({
       type:()=>type,isActive:()=>true,tile:()=>100+i*20,id:()=>i+1,level:()=>1}));
     x.me.units=()=>units;
@@ -1003,7 +1005,7 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.b.state().failedEconomyProbes,0);
   });
   await check('issue #5 potential neighbor does not cancel Silo fund', async () => {
-    const x=boot();x.setTick(2400);x.setLand(51613);x.setGold(900000);
+    const x=boot();x.setTick(2400);x.setLand(51613);x.setGold(900000);x.setHome(70000);
     const units=['City','City','Factory','Factory'].map((type,i)=>({
       type:()=>type,isActive:()=>true,tile:()=>5500+i*20,id:()=>i+1,level:()=>1}));
     x.me.units=()=>units;x.strong.troops=()=>200000;
@@ -1385,7 +1387,7 @@ function boot(benchmarkOptions={}) {
     assert.equal(p.list.some(e=>e.type==='City'),false);
   });
   await check('v1.10.0 MIRV-only game saves a MIRV-sized fund', () => {
-    const x=boot();x.setTick(2400);x.setLand(5000);
+    const x=boot();x.setTick(2400);x.setLand(5000);x.setHome(70000);
     x.game.config().isUnitDisabled=t=>t==='Atom Bomb'||t==='Hydrogen Bomb';
     const units=['City','City','Factory','Factory','Missile Silo'].map((type,i)=>({
       type:()=>type,isActive:()=>true,level:()=>1,tile:()=>200+i*50}));
@@ -1999,7 +2001,7 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.sent[0].unit,'Port');
   });
   await check('v1.10.5 missing Port worker site does not block silo forever', async () => {
-    const x=boot();x.setTick(2400);x.setLand(52000);x.setGold(900000);
+    const x=boot();x.setTick(2400);x.setLand(52000);x.setGold(900000);x.setHome(70000);
     x.game.isShore=t=>t===5500;
     const units=['City','City','Factory','Factory'].map((type,i)=>({
       type:()=>type,isActive:()=>true,tile:()=>5000+i*20,
