@@ -5151,14 +5151,15 @@
         const needs=economicNeeds(me,ownStructures(me),[]);
         const richAid=ownGold>=8000000&&partnerGold<1200000&&
           partnerGold<ownGold*.30&&!needs.capStalled&&
-          s.incoming===0&&s.ratio>=.70&&s.strongest<s.home*.75;
+          s.incoming===0&&s.ratio>=.70&&s.committed<s.home*.30&&
+          s.strongest<s.home*.75;
         if(!richAid&&partnerGold>=400000)return false;
         // The replay shows multi-million late-game transfers; scale aid only
         // for a verifiably struggling teammate, without spending our own
         // production, SAM or military reserves.
         const cashFloor=Math.max(needs.savingsTarget,richAid?3000000:1000000);
         const amountGold=Math.floor(richAid?
-          Math.min(2000000,(ownGold-cashFloor)*.30,1500000-partnerGold):
+          Math.min(2000000,(ownGold-cashFloor)*.30,2000000-partnerGold):
           Math.min(200000,(ownGold-cashFloor)*.20,400000-partnerGold));
         if(amountGold>=50000&&ownGold-amountGold>=cashFloor&&
           spendBudget(me,amountGold,'donateGold')&&
