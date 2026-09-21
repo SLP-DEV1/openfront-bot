@@ -1,4 +1,4 @@
-# AggroBot 1.20.3 – lokaler Duo-Modus (zwei Browser, ein PC)
+# AggroBot 1.20.4 – lokaler Duo-Modus (zwei Browser, ein PC)
 
 **Zweck:** Zwei separat laufende OpenFront-Userscripts können Beobachtungen über denselben
 localhost-Relay austauschen. Jeder Browser kontrolliert **nur den eigenen Spieler**.
@@ -76,6 +76,21 @@ kein Ersatz für Worker-Aktionsprüfung, Eigentumskontrolle oder Heimreserve.
   Partnerarmee gilt **nicht** als tatsächlich eingesetzte Truppe; allein
   sichtbare Angriffe dürfen dazu gerechnet werden. Das gilt nun auch für eine lokal bestätigte FFA-Allianz. Wenn beide bereit sind, gibt die niedrigere PlayerID einen Angriffstick vor; die zweite übernimmt ihn. Akute Verteidigung und ein bereits aktiver Krieg gehen vor. Soweit das Spiel es erlaubt, können beide sich mit Truppen oder Gold helfen, ohne eigene Heim-/Goldreserven zu verletzen. Der Partner kann bei
   Bedrohung verteidigen, während der andere weiter aufbaut.
+- **Abweichende Bündnisse mit Dritten (1.20.4):** Beide Bots übertragen höchstens
+  16 **im eigenen GameView bestätigte** Drittspieler-Allianzen als PlayerIDs.
+  Ein gültiger Partnerbericht setzt diese Spieler beim anderen Bot auf die
+  **Nicht-angreifen-Liste**, inklusive Zielauswahl und Nuklear-Kollateralschutz.
+  Das macht den Spieler **nicht automatisch** zu einem tatsächlichen
+  Bündnispartner des anderen Bots; nur dessen eigener Spielzustand kann das
+  bestätigen. Solange die Duo-Verbindung aktiv ist, schließen die Bots nicht
+  unabhängig neue fremde Auto-Bündnisse: Eingehende Drittangebote werden nur
+  bei bestätigter eigener Duo-Allianz und bereits beim Partner bestehendem
+  Bündnis (ohne eigenen laufenden Konflikt) angenommen. Der andere Bot kann
+  das Partnerbündnis über einen **eigenen legalen Worker-geprüften Antrag**
+  angleichen; ob der fremde Spieler ihn annimmt, entscheidet das Spiel.
+  Bestehende abweichende Bündnisse werden nicht aufgekündigt. Greift ein
+  fremder Partner-Verbündeter einen Bot an, verbleibt dessen eigene
+  Notverteidigung aktiv; ein gemeinsamer Angriff auf ihn wird nicht geplant.
 - **Ausfall:** Nach wenigen Sekunden ohne validierte Partnerdaten werden
   keine Relay-Operationshinweise mehr verwendet; beide Bots bleiben autonom.
   Nur die für das aktuelle Match verifizierte Partner-ID ist vom Angriff ausgenommen; eine alte ID wird nicht übernommen.
