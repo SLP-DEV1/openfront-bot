@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.20.6
+// @version      1.20.7
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.20.6', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.20.7', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -2534,6 +2534,26 @@
       return {ok:false,reason:'strike-below-target-force',strike:Math.floor(strike),credit};
     return {ok:true,reason:'candidate-safe',strike:Math.floor(strike)};
   }
+  // Replay cR8SRtEEcR: a successful player repeatedly reinforced the SAME
+  // active land front. Permit at most one guarded follow-up, never a new war,
+  // and only with an independently sufficient home army and clear flank.
+  function sameFrontFollowUp(me,items,s,item,tick){
+    if(!item?.opponent?.isAlive?.()||friendly(item.opponent,me)||
+      !isWar()||warState.id!==item.id||s.activeEnemy!==1||
+      s.activeNeutral>0||s.incoming>0||recentHostilePressure(tick,180)||
+      s.ratio<.70||s.committed>s.home*.35||
+      tick-lastEnemySend<80)return false;
+    const ownStacks=s.out.filter(a=>!a.retreating&&
+      a.targetID!==null&&attackTargets(a.targetID,item.id));
+    if(ownStacks.length!==1)return false;
+    const enemyHome=number(()=>item.opponent.troops(),Infinity);
+    if(!Number.isFinite(enemyHome)||enemyHome<0)return false;
+    const flank=frontRiskPlan(items,s,item.id);
+    if(flank.danger||flank.pressure)return false;
+    const possible=Math.min(flank.safeStrike,s.available*.76,
+      Math.max(0,s.home-s.reserve));
+    return possible>=Math.max(1500,enemyHome*1.35);
+  }
   function targetOpportunity(me,items,s,item){
     return targetOpportunityCheck(me,items,s,item).ok;
   }
@@ -2674,7 +2694,10 @@
       // The game sends attacks from home troops; existing outgoing stacks
       // remain in motion. Don't spend the whole army on parallel attacks.
       if(isNeutral && (s.activeNeutral >= (s.ratio>.63 && !context.underAttack ? 2 : 1) || tick-lastNeutralSend<23))return [];
-      if(!isNeutral && (s.activeEnemy >= 1 || tick-lastEnemySend<(hardMode()?(late?65:120):(late?35:68)) || context.rebuilding))return [];
+      if(!isNeutral && ((s.activeEnemy>=1&&
+        !sameFrontFollowUp(me,items,s,item,tick)) ||
+        tick-lastEnemySend<(hardMode()?(late?65:120):(late?35:68)) ||
+        context.rebuilding))return [];
       // If pressured, never begin a fresh offensive -- defense is handled separately.
       if(!isNeutral && s.incoming>s.home*(late?.15:.04))return [];
       if(isNeutral && context.underAttack && s.incoming>s.home*.45)return [];
@@ -3065,7 +3088,9 @@
       const freshFront=item.id!==null?frontRiskPlan(strategic.groups,fresh,item.id):null;
       if(item.id!==null && (freshFront.danger||freshFront.pressure||
         fresh.incoming>fresh.home*(lateGame(me)?.15:.04) ||
-        fresh.activeEnemy>=(lateGame(me)&&fresh.strongest<fresh.home*.55?2:1) ||
+        (fresh.activeEnemy>=(lateGame(me)&&fresh.strongest<fresh.home*.55?2:1)&&
+          !sameFrontFollowUp(me,strategic.groups,fresh,item,
+            number(()=>game.ticks(),tick))) ||
         (!freshJoint&&fresh.available+duoBattleCredit(me,item.opponent)<
           Math.max(100,number(()=>item.opponent.troops(),Infinity)*
             (lateGame(me)?1.15:1.3)))))continue;
@@ -5119,14 +5144,22 @@
       const partnerGold=number(()=>Number(partner.gold?.()),Infinity);
       if(!ownDanger&&cfg.donateGold!==false&&ctors.donateGold&&
         (!me.canDonateGold||me.canDonateGold(partner))&&
-        Number.isFinite(partnerGold)&&partnerGold<400000&&
+        Number.isFinite(partnerGold)&&
         ownGold>Math.max(1400000,partnerGold+850000)&&
         (inbound>0||number(()=>partner.numTilesOwned(),0)<
           number(()=>me.numTilesOwned(),0)*.65)){
-        const savings=economicNeeds(me,ownStructures(me),[]).savingsTarget;
-        const cashFloor=Math.max(savings,1000000);
-        const amountGold=Math.floor(Math.min(200000,
-          (ownGold-cashFloor)*.20,400000-partnerGold));
+        const needs=economicNeeds(me,ownStructures(me),[]);
+        const richAid=ownGold>=8000000&&partnerGold<1200000&&
+          partnerGold<ownGold*.30&&!needs.capStalled&&
+          s.incoming===0&&s.ratio>=.70&&s.strongest<s.home*.75;
+        if(!richAid&&partnerGold>=400000)return false;
+        // The replay shows multi-million late-game transfers; scale aid only
+        // for a verifiably struggling teammate, without spending our own
+        // production, SAM or military reserves.
+        const cashFloor=Math.max(needs.savingsTarget,richAid?3000000:1000000);
+        const amountGold=Math.floor(richAid?
+          Math.min(2000000,(ownGold-cashFloor)*.30,1500000-partnerGold):
+          Math.min(200000,(ownGold-cashFloor)*.20,400000-partnerGold));
         if(amountGold>=50000&&ownGold-amountGold>=cashFloor&&
           spendBudget(me,amountGold,'donateGold')&&
           send('donateGold',[partner,BigInt(amountGold)],
