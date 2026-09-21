@@ -986,6 +986,7 @@
       spawn:Number.isSafeInteger(spawn)?spawn:null,
       candidate:Number.isSafeInteger(candidate)?candidate:null,
       target:duoID(target)?target:null,
+      warTarget:duoID(warState.id)?warState.id:null,
       strikeTick:Number.isInteger(duoPlan?.strikeTick)?duoPlan.strikeTick:null,
       ready:!!(state&&state.incoming===0&&
         !recentHostilePressure(number(()=>game?.ticks?.(),0))&&
@@ -1621,7 +1622,9 @@
       actualFriendly(local.player,me)&&local.state?.allied===true&&
       Array.isArray(local.state?.fronts)&&
       local.state.fronts.includes(duoPlan.target)&&
-      common.find(x=>x.item.id===duoPlan.target)?.item.opponent;
+      (strategic.groups||[]).some(x=>x.id===duoPlan.target&&
+        x.tiles?.length&&x.opponent?.isAlive?.()&&
+        !friendly(x.opponent,me));
     const shared=invasion&&aggressor?.on>0?aggressor.p:
       retained||active?.on>0&&active?.p||
       jointTarget?.item.opponent||
@@ -1638,9 +1641,9 @@
     // only while both are ready. Neither skips the game's action checks.
     const held=duoPlan?.target===safeID(shared)&&
       Number.isInteger(duoPlan.strikeTick)&&
-      tick-duoPlan.strikeTick<180?duoPlan.strikeTick:null;
+      tick<=duoPlan.strikeTick+110?duoPlan.strikeTick:null;
     const offered=local?.state?.strikeTick;
-    const strikeTick=sharedJoint&&held!==null&&!invasion?
+    const strikeTick=retained&&held!==null&&!invasion?
       held:
       !local||!bothReady||!sharedJoint||invasion?null:leader?
       (held??tick+45):
@@ -1659,6 +1662,9 @@
       partnerCommitted:active?.on||0,partnerIncoming:incoming,
       partnerHome,needHelp:partnerNeeds,partnerWarning,
       partnerReady:!!local?.state?.ready,strikeTick,
+      strikeStatus:strikeTick===null?'none':
+        !sharedJoint?'locked-awaiting-safe-budget':
+        tick<strikeTick?'locked-preparing':'locked-launch-window',
       joint:sharedJoint?{own:sharedJoint.own,ally:sharedJoint.ally,
         needed:sharedJoint.needed}:null,
       ready:bothReady,ownReserve:s.reserve,tick,source:local?
@@ -5747,7 +5753,8 @@
       <div>Duo-Fremdbündnisse (Angriffsschutz): ${escapeHTML((duoTrustedPeer()?.state?.allies||[]).map(id=>nameOf((game?.playerViews?.()||[]).find(p=>safeID(p)===id)||{id:()=>id})).join(', ')||'—')}</div>
       <div>Partner: Ziel ${escapeHTML(duoTrustedPeer()?.state?.target??'—')} · verfügbar ${Math.round(duoTrustedPeer()?.state?.available||0)} · Reserve ${Math.round(duoTrustedPeer()?.state?.reserve||0)} · Hilfe ${duoTrustedPeer()?.state?.needHelp?'JA':'nein'}</div>
       <div>Gemeinsamer Plan: ${escapeHTML(duoPlan?duoPlan.role+' → '+duoPlan.targetName+(duoPlan.strikeTick!==null?' · Angriff ab Tick '+duoPlan.strikeTick:''):'Gemeinsam starten → Allianz bestätigen → Front aufteilen')}</div>
-      <div>Duo-Angriffsbudget: ${duoPlan?.joint?escapeHTML(Math.round(duoPlan.joint.own)+' eigene + '+Math.round(duoPlan.joint.ally)+' Partner-Truppen · nötig '+Math.round(duoPlan.joint.needed)):'Noch keine gemeinsam sichere Front'}</div>
+      <div>Duo-Angriffsbudget: ${duoPlan?.joint?escapeHTML(Math.round(duoPlan.joint.own/10)+' eigene + '+Math.round(duoPlan.joint.ally/10)+' Partner-Truppen · nötig '+Math.round(duoPlan.joint.needed/10)):'Noch keine gemeinsam sichere Front'}</div>
+      <div>Angriffsbindung: ${escapeHTML(duoPlan?.strikeStatus||'keine')} · Partnerwarnung ${duoPlan?.partnerWarning||0}/2 · Truppenanzeige = Engine-Wert / 10</div>
       <div style="margin-top:4px"><b>Duo-Timeline</b>${decisionTimeline.filter(d=>d.kind==='2v2').slice(-4).reverse().map(d=>'<div style="border-top:1px solid #354d66;padding:2px 0">'+escapeHTML('Tick '+d.tick+' · '+d.why)+'</div>').join('')}</div>
       <div style="color:#a9efc9">Start_Live_Duo.bat starten · Port 8767 · nur Raumcode in beiden Browsern gleich · Bündnis gilt erst nach Bestätigung im Spiel · Relay-Ausfall ⇒ beide spielen autonom weiter.</div>
       </details>
