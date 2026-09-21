@@ -32,7 +32,7 @@ Jede Zeile erst nach **nativem Node-Lauf** mit konkreten `GameView`-/`Worker`-An
 
 **Prüffrage:** Darf `capStalled` vorübergehend *spekulative* Silo-Fonds verdrängen, ohne eine im Worker bereits legalisierte und zeitkritische Maßnahme zu blockieren? Gewinnt City/Upgrade bei echtem Kapazitätsengpass, ohne Endlosschleife?
 
-### Hafen-/Handels-/Marine-Start (5)
+### Hafen-/Handels-/Marine-Start (6)
 
 - [ ] `v1.10.5 first Port beats upgrades after basic City/Factory`
 - [ ] `v1.10.5 first Port not indefinitely blocked by silo savings`
@@ -41,7 +41,7 @@ Jede Zeile erst nach **nativem Node-Lauf** mit konkreten `GameView`-/`Worker`-An
 - [ ] `v1.17.2 first harbor chooses a safe coast rather than exposed frontline`
 - [ ] `v1.18.2 first Port gets provisional funds before worker offers a price`
 
-**Prüffrage:** Es sind **sechs** Hafen-bezogene Fälle, einschließlich Sparfonds. Sind die erwarteten Küstenstandorte und Worker-Aktionen echt erreichbar, und wird die erste Handels-/Marinefähigkeit bei einem Kapazitätslimit nur korrekt zurückgestellt, statt dauerhaft blockiert?
+**Prüffrage:** Sind die erwarteten Küstenstandorte und Worker-Aktionen echt erreichbar, und wird die erste Handels-/Marinefähigkeit bei einem Kapazitätslimit nur korrekt zurückgestellt, statt dauerhaft blockiert?
 
 ### Weitere Entscheidungsregressionen (2)
 
