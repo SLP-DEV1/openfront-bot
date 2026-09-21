@@ -2410,7 +2410,8 @@ function boot(benchmarkOptions={}) {
     assert.equal(compare([old,now]).length,0,'unknown seed not paired');
     Object.assign(base.benchmarkMeta,{seed:123,seedSource:'GameStartInfo.gameID',
       harness:'engine-gameview-v1',engineCommit:'engine-1',gameConfig:{gameMap:'Europe'},
-      maxTicks:18000,botSHA256:'source-old',profile:'autonomous'});
+      maxTicks:18000,botSHA256:'source-old',profile:'autonomous',
+      settings:{fullAuto:true},scriptedHumans:0,opponentProfile:'balanced'});
     current.benchmarkMeta={...base.benchmarkMeta,botSHA256:'source-new'};
     const verified=compare([summarize(base),summarize(current)]);
     assert.equal(verified.length,1);
