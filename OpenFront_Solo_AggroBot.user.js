@@ -1433,36 +1433,57 @@
         ['Eigene Verteidigung und Angriffszulässigkeit bleiben verbindlich'],tick);
     return victoryThreat;
   }
-  // No invented inter-client channel: each bot infers its partner's commitment
-  // from the same observable match state. Missing partner actions mean unknown,
-  // not a promised coordinated attack.
+  // Ranked team state still works without the relay. When the explicitly
+  // configured PlayerID is connected AND the game itself confirms friendship,
+  // relay state may break ties between otherwise legal/safe targets.
   function coordinateDuo(me,s,tick){
-    const duo=rankedDuo(me);
+    let duo=rankedDuo(me);
+    const connectedPeer=duoTrustedPeer();
+    const local=connectedPeer&&actualFriendly(connectedPeer.player,me)?
+      connectedPeer:null;
+    if(!duo&&local){
+      const enemies=(game.playerViews?.()||[]).filter(p=>p?.isPlayer?.()&&
+        p.isAlive?.()&&!friendly(p,me));
+      duo={partner:local.player,partnerID:local.id,enemies,team:null};
+    }
     if(!duo){duoPlan=null;return null;}
     const partner=duo.partner;
     const incoming=(partner.incomingAttacks?.()||[])
-      .filter(a=>!a.retreating).reduce((n,a)=>n+Math.max(0,number(()=>a.troops,0)),0);
+      .filter(a=>!a.retreating)
+      .reduce((n,a)=>n+Math.max(0,number(()=>a.troops,0)),0);
     const partnerHome=Math.max(1,number(()=>partner.troops?.(),1));
     const active=duo.enemies.map(p=>({p,on:duoFocus(me,p)?.on||0}))
-      .sort((a,b)=>b.on-a.on || String(safeID(a.p)).localeCompare(String(safeID(b.p))))[0];
+      .sort((a,b)=>b.on-a.on ||
+        String(safeID(a.p)).localeCompare(String(safeID(b.p))))[0];
     const targets=[...duo.enemies].sort((a,b)=>
       number(()=>b.numTilesOwned(),0)-number(()=>a.numTilesOwned(),0) ||
       String(safeID(a)).localeCompare(String(safeID(b))));
-    const shared=active?.on>0?active.p:targets[0];
+    const announced=local?.state?.target&&duo.enemies.find(p=>
+      safeID(p)===local.state.target);
+    const shared=active?.on>0?active.p:announced||targets[0];
     const danger=s.incoming>Math.max(1200,s.home*.08);
+    const partnerNeeds=incoming>partnerHome*.2||!!local?.state?.needHelp;
+    const bothReady=!!local?.state?.ready&&!danger&&
+      s.available>=Math.max(1200,s.home*.2);
+    const leader=local&&String(safeID(me))<String(local.id);
     const role=danger?'Heimat verteidigen':
-      incoming>partnerHome*.2?'Partner entlasten':
+      partnerNeeds?'Partner entlasten':
       active?.on>0?'Partnerfront unterstützen':
+      bothReady?(leader?'Gemeinsamen Angriff anführen':'Gemeinsamen Angriff unterstützen'):
       s.home>partnerHome*1.25?'Angriff vorbereiten':'Aufbauen / Landung vorbereiten';
     const plan={partner:duo.partnerID,target:shared?safeID(shared):null,
       targetName:shared?nameOf(shared):'Kein Gegner',role,
       partnerCommitted:active?.on||0,partnerIncoming:incoming,
-      partnerHome,needHelp:incoming>partnerHome*.2,
+      partnerHome,needHelp:partnerNeeds,
+      partnerReady:!!local?.state?.ready,
       ready:!danger&&s.available>=Math.max(1200,s.home*.2),
-      ownReserve:s.reserve,tick,source:'sichtbare Spielzustände (kein Kommunikationskanal)'};
+      ownReserve:s.reserve,tick,source:local?
+        'lokaler Duo-Relay + bestätigter Spielzustand':
+        'sichtbare Spielzustände (kein Relay)'};
     if(!duoPlan||duoPlan.target!==plan.target||duoPlan.role!==role)
       decisionNote('2v2','Gemeinsamer Fokus: '+plan.targetName+' · '+role,
-        ['Partner-Einsatz nur bei beobachteten Angriffen bestätigt'],tick);
+        [local?'Relay-Ziel ist nur Priorität; eigene Sicherheitsprüfung bleibt verbindlich':
+          'Partner-Einsatz nur bei beobachteten Angriffen bestätigt'],tick);
     duoPlan=plan;return plan;
   }
   function planOperation(me,items,s,tick){
