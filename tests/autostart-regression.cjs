@@ -99,7 +99,7 @@ function boot() {
     x.match('Private');await x.tick();assert.equal(x.state().enabled,true);
   });
   await check('Advanced sections and auto-start toggle exist in GUI',()=>{
-    for(const id of ['features','brain','situation','tuning','diagnostics'])
+    for(const id of ['features','neural','situation','tuning','diagnostics'])
       assert(source.includes('data-section="'+id+'"'));
     assert(source.includes("b('autoStart',opts.autoStart?"));
     assert(source.includes("for(const detail of panel.querySelectorAll('details[data-section]'))"));
