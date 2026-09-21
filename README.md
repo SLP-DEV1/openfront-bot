@@ -6,7 +6,7 @@ Der Bot erkennt neue spielbare Matches, wählt bei manuellem Spawn eine Position
 
 ## Schnellstart / Update
 
-**1.19.3:** Externen localhost-Brain und Qwen-Live-Berater samt Token/UI aus dem Bot und lokalen Benchmark entfernt. Neural-Policy, Browser-Lernen, Offline-Training und Qwen Code als optionales Offline-Trainingsreview bleiben erhalten. Ein möglicherweise noch laufender alter Brain-Prozess wird durch ein Git-Update nicht automatisch beendet.
+**1.19.3:** Externen localhost-Brain und Qwen-Live-Berater samt Token/UI aus dem Bot und lokalen Benchmark entfernt. Neural-Policy, Browser-Lernen und eigenständiges Offline-Training bleiben erhalten; das frühere Qwen-Trainingsreview wurde anschließend ebenfalls entfernt. Ein möglicherweise noch laufender alter Brain-Prozess wird durch ein Git-Update nicht automatisch beendet.
 
 **1.19.2 – Korrekturen aus der NYC-Diagnose:** Eingehende Friedensangebote können bei militärischem Druck trotz aktivem Konflikt angenommen werden. Moderate, anhaltende oder durch starke Gegner gestützte Angriffe geben das Verteidigungsbudget früher frei. Ein zentrales Befehlsjournal unterscheidet korrelierte Bot-Angriffe von Angriffen ungeklärter Herkunft. Details und Prüfgrenzen: [Diagnosekorrekturen 1.19.2](docs/DIAGNOSE_FIXES_1.19.2.md).
 
@@ -47,8 +47,6 @@ Für eine lokale Live-Monitor-Ansicht: `Start_Live_Monitor.bat`. Siehe [LIVE_MON
 
 Der Live-Bot benötigt weder einen lokalen Brain-Server noch Qwen, Node.js oder einen Token. Die alten localhost-Brain-/Qwen-Regler wurden aus dem Panel entfernt. Das begrenzte, unabhängige Browser-Lernen über den Schalter „Lernen“ bleibt erhalten: [LEARNING.md](docs/LEARNING.md).
 
-**Qwen Code ist weiterhin optional für Offline-Training** (Trainer-Review zwischen Generationen). Das ist keine Qwen-Beratung während einer laufenden Partie.
-
 Das experimentelle lokale Training verwendet die **offizielle OpenFront-Engine/GameView**, getrennte Training-/Evaluations-Seeds und überprüfte Modell-/Bot-/Engine-Hashes. Ein Kandidat wird nicht allein wegen hoher Trainingspunkte zum Champion. Vorhandene Ausgabeverzeichnisse dürfen bei Holdouts nicht wiederverwendet werden.
 
 | Einstieg (Windows) | Zweck |
@@ -76,6 +74,6 @@ node tests/neural-regression.cjs
 node tests/holdout-regression.cjs
 ~~~
 
-GitHub Actions führt zusätzlich Benchmark-, Offline-Trainer- und Qwen-Trainingsreview-Prüfungen sowie gepinnte Engine-/Paired-Workflows aus: [Actions](https://github.com/SLP-DEV1/openfront-bot/actions). Ein grüner Workflow oder ein Tick-Limit ist **kein bestätigter Spielsieg**. Ein reiner Engine-Harness ersetzt nicht den öffentlichen Browser mit echten Web-Workern, Latenzen und Menschen.
+GitHub Actions führt zusätzlich Benchmark- und Offline-Trainer-Prüfungen sowie gepinnte Engine-/Paired-Workflows aus: [Actions](https://github.com/SLP-DEV1/openfront-bot/actions). Ein grüner Workflow oder ein Tick-Limit ist **kein bestätigter Spielsieg**. Ein reiner Engine-Harness ersetzt nicht den öffentlichen Browser mit echten Web-Workern, Latenzen und Menschen.
 
 **Noch offene Abnahme:** [Issue #12 – reproduzierbare vollständige Matches, Browser-Szenarien, Rail-/Attack-Proxies](https://github.com/SLP-DEV1/openfront-bot/issues/12). Alte Versionsnotizen stehen im [README-Archiv](docs/README_HISTORY.md) und sind **keine aktuellen Installationsanweisungen**.
