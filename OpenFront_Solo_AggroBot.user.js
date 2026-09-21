@@ -688,11 +688,24 @@
     try{nextBus.on(C,winnerHandler);winnerBus=nextBus;winnerCtor=C;return true;}
     catch(_){winnerHandler=null;return false;}
   }
+  function allianceOfferPath(){
+    if(typeof ctors.alliance==='function')return 'intent';
+    // Official OpenFront PlayerPanel.handleAllianceClick emits the real
+    // SendAllianceRequestIntentEvent through its own Transport EventBus.
+    // Never synthesize an unknown/minified intent constructor.
+    const panel=document.querySelector('player-panel');
+    return panel?.g===game&&panel?.eventBus===bus&&
+      typeof panel.handleAllianceClick==='function'?
+      'player-panel':null;
+  }
   function intentHealth() {
-    const missing=INTENT_KINDS.filter(kind=>typeof ctors[kind]!=='function');
+    const alliancePath=allianceOfferPath();
+    const missing=INTENT_KINDS.filter(kind=>
+      typeof ctors[kind]!=='function'&&
+      !(kind==='alliance'&&alliancePath==='player-panel'));
     return {found:INTENT_KINDS.length-missing.length,total:INTENT_KINDS.length,
       missing,critical:missing.filter(kind=>CORE_INTENTS.includes(kind)),
-      eventBus:!!bus};
+      eventBus:!!bus,alliancePath:alliancePath||'unavailable'};
   }
   // Report only when detection changes or the user explicitly starts.
   function reportIntents(force=false) {
@@ -4592,6 +4605,34 @@
       console.warn(PREFIX,'Diplomatie:',e);
       telemetry('alliance_error',diplomacyStatus);paint();}
   }
+  // All outgoing requests (including Duo offers) use a verified engine
+  // action first. A trusted official PlayerPanel fallback can emit the
+  // event if production minification hides its constructor in bus.listeners.
+  function sendAllianceOffer(me,p,label,force=false){
+    if(!opts.enabled||!opts.diplomacy||!opts.offerAlliances||
+      !connected()||game.config().disableAlliances?.()===true||
+      !p?.isAlive?.()||friendly(p,me)||p.isTraitor?.()||
+      safeID(me)!==safeID(myPlayer()))return false;
+    const path=allianceOfferPath();
+    if(path==='intent')return send('alliance',[me,p],label,force);
+    if(path!=='player-panel')return false;
+    const panel=document.querySelector('player-panel');
+    if(panel?.g!==game||panel?.eventBus!==bus||
+      typeof panel.handleAllianceClick!=='function')return false;
+    try{
+      panel.handleAllianceClick({stopPropagation(){}},me,p);
+      actions.push(Date.now());lastEmission=Date.now();totalSent++;
+      log(label+' (offizieller Spielerpanel-Intent)');
+      telemetry('alliance_offer_ui_fallback',label,
+        {recipient:safeID(p),path:'player-panel'});
+      return true;
+    }catch(e){
+      totalFailed++;
+      telemetry('alliance_offer_ui_error',
+        'Spielerpanel-Intent: '+String(e?.message||e).slice(0,90));
+      return false;
+    }
+  }
   function diplomacyTickSafe() {
     if(!opts.enabled)return;
     if(!opts.diplomacy){diplomacyStatus='Diplomatie im Menü AUS';return;}
@@ -4658,7 +4699,7 @@
             'Duo-Partner-ID bestätigt',previous?.tries||1);
           return;
         }
-      }else if(ctors.alliance&&!me.isRequestingAllianceWith?.(partner)&&
+      }else if(allianceOfferPath()&&!me.isRequestingAllianceWith?.(partner)&&
         !diplomacyHandled.has(id)&&tick-lastProposalTick>=55){
         const anchor=(strategic.groups.find(g=>g.id===id)?.tiles||[])[0]??
           partner.state?.spawnTile;
@@ -4672,7 +4713,7 @@
               actualFriendly(partner,me)||partner.isTraitor?.()||
               safeID(game.owner(anchor))!==id||
               !a?.interaction?.canSendAllianceRequest)return;
-            if(send('alliance',[me,partner],
+            if(sendAllianceOffer(me,partner,
               'DUO ALLIANZ ANGEFRAGT: '+nameOf(partner),true)){
               diplomacyStatus='Duo-Bündnis angefragt · Bestätigung ausstehend';
               diplomacyHandled.set(id,tick+85);diplomacyStats.offered++;
@@ -5525,9 +5566,11 @@
     // EventBus listeners may register after initial discovery. Retry at a
     // bounded interval while a core intent is missing; never emit probe events.
     if(bus && (intentHealth().critical.length ||
+      (opts.enabled&&opts.diplomacy&&opts.offerAlliances&&!ctors.alliance)||
       (opts.enabled&&opts.autoSpawn&&game.inSpawnPhase?.()&&!ctors.spawn))){
       const probeTick=number(()=>game.ticks(),-1);
-      const interval=game.inSpawnPhase?.()?6:120;
+      const interval=game.inSpawnPhase?.()?6:
+        opts.enabled&&opts.diplomacy&&opts.offerAlliances&&!ctors.alliance?80:120;
       if(probeTick>=0 && probeTick-lastIntentProbe>=interval){
         lastIntentProbe=probeTick;ctors=recognize(bus);bindWinnerCapture(bus,ctors);reportIntents();
       }
