@@ -271,6 +271,12 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.b.state().gameEnd.outcome,'victory');
     assert.equal(x.b.state().diagnostics.filter(r=>r.kind==='game_over').length,2);
   });
+  await check('issue #76 BigInt gold above safe integer range is clamped',()=>{
+    const x=boot();x.me.gold=()=>BigInt(Number.MAX_SAFE_INTEGER)+123456789n;
+    const needs=x.b.economicNeeds(x.me,[],[]);
+    assert.equal(needs.gold,Number.MAX_SAFE_INTEGER);
+    assert.equal(x.b.spendBudget(x.me,125000,'Factory'),true);
+  });
   await check('issue #76 cap-stalled SAM quote outranks City and discretionary fleet',async()=>{
     const x=samScenario();x.setHome(99000);
     x.b.setTroopSnapshot(x.b.military(x.me,[]));
