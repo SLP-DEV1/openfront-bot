@@ -898,9 +898,10 @@
     return player&&player.isAlive?.()!==false?{player,...peer}:null;
   }
   function friendly(p,me){
+    // An explicitly entered Partner-ID is protected even during relay loss.
     return actualFriendly(p,me)||
-      (safeID(me)===duoLocal.ownID&&
-       safeID(p)===duoTrustedPeer()?.id);
+      (duoConfigured()&&safeID(me)===safeID(myPlayer())&&
+       safeID(p)===opts.duoPartnerID);
   }
   function duoState(){
     const me=myPlayer(),peer=(game?.playerViews?.()||[]).find(p=>
@@ -4297,7 +4298,7 @@
     for(const [id,pending] of diplomacyPending) {
       const p=players.find(x=>safeID(x)===id);
       if(!p){diplomacyPending.delete(id);continue;}
-      const allied=friendly(p,me),requesting=!!p.isRequestingAllianceWith?.(me);
+      const allied=actualFriendly(p,me),requesting=!!p.isRequestingAllianceWith?.(me);
       const visible=cards.has(id);
       if(allied || (!requesting && !visible)) {
         const confirmed=pending.accept?allied:!allied;
@@ -4326,6 +4327,50 @@
         continue;
       }
       // Retain the attempt counter; the incoming pass below retries after the wait.
+    }
+    // Local Duo ID is intentionally protected by friendly() before the
+    // alliance exists; bypass the generic diplomacy score only for the
+    // reciprocal relay-verified player, not for arbitrary alliance offers.
+    const duo=duoTrustedPeer();
+    if(duo){
+      const partner=duo.player,id=safeID(partner);
+      if(me.isOnSameTeam?.(partner)||actualFriendly(partner,me)){
+        duoLocal.status='Partner im Spiel bestätigt · Team/Bündnis aktiv';
+      }else if(partner.isTraitor?.()){
+        duoLocal.status='Partner als Verräter markiert: kein Bündnisbefehl';
+      }else if(partner.isRequestingAllianceWith?.(me)||cards.has(id)){
+        const previous=diplomacyPending.get(id);
+        if(!previous||tick-previous.sentTick>=45){
+          answerAlliance(me,partner,true,cards.get(id)?.card,tick,
+            'Duo-Partner-ID bestätigt',previous?.tries||1);
+          return;
+        }
+      }else if(ctors.alliance&&opts.offerAlliances&&
+        !me.isRequestingAllianceWith?.(partner)&&
+        !diplomacyHandled.has(id)&&tick-lastProposalTick>=55){
+        const anchor=(strategic.groups.find(g=>g.id===id)?.tiles||[])[0]??
+          partner.state?.spawnTile;
+        if(Number.isInteger(anchor)&&safeID(game.owner(anchor))===id){
+          const serial=generation;lastProposalTick=tick;
+          Promise.resolve(me.actions(anchor,null)).then(a=>{
+            if(!live(serial)||!duoTrustedPeer()||
+              game.config().disableAlliances?.()===true||
+              !opts.diplomacy||!opts.offerAlliances||
+              me.isRequestingAllianceWith?.(partner)||
+              actualFriendly(partner,me)||partner.isTraitor?.()||
+              safeID(game.owner(anchor))!==id||
+              !a?.interaction?.canSendAllianceRequest)return;
+            if(send('alliance',[me,partner],
+              'DUO ALLIANZ ANGEFRAGT: '+nameOf(partner),true)){
+              diplomacyStatus='Duo-Bündnis angefragt · Bestätigung ausstehend';
+              diplomacyHandled.set(id,tick+85);diplomacyStats.offered++;
+              telemetry('duo_alliance_offer',diplomacyStatus,{partnerID:id});
+            }
+          }).catch(e=>{
+            duoLocal.status='Allianz-Worker: '+String(e.message).slice(0,55);
+          });
+        }
+      }
     }
     const incoming=players.filter(p=>!friendly(p,me)&&
       (p.isRequestingAllianceWith?.(me)||cards.has(safeID(p))));
