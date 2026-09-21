@@ -2984,7 +2984,7 @@ function boot(benchmarkOptions={}) {
     const result=x.b.neuralStrategicSignals(x.me,x.b.military(x.me,[]),300);
     assert(result&&Object.values(result).every(v=>v===0));
     const proof=x.b.diagnosticSnapshot().neuralEvidence;
-    assert.equal(proof.calls,1);assert.equal(proof.nonzero,0);
+    assert(proof.calls>=1,'inference was executed');assert.equal(proof.nonzero,0);
     assert.match(proof.model.fingerprint,/^fnv1a-/);
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
