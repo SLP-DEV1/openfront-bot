@@ -3636,10 +3636,14 @@ function boot(benchmarkOptions={}) {
     x.me.hasEmbargoAgainst=p=>p===x.strong&&embargoed;
     x.me.actions=async()=>({interaction:{canEmbargo:!embargoed}});
     x.b.setWar('strong','strong');
-    assert.equal(await x.b.tradePolicy(x.me,300),true);
-    assert.equal(x.sent[0].action,'start');embargoed=true;
-    x.b.setWar(null,'—');x.setTick(500);x.b.setLastEmission(0);
+    assert.equal(await x.b.tradePolicy(x.me,300),false,
+      'planned war by itself is not an economic reason for embargo');
+    x.out.push({targetID:'strong',troops:1200,retreating:false});
+    x.setTick(500);x.b.setLastEmission(0);
     assert.equal(await x.b.tradePolicy(x.me,500),true);
+    assert.equal(x.sent[0].action,'start');embargoed=true;
+    x.out.length=0;x.b.setWar(null,'—');x.setTick(700);x.b.setLastEmission(0);
+    assert.equal(await x.b.tradePolicy(x.me,700),true);
     assert.equal(x.sent[1].action,'stop');
     assert.equal(x.sent[1].target,x.strong);
   });
@@ -3699,6 +3703,26 @@ function boot(benchmarkOptions={}) {
       r.kind==='attack_confirmed');
     assert.equal(confirmed.actionId,emitted[0].actionId);
     assert.equal(confirmed.evidence,'observed-change-not-causal-proof');
+  });
+  await check('1.20.11 net gold change preserves spending separately from trade and train',()=>{
+    const x=boot();let train=0,trade=0;
+    x.me.trainGold=()=>train;x.me.tradeGold=()=>trade;
+    x.setGold(1000000);x.b.sampleIncome(x.me,300);
+    x.setGold(800000);train=40000;trade=10000;
+    x.b.sampleIncome(x.me,400);
+    const report=x.b.state().incomeStatus;
+    assert.equal(report.netGold,-1200000);
+    assert.equal(report.gold,-1200000,'negative account balance movement is not zero income');
+    assert.equal(report.train,240000);
+    assert.equal(report.trade,60000);
+    assert.equal(report.otherNetAfterTradeTrain,-1500000);
+    assert.equal(report.observed,true);
+  });
+  await check('1.20.11 stale worker decision gate is present before border targets',()=>{
+    const guard=source.indexOf("decision_snapshot_expired");
+    const targets=source.indexOf("const groups=targetsFromBorder(me,tiles);");
+    assert(guard>0&&guard<targets,'stale borders must not enter candidate decisions');
+    assert.match(source,/observedTick-tick>40/);
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
