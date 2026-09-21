@@ -62,7 +62,7 @@ function comparisonKey(row){
     row.scriptedHumans===null||!row.opponentProfile||!row.settings)return null;
   const ordered=Object.fromEntries(Object.entries(row.gameConfig).sort(([a],[b])=>a.localeCompare(b)));
   return JSON.stringify([row.harness,row.engineCommit,row.seed,row.seedSource,
-    ordered,row.maxTicks,row.scriptedHumans,row.opponentProfile,row.settings]);
+    ordered,row.maxTicks,row.scriptedHumans,row.opponentProfile]);
 }
 function compare(rows){
   const groups=new Map();
@@ -70,10 +70,10 @@ function compare(rows){
     const key=comparisonKey(row);if(!key)continue;
     if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row);
   }
-  return [...groups].filter(([,items])=>new Set(items.map(x=>x.botSHA256+':'+(x.policySHA256??'null')+':'+x.profile)).size>=2)
+  return [...groups].filter(([,items])=>new Set(items.map(x=>JSON.stringify([x.botSHA256,x.policySHA256,x.profile,x.settings]))).size>=2)
     .map(([key,items])=>({key:JSON.parse(key),matches:items.map(r=>({
       bot:r.bot,botSHA256:r.botSHA256,policySHA256:r.policySHA256,
-      profile:r.profile,scriptedHumans:r.scriptedHumans,
+      profile:r.profile,settings:r.settings,scriptedHumans:r.scriptedHumans,
       opponentProfile:r.opponentProfile,outcome:r.outcome,land:r.finalLand,
       endTick:r.endTick,attackConfirmed:r.attackConfirmed,portConfirmed:r.portConfirmed,
       warshipsConfirmed:r.warshipsConfirmed,landingsObserved:r.landingsObserved}))}));
