@@ -15,8 +15,10 @@ const matchOK=s=>typeof s==='string'&&s.length>=3&&s.length<=260&&
   /^[a-zA-Z0-9_.:@|,-]+$/.test(s);
 function validate(v){
   if(!v||typeof v!=='object'||Array.isArray(v)||!roomOK(v.room)||
-    !idOK(v.ownID)||!idOK(v.partnerID)||v.ownID===v.partnerID||
-    !idOK(v.instance)||!matchOK(v.match))return false;
+    !idOK(v.ownID)||!idOK(v.instance)||!matchOK(v.match))return false;
+  if(v.auto===true){
+    if(v.partnerID!=null)return false;
+  }else if(!idOK(v.partnerID)||v.ownID===v.partnerID)return false;
   if(v.clear===true)return true;
   const q=v.state;
   if(!q||typeof q!=='object'||Array.isArray(q))return false;
@@ -39,18 +41,38 @@ function trim(now=Date.now()){
 }
 function exchange(v,now=Date.now()){
   trim(now);
-  const key=v.room+'|'+[v.ownID,v.partnerID].sort().join('|')+'|'+v.match;
+  // Auto rooms admit exactly two distinct live instances. A third fails
+  // closed instead of silently joining the wrong duo.
+  const key=v.auto===true?
+    'auto|'+v.room+'|'+v.match:
+    'manual|'+v.room+'|'+[v.ownID,v.partnerID].sort().join('|')+'|'+v.match;
   let room=rooms.get(key);
   if(!room){if(rooms.size>=MAX)return {status:429,body:{error:'relay-full'}};
     room=new Map();rooms.set(key,room);}
   if(v.clear===true){
     if(room.get(v.ownID)?.instance===v.instance)room.delete(v.ownID);
+    if(!room.size)rooms.delete(key);
     return {status:200,body:{ok:true,partner:null}};
   }
   const existing=room.get(v.ownID);
   // A second active browser cannot impersonate an already registered ID.
   if(existing&&existing.instance!==v.instance&&now-existing.updated<TTL)
     return {status:409,body:{error:'duplicate-player-id'}};
+  if(v.auto===true){
+    const other=[...room.entries()].filter(([id,p])=>
+      id!==v.ownID&&p.instance!==v.instance);
+    if(other.length>=2)return {status:409,body:{error:'room-has-more-than-two'}};
+    // The same instance cannot advertise two different current PlayerIDs.
+    if([...room.entries()].some(([id,p])=>id!==v.ownID&&p.instance===v.instance))
+      return {status:409,body:{error:'instance-already-registered'}};
+    room.set(v.ownID,{instance:v.instance,partnerID:null,
+      state:v.state,updated:now});
+    const peers=[...room.entries()].filter(([id,p])=>
+      id!==v.ownID&&p.instance!==v.instance);
+    return {status:200,body:{ok:true,partner:peers.length===1?
+      {id:peers[0][0],state:peers[0][1].state,
+        ageMs:now-peers[0][1].updated}:null,expiresMs:TTL}};
+  }
   room.set(v.ownID,{instance:v.instance,partnerID:v.partnerID,
     state:v.state,updated:now});
   const peer=room.get(v.partnerID);
