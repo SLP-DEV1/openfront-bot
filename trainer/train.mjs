@@ -63,7 +63,7 @@ const total=runsPerGeneration*generations;
 const plan={engineCommit:cfg.engineCommit,difficulty,maps,nations,generations,population,
   trainSeeds,evalSeeds,ticks,sigma,parallel,matches:total,policySchema:modelSchema,
   gameType:cfg.gameType,gameMode:cfg.gameMode,scriptedHumans,opponentProfile:cfg.opponentProfile,
-  promotion:'verified complete paired holdout: more victories or consistent survival gains without regressions'};
+  promotion:'verified paired holdout: more victories, or repeatable survival/territory gains (tick-limits rank below victory, above defeat), without regressions'};
 if(cfg.dryRun==='true'){console.log(JSON.stringify(plan,null,2));process.exit(0);}
 if(!cfg.engine)throw Error('Provide --engine or --dryRun true');
 const engine=path.resolve(cfg.engine),bot=path.resolve(cfg.bot),out=path.resolve(cfg.out);

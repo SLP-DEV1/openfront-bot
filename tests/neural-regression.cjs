@@ -22,15 +22,38 @@ assert(reward({validSample:true,confirmed:true,outcome:'defeat',land:0,endTick:1
   reward({validSample:true,confirmed:true,outcome:'defeat',land:0,endTick:9000,ticks:18000}));
 
 const {compare}=require('../trainer/evaluation.cjs');
+// Rows mirror train.mjs: verified tick-limit rows are censored outcomes
+// with confirmed=false but validSample=true.
 const pair=(seed,outcome,confirmed=true,endTick=4000,land=1000)=>
-  ({map:'World',nation:1,difficulty:'Impossible',seed,outcome,confirmed,validSample:confirmed,
-    exitCode:0,endTick,land});
+  ({map:'World',nation:1,difficulty:'Impossible',seed,outcome,confirmed,
+    validSample:true,exitCode:0,endTick,land});
 assert.equal(compare([pair('one','defeat'),pair('two','defeat')],
   [pair('one','victory'),pair('two','defeat')]).promoted,true);
+// One confirmed victory still beats zero, even with a censored pair.
 assert.equal(compare([pair('one','defeat'),pair('two','defeat')],
-  [pair('one','incomplete',false),pair('two','victory')]).promoted,false);
+  [pair('one','incomplete',false),pair('two','victory')]).promoted,true);
 assert.equal(compare([pair('one','defeat'),pair('two','defeat')],
   [pair('other','victory'),pair('two','defeat')]).valid,false);
+// A single censored survival gain is not yet repeatable progress.
+assert.equal(compare([pair('one','defeat'),pair('two','defeat')],
+  [pair('one','incomplete',false,18000,50000),pair('two','defeat')]).promoted,false);
+// Repeated censored survival gains qualify even without tick gains.
+assert.equal(compare([pair('one','defeat'),pair('two','defeat')],
+  [pair('one','incomplete',false,18000,50000),
+   pair('two','incomplete',false,18000,45000)]).reason,
+  'consistent-survival-improvement');
+// Two fully censored pairs compare territory at the shared cap.
+assert.equal(compare([pair('one','incomplete',false,18000,20000),
+   pair('two','incomplete',false,18000,30000)],
+  [pair('one','incomplete',false,18000,45000),
+   pair('two','incomplete',false,18000,35000)]).promoted,true);
+assert.equal(compare([pair('one','incomplete',false,18000,45000),
+   pair('two','incomplete',false,18000,35000)],
+  [pair('one','incomplete',false,18000,20000),
+   pair('two','incomplete',false,18000,30000)]).promoted,false);
+// Ticking out where the incumbent won is a regression, never a gain.
+assert.equal(compare([pair('one','victory'),pair('two','defeat')],
+  [pair('one','incomplete',false,18000,40000),pair('two','defeat')]).promoted,false);
 assert.equal(compare([pair('one','victory'),pair('two','defeat')],
   [pair('one','victory'),pair('two','defeat')]).promoted,false);
 assert.equal(compare([pair('one','defeat'),pair('two','defeat')],
@@ -43,7 +66,8 @@ assert.equal(compare([pair('one','defeat'),pair('two','defeat')],
 assert.equal(compare([pair('one','defeat'),pair('two','defeat')],
   [pair('one','defeat',true,4400),pair('two','defeat',true,3800)]).promoted,false);
 assert.equal(compare([pair('one','defeat'),pair('two','defeat')],
-  [pair('one','defeat',true,4400),pair('two','defeat',false,4400)]).valid,false);
+  [pair('one','defeat',true,4400),
+   {...pair('two','defeat',false,4400),validSample:false}]).valid,false);
 const root=path.resolve(__dirname,'..');
 const exec=(args)=>{
   const r=spawnSync(process.execPath,args,{cwd:root,encoding:'utf8',timeout:30000});

@@ -754,7 +754,7 @@
     // Rush the opening while neutral land remains and the home front is safe.
     // On the large World map the bot needs more time to establish territory
     // before Impossible AI reaches its frontier and forces it to defend.
-    const opening=tick<(largeMap()?2400:1000) && items.some(g=>g.id===null&&!g.fallout) &&
+    const opening=tick<1000 && items.some(g=>g.id===null&&!g.fallout) &&
       s.incoming<home*.025 && s.strongest<home*.85 && s.ratio>=.27 &&
       (!opts.impossibleExperiment || (!recentHostilePressure(tick) &&
         !(armyTrend(tick)?.tiles< -80) &&

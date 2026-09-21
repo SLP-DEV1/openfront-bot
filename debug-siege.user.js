@@ -786,6 +786,7 @@
       mode='OPENING';reason='Frühe Landnahme: schneller expandieren, Reserve dynamisch schützen';
       v={aggressive:100,reserve:22,actionsPerMinute:105,maxTargets:23};
     }
+    if(tick>=900&&tick<2450)console.warn('DBGOPEN tick='+tick+' large='+largeMap()+' neutral='+items.some(g=>g.id===null&&!g.fallout)+' inc='+s.incoming+' home='+home+' strong='+s.strongest+' ratio='+s.ratio+' opening='+opening+' mode='+mode);
     if(!emergency && s.incoming>0){
       v.reserve+=Math.min(13,Math.ceil(invasion*35));
       v.aggressive-=9;
@@ -1445,6 +1446,15 @@
     const late=lateGame(me);
     const lateReduction=late && opts.lateOffense && !incoming && strongest<home*.65 ? (hardMode()?16:12) : 0;
     const growthRelease=ratio>.82&&!incoming&&strongest<home*.70&&!out.length?7:0;
+    // Landlocked at the troop cap against a single non-stronger enemy:
+    // holding back is a guaranteed stalemate, so permit committing the main
+    // army against that enemy (siege mode).
+    const singleTroops=hostile.length===1?
+      number(()=>hostile[0].opponent.troops(),0):0;
+    const freeNeutral=items.some(t=>t.id===null&&!t.fallout);
+    const siege=hostile.length===1 && tick>=600 && ratio>=.97 &&
+      home>10000 && home>singleTroops*.98 && incoming<=home*.08 &&
+      out.every(a=>a.targetID===0||a.targetID===null) && !freeNeutral;
     const baseline=home*clamp(setting('reserve')+adaptiveOffset-lateReduction-growthRelease,12,75)/100;
     // Hold meaningful troops while a larger neighbor or incoming offensive exists.
     // On Impossible, preserve a force against the largest OTHER neighbor even
@@ -1468,12 +1478,15 @@
     const forecastFloor=forecastEnabled&&predicted&&predicted.pressured?
       Math.min(home*(context.multiplayer?.88:.91),
         predicted.combined*(context.multiplayer?.52:.60)+incoming*.30):0;
-    const reserve=Math.min(home,Math.ceil(Math.max(defensiveFloor,forecastFloor)));
+    const reserve=Math.min(home,Math.ceil(
+      siege?Math.min(Math.max(defensiveFloor,forecastFloor),
+                    Math.max(singleTroops*.44,home*.40))
+           :Math.max(defensiveFloor,forecastFloor)));
     const available=Math.max(0,Math.floor(home-reserve));
     const total=home+committed;
     const activeEnemy=out.filter(a=>a.targetID!==0 && a.targetID!==null).length;
     const activeNeutral=out.filter(a=>a.targetID===0||a.targetID===null).length;
-    return {home,max,committed,incoming,strongest,ratio,reserve,available,total,
+    return {home,max,committed,incoming,strongest,ratio,siege,reserve,available,total,
       growthPotential:Math.max(0,(10+Math.pow(home,.73)/4)*(1-ratio)),
       out,inc,activeEnemy,activeNeutral};
   }
@@ -1782,7 +1795,8 @@
       Math.min(enemy*.35,s.home*.32));
     const amount=Math.floor(Math.min(requested,Math.max(0,s.home-floor)));
     const minimum=Math.max(enemy*.45,
-      enemy*(hardMode()?1.16:1.04)-duoBattleCredit(myPlayer(),item.opponent));
+      enemy*(s.siege?.45:(hardMode()?1.16:1.04))-
+        duoBattleCredit(myPlayer(),item.opponent));
     return {amount:amount>=minimum?amount:0,capped:amount<requested,
       floor,other:front.other,minimum,reason:amount<minimum?
         'Verbleibende Truppen reichen nach Risikobegrenzung nicht für den Angriff':
@@ -1792,16 +1806,18 @@
     if(!item?.opponent?.isAlive?.()||friendly(item.opponent,me))return false;
     const late=lateGame(me),troops=number(()=>item.opponent.troops(),Infinity);
     if(!(troops>0)||s.incoming>s.home*(late?.15:.04)||s.ratio<(late?.29:.40))return false;
-    const minRatio=enemyOpportunityRatio(item.opponent,late,s.home);
+    const minRatio=s.siege?.55:enemyOpportunityRatio(item.opponent,late,s.home);
     const credit=duoBattleCredit(me,item.opponent);
     if(s.available+credit<troops*minRatio ||
-      s.home+credit<troops*targetHomeRatio(item.opponent,late))return false;
+      s.home+credit<troops*(s.siege?1:targetHomeRatio(item.opponent,late)))return false;
     const front=frontRiskPlan(items,s,item.id);
     if(front.danger||front.pressure)return false;
-    const strike=Math.min(s.available*(hardMode()?.76:.80),
-      Math.max(troops*(hardMode()?1.57:1.40),s.available*.48));
+    const strike=s.siege?
+      Math.min(s.available*.78,front.safeStrike):
+      Math.min(s.available*(hardMode()?.76:.80),
+        Math.max(troops*(hardMode()?1.57:1.40),s.available*.48));
     return strike<=front.safeStrike &&
-      strike+credit>=troops*(hardMode()?1.18:1.08);
+      strike+credit>=troops*(s.siege?.48:(hardMode()?1.18:1.08));
   }
   function warReadiness(me,items,s,tick,target=null) {
     if(!hardMode())return {ready:true,reason:'Normal'};
@@ -1935,6 +1951,7 @@
       if(tick-(cooldowns.get(key)??-Infinity)<(item.id===null?22:80))return [];
       if(tick-(rejected.get(key)??-Infinity)<25 || tick<(blockedTargets.get(item.id)||0))return [];
       const isNeutral=item.id===null;
+      if(!isNeutral&&(tick>=1300&&tick<2450&&tick%100===1))console.warn('DBGEARLY activeEnemy='+s.activeEnemy+' sendGap='+(tick-lastEnemySend)+' cooldownLeft='+((tick-(cooldowns.get(key)??-Infinity))<80)+' rejectedLeft='+((tick-(rejected.get(key)??-Infinity))<25)+' blockedUntil='+(blockedTargets.get(item.id)||0)+' rebuilding='+context.rebuilding+' incoming='+s.incoming);
       // The game sends attacks from home troops; existing outgoing stacks
       // remain in motion. Don't spend the whole army on parallel attacks.
       if(isNeutral && (s.activeNeutral >= (s.ratio>.63 && !context.underAttack ? 2 : 1) || tick-lastNeutralSend<23))return [];
@@ -1947,11 +1964,14 @@
       // still border our home. This was the main multi-front failure in 1.4.
       const front=enemy?frontRiskPlan(items,s,item.id):null;
       const enemyTiles=enemy?number(()=>enemy.numTilesOwned(),0):0;
+      if(!isNeutral&&(tick>=1200&&tick<3000&&tick%100===1))console.warn('DBGEXCL siege='+s.siege+' hard='+hardMode()+' late='+late+' activeEnemy='+s.activeEnemy+' enemySendGap='+(tick-lastEnemySend)+' rebuilding='+context.rebuilding+' incoming='+s.incoming+' ratio='+s.ratio+' available='+available+' reserve='+s.reserve+' enemyTroops='+enemyTroops+' minRatio='+enemyOpportunityRatio(enemy,late,s.home,effectivePlan()==='Blitz')+' targetHomeRatio='+targetHomeRatio(enemy,late)+' danger='+front.danger+' pressure='+front.pressure+' safeStrike='+front.safeStrike+' floor='+front.floor+' strikeMin='+Math.min(available*(hardMode()?.76:.80),Math.max(enemyTroops*(hardMode()?1.57:1.40),available*.48))+' enemyTiles='+enemyTiles);
       if(!isNeutral) {
-        const minimumRatio=enemyOpportunityRatio(enemy,late,s.home,effectivePlan()==='Blitz');
+        // Siege: the only way out runs through the single besieging enemy.
+        const minimumRatio=s.siege?.55:
+          enemyOpportunityRatio(enemy,late,s.home,effectivePlan()==='Blitz');
         const partnerCredit=duoBattleCredit(me,enemy);
         if(s.ratio<(late?.29:.40) || available+partnerCredit<enemyTroops*minimumRatio ||
-          s.home+partnerCredit<enemyTroops*targetHomeRatio(enemy,late) ||
+          s.home+partnerCredit<enemyTroops*(s.siege?1:targetHomeRatio(enemy,late)) ||
           front.danger||front.pressure||
           Math.min(available*(hardMode()?.76:.80),
             Math.max(enemyTroops*(hardMode()?1.57:1.40),available*.48))>front.safeStrike||
@@ -2262,7 +2282,7 @@
         fresh.activeEnemy>=(lateGame(me)&&fresh.strongest<fresh.home*.55?2:1) ||
         fresh.available+duoBattleCredit(me,item.opponent)<
           Math.max(100,number(()=>item.opponent.troops(),Infinity)*
-            (lateGame(me)?1.15:1.3))))continue;
+            (fresh.siege?.55:(lateGame(me)?1.15:1.3)))))continue;
       if(item.id===null && fresh.activeNeutral>=1)continue;
       if(item.fallout && (fresh.incoming>0 ||
         fresh.strongest>fresh.home*.65 || fresh.ratio<.60 ||
@@ -4261,6 +4281,7 @@
         immediateState=tuneAutonomously(me,strategic.groups,immediateState,tick,
           {wanted:'DEFEND',rebuilding:true});
       // Save committed troops BEFORE any asynchronous worker border request.
+      if(tick>=900&&tick<2450&&tick%100===1)console.warn('DBGA tick='+tick);
       if(emergencyRetreat(me,tick,immediateState))return;
       const tiles=await borders(me,tick);
       if(!live(serial))return;
@@ -4269,6 +4290,7 @@
       observeOpponents(me,tick);
       let s=military(me,groups);rememberHostilePressure(s,tick);troopSnapshot=s;
       manageWar(me,groups,s,tick);
+      if(tick>=900&&tick<2450&&tick%100===1)console.warn('DBGPRE tick='+tick);
       const context=strategy(me,groups,s);
       s=tuneAutonomously(me,groups,s,tick,context);
       troopSnapshot=s;
