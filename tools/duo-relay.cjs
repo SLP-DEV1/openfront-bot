@@ -27,6 +27,9 @@ function validate(v){
     (q.spawn===null||Number.isSafeInteger(q.spawn)&&q.spawn>=0)&&
     (q.candidate===null||Number.isSafeInteger(q.candidate)&&q.candidate>=0)&&
     (q.target===null||idOK(q.target))&&
+    (q.allies===undefined||(Array.isArray(q.allies)&&q.allies.length<=16&&
+      q.allies.every(id=>idOK(id)&&id!==v.ownID)&&
+      new Set(q.allies).size===q.allies.length))&&
     (q.strikeTick==null||Number.isInteger(q.strikeTick)&&q.strikeTick>=0)&&
     typeof q.ready==='boolean'&&typeof q.needHelp==='boolean'&&
     typeof q.allied==='boolean'&&
