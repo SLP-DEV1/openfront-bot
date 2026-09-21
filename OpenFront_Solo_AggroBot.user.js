@@ -122,7 +122,26 @@
       output[NEURAL_CHANNELS[k]]=Math.tanh(z);
     }
     neuralPolicyCache={key,output};
+    neuralEvidence.calls++;
+    if(Object.values(output).some(v=>Math.abs(v)>1e-8))neuralEvidence.nonzero++;
+    neuralEvidence.last={tick,schema:neuralModel.schema,
+      channels:Object.fromEntries(Object.entries(output).map(([k,v])=>[k,Number(v.toFixed(5))]))};
+    if(neuralEvidence.calls%20===1)telemetry('neural_inference',
+      'Neurale Strategie-Ausgabe beobachtet',{model:neuralModelInfo(),
+        inference:neuralEvidence.last});
     return output;
+  }
+  function neuralModelInfo(){
+    const model=neuralModel;
+    if(!model)return {loaded:false,enabled:!!opts.neuralEnabled,reason:'no-valid-model'};
+    // This fingerprint is for tracking the deployed weights across diagnostic
+    // exports, not a cryptographic or trainer policy SHA256.
+    const raw=JSON.stringify(model.weights),bytes=raw.length;
+    let hash=2166136261;
+    for(let i=0;i<raw.length;i++){hash^=raw.charCodeAt(i);hash=Math.imul(hash,16777619);}
+    return {loaded:true,enabled:!!opts.neuralEnabled,schema:model.schema,
+      weights:model.weights.length,nonzeroWeights:model.weights.filter(v=>v!==0).length,
+      fingerprint:'fnv1a-'+(hash>>>0).toString(16).padStart(8,'0')+'-'+bytes};
   }
   function neuralChannel(name,me,s=troopSnapshot,tick=number(()=>game?.ticks?.(),0)){
     return neuralStrategicSignals(me,s,tick)?.[name]||0;
@@ -193,7 +212,13 @@
     }
     let z=w[216];
     for(let j=0;j<12;j++)z+=h[j]*w[204+j];
-    return Math.tanh(z)*14;
+    const delta=Math.tanh(z)*14;
+    neuralEvidence.actionCalls++;
+    if(Math.abs(delta)>1e-8)neuralEvidence.actionNonzero++;
+    if(neuralEvidence.actionCalls%30===1)telemetry('neural_action_inference',
+      'Neurales Aktionsranking beobachtet',{model:neuralModelInfo(),
+        kind,delta,baseline:score});
+    return delta;
   }
   // Hybrid learning: bounded contextual adjustments; keep existing combat safety checks.
   const LEARN_KEY='of-aggrobot-learning-v1';
@@ -350,6 +375,10 @@
   let recordSequence=0,recordCounts={},recordsDropped=0,streamErrors=0;
   let monitorSession='';
   let budgetCommitments=[];
+  let attackBlockReport=null,lastAttackBlockReport=-Infinity;
+  let crisisTrend=null,lastCrisisReport=-Infinity;
+  let landingFailures=new Map();
+  let neuralEvidence={calls:0,nonzero:0,actionCalls:0,actionNonzero:0,last:null};
   const jsonCopy=value=>JSON.parse(JSON.stringify(value,(_,v)=>typeof v==='bigint'?v.toString():v));
   function telemetry(kind,message,extra={}) {
     if((!opts.enabled&&kind!=='game_over') || !permittedMatch(game))return;
@@ -436,6 +465,8 @@
         effective:{aggressive:setting('aggressive'),reserve:setting('reserve'),
           actionsPerMinute:setting('actionsPerMinute'),maxTargets:setting('maxTargets')}},attackReceipts, pendingAttack, attackCommands, attackOrigins:[...observedAttacks.values()],
       construction:{pending:economicPending,blocked:[...economicBlocked.entries()],failedProbes:failedEconomyProbes,lastConfirmed:successfulEconomyTick,investment:investmentStatus},
+      attackBlockReport,crisisTrend,landingFailures:[...landingFailures],
+      neuralEvidence:{...neuralEvidence,model:neuralModelInfo()},
       validation:{forecastAudits,incomeAttribution,
         terrainMethod:'nuke-cubic-bezier-conservative',
         railMethod:'owned-land-corridor-proxy',
@@ -650,7 +681,9 @@
     generation++; game=g;bus=b;ctors=recognize(b);busy=false;lastWinnerSignal=null;
     monitorSession='match-'+Date.now().toString(36)+'-'+
       Math.floor(Math.random()*0xffffffff).toString(36).padStart(8,'0');
-    budgetCommitments=[];
+    budgetCommitments=[];attackBlockReport=null;lastAttackBlockReport=-Infinity;
+    crisisTrend=null;lastCrisisReport=-Infinity;landingFailures.clear();
+    neuralEvidence={calls:0,nonzero:0,actionCalls:0,actionNonzero:0,last:null};
     autoStartGame=null;
     bindWinnerCapture(bus,ctors);
     lastIntentHealth=null;lastIntentProbe=-Infinity;missingIntentLogged.clear();
