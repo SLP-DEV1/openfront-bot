@@ -7,6 +7,7 @@ const port=Number(process.env.AGGROBOT_DUO_PORT||8767);
 if(!Number.isInteger(port)||port<0||port>65535)throw Error('Invalid relay port');
 const host='127.0.0.1',TTL=10000,MAX=80;
 const rooms=new Map();
+const connectionLogs=new Map();
 const idOK=s=>typeof s==='string'&&s.length>=1&&s.length<=128&&
   /^[a-zA-Z0-9_.:@-]+$/.test(s);
 const roomOK=s=>typeof s==='string'&&s.length>=6&&s.length<=64&&
@@ -70,9 +71,13 @@ function exchange(v,now=Date.now()){
       state:v.state,updated:now});
     const peers=[...room.entries()].filter(([id,p])=>
       id!==v.ownID&&p.instance!==v.instance);
+    const otherMatches=[...rooms.keys()].filter(k=>
+      k.startsWith('auto|'+v.room+'|')&&k!==key).length;
     return {status:200,body:{ok:true,partner:peers.length===1?
       {id:peers[0][0],state:peers[0][1].state,
-        ageMs:now-peers[0][1].updated}:null,expiresMs:TTL}};
+        ageMs:now-peers[0][1].updated}:null,expiresMs:TTL,
+      reason:peers.length===1?'paired':otherMatches>0?
+        'different-match':'waiting',sameRoomOtherMatches:otherMatches}};
   }
   room.set(v.ownID,{instance:v.instance,partnerID:v.partnerID,
     state:v.state,updated:now});
@@ -91,6 +96,7 @@ function createServer(){
   return http.createServer((req,res)=>{
     const origin=req.headers.origin;
     if(!allowed(origin)){
+      console.warn('[AggroBot Duo] Browser-Ursprung abgewiesen:',origin||'ohne Origin');
       res.writeHead(403,{'Content-Type':'application/json',
         'Cache-Control':'no-store'}).end('{"error":"origin-denied"}');return;
     }
@@ -100,6 +106,7 @@ function createServer(){
       'Access-Control-Allow-Private-Network':'true',
       'Cache-Control':'no-store','Content-Type':'application/json'};
     if(req.method==='OPTIONS'){
+      console.log('[AggroBot Duo] Browser fragt nach lokalem Netzwerkzugriff:',origin);
       res.writeHead(204,headers).end();return;
     }
     if(req.method!=='POST'||req.url!=='/duo'){
@@ -113,9 +120,26 @@ function createServer(){
     req.on('end',()=>{
       let data;try{data=JSON.parse(text);}catch(_){}
       if(overflow||!validate(data)){
+        console.warn('[AggroBot Duo] Ungueltiges Paket von',origin);
         res.writeHead(400,headers).end('{"error":"invalid-payload"}');return;
       }
       const result=exchange(data);
+      const line=[data.room,data.match,data.ownID,data.instance,
+        result.body.partner?.id||result.body.error||
+          result.body.reason||'waiting'].join('|');
+      const last=connectionLogs.get(data.instance);
+      if(!last||last.line!==line||Date.now()-last.at>20000){
+        connectionLogs.set(data.instance,{line,at:Date.now()});
+        console.log('[AggroBot Duo]',data.ownID,
+          result.body.partner?'VERBUNDEN mit '+result.body.partner.id:
+          result.body.reason==='different-match'?
+            'Raumcode stimmt, Match-Kennung unterscheidet sich':
+            result.body.error||'wartet auf zweiten Browser',
+          '| Match:',data.match,'| Raum:',data.room);
+      }
+      if(connectionLogs.size>128)
+        for(const [id,x] of connectionLogs)
+          if(Date.now()-x.at>60000)connectionLogs.delete(id);
       res.writeHead(result.status,headers).end(JSON.stringify(result.body));
     });
   });
