@@ -156,7 +156,8 @@ function boot(benchmarkOptions={}) {
     next.spent=next.budget;
     assert.equal(x.b.planOperation(x.me,groups,state,610),null,
       'spent budget cancels the operation and cools target down');
-    assert(x.b.state().decisionTimeline.some(d=>d.why.includes('Budget ausgeschöpft')));
+    assert(x.b.state().decisionTimeline.some(d=>d.why.includes('Budget ausgeschöpft')),
+      JSON.stringify(x.b.state().decisionTimeline));
   });
   await check('trained strategic policy switches land versus naval, zero model retains rules', () => {
     const x=boot();x.setTick(600);x.b.setBoatCtor(class {});
