@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.20.7
+// @version      1.20.8
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.20.7', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.20.8', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -355,6 +355,9 @@
   let goldSamples=[],incomeStatus={train:null,trade:null,gold:null,observed:false};
   let winStatus={mode:'FFA',progress:null,threshold:null,remaining:null,urgent:false};
   let fleetStatus='Keine Marineaktivität',lastFleet=-Infinity,lastDonation=-Infinity,navalSweep=0;
+  let tradeStatus='Handel automatisch offen',lastTradeTick=-Infinity,
+    tradeBusy=false,tradeStats={opened:0,embargoed:0,skipped:0},
+    botEmbargoes=new Set();
   let pendingBoat=null,pendingWarship=null,navalCooldown=new Map(),navalBackoffUntil=-Infinity,portProbeFailures=0,lastPortRetryTick=-Infinity,navalSiteNegative=new Map();
   let landingAudits=[];
   let marineStats={transportSent:0,transportConfirmed:0,transportArrived:0,bridgeheadHeld:0,bridgeheadLost:0,
@@ -639,6 +642,7 @@
       boat:'SendBoatAttackIntentEvent',build:'BuildUnitIntentEvent',
       upgrade:'SendUpgradeStructureIntentEvent',
       alliance:'SendAllianceRequestIntentEvent',reject:'SendAllianceRejectIntentEvent',
+      embargo:'SendEmbargoIntentEvent',embargoAll:'SendEmbargoAllIntentEvent',
       warship:'MoveWarshipIntentEvent',cancelBoat:'CancelBoatIntentEvent',
       donateTroops:'SendDonateTroopsIntentEvent',donateGold:'SendDonateGoldIntentEvent',
       extend:'SendAllianceExtensionIntentEvent',winnerSignal:'SendWinnerEvent'};
@@ -657,6 +661,10 @@
         Object.keys(o).length===2)possibilities.alliance.push(C);}catch(_){}
       try {const o=new C(probeA);if(o?.requestor===probeA && Object.keys(o).length===1)
         possibilities.reject.push(C);}catch(_){}
+      try {const o=new C(probeB,'start');if(o?.target===probeB&&
+        o?.action==='start')possibilities.embargo.push(C);}catch(_){}
+      try {const o=new C('start');if(o?.action==='start'&&
+        Object.keys(o).length===1)possibilities.embargoAll.push(C);}catch(_){}
       try {const o=new C([4812],1824);if(o?.tile===1824&&o?.unitIds?.[0]===4812)
         possibilities.warship.push(C);}catch(_){}
       try {const o=new C(4812);if(o?.unitID===4812&&Object.keys(o).length===1)
@@ -768,6 +776,8 @@
     lastDiplomacyTick=-Infinity;lastProposalTick=-Infinity;diplomacyStatus='Noch keine Anfrage';
     diplomacyStats={accepted:0,rejected:0,offered:0};goldSamples=[];incomeStatus={train:null,trade:null,gold:null,observed:false};
     winStatus={mode:'FFA',progress:null,threshold:null,remaining:null,urgent:false};fleetStatus='Keine Marineaktivität';lastFleet=-Infinity;lastDonation=-Infinity;navalSweep=0;
+    tradeStatus='Handel automatisch offen';lastTradeTick=-Infinity;tradeBusy=false;
+    tradeStats={opened:0,embargoed:0,skipped:0};botEmbargoes.clear();
     pendingBoat=null;pendingWarship=null;navalCooldown.clear();navalBackoffUntil=-Infinity;portProbeFailures=0;lastPortRetryTick=-Infinity;navalSiteNegative.clear();
     marineStats={transportSent:0,transportConfirmed:0,transportArrived:0,bridgeheadHeld:0,bridgeheadLost:0,
       transportUnconfirmed:0,transportUnresolved:0,warshipSent:0,
