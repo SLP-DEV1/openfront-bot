@@ -866,8 +866,125 @@
     } catch(e) {totalFailed++;log('Event fehlgeschlagen: '+String(e.message));return false;}
   }
   function valid(x,y) {return x>=0&&y>=0&&x<game.width()&&y<game.height();}
-  function friendly(p,me) {
-    try {return p?.id?.()===me.id() || p.isFriendly?.(me) || me.isFriendly?.(p);}catch(_){return false;}
+  // The relay only exchanges observations; game state remains authoritative
+  // for ALLIANCE CONFIRMED. An actively reciprocated ID is protected from
+  // accidental attacks even while the alliance request is in flight.
+  function actualFriendly(p,me){
+    try{return p?.id?.()===me.id()||p.isFriendly?.(me)||me.isFriendly?.(p);}
+    catch(_){return false;}
+  }
+  const duoID=v=>typeof v==='string'&&v.length>=1&&v.length<=128&&
+    /^[a-zA-Z0-9_.:@-]+$/.test(v);
+  function duoConfigured(){
+    return opts.duoEnabled&&duoID(opts.duoPartnerID)&&
+      /^[a-zA-Z0-9_-]{6,64}$/.test(opts.duoRoom||'')&&
+      duoID(safeID(myPlayer()))&&safeID(myPlayer())!==opts.duoPartnerID;
+  }
+  function duoMatchKey(){
+    const cfg=game?.config?.().gameConfig?.()||{},loc=window.location||{};
+    const seed=cfg.seed??cfg.gameID??cfg.gameId??'unknown';
+    const value=['v1',cfg.gameType??'unknown',cfg.gameMap??'unknown',
+      cfg.gameMapSize??'unknown',cfg.gameMode??'unknown',seed,
+      loc.pathname||'/'].join('|');
+    return value.replace(/[^a-zA-Z0-9_.:@|,-]/g,'_').slice(0,260);
+  }
+  function duoTrustedPeer(){
+    const me=myPlayer(),peer=duoLocal.peer;
+    if(!duoConfigured()||!peer||Date.now()-duoLocal.lastAt>3500||
+      duoLocal.match!==duoMatchKey()||peer.id!==opts.duoPartnerID||
+      duoLocal.ownID!==safeID(me))return null;
+    const player=(game?.playerViews?.()||[]).find(p=>
+      safeID(p)===peer.id&&p.isPlayer?.());
+    return player&&player.isAlive?.()!==false?{player,...peer}:null;
+  }
+  function friendly(p,me){
+    return actualFriendly(p,me)||
+      (safeID(me)===duoLocal.ownID&&
+       safeID(p)===duoTrustedPeer()?.id);
+  }
+  function duoState(){
+    const me=myPlayer(),peer=(game?.playerViews?.()||[]).find(p=>
+      safeID(p)===opts.duoPartnerID);
+    const s=me?.hasSpawned?.()?military(me,strategic.groups):null;
+    const target=operation?.target??duoPlan?.target??warState.id;
+    const candidate=spawnCache?.tile??null,spawn=me?.state?.spawnTile;
+    return {tick:Number.isInteger(game?.ticks?.())?game.ticks():null,
+      spawn:Number.isSafeInteger(spawn)?spawn:null,
+      candidate:Number.isSafeInteger(candidate)?candidate:null,
+      target:duoID(target)?target:null,
+      ready:!!(s&&s.incoming===0&&s.available>=Math.max(1200,s.home*.2)),
+      needHelp:!!(s&&s.incoming>Math.max(1200,s.home*.1)),
+      allied:!!(peer&&actualFriendly(peer,me)),
+      available:s?.available??null,reserve:s?.reserve??null,
+      role:s?.incoming>Math.max(1200,s.home*.1)?'defend':
+        operation?'attack':game?.inSpawnPhase?.()?'spawn':
+        duoPlan?.role?.includes('entlasten')?'support':'build'};
+  }
+  async function duoPublish(){
+    if(duoLocal.lastPromise||!opts.enabled||!duoConfigured()||
+      !permittedMatch(game)||game?.gameOver?.())return;
+    const ownID=safeID(myPlayer()),partnerID=opts.duoPartnerID,
+      match=duoMatchKey(),room=opts.duoRoom;
+    if(duoLocal.match!==match||duoLocal.partnerID!==partnerID||
+      duoLocal.ownID!==ownID){
+      duoLocal.peer=null;duoLocal.lastAt=0;duoLocal.match=match;
+      duoLocal.partnerID=partnerID;duoLocal.ownID=ownID;
+    }
+    const payload={room,ownID,partnerID,match,
+      instance:duoLocal.instance,state:duoState()};
+    duoLocal.lastPromise=(async()=>{
+      const controller=new AbortController();
+      const timeout=setTimeout(()=>controller.abort(),1550);
+      try{
+        const response=await fetch('http://127.0.0.1:8767/duo',{
+          method:'POST',mode:'cors',cache:'no-store',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify(payload),signal:controller.signal
+        });
+        if(!response.ok)throw Error('HTTP '+response.status);
+        const data=await response.json();
+        if(!opts.duoEnabled||!game||match!==duoMatchKey()||
+          partnerID!==opts.duoPartnerID)return;
+        duoLocal.peer=data.partner||null;
+        duoLocal.lastAt=data.partner?Date.now():0;
+        duoLocal.status=data.partner?'Verbindung · '+partnerID:
+          'Warte auf zweite Browser-Instanz';
+        if(data.partner)duoLocal.failures=0;
+      }catch(e){
+        duoLocal.failures++;duoLocal.peer=null;duoLocal.lastAt=0;
+        duoLocal.status='Relay offline / nicht erreichbar: '+String(e.message).slice(0,55);
+      }finally{clearTimeout(timeout);}
+    })();
+    try{await duoLocal.lastPromise;}finally{duoLocal.lastPromise=null;}
+  }
+  // The first ID publishes a safe anchor; the second prefers a legal
+  // nearby region. Neither client ever supplies the other's spawn intent.
+  function duoSpawnCandidate(g,me,candidates,urgent=false){
+    const peer=duoTrustedPeer(),anchor=peer?.state?.spawn??peer?.state?.candidate;
+    if(!Number.isSafeInteger(anchor)||!g.isValidRef?.(anchor))return null;
+    const min=number(()=>g.config().minDistanceBetweenPlayers?.(),30);
+    const px=g.x(anchor),py=g.y(anchor);
+    const rivals=spawnRivals(g,me);
+    const tiles=new Set(candidates.map(x=>x.tile));
+    for(const rad of [min+24,min+50,min+85]){
+      for(let j=0;j<16;j++){
+        const theta=j*Math.PI/8,x=Math.round(px+rad*Math.cos(theta)),
+          y=Math.round(py+rad*Math.sin(theta));
+        if(x>=4&&y>=4&&x<g.width()-4&&y<g.height()-4)
+          tiles.add(g.ref(x,y));
+      }
+    }
+    let best=null;
+    for(const tile of tiles){
+      const score=spawnScore(g,tile,rivals,urgent);
+      if(!score)continue;
+      const distance=Math.hypot(score.x-px,score.y-py);
+      if(distance<min+8||distance>min+115)continue;
+      const quality=score.score+
+        Math.max(0,.21-Math.abs(distance-(min+52))*.0019);
+      if(!best||quality>best.quality)best={...score,quality};
+    }
+    return best;
   }
   function spawnBlock(reason){
     if(spawnState.blocked===reason)return;
