@@ -22,6 +22,14 @@ const mk=(ownID,partnerID,instance,match='v1|Public|World|Large|FFA|123|_')=>({
   assert.equal(relay.validate({...A,partnerID:'one'}),false);
   assert.equal(relay.validate({...A,state:{...A.state,target:'../bad'}}),false);
   assert.equal(relay.validate({...A,state:{...A.state,strikeTick:345}}),true);
+  assert.equal(relay.validate({...A,state:{...A.state,
+    strikeTick:345,planId:'enemyA:345',expiresTick:455}}),true);
+  assert.equal(relay.validate({...A,state:{...A.state,
+    strikeTick:345,planId:'enemyA:345',expiresTick:526}}),false);
+  assert.equal(relay.validate({...A,state:{...A.state,
+    strikeTick:345,planId:'enemyA:345',expiresTick:300}}),false);
+  assert.equal(relay.validate({...A,state:{...A.state,
+    strikeTick:null,planId:'enemyA:345',expiresTick:455}}),false);
   assert.equal(relay.validate({...A,state:{...A.state,warning:1,warTarget:'enemy1'}}),true);
   assert.equal(relay.validate({...A,state:{...A.state,warning:2}}),true);
   assert.equal(relay.validate({...A,state:{...A.state,warning:3}}),false);
