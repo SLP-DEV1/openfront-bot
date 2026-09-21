@@ -1,4 +1,4 @@
-# AggroBot 1.20.1 – lokaler Duo-Modus (zwei Browser, ein PC)
+# AggroBot 1.20.2 – lokaler Duo-Modus (zwei Browser, ein PC)
 
 **Zweck:** Zwei separat laufende OpenFront-Userscripts können Beobachtungen über denselben
 localhost-Relay austauschen. Jeder Browser kontrolliert **nur den eigenen Spieler**.
@@ -14,16 +14,18 @@ kein Ersatz für Worker-Aktionsprüfung, Eigentumskontrolle oder Heimreserve.
    OpenFront-Lobby beitreten. Entweder zweimal das normale
    `OpenFront_Solo_AggroBot.user.js` oder zweimal
    `OpenFront_AggroBot_Impossible_Run3.user.js` mit eingebettetem Modell.
-3. In **beiden Panels** `🤝 Duo-Modus` öffnen. Den Partnernamen optional als Anzeigehilfe eintragen; die tatsächliche PlayerID bleibt für die Zuordnung verbindlich. Die im eigenen Panel gezeigte
-   **eigene Spieler-ID** in das Feld **Partner-Spieler-ID** des jeweils anderen
-   Browsers eintragen. **Nicht den Anzeigenamen** verwenden. Beide tragen
-   **denselben** Raumcode ein, z. B. `KITSU_DUO_128` (6–64 Zeichen, Buchstaben,
-   Zahlen, Minus, Unterstrich). Dann **Lokales Duo AN**, den Bot einschalten
-   beziehungsweise Auto-Start benutzen.
-4. Im Panel `Verbindung · <Partner-ID>` abwarten. Die gegenseitige PlayerID
-   wird im Relay geprüft; zusätzlich muss der andere Spieler im aktuellen
-   GameView existieren. Bei einem neuen Match können sich PlayerIDs ändern:
-   beide Werte dann erneut austauschen.
+3. In **beiden Panels** `🤝 Duo-Modus` öffnen. Beide tragen **denselben**
+   Raumcode ein, z. B. `KITSU_DUO_01` (6–64 Zeichen; Buchstaben, Zahlen,
+   Minus, Unterstrich). Optional den Partnernamen als reine Anzeigehilfe
+   eintragen. **Lokales Duo AN** und den Bot einschalten bzw. Auto-Start verwenden.
+   Die PlayerID wird nicht mehr eingetragen.
+4. Im Panel `Erkannt · <PlayerID>` abwarten. Der Relay koppelt genau zwei
+   unterschiedliche Instanzen pro Raum und Match-Fingerprint. Der Browser
+   prüft zusätzlich, dass die automatisch erhaltene PlayerID im eigenen
+   aktuellen GameView vorhanden ist. Bei jedem Matchstart werden die
+   wechselnden PlayerIDs automatisch neu entdeckt; bei fehlender
+   Verbindung oder mehr als zwei Instanzen spielen die Bots autonom.
+
 
 ## Was passiert im Spiel?
 
@@ -48,14 +50,14 @@ kein Ersatz für Worker-Aktionsprüfung, Eigentumskontrolle oder Heimreserve.
   Bedrohung verteidigen, während der andere weiter aufbaut.
 - **Ausfall:** Nach wenigen Sekunden ohne validierte Partnerdaten werden
   keine Relay-Operationshinweise mehr verwendet; beide Bots bleiben autonom.
-  Die explizit hinterlegte Partner-ID bleibt vom Angriff ausgenommen.
+  Nur die für das aktuelle Match verifizierte Partner-ID ist vom Angriff ausgenommen; eine alte ID wird nicht übernommen.
 
 ## Schutz und Datenschutz
 
 Der Relay hat **keine** OpenFront-Accounts, Passwörter oder Browser-Sitzungen
 und keine Funktion zum Senden von Spielaktionen. Er läuft nur über TCP auf
 `127.0.0.1`, akzeptiert CORS nur von `https://openfront.io` und deren
-Subdomains, prüft wechselseitige PlayerIDs, Roomcode und Match-Fingerprint
+Subdomains, prüft Raumcode, Match-Fingerprint sowie zwei verschiedene Browser-Instanzen (der Browser prüft die Peer-ID zusätzlich im eigenen GameView)
 und entfernt alte Daten nach zehn Sekunden. Er ist **kein** gegen lokale
 Programme abgesicherter Authentifizierungsdienst: andere Prozesse auf
 demselben PC können den Loopback-Port kontaktieren. Raumcode nicht öffentlich
@@ -65,3 +67,9 @@ teilen. Bei Browserfehlern in DevTools prüfen, ob lokaler HTTP-Zugriff
 **Validierung:** Automatisierte Relay-, Spielzustands- und Spawntests sind
 reproduzierbar; ein kompletter Live-Duo-Multiplayer-Sieg oder die sofortige
 Allianz in jeder OpenFront-Lobby ist damit nicht belegt.
+
+**Wichtig:** Auto-Pairing braucht zwei getrennte Browserprofile bzw. zwei
+getrennte Tabs mit eigenen Instanzen und denselben Raumcode. Verwendest du
+denselben Raum für mehrere gleichzeitig laufende Duo-Matches, ist das keine
+eindeutige Zuordnung; nutze pro gleichzeitigem Duo einen anderen Raumcode.
+Der lokale Relay ist kein Schutz vor anderen lokalen Programmen.
