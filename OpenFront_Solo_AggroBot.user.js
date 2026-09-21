@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.19.8
+// @version      1.20.0
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,12 +14,13 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.19.8', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.20.0', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
     autoStrategy:true, diplomacy:true, offerAlliances:true, nukes:true, antiNuke:true, lateOffense:true,
-    impossibleMode:true,impossibleExperiment:false,neuralEnabled:false};
+    impossibleMode:true,impossibleExperiment:false,neuralEnabled:false,
+    duoEnabled:false,duoPartnerID:'',duoRoom:''};
   let opts;
   try { opts = {...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; }
   catch (_) {opts = {...defaults};}
@@ -376,6 +377,9 @@
   let targetIntelCache=new Map(),frontMemory=new Map(),lastFrontWarning=-Infinity;
   let opponentHistory=new Map(),opponentProfiles=new Map(),lastEconomyPosture='—',lastDirectorDecision=null;
   let operation=null,operationCooldown=new Map(),duoPlan=null,victoryThreat=null,decisionTimeline=[],decisionKeys=new Map();
+  let duoLocal={instance:'tab-'+Math.random().toString(36).slice(2)+Date.now().toString(36),
+    peer:null,status:'AUS',lastAt:0,lastPublished:0,match:null,
+    partnerID:null,ownID:null,failures:0,lastPromise:null};
   let retreatRequests=new Map(),defenseStats={retreatsOrdered:0,retreatsObserved:0,unknown:0,unconfirmed:0};
   // Manual slider values remain saved; fullAuto computes independent live values.
   let autoTuning={aggressive:85,reserve:35,actionsPerMinute:72,maxTargets:16,
@@ -496,6 +500,9 @@
         fullBrowserMatchValidated:false,
         note:'Die Datei ist ein Spielmitschnitt; Sieg und echte Mehrkarten-Benchmarks erfordern vollständige Browser-Matches.'},
       opponents:[...opponentProfiles.values()].map(v=>({...v})),operation,duoPlan,victoryThreat,
+      localDuo:{status:duoLocal.status,peer:duoLocal.peer,partnerID:opts.duoPartnerID,
+        ownID:safeID(myPlayer()),connected:!!duoTrustedPeer(),match:duoLocal.match,
+        failures:duoLocal.failures},
       decisionTimeline:decisionTimeline.map(v=>({...v})),
       war:{...warState},gameEnd,spawn:{...spawnState,best:spawnCache?{...spawnCache}:null},victory:winStatus,income:incomeStatus,fleet:fleetStatus,marine:{stats:marineStats,pendingBoat,pendingWarship,landingAudits:landingAudits.map(a=>({...a})),portProbeFailures},strategicTelemetry,military:troopSnapshot,
       defense:{status:defenseStatus,stats:defenseStats,pendingRetreats:[...retreatRequests.values()]},
@@ -739,6 +746,8 @@
     nukeBusy=false;lastNuke=-Infinity;nukePending=null;nukeStatus='Warte auf Silo';nukeShots=0;nukeAttempts=0;nukeUnconfirmed=0;nuclearCache=null;nuclearCacheTick=-Infinity;
     learnMatch={sample:null,key:null,finished:false};
     opponentProfiles.clear();operation=null;operationCooldown.clear();duoPlan=null;victoryThreat=null;decisionTimeline=[];decisionKeys.clear();
+    duoLocal.peer=null;duoLocal.match=null;duoLocal.status=opts.duoEnabled?'Neue Partie · verbinde':'AUS';
+    duoLocal.lastPublished=0;duoLocal.lastAt=0;duoLocal.lastPromise=null;
     warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};diagnostics=[];recordSequence=0;recordCounts={};recordsDropped=0;streamErrors=0;lastDiagnosticTick=-Infinity;gameEnd=null;forecastAudits=[];lastForecastAudit=null;incomeAttribution=[];
     investmentStatus='Grundaufbau';lastWarReview=-Infinity;
     defenseStatus='Keine Bedrohung';lastEmergencyRetreat=-Infinity;lastDefenseLog=-Infinity;
@@ -877,8 +886,129 @@
     } catch(e) {totalFailed++;log('Event fehlgeschlagen: '+String(e.message));return false;}
   }
   function valid(x,y) {return x>=0&&y>=0&&x<game.width()&&y<game.height();}
-  function friendly(p,me) {
-    try {return p?.id?.()===me.id() || p.isFriendly?.(me) || me.isFriendly?.(p);}catch(_){return false;}
+  // Duo Relay only exchanges observations. The real GameView remains
+  // authoritative for an established alliance/team relation.
+  function actualFriendly(p,me){
+    try{return p?.id?.()===me.id()||p.isFriendly?.(me)||me.isFriendly?.(p)||
+      me.isOnSameTeam?.(p);}catch(_){return false;}
+  }
+  const duoID=v=>typeof v==='string'&&v.length>=1&&v.length<=128&&
+    /^[a-zA-Z0-9_.:@-]+$/.test(v);
+  function duoConfigured(){
+    const own=safeID(myPlayer());
+    return opts.duoEnabled&&duoID(opts.duoPartnerID)&&
+      /^[a-zA-Z0-9_-]{6,64}$/.test(opts.duoRoom||'')&&
+      duoID(own)&&own!==opts.duoPartnerID;
+  }
+  function duoMatchKey(){
+    const cfg=game?.config?.().gameConfig?.()||{},loc=window.location||{};
+    const seed=cfg.seed??cfg.gameID??cfg.gameId??'unknown';
+    return ['v2',cfg.gameType??'unknown',cfg.gameMap??'unknown',
+      cfg.gameMapSize??'unknown',cfg.gameMode??'unknown',seed,
+      loc.pathname||'/'].join('|')
+      .replace(/[^a-zA-Z0-9_.:@|,-]/g,'_').slice(0,260);
+  }
+  function duoTrustedPeer(){
+    const me=myPlayer(),peer=duoLocal.peer;
+    if(!duoConfigured()||!peer||Date.now()-duoLocal.lastAt>3500||
+      duoLocal.match!==duoMatchKey()||peer.id!==opts.duoPartnerID||
+      duoLocal.ownID!==safeID(me))return null;
+    const player=(game?.playerViews?.()||[]).find(p=>
+      safeID(p)===peer.id&&p.isPlayer?.());
+    return player&&player.isAlive?.()!==false?{player,...peer}:null;
+  }
+  function friendly(p,me){
+    // Explicit mutual PlayerID configuration is a friendly-fire veto even
+    // before the alliance handshake finishes or if localhost temporarily drops.
+    return actualFriendly(p,me)||
+      (duoConfigured()&&safeID(me)===safeID(myPlayer())&&
+       safeID(p)===opts.duoPartnerID);
+  }
+  function duoState(){
+    const me=myPlayer(),peer=(game?.playerViews?.()||[]).find(p=>
+      safeID(p)===opts.duoPartnerID);
+    const state=me?.hasSpawned?.()?military(me,strategic.groups):null;
+    const target=operation?.target??duoPlan?.target??warState.id;
+    const candidate=spawnCache?.tile??null,spawn=me?.state?.spawnTile;
+    return {tick:Number.isInteger(game?.ticks?.())?game.ticks():null,
+      spawn:Number.isSafeInteger(spawn)?spawn:null,
+      candidate:Number.isSafeInteger(candidate)?candidate:null,
+      target:duoID(target)?target:null,
+      ready:!!(state&&state.incoming===0&&
+        state.available>=Math.max(1200,state.home*.2)),
+      needHelp:!!(state&&state.incoming>Math.max(1200,state.home*.1)),
+      allied:!!(peer&&actualFriendly(peer,me)),
+      available:state?.available??null,reserve:state?.reserve??null,
+      role:state?.incoming>Math.max(1200,state.home*.1)?'defend':
+        operation?'attack':game?.inSpawnPhase?.()?'spawn':
+        duoPlan?.role?.includes('entlasten')?'support':'build'};
+  }
+  async function duoPublish(){
+    if(duoLocal.lastPromise||!opts.enabled||!duoConfigured()||
+      !permittedMatch(game)||game?.gameOver?.())return;
+    const ownID=safeID(myPlayer()),partnerID=opts.duoPartnerID,
+      match=duoMatchKey(),room=opts.duoRoom;
+    if(duoLocal.match!==match||duoLocal.partnerID!==partnerID||
+      duoLocal.ownID!==ownID){
+      duoLocal.peer=null;duoLocal.lastAt=0;duoLocal.match=match;
+      duoLocal.partnerID=partnerID;duoLocal.ownID=ownID;
+    }
+    const payload={room,ownID,partnerID,match,
+      instance:duoLocal.instance,state:duoState()};
+    duoLocal.lastPromise=(async()=>{
+      const controller=new AbortController();
+      const timeout=setTimeout(()=>controller.abort(),1550);
+      try{
+        const response=await fetch('http://127.0.0.1:8767/duo',{
+          method:'POST',mode:'cors',cache:'no-store',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify(payload),signal:controller.signal
+        });
+        if(!response.ok)throw Error('HTTP '+response.status);
+        const data=await response.json();
+        if(!opts.duoEnabled||!game||match!==duoMatchKey()||
+          partnerID!==opts.duoPartnerID)return;
+        duoLocal.peer=data.partner||null;
+        duoLocal.lastAt=data.partner?Date.now():0;
+        duoLocal.status=data.partner?'Verbunden · '+partnerID:
+          'Warte auf zweite Browser-Instanz';
+        if(data.partner)duoLocal.failures=0;
+      }catch(e){
+        duoLocal.failures++;duoLocal.peer=null;duoLocal.lastAt=0;
+        duoLocal.status='Relay offline / nicht erreichbar: '+
+          String(e?.message||e).slice(0,55);
+      }finally{clearTimeout(timeout);}
+    })();
+    try{await duoLocal.lastPromise;}finally{duoLocal.lastPromise=null;}
+  }
+  // The second browser chooses a separately legal spawn around the partner.
+  // It never copies/forces the partner tile and still obeys spawnScore vetoes.
+  function duoSpawnCandidate(g,me,candidates,urgent=false){
+    const peer=duoTrustedPeer(),anchor=peer?.state?.spawn??peer?.state?.candidate;
+    if(!Number.isSafeInteger(anchor)||
+      (typeof g.isValidRef==='function'&&!g.isValidRef(anchor)))return null;
+    const min=number(()=>g.config().minDistanceBetweenPlayers?.(),30);
+    const px=g.x(anchor),py=g.y(anchor),rivals=spawnRivals(g,me);
+    const tiles=new Set(candidates.filter(Boolean).map(x=>x.tile));
+    for(const rad of [min+24,min+50,min+85]){
+      for(let j=0;j<16;j++){
+        const theta=j*Math.PI/8,x=Math.round(px+rad*Math.cos(theta)),
+          y=Math.round(py+rad*Math.sin(theta));
+        if(x>=4&&y>=4&&x<g.width()-4&&y<g.height()-4)
+          tiles.add(g.ref(x,y));
+      }
+    }
+    let best=null;
+    for(const tile of tiles){
+      const score=spawnScore(g,tile,rivals,urgent);
+      if(!score)continue;
+      const distance=Math.hypot(score.x-px,score.y-py);
+      if(distance<min+8||distance>min+115)continue;
+      const quality=score.score+
+        Math.max(0,.21-Math.abs(distance-(min+52))*.0019);
+      if(!best||quality>best.quality)best={...score,quality};
+    }
+    return best;
   }
   function spawnBlock(reason){
     if(spawnState.blocked===reason)return;
