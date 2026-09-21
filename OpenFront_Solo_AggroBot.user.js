@@ -4612,8 +4612,8 @@
     if(!opts.enabled||!opts.diplomacy||!opts.offerAlliances||
       !connected()||game.config().disableAlliances?.()===true||
       !p?.isAlive?.()||p.isTraitor?.()||
-      (friendly(p,me)&&!(duoTrustedPeer()?.id===safeID(p)&&
-        !actualFriendly(p,me)))||
+      (friendly(p,me)&&!((duoTrustedPeer()?.id===safeID(p)||
+        duoPeerAlly(p))&&!actualFriendly(p,me)))||
       safeID(me)!==safeID(myPlayer()))return false;
     const path=allianceOfferPath();
     if(path==='intent')return send('alliance',[me,p],label,force);
@@ -4771,7 +4771,8 @@
     if(paired&&!actualFriendly(paired.player,me))return;
     if(tick-lastProposalTick<(paired?90:450))return;
     const peerWar=paired?.state?.warTarget,peerTarget=paired?.state?.target;
-    const safeOffer=(p)=>p&&p.isAlive?.()&&!friendly(p,me)&&
+    const safeOffer=(p)=>p&&p.isAlive?.()&&!actualFriendly(p,me)&&
+      safeID(p)!==paired?.id&&
       !p.isTraitor?.()&&!diplomacyHandled.has(safeID(p))&&
       !diplomacyPending.has(safeID(p))&&
       safeID(p)!==warState.id&&safeID(p)!==plan?.id&&
