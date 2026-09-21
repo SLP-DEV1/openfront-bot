@@ -37,7 +37,7 @@ jobs:
           node tests/benchmark-regression.cjs
           node --check tools/benchmark/impossible-matrix.mjs
           node tools/benchmark/impossible-matrix.mjs --dryRun true > /dev/null
-      - name: Test visible browser backend (no Qwen coach)
+      - name: Test visible browser backend
         run: |
           node --check tools/benchmark/serve-browser.mjs
           node --check tools/benchmark/openfront-backend.mjs
@@ -54,8 +54,5 @@ jobs:
         run: |
           node --check trainer/train.mjs
           node --check trainer/deploy.mjs
-          node --check trainer/qwen-review.mjs
           node --check trainer/policy.cjs
           node tests/neural-regression.cjs
-          node --check tests/qwen-review-regression.cjs
-          node tests/qwen-review-regression.cjs
