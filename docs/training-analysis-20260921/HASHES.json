@@ -1,0 +1,317 @@
+{
+  "generated": "2026-09-21T16:26:20.315Z",
+  "engineCommit": "bb8af015b515b3b717bd4d901074c5f4c16641cb",
+  "runs": [
+    {
+      "run": "schema4-ffa-curriculum-20260921-overnight/stageA",
+      "difficulty": "Medium",
+      "maps": [
+        "World",
+        "Europe"
+      ],
+      "nations": [
+        1,
+        4
+      ],
+      "generationsPlanned": 4,
+      "population": 4,
+      "sigma": 0.12,
+      "matches": 496,
+      "ticks": 18000,
+      "engineCommit": "bb8af015b515b3b717bd4d901074c5f4c16641cb",
+      "championSha256": "d2a5fce385fa9b0a1432b2ee336ef0dde04ebccd8278ba21cc171abe14c31e51",
+      "files": [
+        "champion.json",
+        "plan.json",
+        "provisional.json",
+        "history.json",
+        "generation-1.json",
+        "generation-2.json",
+        "generation-3.json",
+        "generation-4.json"
+      ],
+      "provisionalSha256": "f5bcea6f455751c7fd765245bf56dbe764544c18fda4753416d837762097fd0c"
+    },
+    {
+      "run": "schema4-ffa-curriculum-20260921-overnight/stageB",
+      "difficulty": "Hard",
+      "maps": [
+        "World",
+        "Europe"
+      ],
+      "nations": [
+        1,
+        4
+      ],
+      "generationsPlanned": 4,
+      "population": 4,
+      "sigma": 0.08,
+      "matches": 496,
+      "ticks": 18000,
+      "engineCommit": "bb8af015b515b3b717bd4d901074c5f4c16641cb",
+      "championSha256": "d2a5fce385fa9b0a1432b2ee336ef0dde04ebccd8278ba21cc171abe14c31e51",
+      "files": [
+        "champion.json",
+        "plan.json",
+        "provisional.json",
+        "history.json",
+        "generation-1.json",
+        "generation-2.json",
+        "generation-3.json",
+        "generation-4.json"
+      ],
+      "provisionalSha256": "509d3cbe793a5323a3b4d7b7f0b4faee8df5ae72568142cecf0de224f36b5c5c"
+    },
+    {
+      "run": "schema4-ffa-curriculum-20260921-overnight/stageC",
+      "difficulty": "Impossible",
+      "maps": [
+        "World",
+        "Europe"
+      ],
+      "nations": [
+        1,
+        4
+      ],
+      "generationsPlanned": 32,
+      "population": 4,
+      "sigma": 0.06,
+      "matches": 3968,
+      "ticks": 18000,
+      "engineCommit": "bb8af015b515b3b717bd4d901074c5f4c16641cb",
+      "championSha256": "d2a5fce385fa9b0a1432b2ee336ef0dde04ebccd8278ba21cc171abe14c31e51",
+      "files": [
+        "champion.json",
+        "plan.json",
+        "provisional.json",
+        "history.json",
+        "generation-1.json",
+        "generation-2.json",
+        "generation-3.json",
+        "generation-4.json",
+        "generation-5.json",
+        "generation-6.json",
+        "generation-7.json",
+        "generation-8.json",
+        "generation-9.json",
+        "generation-10.json",
+        "generation-11.json",
+        "generation-12.json",
+        "generation-13.json",
+        "generation-14.json",
+        "generation-15.json",
+        "generation-16.json",
+        "generation-17.json",
+        "generation-18.json",
+        "generation-19.json",
+        "generation-20.json",
+        "generation-21.json",
+        "generation-22.json",
+        "generation-23.json",
+        "generation-24.json",
+        "generation-25.json",
+        "generation-26.json",
+        "generation-27.json",
+        "generation-28.json",
+        "generation-29.json",
+        "generation-30.json",
+        "generation-31.json",
+        "generation-32.json"
+      ],
+      "provisionalSha256": "8a52b0ba868a9da67eb7b1fb0a2c0d3ca5310cf7a61688e78f7fdde54af9c31f"
+    },
+    {
+      "run": "schema4-hard-world-europe-20260921-runC",
+      "difficulty": "Hard",
+      "maps": [
+        "World",
+        "Europe"
+      ],
+      "nations": [
+        1,
+        4
+      ],
+      "generationsPlanned": 5,
+      "population": 4,
+      "sigma": 0.12,
+      "matches": 620,
+      "ticks": 18000,
+      "engineCommit": "bb8af015b515b3b717bd4d901074c5f4c16641cb",
+      "championSha256": "7b5563c59a6df4590d00a3abcb29c232ea26affbc05345164399087ffff3cfcb",
+      "files": [
+        "champion.json",
+        "plan.json",
+        "provisional.json",
+        "history.json",
+        "generation-1.json",
+        "generation-2.json",
+        "generation-3.json",
+        "generation-4.json",
+        "generation-5.json"
+      ],
+      "provisionalSha256": "7b5563c59a6df4590d00a3abcb29c232ea26affbc05345164399087ffff3cfcb"
+    },
+    {
+      "run": "schema4-impossible-world-europe-20260920-run2",
+      "difficulty": "Impossible",
+      "maps": [
+        "World",
+        "Europe"
+      ],
+      "nations": [
+        1,
+        4
+      ],
+      "generationsPlanned": 5,
+      "population": 4,
+      "sigma": 0.12,
+      "matches": 620,
+      "ticks": 18000,
+      "engineCommit": "bb8af015b515b3b717bd4d901074c5f4c16641cb",
+      "championSha256": "dc9dd71ac76fd54b3e162fecdbc12b701a1dd513faa1dad98c9dee6a6ffe3c9d",
+      "files": [
+        "champion.json",
+        "plan.json",
+        "provisional.json",
+        "history.json",
+        "generation-1.json",
+        "generation-2.json",
+        "generation-3.json",
+        "generation-4.json",
+        "generation-5.json"
+      ],
+      "provisionalSha256": "97bed48df84d7665bf5f9d877eeb2f49e6ee794b9d7c26a6ee3e8ab2ba585914"
+    },
+    {
+      "run": "schema4-impossible-world-europe-20260920-run3",
+      "difficulty": "Impossible",
+      "maps": [
+        "World",
+        "Europe"
+      ],
+      "nations": [
+        1,
+        4
+      ],
+      "generationsPlanned": 12,
+      "population": 8,
+      "sigma": 0.12,
+      "matches": 2064,
+      "ticks": 18000,
+      "engineCommit": "bb8af015b515b3b717bd4d901074c5f4c16641cb",
+      "championSha256": "65589febcf8a376c9dbd0e895e4ce643d2591b1ac185270012e148a9315f7ff3",
+      "files": [
+        "champion.json",
+        "plan.json",
+        "provisional.json",
+        "history.json",
+        "generation-1.json",
+        "generation-2.json",
+        "generation-3.json",
+        "generation-4.json",
+        "generation-5.json",
+        "generation-6.json",
+        "generation-7.json",
+        "generation-8.json",
+        "generation-9.json",
+        "generation-10.json",
+        "generation-11.json",
+        "generation-12.json"
+      ],
+      "provisionalSha256": "11ddde07112116a0dd7626b29badf1000bb2b1e6c83b3d214392f4be399a5eb7"
+    },
+    {
+      "run": "schema4-impossible-world-europe-20260921-runD",
+      "difficulty": "Impossible",
+      "maps": [
+        "World",
+        "Europe"
+      ],
+      "nations": [
+        1,
+        4
+      ],
+      "generationsPlanned": 5,
+      "population": 4,
+      "sigma": 0.12,
+      "matches": 620,
+      "ticks": 18000,
+      "engineCommit": "bb8af015b515b3b717bd4d901074c5f4c16641cb",
+      "championSha256": "57bdfa38921ee378029a9296e291d571f71606baf72042816b136fec9d2defe0",
+      "files": [
+        "champion.json",
+        "plan.json",
+        "provisional.json",
+        "history.json",
+        "generation-1.json",
+        "generation-2.json",
+        "generation-3.json",
+        "generation-4.json",
+        "generation-5.json"
+      ],
+      "provisionalSha256": "75309ff9faea52088d4e0382eee9650e8d18f0693cfbac7e2965f5484dd63312"
+    },
+    {
+      "run": "schema4-impossible-world-europe-20260921-runE",
+      "difficulty": "Impossible",
+      "maps": [
+        "World",
+        "Europe"
+      ],
+      "nations": [
+        1,
+        4
+      ],
+      "generationsPlanned": 5,
+      "population": 4,
+      "sigma": 0.12,
+      "matches": 620,
+      "ticks": 18000,
+      "engineCommit": "bb8af015b515b3b717bd4d901074c5f4c16641cb",
+      "championSha256": "d2a5fce385fa9b0a1432b2ee336ef0dde04ebccd8278ba21cc171abe14c31e51",
+      "files": [
+        "champion.json",
+        "plan.json",
+        "provisional.json",
+        "history.json",
+        "generation-1.json",
+        "generation-2.json",
+        "generation-3.json",
+        "generation-4.json",
+        "generation-5.json"
+      ],
+      "provisionalSha256": "d2a5fce385fa9b0a1432b2ee336ef0dde04ebccd8278ba21cc171abe14c31e51"
+    },
+    {
+      "run": "schema4-medium-world-europe-20260921-runA",
+      "difficulty": "Medium",
+      "maps": [
+        "World",
+        "Europe"
+      ],
+      "nations": [
+        1,
+        4
+      ],
+      "generationsPlanned": 5,
+      "population": 4,
+      "sigma": 0.12,
+      "matches": 620,
+      "ticks": 18000,
+      "engineCommit": "bb8af015b515b3b717bd4d901074c5f4c16641cb",
+      "championSha256": "edbd4d152c5a66b609fe9aa445ea1be9ce82b40b8a2f7791c6e29c3c6eb366b0",
+      "files": [
+        "champion.json",
+        "plan.json",
+        "provisional.json",
+        "history.json",
+        "generation-1.json",
+        "generation-2.json",
+        "generation-3.json",
+        "generation-4.json",
+        "generation-5.json"
+      ],
+      "provisionalSha256": "8acecbfb585336dc99aa740e56c206017760dc83eb086cb7779f89afc6cfe8bf"
+    }
+  ]
+}

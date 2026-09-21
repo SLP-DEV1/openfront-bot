@@ -1,0 +1,26 @@
+{
+  "engineCommit": "bb8af015b515b3b717bd4d901074c5f4c16641cb",
+  "difficulty": "Medium",
+  "maps": [
+    "World",
+    "Europe"
+  ],
+  "nations": [
+    1,
+    4
+  ],
+  "generations": 4,
+  "population": 4,
+  "trainSeeds": 3,
+  "evalSeeds": 8,
+  "ticks": 18000,
+  "sigma": 0.12,
+  "parallel": 8,
+  "matches": 496,
+  "policySchema": 4,
+  "gameType": "Singleplayer",
+  "gameMode": "FFA",
+  "scriptedHumans": 0,
+  "opponentProfile": "balanced",
+  "promotion": "verified paired holdout (evaluation-v2): more victories with collapse guard, or repeatable survival/territory gains with net non-negative; close+mixed triggers a larger decision round"
+}
