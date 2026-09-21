@@ -32,7 +32,6 @@ Für den Test das **vollständige** Run-3-Userscript in Tampermonkey installiere
 
 **Bedienung:** `Alt+Shift+P` startet/pausiert; `Alt+Shift+X` ist der Not-Aus und deaktiviert zusätzlich Auto-Start, bis du ihn wieder im Panel einschaltest. Eine gewöhnliche Pause gilt bis zum nächsten Match. Der Bot kann schon während der Spawnphase reagieren; bei Zufallsspawn kann er keine Position auswählen.
 
-**Varianten:** [Neural W](./OpenFront_Solo_AggroBot_Neural_W.user.js) entspricht der normalen World-Eröffnung, [Neural O](./OpenFront_Solo_AggroBot_Neural_O.user.js) verwendet die ältere 1000-Tick-Eröffnung. Die Namen bedeuten **nicht**, dass schon ein trainiertes Champion-Modell mitgeliefert wird. Die drei Userscripts werden aus einer Quelle über `node tools/generate-neural-variants.cjs` synchronisiert; `--check` prüft Abweichungen.
 
 ## Was der Bot aktuell kann
 
@@ -79,7 +78,6 @@ Im Repository mit **Node.js 24**:
 
 ~~~bash
 node --check OpenFront_Solo_AggroBot.user.js
-node tools/generate-neural-variants.cjs --check
 node tests/strategy-regression.cjs
 node tests/autostart-regression.cjs
 node tests/learning-regression.cjs
