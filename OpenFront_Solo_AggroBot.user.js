@@ -348,6 +348,8 @@
   const benchmark = ['localhost','127.0.0.1','[::1]'].includes(window.location?.hostname) &&
     window.__OF_BENCHMARK_CONFIG__?.enabled===true ? window.__OF_BENCHMARK_CONFIG__ : null;
   let recordSequence=0,recordCounts={},recordsDropped=0,streamErrors=0;
+  let monitorSession='';
+  let budgetCommitments=[];
   const jsonCopy=value=>JSON.parse(JSON.stringify(value,(_,v)=>typeof v==='bigint'?v.toString():v));
   function telemetry(kind,message,extra={}) {
     if(!opts.enabled || !permittedMatch(game))return;
@@ -360,14 +362,28 @@
         typeof v==='bigint'?v.toString():v));}
       catch(_){frozen={snapshotError:'Daten konnten nicht eingefroren werden'};}
     }
-    const record={...frozen,detailKind:frozen.kind,seq:++recordSequence,time:new Date().toISOString(),tick,kind,message,mode:strategic.mode,
-      warTarget:warState.name,home:number(()=>m?.troops?.()),gold:number(()=>Number(m?.gold?.())),
+    // Generic troopSnapshot values are fallbacks; decision-local measurements
+    // supplied by a caller after an async worker check must take precedence.
+    const record={detailKind:frozen.kind,session:monitorSession,
+      snapshotTick:lastTick,seq:++recordSequence,time:new Date().toISOString(),
+      tick,kind,message,mode:strategic.mode,warTarget:warState.name,
+      home:number(()=>m?.troops?.()),gold:number(()=>Number(m?.gold?.())),
       land:number(()=>m?.numTilesOwned?.()),committed:troopSnapshot.committed,
-      incoming:troopSnapshot.incoming};
+      incoming:troopSnapshot.incoming,...frozen};
+    // Protect recording identity and metadata from an accidental extra field.
+    record.session=monitorSession;record.seq=recordSequence;
+    record.time=new Date().toISOString();record.tick=tick;
+    record.kind=kind;record.message=message;
     diagnostics.push(record);
     recordCounts[kind]=(recordCounts[kind]||0)+1;
     if(benchmark && typeof benchmark.onRecord==='function'){
       try{benchmark.onRecord(jsonCopy(record));}catch(_){streamErrors++;}
+    }
+    if(window.__OF_LOCAL_MONITOR_ACTIVE__===true){
+      try{
+        window.dispatchEvent(new CustomEvent('aggrobot:telemetry',{
+          detail:JSON.stringify(record,(_,v)=>typeof v==='bigint'?v.toString():v)}));
+      }catch(_){streamErrors++;}
     }
     if(diagnostics.length>1400){
       const dropped=diagnostics.length-1400;recordsDropped+=dropped;
@@ -632,6 +648,9 @@
   }
   function reset(g,b) {
     generation++; game=g;bus=b;ctors=recognize(b);busy=false;lastWinnerSignal=null;
+    monitorSession='match-'+Date.now().toString(36)+'-'+
+      Math.floor(Math.random()*0xffffffff).toString(36).padStart(8,'0');
+    budgetCommitments=[];
     autoStartGame=null;
     bindWinnerCapture(bus,ctors);
     lastIntentHealth=null;lastIntentProbe=-Infinity;missingIntentLogged.clear();
@@ -4590,6 +4609,22 @@
         opts.enabled=false;generation++;persist();
       }
       status='Partie beendet · Bot AUS';paint();return;
+    }
+    // A player can be eliminated before the whole FFA/Team match ends.
+    // Do not treat an already spawned dead player as awaiting spawn.
+    const eliminated=myPlayer();
+    if(eliminated?.hasSpawned?.()&&eliminated.isAlive?.()===false){
+      if(!gameEnd){
+        const team=game?.config?.().gameConfig?.().gameMode==='Team';
+        gameEnd={outcome:team?'unknown':'defeat',source:'player-elimination',
+          tick:number(()=>game.ticks(),-1),land:0,personalEliminated:true,
+          teamOutcomePending:team};
+        if(!team)learnFinish('defeat');
+        telemetry('game_over',team?'Eigener Spieler eliminiert · Teamergebnis offen':
+          'Eigener Spieler eliminiert · Niederlage',{gameEnd});
+      }
+      if(opts.enabled){opts.enabled=false;generation++;persist();}
+      status='Spieler eliminiert · Bot AUS';paint();return;
     }
     if(!bus&&found.b){bus=found.b;ctors=recognize(bus);bindWinnerCapture(bus,ctors);reportIntents();}
     // EventBus listeners may register after initial discovery. Retry at a
