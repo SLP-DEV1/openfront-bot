@@ -271,6 +271,20 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.b.state().gameEnd.outcome,'victory');
     assert.equal(x.b.state().diagnostics.filter(r=>r.kind==='game_over').length,2);
   });
+  await check('issue #76 cap stall preserves quoted SAM fund over City and fleet',async()=>{
+    const x=samScenario();x.setHome(99000);
+    x.b.setTroopSnapshot(x.b.military(x.me,[]));
+    assert.equal(x.b.economicNeeds(x.me,x.me.units(),[]).capStalled,true);
+    assert.equal(await x.b.economy(x.me,2400,0,[]),false);
+    const needs=x.b.economicNeeds(x.me,x.me.units(),[]);
+    assert.equal(needs.savingsTarget,1500000,'quoted SAM must survive cap pressure');
+    assert.equal(x.b.spendBudget(x.me,125000,'City'),false);
+    assert.equal(x.b.spendBudget(x.me,300000,'Warship'),false);
+    x.setTick(2420);x.setGold(1700000);
+    x.b.setTroopSnapshot(x.b.military(x.me,[]));
+    assert.equal(await x.b.economy(x.me,2420,0,[]),true);
+    assert.equal(x.sent[0].unit,'SAM Launcher','funded urgent SAM wins over City');
+  });
   await check('audit ship cannot consume quoted SAM protection fund',async()=>{
     const x=samScenario();
     assert.equal(await x.b.economy(x.me,2400,0,[]),false);
