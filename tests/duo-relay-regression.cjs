@@ -24,6 +24,11 @@ const mk=(ownID,partnerID,instance,match='v1|Public|World|Large|FFA|123|_')=>({
   assert.equal(relay.validate({...A,state:{...A.state,strikeTick:345}}),true);
   assert.equal(relay.validate({...A,state:{...A.state,strikeTick:-3}}),false);
   assert.equal(relay.validate({...A,state:{...A.state,strikeTick:'345'}}),false);
+  assert.equal(relay.validate({...A,state:{...A.state,allies:['friend1','friend2']}}),true);
+  assert.equal(relay.validate({...A,state:{...A.state,allies:['friend1','friend1']}}),false);
+  assert.equal(relay.validate({...A,state:{...A.state,allies:['one']}}),false);
+  assert.equal(relay.validate({...A,state:{...A.state,allies:['../bad']}}),false);
+  assert.equal(relay.validate({...A,state:{...A.state,allies:Array(17).fill('id')}}),false);
   // Auto discovery must not depend on stable per-match PlayerIDs.
   relay.rooms.clear();
   const autoA={...A,auto:true,partnerID:null};
