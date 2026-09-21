@@ -3397,7 +3397,7 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.b.coordinateDuo(x.me,army,305).strikeTick,345,
       'a mild partner warning / economic posture is not an invasion');
     x.setTick(315);peer.state.tick=315;
-    x.incoming.push({attackerID:'strong',troops:11000,retreating:false});
+    x.me.incomingAttacks=()=>[{attackerID:'strong',troops:11000,retreating:false}];
     const danger=x.b.military(x.me,groups);
     const canceled=x.b.coordinateDuo(x.me,danger,315);
     assert.equal(canceled.strikeTick,null);
