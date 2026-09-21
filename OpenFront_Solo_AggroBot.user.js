@@ -702,7 +702,8 @@
     // SendAllianceRequestIntentEvent through its own Transport EventBus.
     // Never synthesize an unknown/minified intent constructor.
     const panel=document.querySelector('player-panel');
-    return panel?.g===game&&panel?.eventBus===bus&&
+    if(!panel)return null;
+    return panel.g===game&&panel.eventBus===bus&&
       typeof panel.handleAllianceClick==='function'?
       'player-panel':null;
   }
@@ -5117,7 +5118,8 @@
   function tradeIntentPath(){
     if(typeof ctors.embargo==='function')return 'intent';
     const p=document.querySelector('player-panel');
-    return p?.g===game&&p?.eventBus===bus&&
+    if(!p)return null;
+    return p.g===game&&p.eventBus===bus&&
       typeof p.handleEmbargoClick==='function'&&
       typeof p.handleStopEmbargoClick==='function'?'player-panel':null;
   }
