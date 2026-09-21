@@ -2906,7 +2906,7 @@
   // One shared, short-lived spending ledger across economy, ships, missiles
   // and donations. Worker quotes are checked against current gold immediately
   // before send; unconfirmed overlapping intents cannot spend the same money.
-  function spendBudget(me,cost,purpose,emergency=false){
+  function spendBudget(me,cost,purpose,emergency=false,tiles=[]){
     const infinite=game.config().infiniteGold?.()===true;
     if(infinite)return true;
     const cash=number(()=>Number(me.gold()),NaN);
@@ -2915,7 +2915,7 @@
     budgetCommitments=budgetCommitments.filter(c=>
       tick-c.tick<=35&&cash>c.startGold-c.cost+1);
     const pending=budgetCommitments.reduce((n,c)=>n+c.cost,0);
-    const needs=economicNeeds(me,ownStructures(me),[]);
+    const needs=economicNeeds(me,ownStructures(me),tiles);
     // A real, still-required SAM quote outranks discretionary fleet/nukes.
     const samFund=needs.nuclearThreat&&needs.wantedSAM>0&&
       needs.intel.uncovered.length>0&&!needs.samSearchBlocked&&
@@ -3479,7 +3479,7 @@
       return false;
     }
     const args=chosen.kind==='upgrade'?[chosen.unitId,chosen.type,1]:[chosen.type,chosen.requestTile];
-    if(!spendBudget(me,chosen.cost,chosen.type))return false;
+    if(!spendBudget(me,chosen.cost,chosen.type,false,tiles))return false;
     if(send(chosen.kind,args,`${chosen.kind==='upgrade'?'UPGRADE':'BAU'} ${chosen.type} · ${chosen.cost.toLocaleString()} Gold`)){
       commitGoldSpend(me,chosen.cost,chosen.type);
       economicPending={...chosen,tick};failedEconomyProbes=0;lastEconomy=tick;lastEconomicAction=tick;
