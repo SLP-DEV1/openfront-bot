@@ -1037,8 +1037,8 @@
         const tile=p.state?.spawnTile;
         if(!Number.isInteger(tile)||(typeof g.isValidRef==='function'&&!g.isValidRef(tile)))return null;
         return {x:g.x(tile),y:g.y(tile),
-          teammate:ownTeam!==null&&ownTeam!==undefined &&
-            p.team?.()===ownTeam};
+          teammate:(ownTeam!==null&&ownTeam!==undefined&&p.team?.()===ownTeam)||
+            safeID(p)===duoTrustedPeer()?.id};
       }).filter(Boolean);
   }
   // Use the actual 4-tile spawn footprint and three additional land rings.
@@ -1237,6 +1237,15 @@
     }
     if(spawnJob && spawnRemaining(game)>110 &&
       (spawnState.scanned<120 || spawnCache.score<.62))return;
+    // Deterministic leader/follower: lower PlayerID publishes first; the
+    // other browser waits briefly for its anchor but never misses deadline.
+    const peer=duoTrustedPeer();
+    if(peer&&String(safeID(me))>String(peer.id)&&
+      !Number.isSafeInteger(peer.state?.spawn)&&
+      !Number.isSafeInteger(peer.state?.candidate)&&
+      spawnRemaining(game)>85){
+      spawnState.phase='Duo: warte kurz auf Partner-Spawn';return;
+    }
     const rivals=spawnRivals(game,me),urgent=spawnRemaining(game)<=55;
     const candidates=[spawnCache,...spawnAlternatives,...(spawnJob?.candidates?.values()||[])];
     let best=null;
@@ -1249,6 +1258,8 @@
         tick-spawnState.lastSent.tick>=30 && candidates.length>1)continue;
       if(!best||current.score>best.score)best=current;
     }
+    const duoNearby=duoSpawnCandidate(game,me,candidates,urgent);
+    if(duoNearby){best=duoNearby;spawnState.phase='Duo: sicherer Nachbar-Spawn';}
     if(!best && urgent)best=emergencySpawnSearch(game,me);
     if(!best){
       spawnCache=null;spawnBlock('Alle Kandidaten belegt/ungültig; suche neu');
