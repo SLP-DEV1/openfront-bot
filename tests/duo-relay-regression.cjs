@@ -21,6 +21,9 @@ const mk=(ownID,partnerID,instance,match='v1|Public|World|Large|FFA|123|_')=>({
   assert.equal(relay.exchange({...A,clear:true},15001).body.partner,null);
   assert.equal(relay.validate({...A,partnerID:'one'}),false);
   assert.equal(relay.validate({...A,state:{...A.state,target:'../bad'}}),false);
+  assert.equal(relay.validate({...A,state:{...A.state,strikeTick:345}}),true);
+  assert.equal(relay.validate({...A,state:{...A.state,strikeTick:-3}}),false);
+  assert.equal(relay.validate({...A,state:{...A.state,strikeTick:'345'}}),false);
   relay.rooms.clear();
   const server=relay.createServer();
   server.listen(0,'127.0.0.1');
