@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.19.7
+// @version      1.20.0
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,12 +14,13 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.19.7', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.20.0', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
     autoStrategy:true, diplomacy:true, offerAlliances:true, nukes:true, antiNuke:true, lateOffense:true,
-    impossibleMode:true,impossibleExperiment:false,neuralEnabled:false};
+    impossibleMode:true,impossibleExperiment:false,neuralEnabled:false,
+    duoEnabled:false,duoPartnerID:'',duoRoom:''};
   let opts;
   try { opts = {...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; }
   catch (_) {opts = {...defaults};}
@@ -357,6 +358,9 @@
   let targetIntelCache=new Map(),frontMemory=new Map(),lastFrontWarning=-Infinity;
   let opponentHistory=new Map(),opponentProfiles=new Map(),lastEconomyPosture='—',lastDirectorDecision=null;
   let operation=null,operationCooldown=new Map(),duoPlan=null,victoryThreat=null,decisionTimeline=[],decisionKeys=new Map();
+  let duoLocal={instance:'tab-'+Math.random().toString(36).slice(2)+Date.now().toString(36),
+    peer:null,status:'AUS',lastAt:0,lastPublished:0,match:null,
+    partnerID:null,ownID:null,failures:0,lastPromise:null};
   let retreatRequests=new Map(),defenseStats={retreatsOrdered:0,retreatsObserved:0,unknown:0,unconfirmed:0};
   // Manual slider values remain saved; fullAuto computes independent live values.
   let autoTuning={aggressive:85,reserve:35,actionsPerMinute:72,maxTargets:16,
@@ -477,6 +481,8 @@
         fullBrowserMatchValidated:false,
         note:'Die Datei ist ein Spielmitschnitt; Sieg und echte Mehrkarten-Benchmarks erfordern vollständige Browser-Matches.'},
       opponents:[...opponentProfiles.values()].map(v=>({...v})),operation,duoPlan,victoryThreat,
+      localDuo:{status:duoLocal.status,peer:duoLocal.peer,partnerID:opts.duoPartnerID,
+        connected:!!duoTrustedPeer(),match:duoLocal.match,failures:duoLocal.failures},
       decisionTimeline:decisionTimeline.map(v=>({...v})),
       war:{...warState},gameEnd,spawn:{...spawnState,best:spawnCache?{...spawnCache}:null},victory:winStatus,income:incomeStatus,fleet:fleetStatus,marine:{stats:marineStats,pendingBoat,pendingWarship,landingAudits:landingAudits.map(a=>({...a})),portProbeFailures},strategicTelemetry,military:troopSnapshot,
       defense:{status:defenseStatus,stats:defenseStats,pendingRetreats:[...retreatRequests.values()]},
@@ -720,6 +726,8 @@
     nukeBusy=false;lastNuke=-Infinity;nukePending=null;nukeStatus='Warte auf Silo';nukeShots=0;nukeAttempts=0;nukeUnconfirmed=0;nuclearCache=null;nuclearCacheTick=-Infinity;
     learnMatch={sample:null,key:null,finished:false};
     opponentProfiles.clear();operation=null;operationCooldown.clear();duoPlan=null;victoryThreat=null;decisionTimeline=[];decisionKeys.clear();
+    duoLocal.peer=null;duoLocal.match=null;duoLocal.status='Neue Partie';
+    duoLocal.lastPublished=0;duoLocal.lastAt=0;duoLocal.lastPromise=null;
     warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};diagnostics=[];recordSequence=0;recordCounts={};recordsDropped=0;streamErrors=0;lastDiagnosticTick=-Infinity;gameEnd=null;forecastAudits=[];lastForecastAudit=null;incomeAttribution=[];
     investmentStatus='Grundaufbau';lastWarReview=-Infinity;
     defenseStatus='Keine Bedrohung';lastEmergencyRetreat=-Infinity;lastDefenseLog=-Infinity;
@@ -858,8 +866,127 @@
     } catch(e) {totalFailed++;log('Event fehlgeschlagen: '+String(e.message));return false;}
   }
   function valid(x,y) {return x>=0&&y>=0&&x<game.width()&&y<game.height();}
-  function friendly(p,me) {
-    try {return p?.id?.()===me.id() || p.isFriendly?.(me) || me.isFriendly?.(p);}catch(_){return false;}
+  // The relay only exchanges observations; game state remains authoritative
+  // for ALLIANCE CONFIRMED. An actively reciprocated ID is protected from
+  // accidental attacks even while the alliance request is in flight.
+  function actualFriendly(p,me){
+    try{return p?.id?.()===me.id()||p.isFriendly?.(me)||me.isFriendly?.(p);}
+    catch(_){return false;}
+  }
+  const duoID=v=>typeof v==='string'&&v.length>=1&&v.length<=128&&
+    /^[a-zA-Z0-9_.:@-]+$/.test(v);
+  function duoConfigured(){
+    return opts.duoEnabled&&duoID(opts.duoPartnerID)&&
+      /^[a-zA-Z0-9_-]{6,64}$/.test(opts.duoRoom||'')&&
+      duoID(safeID(myPlayer()))&&safeID(myPlayer())!==opts.duoPartnerID;
+  }
+  function duoMatchKey(){
+    const cfg=game?.config?.().gameConfig?.()||{},loc=window.location||{};
+    const seed=cfg.seed??cfg.gameID??cfg.gameId??'unknown';
+    const value=['v1',cfg.gameType??'unknown',cfg.gameMap??'unknown',
+      cfg.gameMapSize??'unknown',cfg.gameMode??'unknown',seed,
+      loc.pathname||'/'].join('|');
+    return value.replace(/[^a-zA-Z0-9_.:@|,-]/g,'_').slice(0,260);
+  }
+  function duoTrustedPeer(){
+    const me=myPlayer(),peer=duoLocal.peer;
+    if(!duoConfigured()||!peer||Date.now()-duoLocal.lastAt>3500||
+      duoLocal.match!==duoMatchKey()||peer.id!==opts.duoPartnerID||
+      duoLocal.ownID!==safeID(me))return null;
+    const player=(game?.playerViews?.()||[]).find(p=>
+      safeID(p)===peer.id&&p.isPlayer?.());
+    return player&&player.isAlive?.()!==false?{player,...peer}:null;
+  }
+  function friendly(p,me){
+    // An explicitly entered Partner-ID is protected even during relay loss.
+    return actualFriendly(p,me)||
+      (duoConfigured()&&safeID(me)===safeID(myPlayer())&&
+       safeID(p)===opts.duoPartnerID);
+  }
+  function duoState(){
+    const me=myPlayer(),peer=(game?.playerViews?.()||[]).find(p=>
+      safeID(p)===opts.duoPartnerID);
+    const s=me?.hasSpawned?.()?military(me,strategic.groups):null;
+    const target=operation?.target??duoPlan?.target??warState.id;
+    const candidate=spawnCache?.tile??null,spawn=me?.state?.spawnTile;
+    return {tick:Number.isInteger(game?.ticks?.())?game.ticks():null,
+      spawn:Number.isSafeInteger(spawn)?spawn:null,
+      candidate:Number.isSafeInteger(candidate)?candidate:null,
+      target:duoID(target)?target:null,
+      ready:!!(s&&s.incoming===0&&s.available>=Math.max(1200,s.home*.2)),
+      needHelp:!!(s&&s.incoming>Math.max(1200,s.home*.1)),
+      allied:!!(peer&&actualFriendly(peer,me)),
+      available:s?.available??null,reserve:s?.reserve??null,
+      role:s?.incoming>Math.max(1200,s.home*.1)?'defend':
+        operation?'attack':game?.inSpawnPhase?.()?'spawn':
+        duoPlan?.role?.includes('entlasten')?'support':'build'};
+  }
+  async function duoPublish(){
+    if(duoLocal.lastPromise||!opts.enabled||!duoConfigured()||
+      !permittedMatch(game)||game?.gameOver?.())return;
+    const ownID=safeID(myPlayer()),partnerID=opts.duoPartnerID,
+      match=duoMatchKey(),room=opts.duoRoom;
+    if(duoLocal.match!==match||duoLocal.partnerID!==partnerID||
+      duoLocal.ownID!==ownID){
+      duoLocal.peer=null;duoLocal.lastAt=0;duoLocal.match=match;
+      duoLocal.partnerID=partnerID;duoLocal.ownID=ownID;
+    }
+    const payload={room,ownID,partnerID,match,
+      instance:duoLocal.instance,state:duoState()};
+    duoLocal.lastPromise=(async()=>{
+      const controller=new AbortController();
+      const timeout=setTimeout(()=>controller.abort(),1550);
+      try{
+        const response=await fetch('http://127.0.0.1:8767/duo',{
+          method:'POST',mode:'cors',cache:'no-store',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify(payload),signal:controller.signal
+        });
+        if(!response.ok)throw Error('HTTP '+response.status);
+        const data=await response.json();
+        if(!opts.duoEnabled||!game||match!==duoMatchKey()||
+          partnerID!==opts.duoPartnerID)return;
+        duoLocal.peer=data.partner||null;
+        duoLocal.lastAt=data.partner?Date.now():0;
+        duoLocal.status=data.partner?'Verbindung · '+partnerID:
+          'Warte auf zweite Browser-Instanz';
+        if(data.partner)duoLocal.failures=0;
+      }catch(e){
+        duoLocal.failures++;duoLocal.peer=null;duoLocal.lastAt=0;
+        duoLocal.status='Relay offline / nicht erreichbar: '+String(e.message).slice(0,55);
+      }finally{clearTimeout(timeout);}
+    })();
+    try{await duoLocal.lastPromise;}finally{duoLocal.lastPromise=null;}
+  }
+  // The first ID publishes a safe anchor; the second prefers a legal
+  // nearby region. Neither client ever supplies the other's spawn intent.
+  function duoSpawnCandidate(g,me,candidates,urgent=false){
+    const peer=duoTrustedPeer(),anchor=peer?.state?.spawn??peer?.state?.candidate;
+    if(!Number.isSafeInteger(anchor)||
+      (typeof g.isValidRef==='function'&&!g.isValidRef(anchor)))return null;
+    const min=number(()=>g.config().minDistanceBetweenPlayers?.(),30);
+    const px=g.x(anchor),py=g.y(anchor);
+    const rivals=spawnRivals(g,me);
+    const tiles=new Set(candidates.map(x=>x.tile));
+    for(const rad of [min+24,min+50,min+85]){
+      for(let j=0;j<16;j++){
+        const theta=j*Math.PI/8,x=Math.round(px+rad*Math.cos(theta)),
+          y=Math.round(py+rad*Math.sin(theta));
+        if(x>=4&&y>=4&&x<g.width()-4&&y<g.height()-4)
+          tiles.add(g.ref(x,y));
+      }
+    }
+    let best=null;
+    for(const tile of tiles){
+      const score=spawnScore(g,tile,rivals,urgent);
+      if(!score)continue;
+      const distance=Math.hypot(score.x-px,score.y-py);
+      if(distance<min+8||distance>min+115)continue;
+      const quality=score.score+
+        Math.max(0,.21-Math.abs(distance-(min+52))*.0019);
+      if(!best||quality>best.quality)best={...score,quality};
+    }
+    return best;
   }
   function spawnBlock(reason){
     if(spawnState.blocked===reason)return;
@@ -889,7 +1016,7 @@
         if(!Number.isInteger(tile)||(typeof g.isValidRef==='function'&&!g.isValidRef(tile)))return null;
         return {x:g.x(tile),y:g.y(tile),
           teammate:ownTeam!==null&&ownTeam!==undefined &&
-            p.team?.()===ownTeam};
+            p.team?.()===ownTeam || safeID(p)===duoTrustedPeer()?.id};
       }).filter(Boolean);
   }
   // Use the actual 4-tile spawn footprint and three additional land rings.
@@ -1088,6 +1215,15 @@
     }
     if(spawnJob && spawnRemaining(game)>110 &&
       (spawnState.scanned<120 || spawnCache.score<.62))return;
+    // The second ID waits briefly for a nearby published anchor, but never
+    // misses the spawn deadline if the relay/other browser is slow.
+    const peer=duoTrustedPeer();
+    if(peer&&String(safeID(me))>String(peer.id)&&
+      !Number.isSafeInteger(peer.state.spawn)&&
+      !Number.isSafeInteger(peer.state.candidate)&&
+      spawnRemaining(game)>85){
+      spawnState.phase='Duo: Warte kurz auf Partner-Spawn';return;
+    }
     const rivals=spawnRivals(game,me),urgent=spawnRemaining(game)<=55;
     const candidates=[spawnCache,...spawnAlternatives,...(spawnJob?.candidates?.values()||[])];
     let best=null;
@@ -1099,6 +1235,12 @@
       if(spawnState.lastSent?.tile===current.tile &&
         tick-spawnState.lastSent.tick>=30 && candidates.length>1)continue;
       if(!best||current.score>best.score)best=current;
+    }
+    const nearby=duoSpawnCandidate(game,me,candidates,urgent);
+    if(nearby){
+      // Use a real independent evaluation: no forced tile and no override
+      // of the spawn footprint, ownership or minimum separation veto.
+      best=nearby;spawnState.phase='Duo: sicherer Nachbar-Spawn';
     }
     if(!best && urgent)best=emergencySpawnSearch(game,me);
     if(!best){
@@ -1277,7 +1419,14 @@
   // from the same observable match state. Missing partner actions mean unknown,
   // not a promised coordinated attack.
   function coordinateDuo(me,s,tick){
-    const duo=rankedDuo(me);
+    let duo=rankedDuo(me);
+    const connectedPeer=duoTrustedPeer();
+    const local=connectedPeer&&actualFriendly(connectedPeer.player,me)?connectedPeer:null;
+    if(!duo&&local){
+      const enemies=(game.playerViews?.()||[]).filter(p=>p?.isPlayer?.()&&
+        p.isAlive?.()&&!friendly(p,me));
+      duo={partner:local.player,partnerID:local.id,enemies,team:null};
+    }
     if(!duo){duoPlan=null;return null;}
     const partner=duo.partner;
     const incoming=(partner.incomingAttacks?.()||[])
@@ -1288,18 +1437,22 @@
     const targets=[...duo.enemies].sort((a,b)=>
       number(()=>b.numTilesOwned(),0)-number(()=>a.numTilesOwned(),0) ||
       String(safeID(a)).localeCompare(String(safeID(b))));
-    const shared=active?.on>0?active.p:targets[0];
+    const announced=local?.state?.target&&duo.enemies.find(p=>
+      safeID(p)===local.state.target);
+    const shared=active?.on>0?active.p:announced||targets[0];
     const danger=s.incoming>Math.max(1200,s.home*.08);
     const role=danger?'Heimat verteidigen':
-      incoming>partnerHome*.2?'Partner entlasten':
+      incoming>partnerHome*.2||local?.state?.needHelp?'Partner entlasten':
       active?.on>0?'Partnerfront unterstützen':
       s.home>partnerHome*1.25?'Angriff vorbereiten':'Aufbauen / Landung vorbereiten';
     const plan={partner:duo.partnerID,target:shared?safeID(shared):null,
       targetName:shared?nameOf(shared):'Kein Gegner',role,
       partnerCommitted:active?.on||0,partnerIncoming:incoming,
-      partnerHome,needHelp:incoming>partnerHome*.2,
+      partnerHome,needHelp:incoming>partnerHome*.2||!!local?.state?.needHelp,
       ready:!danger&&s.available>=Math.max(1200,s.home*.2),
-      ownReserve:s.reserve,tick,source:'sichtbare Spielzustände (kein Kommunikationskanal)'};
+      ownReserve:s.reserve,tick,source:local?
+        'lokaler Duo-Relay + unabhängig bestätigter Spielzustand':
+        'sichtbare Spielzustände (kein Kommunikationskanal)'};
     if(!duoPlan||duoPlan.target!==plan.target||duoPlan.role!==role)
       decisionNote('2v2','Gemeinsamer Fokus: '+plan.targetName+' · '+role,
         ['Partner-Einsatz nur bei beobachteten Angriffen bestätigt'],tick);
@@ -2305,6 +2458,14 @@
         if(profile?.confidence>=.45&&profile.profile==='Gelegenheitsangreifer'&&
           opening.exposed)score+=12;
         if(operation?.target===item.id)score+=28;
+      const teammate=duoTrustedPeer();
+      if(teammate&&actualFriendly(teammate.player,me)&&
+        teammate.state?.target===item.id&&
+        !teammate.state.needHelp)score+=32;
+      if(teammate&&actualFriendly(teammate.player,me)&&
+        teammate.state?.needHelp&&
+        (teammate.player.incomingAttacks?.()||[]).some(a=>
+          attackTargets(a.attackerID,enemy)))score+=48;
         if(duoPlan?.target===item.id)score+=duoPlan.partnerCommitted>0?25:10;
         if(victoryThreat?.urgent && (victoryThreat.team!==null?
           enemy.team?.()===victoryThreat.team:item.id===victoryThreat.id))score+=38;
@@ -4159,7 +4320,7 @@
     for(const [id,pending] of diplomacyPending) {
       const p=players.find(x=>safeID(x)===id);
       if(!p){diplomacyPending.delete(id);continue;}
-      const allied=friendly(p,me),requesting=!!p.isRequestingAllianceWith?.(me);
+      const allied=actualFriendly(p,me),requesting=!!p.isRequestingAllianceWith?.(me);
       const visible=cards.has(id);
       if(allied || (!requesting && !visible)) {
         const confirmed=pending.accept?allied:!allied;
@@ -4188,6 +4349,50 @@
         continue;
       }
       // Retain the attempt counter; the incoming pass below retries after the wait.
+    }
+    // Local Duo ID is intentionally protected by friendly() before the
+    // alliance exists; bypass the generic diplomacy score only for the
+    // reciprocal relay-verified player, not for arbitrary alliance offers.
+    const duo=duoTrustedPeer();
+    if(duo){
+      const partner=duo.player,id=safeID(partner);
+      if(me.isOnSameTeam?.(partner)||actualFriendly(partner,me)){
+        duoLocal.status='Partner im Spiel bestätigt · Team/Bündnis aktiv';
+      }else if(partner.isTraitor?.()){
+        duoLocal.status='Partner als Verräter markiert: kein Bündnisbefehl';
+      }else if(partner.isRequestingAllianceWith?.(me)||cards.has(id)){
+        const previous=diplomacyPending.get(id);
+        if(!previous||tick-previous.sentTick>=45){
+          answerAlliance(me,partner,true,cards.get(id)?.card,tick,
+            'Duo-Partner-ID bestätigt',previous?.tries||1);
+          return;
+        }
+      }else if(ctors.alliance&&opts.offerAlliances&&
+        !me.isRequestingAllianceWith?.(partner)&&
+        !diplomacyHandled.has(id)&&tick-lastProposalTick>=55){
+        const anchor=(strategic.groups.find(g=>g.id===id)?.tiles||[])[0]??
+          partner.state?.spawnTile;
+        if(Number.isInteger(anchor)&&safeID(game.owner(anchor))===id){
+          const serial=generation;lastProposalTick=tick;
+          Promise.resolve(me.actions(anchor,null)).then(a=>{
+            if(!live(serial)||!duoTrustedPeer()||
+              game.config().disableAlliances?.()===true||
+              !opts.diplomacy||!opts.offerAlliances||
+              me.isRequestingAllianceWith?.(partner)||
+              actualFriendly(partner,me)||partner.isTraitor?.()||
+              safeID(game.owner(anchor))!==id||
+              !a?.interaction?.canSendAllianceRequest)return;
+            if(send('alliance',[me,partner],
+              'DUO ALLIANZ ANGEFRAGT: '+nameOf(partner),true)){
+              diplomacyStatus='Duo-Bündnis angefragt · Bestätigung ausstehend';
+              diplomacyHandled.set(id,tick+85);diplomacyStats.offered++;
+              telemetry('duo_alliance_offer',diplomacyStatus,{partnerID:id});
+            }
+          }).catch(e=>{
+            duoLocal.status='Allianz-Worker: '+String(e.message).slice(0,55);
+          });
+        }
+      }
     }
     const incoming=players.filter(p=>!friendly(p,me)&&
       (p.isRequestingAllianceWith?.(me)||cards.has(safeID(p))));
@@ -5146,7 +5351,13 @@
         opts.fullAuto=!opts.fullAuto;
         if(opts.fullAuto){opts.autoStrategy=true;autoTuning.tick=-Infinity;}
       }else if(key==='autoStrategy'&&opts.fullAuto){opts.fullAuto=false;opts.autoStrategy=false;}
-      else if(['economy','boats','autoSpawn','defense','stopOnError','upgrades','safeMode','autoStrategy','diplomacy','offerAlliances','nukes','antiNuke','lateOffense','impossibleMode','impossibleExperiment','learningEnabled','neuralEnabled'].includes(key))opts[key]=!opts[key];
+      else if(['economy','boats','autoSpawn','defense','stopOnError','upgrades','safeMode','autoStrategy','diplomacy','offerAlliances','nukes','antiNuke','lateOffense','impossibleMode','impossibleExperiment','learningEnabled','neuralEnabled','duoEnabled'].includes(key)){
+        opts[key]=!opts[key];
+        if(key==='duoEnabled'){
+          duoLocal.peer=null;duoLocal.lastAt=0;
+          duoLocal.status=opts.duoEnabled?'Verbinde lokalen Relay':'AUS';
+        }
+      }
       else if(key==='plan'){opts.fullAuto=false;opts.autoStrategy=false;opts.plan=opts.plan==='Blitz'?'Adaptiv':opts.plan==='Adaptiv'?'Ökonomie':'Blitz';}
       else if(key==='buildStyle'){opts.fullAuto=false;opts.autoStrategy=false;opts.buildStyle=opts.buildStyle==='Ausgewogen'?'Wirtschaft':opts.buildStyle==='Wirtschaft'?'Defensiv':'Ausgewogen';}
       persist();lastPaint=0;paint();
@@ -5157,6 +5368,11 @@
       if(key==='reserve')opts.reserve=clamp(e.target.value,5,65);
       if(key==='actionsPerMinute')opts.actionsPerMinute=clamp(e.target.value,15,120);
       if(key==='maxTargets')opts.maxTargets=clamp(e.target.value,4,25);
+      if(key==='duoPartnerID'||key==='duoRoom'){
+        opts[key]=String(e.target.value||'').trim();
+        duoLocal.peer=null;duoLocal.lastAt=0;duoLocal.match=null;
+        duoLocal.status='Partnerdaten geändert · erneut verbinden';
+      }
       persist();lastPaint=0;paint();
     });
     document.body.appendChild(panel);
@@ -5187,6 +5403,15 @@
       <div>${b('diplomacy','Diplomatie')} ${b('offerAlliances','Bündnisse anbieten')}</div>
       <div>${b('nukes','Auto-Nukes')} ${b('antiNuke','Intelligente SAMs')} ${b('lateOffense','Late-Game-Offensive')}</div>
       <div>${b('impossibleExperiment','Impossible AI Test')} ${b('learningEnabled','Lernen')} ${b('neuralEnabled','Neurales Netz')} ${b('impossibleMode','Unmöglich-Taktik')}</div>
+      </details>
+      <details data-section="localduo"${openFor('localduo')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">🤝 Duo-Modus (2 Browser, 1 PC)</summary>
+      <div>${b('duoEnabled','Lokales Duo '+(opts.duoEnabled?'AN':'AUS'))}</div>
+      <div style="color:#9bd0e4">Eigene Spieler-ID: ${escapeHTML(safeID(myPlayer())??'noch nicht im Spiel')}</div>
+      <label>Partner-Spieler-ID<input type="text" data-option="duoPartnerID" maxlength="128" value="${escapeHTML(opts.duoPartnerID)}" placeholder="Exakte PlayerID, nicht Anzeigename" style="box-sizing:border-box;width:100%"></label>
+      <label>Duo-Raumcode (in beiden Browsern gleich)<input type="text" data-option="duoRoom" maxlength="64" value="${escapeHTML(opts.duoRoom)}" placeholder="Mindestens 6 Zeichen" style="box-sizing:border-box;width:100%"></label>
+      <div>Status: ${escapeHTML(duoLocal.status)} · ${duoTrustedPeer()?'ID bestätigt':'Partner nicht verbunden'}</div>
+      <div>Geplanter Partner-Ziel-ID: ${escapeHTML(duoTrustedPeer()?.state?.target??'—')} · Verfügbar ${Math.round(duoTrustedPeer()?.state?.available||0)} · Hilfe ${duoTrustedPeer()?.state?.needHelp?'JA':'nein'}</div>
+      <div style="color:#a9efc9">Start: Start_Live_Duo.bat · Port 8767 · Allianz erst nach sichtbarer Spielbestätigung · bei Verbindungsverlust eigenständig weiterspielen</div>
       </details>
       <details data-section="neural"${openFor('neural')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Neurales Modell</summary>
       <div style="color:#9bd0e4">Inferenz: ${escapeHTML(neuralModelInfo().fingerprint||'kein Modell')} · Signale ${neuralEvidence.nonzero}/${neuralEvidence.calls} · Ranking ${neuralEvidence.actionNonzero}/${neuralEvidence.actionCalls}</div>
@@ -5245,7 +5470,14 @@
   const economyInterval=setInterval(economyStep,750);
   const diplomacyInterval=setInterval(diplomacyTick,950);
   const nukeInterval=setInterval(nukeStep,1100);
-  window.addEventListener('beforeunload',()=>{clearInterval(interval);clearInterval(economyInterval);clearInterval(diplomacyInterval);clearInterval(nukeInterval);});
+  const duoInterval=setInterval(()=>{duoPublish().catch(e=>{
+    duoLocal.status='Relay-Fehler: '+String(e.message).slice(0,55);
+  });},950);
+  window.addEventListener('beforeunload',()=>{
+    clearInterval(interval);clearInterval(economyInterval);
+    clearInterval(diplomacyInterval);clearInterval(nukeInterval);
+    clearInterval(duoInterval);
+  });
   if(benchmark){
     window.__OF_BENCHMARK__=Object.freeze({
       snapshot:diagnosticSnapshot,
