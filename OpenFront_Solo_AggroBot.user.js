@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.20.10
+// @version      1.20.11
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.20.10', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.20.11', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -341,6 +341,7 @@
   let recent=[], actions=[], cooldowns=new Map(), lastPaint=0, errors=0;
   let troopSamples=[], lastRecoveryReason='', lastBattle=null, blockedTargets=new Map();
   let troopSnapshot={home:0,max:0,committed:0,incoming:0,enemy:0,ratio:0,reserve:0,available:0};
+  let lastDecisionFrame=null;
   let lastEconomicAction=-Infinity, lastNeutralSend=-Infinity, lastEnemySend=-Infinity,lastHostilePressure=-Infinity;
   let consecutiveIdle=0;
   let economicPending=null, economicBlocked=new Map(), economicNegative=new Map(), economicStatus='Bauplanung bereit', economicLastPlan='—';
@@ -766,7 +767,7 @@
     buildCursor=0;spawnCache=null;spawnJob=null;spawnRetryAt=0;spawnAlternatives=[];spawnState={scanned:0,phase:'idle',lastSent:null,attempts:0,blocked:null,deadline:null};cooldowns.clear();rejected.clear();
     plan=null;lastSelection='';lastEmission=0;borderOffset=0;lastBorderRefresh=0;
     totalSent=0;totalFailed=0;actions=[];errors=0;troopSamples=[];
-    lastRecoveryReason='';lastBattle=null;pendingAttack=null;targetIntelCache.clear();frontMemory.clear();opponentHistory.clear();lastEconomyPosture='—';lastDirectorDecision=null;neuralPolicyCache={key:null,output:null};lastFrontWarning=-Infinity;
+    lastDecisionFrame=null;lastRecoveryReason='';lastBattle=null;pendingAttack=null;targetIntelCache.clear();frontMemory.clear();opponentHistory.clear();lastEconomyPosture='—';lastDirectorDecision=null;neuralPolicyCache={key:null,output:null};lastFrontWarning=-Infinity;
     attackReceipts={confirmed:0,unconfirmed:0,territoryGained:0};blockedTargets.clear();
     attackCommands=[];attackCommandSequence=0;observedAttacks.clear();
     actionSequence=0;lastActionId=null;
@@ -5732,6 +5733,33 @@
     }
     return false;
   }
+  // P1 observation-only decision frame: primitives captured in one cycle
+  // to explain what the planner saw, never a new authorization to attack.
+  function decisionFrame(me,groups,s,tick=number(()=>game?.ticks?.(),-1)){
+    const opponents=(groups||[]).filter(g=>g.id!==null&&
+      g.opponent?.isAlive?.()).slice(0,16).map(g=>Object.freeze({
+        id:g.id,front:g.tiles?.length||0,
+        troops:number(()=>g.opponent.troops(),0),
+        land:number(()=>g.opponent.numTilesOwned(),0),
+        friendly:friendly(g.opponent,me)
+      }));
+    return Object.freeze({
+      tick,player:safeID(me),gameID:String(game?.gameID?.()??'unknown'),
+      home:s.home,reserve:s.reserve,available:s.available,
+      committed:s.committed,incoming:s.incoming,
+      maxTroops:s.max,gold:number(()=>Number(me.gold()),0),
+      land:number(()=>me.numTilesOwned(),0),
+      duoPartner:duoTrustedPeer()?.id||null,
+      opponents:Object.freeze(opponents)
+    });
+  }
+  // A delayed border Worker response must never authorize commands from
+  // an obsolete observation; a later cycle retries using current data.
+  function decisionFrameFresh(frame,tick=number(()=>game?.ticks?.(),-1)){
+    return !!frame&&Number.isInteger(tick)&&
+      tick>=frame.tick&&tick-frame.tick<=20&&
+      frame.player===safeID(myPlayer());
+  }
   async function step() {
     const found=discover();
     if(!found){if(game){generation++;game=null;bus=null;opts.enabled=false;persist();status='Warte auf Spiel';}paint();return;}
@@ -5833,12 +5861,19 @@
       if(emergencyRetreat(me,tick,immediateState))return;
       const tiles=await borders(me,tick);
       if(!live(serial))return;
+      if(number(()=>game.ticks(),-1)-tick>20){
+        telemetry('decision_stale',
+          'Grenz-Worker zu spät: Befehle auf frischen Tick verschoben',
+          {plannedTick:tick,currentTick:number(()=>game.ticks(),-1)});
+        return;
+      }
       const groups=targetsFromBorder(me,tiles);
       observeFronts(me,groups,tick);
       observeOpponents(me,tick);
       observeHumanProfiles(me,tick);
       observeVictoryThreat(me,tick);
       let s=military(me,groups);rememberHostilePressure(s,tick);troopSnapshot=s;
+      lastDecisionFrame=decisionFrame(me,groups,s,tick);
       strategic.groups=groups;
       coordinateDuo(me,s,tick);
       manageWar(me,groups,s,tick);
@@ -5850,6 +5885,7 @@
       if(tick-lastDiagnosticTick>=80){lastDiagnosticTick=tick;
         telemetry('snapshot','Spielzustand',{difficulty:game.config().gameConfig().difficulty,
           gameType:game.config().gameConfig().gameType,matchContext:matchContext(me),
+          decisionFrame:lastDecisionFrame,
           investment:investmentStatus,
           cities:ownStructures(me).filter(u=>u.type?.()==='City').length,
           factories:ownStructures(me).filter(u=>u.type?.()==='Factory').length,
