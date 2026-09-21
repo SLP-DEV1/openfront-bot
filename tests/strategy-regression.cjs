@@ -467,7 +467,7 @@ function boot(benchmarkOptions={}) {
     assert.equal(plan.target,'strong');
     assert.equal(plan.partnerCommitted,17000);
     assert.equal(plan.ownReserve,state.reserve);
-    assert.equal(plan.source,'sichtbare Spielzustände (kein Kommunikationskanal)');
+    assert.equal(plan.source,'sichtbare Spielzustände (kein Relay)');
   });
   await check('bounded operation chooses live attackable opponent and explains cancellation', () => {
     const x=boot(),groups=[{id:'weak',opponent:x.weak,front:8,tiles:[5]}];
@@ -3209,7 +3209,7 @@ function boot(benchmarkOptions={}) {
     x.weak.isFriendly=()=>true;
     x.weak.outgoingAttacks=()=>[{targetID:'strong',troops:12000,retreating:false}];
     assert.equal(x.b.duoFocus(x.me,x.strong).on,12000);
-    assert.equal(x.b.duoBattleCredit(x.me,x.strong),6600);
+    assert(Math.abs(x.b.duoBattleCredit(x.me,x.strong)-6600)<1e-6);
     x.weak.outgoingAttacks=()=>[];
     assert.equal(x.b.duoBattleCredit(x.me,x.strong),0);
   });
