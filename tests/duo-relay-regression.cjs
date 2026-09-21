@@ -24,6 +24,23 @@ const mk=(ownID,partnerID,instance,match='v1|Public|World|Large|FFA|123|_')=>({
   assert.equal(relay.validate({...A,state:{...A.state,strikeTick:345}}),true);
   assert.equal(relay.validate({...A,state:{...A.state,strikeTick:-3}}),false);
   assert.equal(relay.validate({...A,state:{...A.state,strikeTick:'345'}}),false);
+  // Auto discovery must not depend on stable per-match PlayerIDs.
+  relay.rooms.clear();
+  const autoA={...A,auto:true,partnerID:null};
+  const autoB={...B,auto:true,partnerID:null};
+  assert.equal(relay.validate(autoA),true);
+  assert.equal(relay.validate({...autoA,partnerID:'two'}),false);
+  assert.equal(relay.exchange(autoA,20000).body.partner,null);
+  assert.equal(relay.exchange(autoB,20001).body.partner.id,'one');
+  assert.equal(relay.exchange(autoA,20002).body.partner.id,'two');
+  assert.equal(relay.exchange({...autoA,ownID:'next-match-one',
+    match:'v2|new-match'},20003).body.partner,null);
+  assert.equal(relay.exchange({...autoA,ownID:'third',
+    instance:'browser-C'},20004).status,409);
+  assert.equal(relay.exchange({...autoA,ownID:'cloned',
+    instance:'browser-A'},20005).status,409);
+  assert.equal(relay.exchange({...autoA,ownID:'one',
+    match:'v2|different'},20006).body.partner,null);
   relay.rooms.clear();
   const server=relay.createServer();
   server.listen(0,'127.0.0.1');
