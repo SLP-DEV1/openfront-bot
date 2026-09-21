@@ -962,7 +962,8 @@
   // nearby region. Neither client ever supplies the other's spawn intent.
   function duoSpawnCandidate(g,me,candidates,urgent=false){
     const peer=duoTrustedPeer(),anchor=peer?.state?.spawn??peer?.state?.candidate;
-    if(!Number.isSafeInteger(anchor)||!g.isValidRef?.(anchor))return null;
+    if(!Number.isSafeInteger(anchor)||
+      (typeof g.isValidRef==='function'&&!g.isValidRef(anchor)))return null;
     const min=number(()=>g.config().minDistanceBetweenPlayers?.(),30);
     const px=g.x(anchor),py=g.y(anchor);
     const rivals=spawnRivals(g,me);
@@ -1418,7 +1419,14 @@
   // from the same observable match state. Missing partner actions mean unknown,
   // not a promised coordinated attack.
   function coordinateDuo(me,s,tick){
-    const duo=rankedDuo(me);
+    let duo=rankedDuo(me);
+    const connectedPeer=duoTrustedPeer();
+    const local=connectedPeer&&actualFriendly(connectedPeer.player,me)?connectedPeer:null;
+    if(!duo&&local){
+      const enemies=(game.playerViews?.()||[]).filter(p=>p?.isPlayer?.()&&
+        p.isAlive?.()&&!friendly(p,me));
+      duo={partner:local.player,partnerID:local.id,enemies,team:null};
+    }
     if(!duo){duoPlan=null;return null;}
     const partner=duo.partner;
     const incoming=(partner.incomingAttacks?.()||[])
@@ -1429,18 +1437,22 @@
     const targets=[...duo.enemies].sort((a,b)=>
       number(()=>b.numTilesOwned(),0)-number(()=>a.numTilesOwned(),0) ||
       String(safeID(a)).localeCompare(String(safeID(b))));
-    const shared=active?.on>0?active.p:targets[0];
+    const announced=local?.state?.target&&duo.enemies.find(p=>
+      safeID(p)===local.state.target);
+    const shared=active?.on>0?active.p:announced||targets[0];
     const danger=s.incoming>Math.max(1200,s.home*.08);
     const role=danger?'Heimat verteidigen':
-      incoming>partnerHome*.2?'Partner entlasten':
+      incoming>partnerHome*.2||local?.state?.needHelp?'Partner entlasten':
       active?.on>0?'Partnerfront unterstützen':
       s.home>partnerHome*1.25?'Angriff vorbereiten':'Aufbauen / Landung vorbereiten';
     const plan={partner:duo.partnerID,target:shared?safeID(shared):null,
       targetName:shared?nameOf(shared):'Kein Gegner',role,
       partnerCommitted:active?.on||0,partnerIncoming:incoming,
-      partnerHome,needHelp:incoming>partnerHome*.2,
+      partnerHome,needHelp:incoming>partnerHome*.2||!!local?.state?.needHelp,
       ready:!danger&&s.available>=Math.max(1200,s.home*.2),
-      ownReserve:s.reserve,tick,source:'sichtbare Spielzustände (kein Kommunikationskanal)'};
+      ownReserve:s.reserve,tick,source:local?
+        'lokaler Duo-Relay + unabhängig bestätigter Spielzustand':
+        'sichtbare Spielzustände (kein Kommunikationskanal)'};
     if(!duoPlan||duoPlan.target!==plan.target||duoPlan.role!==role)
       decisionNote('2v2','Gemeinsamer Fokus: '+plan.targetName+' · '+role,
         ['Partner-Einsatz nur bei beobachteten Angriffen bestätigt'],tick);
@@ -2450,6 +2462,10 @@
       if(teammate&&actualFriendly(teammate.player,me)&&
         teammate.state?.target===item.id&&
         !teammate.state.needHelp)score+=32;
+      if(teammate&&actualFriendly(teammate.player,me)&&
+        teammate.state?.needHelp&&
+        (teammate.player.incomingAttacks?.()||[]).some(a=>
+          attackTargets(a.attackerID,enemy)))score+=48;
         if(duoPlan?.target===item.id)score+=duoPlan.partnerCommitted>0?25:10;
         if(victoryThreat?.urgent && (victoryThreat.team!==null?
           enemy.team?.()===victoryThreat.team:item.id===victoryThreat.id))score+=38;
