@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         OpenFront AggroBot Impossible Run3 Neural
 // @namespace    https://openfront.io/
-// @version      1.20.10
-// @description  AggroBot 1.20.10 with bundled Impossible Run3 schema-4 champion (experimental); no external Brain or Qwen.
+// @version      1.20.11
+// @description  AggroBot 1.20.11 with bundled Impossible Run3 schema-4 champion (experimental); no external Brain or Qwen.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
 // @run-at       document-start
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.20.10', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.20.11', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -1026,6 +1026,7 @@
       target:duoID(target)?target:null,
       warTarget:duoID(warState.id)?warState.id:null,
       strikeTick:Number.isInteger(duoPlan?.strikeTick)?duoPlan.strikeTick:null,
+      planId:duoPlan?.planId??null,expiresTick:duoPlan?.expiresTick??null,
       ready:!!(state&&state.incoming===0&&
         !recentHostilePressure(number(()=>game?.ticks?.(),0))&&
         !(crisisTrend&&number(()=>game?.ticks?.(),0)<crisisTrend.expires)&&
@@ -1702,6 +1703,9 @@
       partnerCommitted:active?.on||0,partnerIncoming:incoming,
       partnerHome,needHelp:partnerNeeds,partnerWarning,
       partnerReady:!!local?.state?.ready,strikeTick,
+      planId:strikeTick===null||!shared?null:
+        String(safeID(shared)).slice(0,96)+':'+String(strikeTick),
+      expiresTick:strikeTick===null?null:strikeTick+110,
       strikeStatus:strikeTick===null?'none':
         !sharedJoint?'locked-awaiting-safe-budget':
         tick<strikeTick?'locked-preparing':'locked-launch-window',
@@ -1731,10 +1735,28 @@
         tick-operation.since>1100?'Operationsfrist erreicht':
         number(()=>p.numTilesOwned?.(),Infinity)<=operation.successLand?
           'Gebietsziel beobachtet':null;
-      if(reason){
-        if(reason==='Truppenbudget ausgeschöpft')
+      if(!reason&&p){
+        const land=number(()=>p.numTilesOwned?.(),Infinity);
+        if(Number.isFinite(land)&&
+          land<(operation.lastObservedLand??operation.initialLand)){
+          const gained=(operation.lastObservedLand??operation.initialLand)-land;
+          operation.lastObservedLand=land;operation.lastProgressTick=tick;
+          telemetry('operation_progress','Beobachteter Zielgebietsverlust',
+            {target:operation.target,observedTiles:land,
+              delta:gained,operationSince:operation.since,
+              evidence:'observed-not-causal-proof'});
+        }
+      }
+      const stall=!reason&&opts.impossibleExperiment&&
+        tick-(operation.lastProgressTick??operation.since)>440&&
+        !s.out.some(a=>!a.retreating&&
+          attackTargets(a.targetID,operation.target))&&
+        !pendingAttack&&s.incoming===0;
+      if(reason||stall){
+        const finishedReason=reason||(stall?'Operation ohne beobachteten Fortschritt':null);
+        if(stall||reason==='Truppenbudget ausgeschöpft')
           operationCooldown.set(operation.target,tick+160);
-        decisionNote('operation','Operation '+operation.type+' beendet: '+reason,
+        decisionNote('operation','Operation '+operation.type+' beendet: '+finishedReason,
           ['Nächste sichere Gelegenheit neu prüfen'],tick);
         operation=null;
       }
@@ -1773,7 +1795,8 @@
       since:tick,until:tick+1100,initialLand:land,
       successLand:type==='Gegner ausschalten'?0:
         Math.max(0,Math.floor(land*.90)),
-      budget,spent:0,abort:'Verlust des Ziels, Heimatinvasion oder Frist'};
+      budget,spent:0,lastObservedLand:land,lastProgressTick:tick,
+      abort:'Verlust des Ziels, Heimatinvasion oder Frist; experimentell auch Stillstand'};
     decisionNote('operation',type+' → '+operation.targetName+
       ' · Budget '+budget+' · Ziel ≤ '+operation.successLand+' Felder',
       eligible.filter(x=>x.id!==chosen.id).slice(0,3).map(x=>
@@ -1806,8 +1829,15 @@
     if(previous&&tick>previous.tick&&tick-previous.tick>=80){
       const rate=(v)=>Number.isFinite(cur[v])&&Number.isFinite(previous[v])?
         Math.max(0,(cur[v]-previous[v])/(tick-previous.tick)*600):null;
-      incomeStatus={train:rate('train'),trade:rate('trade'),
-        gold:Math.max(0,(cur.gold-previous.gold)/(tick-previous.tick)*600),
+      // Gold-stock movement includes purchases, donations and conquest:
+      // it is a signed NET change, not gross income (negative != zero).
+      const netGold=(cur.gold-previous.gold)/(tick-previous.tick)*600;
+      const train=rate('train'),trade=rate('trade');
+      incomeStatus={train,trade,gold:netGold,netGold,
+        otherNetAfterTradeTrain:
+          train!==null&&trade!==null?netGold-train-trade:null,
+        // Residual includes spending and other receipts; NEVER assign it
+        // to one building or label it as additional earned gold.
         observed:true};
       goldSamples.shift();
     }
@@ -5208,11 +5238,15 @@
         }
       }catch(_){tradeStats.skipped++;}
     }
+    // An intended target is not yet a proven trade adversary.
+    // Embargo costs our own port income too; require observed fighting.
     const hostile=players.filter(p=>{
-      const id=safeID(p);if(friendly(p,me)||me.hasEmbargoAgainst?.(p))return false;
-      return id===warState.id||id===plan?.id||id===operation?.target||
-        (me.outgoingAttacks?.()||[]).some(a=>!a.retreating&&attackTargets(a.targetID,p))||
-        (me.incomingAttacks?.()||[]).some(a=>!a.retreating&&attackTargetID(a.attackerID)===id);
+      const id=safeID(p);
+      if(friendly(p,me)||me.hasEmbargoAgainst?.(p))return false;
+      return (me.outgoingAttacks?.()||[]).some(a=>
+        !a.retreating&&attackTargets(a.targetID,p))||
+        (me.incomingAttacks?.()||[]).some(a=>
+          !a.retreating&&attackTargetID(a.attackerID)===id);
     });
     if(hostile.length){
       const p=hostile.sort((a,b)=>number(()=>b.troops?.(),0)-number(()=>a.troops?.(),0))[0],
@@ -5230,9 +5264,10 @@
     for(const id of [...botEmbargoes]){
       const p=players.find(x=>safeID(x)===id);
       if(!p){botEmbargoes.delete(id);continue;}
-      const active=id===warState.id||id===plan?.id||id===operation?.target||
-        (me.outgoingAttacks?.()||[]).some(a=>!a.retreating&&attackTargets(a.targetID,p))||
-        (me.incomingAttacks?.()||[]).some(a=>!a.retreating&&attackTargetID(a.attackerID)===id);
+      const active=(me.outgoingAttacks?.()||[]).some(a=>
+        !a.retreating&&attackTargets(a.targetID,p))||
+        (me.incomingAttacks?.()||[]).some(a=>
+          !a.retreating&&attackTargetID(a.attackerID)===id);
       if(active||!me.hasEmbargoAgainst?.(p))continue;
       const tile=tradeAnchor(p);if(!Number.isInteger(tile))continue;
       lastTradeTick=tick;try{
@@ -5833,6 +5868,16 @@
       if(emergencyRetreat(me,tick,immediateState))return;
       const tiles=await borders(me,tick);
       if(!live(serial))return;
+      // Refuse a slow worker result from an older decision window.
+      const observedTick=number(()=>game?.ticks?.(),-1);
+      if(observedTick<tick||observedTick-tick>40||
+        safeID(myPlayer())!==safeID(me)){
+        telemetry('decision_snapshot_expired',
+          'Worker-Ergebnis veraltet; neue Entscheidungsrunde abwarten',
+          {requestedTick:tick,observedTick,player:safeID(me),
+            currentPlayer:safeID(myPlayer())});
+        return;
+      }
       const groups=targetsFromBorder(me,tiles);
       observeFronts(me,groups,tick);
       observeOpponents(me,tick);
