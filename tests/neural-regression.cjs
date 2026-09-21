@@ -41,6 +41,17 @@ assert.equal(compare([pair('one','defeat'),pair('two','defeat')],
   [pair('one','incomplete',false),pair('two','victory')]).promoted,true);
 assert.equal(compare([pair('one','defeat'),pair('two','defeat')],
   [pair('other','victory'),pair('two','defeat')]).valid,false);
+// Added victories must not silently override losses on other paired seeds.
+const incumbentMixed=[pair('one','incomplete',false,18000,50000),
+  pair('two','incomplete',false,18000,50000),
+  pair('three','incomplete',false,18000,50000)];
+const candidateMixed=[pair('one','victory'),
+  pair('two','defeat'),pair('three','defeat')];
+const blockedMixed=compare(incumbentMixed,candidateMixed);
+assert.equal(blockedMixed.valid,true);
+assert.equal(blockedMixed.regressed,2);
+assert.equal(blockedMixed.promoted,false);
+assert.equal(blockedMixed.reason,'regressions-block-promotion');
 // A single censored survival gain is not yet repeatable progress.
 assert.equal(compare([pair('one','defeat'),pair('two','defeat')],
   [pair('one','incomplete',false,18000,50000),pair('two','defeat')]).promoted,false);
