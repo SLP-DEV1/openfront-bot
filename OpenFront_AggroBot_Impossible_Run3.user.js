@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         OpenFront AggroBot Impossible Run3 Neural
 // @namespace    https://openfront.io/
-// @version      1.20.0
-// @description  AggroBot 1.20.0 with bundled Impossible Run3 schema-4 champion (experimental); no external Brain or Qwen.
+// @version      1.20.1
+// @description  AggroBot 1.20.1 with bundled Impossible Run3 schema-4 champion (experimental); no external Brain or Qwen.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
 // @run-at       document-start
@@ -14,13 +14,13 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.20.0', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.20.1', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
     autoStrategy:true, diplomacy:true, offerAlliances:true, nukes:true, antiNuke:true, lateOffense:true,
     impossibleMode:true,impossibleExperiment:false,neuralEnabled:false,
-    duoEnabled:false,duoPartnerID:'',duoRoom:''};
+    duoEnabled:false,duoPartnerID:'',duoPartnerName:'',duoRoom:''};
   let opts;
   try { opts = {...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; }
   catch (_) {opts = {...defaults};}
@@ -543,7 +543,12 @@
       ownID:safeID(me),partnerID:safeID(partners[0])};
   }
   function duoFocus(me,enemy){
-    const duo=rankedDuo(me);
+    // Only game-observed attacks by a genuinely allied reciprocal peer
+    // earn combat credit. Relay intentions are never counted as troops.
+    const peer=duoTrustedPeer();
+    const local=peer&&actualFriendly(peer.player,me)?
+      {partner:peer.player,partnerID:peer.id}:null;
+    const duo=rankedDuo(me)||local;
     if(!duo||!enemy||safeID(enemy)===duo.partnerID||
       friendly(enemy,me))return null;
     const outgoing=(duo.partner.outgoingAttacks?.()||[])
@@ -930,12 +935,14 @@
     const me=myPlayer(),peer=(game?.playerViews?.()||[]).find(p=>
       safeID(p)===opts.duoPartnerID);
     const state=me?.hasSpawned?.()?military(me,strategic.groups):null;
-    const target=operation?.target??duoPlan?.target??warState.id;
+    const target=duoPlan?.strikeTick?duoPlan.target:
+      operation?.target??duoPlan?.target??warState.id;
     const candidate=spawnCache?.tile??null,spawn=me?.state?.spawnTile;
     return {tick:Number.isInteger(game?.ticks?.())?game.ticks():null,
       spawn:Number.isSafeInteger(spawn)?spawn:null,
       candidate:Number.isSafeInteger(candidate)?candidate:null,
       target:duoID(target)?target:null,
+      strikeTick:Number.isInteger(duoPlan?.strikeTick)?duoPlan.strikeTick:null,
       ready:!!(state&&state.incoming===0&&
         state.available>=Math.max(1200,state.home*.2)),
       needHelp:!!(state&&state.incoming>Math.max(1200,state.home*.1)),
@@ -1450,9 +1457,15 @@
     }
     if(!duo){duoPlan=null;return null;}
     const partner=duo.partner;
-    const incoming=(partner.incomingAttacks?.()||[])
-      .filter(a=>!a.retreating)
+    const observedIncoming=(partner.incomingAttacks?.()||[])
+      .filter(a=>!a.retreating);
+    const incoming=observedIncoming
       .reduce((n,a)=>n+Math.max(0,number(()=>a.troops,0)),0);
+    const aggressor=duo.enemies.map(p=>({p,on:observedIncoming
+      .filter(a=>String(a.attackerID)===safeID(p)||
+        String(a.attackerID)===String(p.smallID?.()))
+      .reduce((n,a)=>n+Math.max(0,number(()=>a.troops,0)),0)}))
+      .sort((a,b)=>b.on-a.on)[0];
     const partnerHome=Math.max(1,number(()=>partner.troops?.(),1));
     const active=duo.enemies.map(p=>({p,on:duoFocus(me,p)?.on||0}))
       .sort((a,b)=>b.on-a.on ||
@@ -1462,28 +1475,43 @@
       String(safeID(a)).localeCompare(String(safeID(b))));
     const announced=local?.state?.target&&duo.enemies.find(p=>
       safeID(p)===local.state.target);
-    const shared=active?.on>0?active.p:announced||targets[0];
     const danger=s.incoming>Math.max(1200,s.home*.08);
     const partnerNeeds=incoming>partnerHome*.2||!!local?.state?.needHelp;
+    const shared=partnerNeeds&&aggressor?.on>0?aggressor.p:
+      active?.on>0?active.p:announced||targets[0];
     const bothReady=!!local?.state?.ready&&!danger&&
       s.available>=Math.max(1200,s.home*.2);
     const leader=local&&String(safeID(me))<String(local.id);
+    // The lower PlayerID proposes a stable tick; the second adopts it
+    // only while both are ready. Neither skips the game's action checks.
+    const held=duoPlan?.target===safeID(shared)&&
+      Number.isInteger(duoPlan.strikeTick)&&
+      tick-duoPlan.strikeTick<180?duoPlan.strikeTick:null;
+    const offered=local?.state?.strikeTick;
+    const strikeTick=!local||!bothReady?null:leader?
+      (held??tick+45):
+      Number.isInteger(offered)&&offered>=tick-15&&offered<=tick+180?
+        offered:null;
     const role=danger?'Heimat verteidigen':
       partnerNeeds?'Partner entlasten':
       active?.on>0?'Partnerfront unterstützen':
-      bothReady?(leader?'Gemeinsamen Angriff anführen':'Gemeinsamen Angriff unterstützen'):
+      strikeTick!==null?(tick<strikeTick?'Gemeinsamen Angriff vorbereiten':
+        leader?'Gemeinsamen Angriff anführen':'Gemeinsamen Angriff unterstützen'):
+      bothReady?'Auf Partner-Zeitpunkt warten':
       s.home>partnerHome*1.25?'Angriff vorbereiten':'Aufbauen / Landung vorbereiten';
     const plan={partner:duo.partnerID,target:shared?safeID(shared):null,
       targetName:shared?nameOf(shared):'Kein Gegner',role,
       partnerCommitted:active?.on||0,partnerIncoming:incoming,
       partnerHome,needHelp:partnerNeeds,
-      partnerReady:!!local?.state?.ready,
+      partnerReady:!!local?.state?.ready,strikeTick,
       ready:!danger&&s.available>=Math.max(1200,s.home*.2),
       ownReserve:s.reserve,tick,source:local?
         'lokaler Duo-Relay + bestätigter Spielzustand':
         'sichtbare Spielzustände (kein Relay)'};
-    if(!duoPlan||duoPlan.target!==plan.target||duoPlan.role!==role)
-      decisionNote('2v2','Gemeinsamer Fokus: '+plan.targetName+' · '+role,
+    if(!duoPlan||duoPlan.target!==plan.target||duoPlan.role!==role||
+      duoPlan.strikeTick!==plan.strikeTick)
+      decisionNote('2v2','Gemeinsamer Fokus: '+plan.targetName+' · '+role+
+        (strikeTick!==null?' · Tick '+strikeTick:''),
         [local?'Relay-Ziel ist nur Priorität; eigene Sicherheitsprüfung bleibt verbindlich':
           'Partner-Einsatz nur bei beobachteten Angriffen bestätigt'],tick);
     duoPlan=plan;return plan;
@@ -2779,6 +2807,11 @@
     if(!ctors.attack||pendingAttack)return false;
     for(const item of ranked.slice(0,clamp(setting('maxTargets'),4,25))){
       if(!live(serial)||!actionBudget('combat'))return false;
+      // Rendezvous delay cannot block emergency defence or an active war.
+      if(item.id!==null&&duoPlan?.target===item.id&&
+        Number.isInteger(duoPlan.strikeTick)&&tick<duoPlan.strikeTick&&
+        s.incoming===0&&warState.id!==item.id&&
+        !(duoFocus(me,item.opponent)?.on>0))continue;
       const tile=await legalTarget(me,item,serial);
       if(tile===null){rejected.set(item.key,tick);
         decisionNote('ziel_verworfen','Ziel '+(item.opponent?nameOf(item.opponent):'Neutralland')+
@@ -4716,12 +4749,17 @@
   // Team aid is guarded by same-team identity, real incoming threats,
   // available HOME troops, and the silo fund. No speculative allied donations.
   function teamSupport(me,tick,s){
-    if(winStatus.mode!=='Team'||tick-lastDonation<300 || !actionBudget())return false;
-    const team=me.team?.();if(team===null||team===undefined)return false;
+    const peer=duoTrustedPeer();
+    const local=peer&&actualFriendly(peer.player,me)?peer:null;
+    if((winStatus.mode!=='Team'&&!local)||tick-lastDonation<300||
+      !actionBudget())return false;
+    const team=me.team?.();
+    if((team===null||team===undefined)&&!local)return false;
     const partners=(game.playerViews?.()||[]).filter(p=>
       p!==me&&p.isAlive?.()&&p.team?.()===team&&me.isOnSameTeam?.(p));
-    if(!partners.length)return false;
-    const duo=rankedDuo(me);
+    if(!partners.length&&!local)return false;
+    const duo=rankedDuo(me)||(local?
+      {partner:local.player,partnerID:local.id}:null);
     if(duo){
       const partner=duo.partner;
       const inbound=(partner.incomingAttacks?.()||[]).filter(a=>!a.retreating)
@@ -4738,7 +4776,7 @@
       if(!ownDanger&&inbound>partnerHome*.20&&amount>=1000&&
         ctors.donateTroops&&(!me.canDonateTroops||me.canDonateTroops(partner))&&
         send('donateTroops',[partner,amount],
-          'RANKED 2V2 · TEAMHILFE → '+nameOf(partner))){
+          'DUO · TEAMHILFE → '+nameOf(partner))){
         lastDonation=tick;
         telemetry('duo_donation','Notfallhilfe gegen beobachtete Partnerfront',
           {partner:duo.partnerID,partnerIncoming:inbound,
@@ -4765,7 +4803,7 @@
         if(amountGold>=50000&&ownGold-amountGold>=cashFloor&&
           spendBudget(me,amountGold,'donateGold')&&
           send('donateGold',[partner,BigInt(amountGold)],
-            'RANKED 2V2 · AUFBAUHILFE → '+nameOf(partner))){
+            'DUO · AUFBAUHILFE → '+nameOf(partner))){
           commitGoldSpend(me,amountGold,'donateGold');
           lastDonation=tick;
           telemetry('duo_gold','Goldhilfe bei eindeutigem Wirtschaftsrückstand',
@@ -5403,7 +5441,7 @@
       if(key==='reserve')opts.reserve=clamp(e.target.value,5,65);
       if(key==='actionsPerMinute')opts.actionsPerMinute=clamp(e.target.value,15,120);
       if(key==='maxTargets')opts.maxTargets=clamp(e.target.value,4,25);
-      if(key==='duoPartnerID'||key==='duoRoom'){
+      if(key==='duoPartnerID'||key==='duoRoom'||key==='duoPartnerName'){
         opts[key]=String(e.target.value||'').trim();
         duoLocal.peer=null;duoLocal.lastAt=0;duoLocal.match=null;
         duoLocal.status='Partnerdaten geändert · erneut verbinden';
@@ -5442,10 +5480,14 @@
       <details data-section="localduo"${openFor('localduo')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">🤝 Duo-Modus (2 Browser, 1 PC)</summary>
       <div>${b('duoEnabled','Lokales Duo '+(opts.duoEnabled?'AN':'AUS'))}</div>
       <div style="color:#9bd0e4">Eigene Spieler-ID: <b>${escapeHTML(safeID(myPlayer())??'noch nicht im Spiel')}</b></div>
+      <label>Partnername (nur Anzeige)<input type="text" data-option="duoPartnerName" maxlength="80" value="${escapeHTML(opts.duoPartnerName||'')}" placeholder="z. B. KitsukamiBot2" style="box-sizing:border-box;width:100%"></label>
       <label>Partner-Spieler-ID<input type="text" data-option="duoPartnerID" maxlength="128" value="${escapeHTML(opts.duoPartnerID)}" placeholder="Exakte PlayerID des anderen Browsers" style="box-sizing:border-box;width:100%"></label>
       <label>Duo-Raumcode (in beiden Browsern gleich)<input type="text" data-option="duoRoom" maxlength="64" value="${escapeHTML(opts.duoRoom)}" placeholder="z. B. KITSU_DUO_01" style="box-sizing:border-box;width:100%"></label>
       <div>Status: ${escapeHTML(duoLocal.status)} · ${duoTrustedPeer()?'gegenseitige IDs bestätigt':'Partner nicht verbunden'}</div>
+      <div>Spielname: ${escapeHTML(duoTrustedPeer()?nameOf(duoTrustedPeer().player):'—')}${duoTrustedPeer()&&opts.duoPartnerName&&nameOf(duoTrustedPeer().player)!==opts.duoPartnerName?' · Name weicht von Anzeige ab (ID maßgeblich)':''}</div>
       <div>Partner: Ziel ${escapeHTML(duoTrustedPeer()?.state?.target??'—')} · verfügbar ${Math.round(duoTrustedPeer()?.state?.available||0)} · Reserve ${Math.round(duoTrustedPeer()?.state?.reserve||0)} · Hilfe ${duoTrustedPeer()?.state?.needHelp?'JA':'nein'}</div>
+      <div>Gemeinsamer Plan: ${escapeHTML(duoPlan?duoPlan.role+' → '+duoPlan.targetName+(duoPlan.strikeTick!==null?' · Angriff ab Tick '+duoPlan.strikeTick:''):'Gemeinsam starten → Allianz bestätigen → Front aufteilen')}</div>
+      <div style="margin-top:4px"><b>Duo-Timeline</b>${decisionTimeline.filter(d=>d.kind==='2v2').slice(-4).reverse().map(d=>'<div style="border-top:1px solid #354d66;padding:2px 0">'+escapeHTML('Tick '+d.tick+' · '+d.why)+'</div>').join('')}</div>
       <div style="color:#a9efc9">Start_Live_Duo.bat starten · Port 8767 · Bündnis gilt erst nach Bestätigung im Spiel · Relay-Ausfall ⇒ beide spielen autonom weiter.</div>
       </details>
       <details data-section="neural"${openFor('neural')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Neurales Modell</summary>
@@ -5464,7 +5506,7 @@
       </details>
       <details data-section="humanplan"${openFor('humanplan')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Gegneranalyse &amp; Operationen</summary>
       <div>Operation: ${operation?escapeHTML(operation.type+' → '+operation.targetName+' · '+operation.spent+'/'+operation.budget+' Tr. · Abbruch: '+operation.abort):'Keine sichere Operation'}</div>
-      <div>2v2: ${duoPlan?escapeHTML(duoPlan.role+' · Ziel '+duoPlan.targetName+' · Partner-Einsatz '+duoPlan.partnerCommitted+' · Hilfebedarf '+(duoPlan.needHelp?'JA':'nein')):'Kein Ranked-2v2 erkannt'}</div>
+      <div>Duo: ${duoPlan?escapeHTML(duoPlan.role+' · Ziel '+duoPlan.targetName+' · Partner-Einsatz '+duoPlan.partnerCommitted+' · Hilfebedarf '+(duoPlan.needHelp?'JA':'nein')):'Kein bestätigter Team-/Duo-Partner'}</div>
       <div>Gegnerischer Sieg: ${victoryThreat?escapeHTML(victoryThreat.name+' · '+victoryThreat.progress.toFixed(1)+'% / '+victoryThreat.threshold+'%'+(victoryThreat.urgent?' · WARNUNG':'')):'Keine belegbare Schwelle / kein Gegner'}</div>
       ${[...opponentProfiles.values()].slice(0,8).map(p=>'<div>'+escapeHTML(p.name+' · '+p.profile+' · '+Math.round(p.confidence*100)+'% Beobachtungssicherheit')+'</div>').join('')}
       <div style="margin-top:5px"><b>Entscheidungs-Timeline</b>${decisionTimeline.slice(-8).reverse().map(d=>'<div style="padding:3px 0;border-top:1px solid #354d66">'+escapeHTML('Tick '+d.tick+' · '+d.why)+(d.alternatives.length?'<br><span style="color:#9bd0e4">'+escapeHTML(d.alternatives.join(' | '))+'</span>':'')+'</div>').join('')}</div>
