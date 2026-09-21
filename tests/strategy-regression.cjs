@@ -85,8 +85,11 @@ function boot(benchmarkOptions={}) {
     'setCancelCtor:C=>ctors.cancel=C,setTroopSnapshot:t=>troopSnapshot=t,setCtor:(key,C)=>ctors[key]=C,',
     'setMode:m=>strategic.mode=m,setAllianceCtor:C=>ctors.alliance=C,setHostilePressure:t=>lastHostilePressure=t,',
     'setNukePending:p=>nukePending=p,setMonitorSession:x=>monitorSession=x,spendBudget,commitGoldSpend,',
+    'targetOpportunityCheck,reportAttackBlocks,earlyCrisis,landingFailure,neuralModelInfo,',
+    'setPendingBoat:p=>pendingBoat=p,',
     'setPerf:(combat,border,economy)=>runtime={...runtime,combatMs:combat,borderMs:border,economyMs:economy},',
-    'state:()=>({economicPending,pendingAttack,attackReceipts,warState,lastBattle,gameEnd,diagnostics,forecastAudits,incomeAttribution,spawnState,spawnCache,spawnJob,economicStatus,failedEconomyProbes,investmentStatus,pendingBoat,pendingWarship,marineStats,portProbeFailures,navalSiteNegative:[...navalSiteNegative],strategic,winStatus,opponentProfiles:[...opponentProfiles.values()],operation,duoPlan,victoryThreat,decisionTimeline,incomeStatus,fleetStatus,strategicTelemetry,defenseStatus,defenseStats,autoTuning,nukeShots,nukeAttempts,nukeUnconfirmed,nukePending,lastHostilePressure,lastProposalTick,diplomacyStatus,diplomacyPending:[...diplomacyPending.values()],retreatRequests:[...retreatRequests.values()]}),opts};'
+    'state:()=>({economicPending,pendingAttack,attackReceipts,warState,lastBattle,gameEnd,
+      attackBlockReport,crisisTrend,landingFailures:[...landingFailures],neuralEvidence,diagnostics,forecastAudits,incomeAttribution,spawnState,spawnCache,spawnJob,economicStatus,failedEconomyProbes,investmentStatus,pendingBoat,pendingWarship,marineStats,portProbeFailures,navalSiteNegative:[...navalSiteNegative],strategic,winStatus,opponentProfiles:[...opponentProfiles.values()],operation,duoPlan,victoryThreat,decisionTimeline,incomeStatus,fleetStatus,strategicTelemetry,defenseStatus,defenseStats,autoTuning,nukeShots,nukeAttempts,nukeUnconfirmed,nukePending,lastHostilePressure,lastProposalTick,diplomacyStatus,diplomacyPending:[...diplomacyPending.values()],retreatRequests:[...retreatRequests.values()]}),opts};'
   ].join('\n');
   vm.runInNewContext(source.replace(anchor, expose + '\n' + anchor), context, {timeout:2000});
   win.__test.setup(game, {emit:event=>sent.push(event)}, {attack:Attack, build:Build});
@@ -2894,6 +2897,74 @@ function boot(benchmarkOptions={}) {
     x.game.updatesSinceLastTick=()=>({winner:[
       {winner:['team','Red'],allPlayersStats:{}}]});
     assert.equal(x.b.gameOutcome(x.game,x.me).outcome,'defeat');
+  });
+
+  await check('1.19.5 records exact land-war rejections without granting attacks',()=>{
+    const x=boot(),weak={id:'weak',opponent:x.weak,front:10,tiles:[5]},
+      strong={id:'strong',opponent:x.strong,front:10,tiles:[6]};
+    const s=x.b.military(x.me,[weak,strong]);
+    const unknown={...weak,opponent:{...x.weak,troops:()=>undefined}};
+    assert.equal(x.b.targetOpportunityCheck(x.me,[unknown],s,unknown).reason,
+      'unknown-troops');
+    x.b.setWar('strong','strong');
+    const report=x.b.reportAttackBlocks(x.me,[weak,strong],s,
+      {readiness:{ready:true,reason:'Kriegsfreigabe'}},[],300);
+    assert.equal(report.counts['war-lock'],1);
+    assert(report.targets.some(t=>t.target==='weak'&&t.reason==='war-lock'));
+    assert.equal(x.sent.length,0,'diagnostic never sends attack');
+    assert.equal(x.b.diagnosticSnapshot().attackBlockReport.tick,300);
+  });
+  await check('1.19.5 warns on recent territory plus structure loss',()=>{
+    const x=boot();let structures=[
+      asset('City',5000,1),asset('Factory',5020,2),asset('Port',5040,3)];
+    x.me.units=()=>structures;x.setLand(10000);
+    x.b.sampleTroops(300,x.me);
+    x.setTick(450);x.setLand(9100);structures=structures.slice(0,2);
+    x.b.sampleTroops(450,x.me);
+    const trend=x.b.state().crisisTrend;
+    assert(trend.lostLand>=900&&trend.lostAssets===1);
+    assert(x.b.state().diagnostics.some(r=>r.kind==='crisis_early_warning'));
+    x.setTick(900);
+    x.b.sampleTroops(900,x.me);
+    assert.equal(x.b.state().crisisTrend,null,'recent warning expires');
+  });
+  await check('1.19.5 repeated landing failures lengthen same-target cooldown',()=>{
+    const x=boot(),boat={key:'player:weak',dest:5};
+    x.b.landingFailure(boat,300,5,'ship-disappeared');
+    const first=x.b.state().landingFailures[0][1];
+    x.b.landingFailure(boat,450,5,'ship-disappeared');
+    const second=x.b.state().landingFailures[0][1];
+    assert.equal(first.count,1);assert.equal(second.count,2);
+    assert(second.tick+280+second.count*180>first.tick+280+first.count*180);
+    assert(x.b.state().diagnostics.some(r=>r.kind==='landing_failure_guard'));
+  });
+  await check('1.19.5 stalls move non-threat economy toward City and Factory',()=>{
+    const x=boot();x.setTick(2400);x.setLand(6200);
+    const units=['City','City','Factory','Factory'].map((type,i)=>
+      asset(type,5000+i*20,i+1));
+    x.me.units=()=>units;
+    const before=x.b.economicNeeds(x.me,units,[]).list;
+    x.b.setEconFails(6);
+    const after=x.b.economicNeeds(x.me,units,[]).list;
+    for(const type of ['City','Factory']){
+      const first=before.find(e=>e.type===type);
+      const next=after.find(e=>e.type===type);
+      if(first&&next)assert(next.score>=first.score+100,type);
+    }
+  });
+  await check('1.19.5 exported neural fingerprint distinguishes zero inference',()=>{
+    const x=boot();
+    const missing=x.b.neuralModelInfo();
+    assert.equal(missing.loaded,false);
+    const m={schema:4,arch:'24x24x16-tanh',weights:Array(1000).fill(0)};
+    x.b.setNeural(m);
+    const detail=x.b.neuralModelInfo();
+    assert.equal(detail.loaded,true);assert.equal(detail.nonzeroWeights,0);
+    const result=x.b.neuralStrategicSignals(x.me,x.b.military(x.me,[]),300);
+    assert(result&&Object.values(result).every(v=>v===0));
+    const proof=x.b.diagnosticSnapshot().neuralEvidence;
+    assert.equal(proof.calls,1);assert.equal(proof.nonzero,0);
+    assert.match(proof.model.fingerprint,/^fnv1a-/);
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
