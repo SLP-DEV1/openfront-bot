@@ -889,8 +889,10 @@
   // Duo Relay only exchanges observations. The real GameView remains
   // authoritative for an established alliance/team relation.
   function actualFriendly(p,me){
-    try{return p?.id?.()===me.id()||p.isFriendly?.(me)||me.isFriendly?.(p)||
-      me.isOnSameTeam?.(p);}catch(_){return false;}
+    // Keep the non-Duo path byte-for-byte equivalent in meaning to the
+    // pre-1.20 friendship test; Duo-specific protection is layered below.
+    try{return p?.id?.()===me.id()||p.isFriendly?.(me)||me.isFriendly?.(p);}
+    catch(_){return false;}
   }
   const duoID=v=>typeof v==='string'&&v.length>=1&&v.length<=128&&
     /^[a-zA-Z0-9_.:@-]+$/.test(v);
