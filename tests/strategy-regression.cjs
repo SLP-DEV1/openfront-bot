@@ -74,7 +74,7 @@ function boot(benchmarkOptions={}) {
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
     'sampleTroops,navalHomeRisk,navalRouteRisk,diagnosticSnapshot,learnFinish,economicDefensePressure,observeAttackOrigins,',
     'strategicDirector,economyPosture,observeOpponents,opponentTrend,observeHumanProfiles,observeVictoryThreat,coordinateDuo,planOperation,decisionNote,navalCommitmentRatio,landingThirdPartyRisk,targetHomeRatio,matchContext,rankedDuo,duoFocus,duoBattleCredit,railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,frontPressureForecast,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,offensiveCommitment,globalNavalHomeGuard,observeFronts,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,samBuildAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,tradePolicy,tradeIntentPath,sendTradeToggle,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,allianceOfferPath,sendAllianceOffer,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
-    'setBudget:n=>actions=Array(n).fill(Date.now()),',
+    'setBudget:n=>actions=Array(n).fill(Date.now()),setLastEmission:n=>lastEmission=n,',
     'setNeural:m=>{neuralModel=neuralValidate(m);opts.neuralEnabled=!!neuralModel;neuralPolicyCache={key:null,output:null};},neuralStrategicSignals,neuralChannel,',
     'setPortBackoff:(fail,tick)=>{portProbeFailures=fail;lastPortRetryTick=tick;},',
     'setWarWait:n=>warWaitSince=n,setEconFails:n=>failedEconomyProbes=n,',
@@ -3569,7 +3569,7 @@ function boot(benchmarkOptions={}) {
     x.b.setWar('strong','strong');
     assert.equal(await x.b.tradePolicy(x.me,300),true);
     assert.equal(x.sent[0].action,'start');embargoed=true;
-    x.b.setWar(null,'—');x.setTick(500);
+    x.b.setWar(null,'—');x.setTick(500);x.b.setLastEmission(0);
     assert.equal(await x.b.tradePolicy(x.me,500),true);
     assert.equal(x.sent[1].action,'stop');
     assert.equal(x.sent[1].target,x.strong);
@@ -3599,7 +3599,8 @@ function boot(benchmarkOptions={}) {
     x.b.setCtor('donateTroops',class Donate{
       constructor(partner,amount){this.partner=partner;this.amount=amount;}
     });
-    x.strong.troops=()=>200000;
+    x.me.incomingAttacks=()=>[
+      {id:'own-danger',attackerID:'strong',troops:20000,retreating:false}];
     assert.equal(x.b.teamSupport(x.me,300,x.b.military(x.me,[])),false);
     assert.equal(x.sent.length,0);
   });
