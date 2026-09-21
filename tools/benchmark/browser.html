@@ -1,28 +1,13 @@
 <!doctype html><html lang="de"><meta charset="utf-8"><title>AggroBot Match-Test</title>
-<style>body{margin:0;background:#111827;color:#e5e7eb;font:15px system-ui}header{padding:16px}button{padding:10px 18px;margin-right:12px}iframe{width:100%;height:76vh;border:0}pre{white-space:pre-wrap;font-size:12px}#status{font-weight:bold}.coach{padding:14px;margin:10px 16px;background:#1f2937;border:1px solid #374151;border-radius:10px}.coach pre{max-height:260px;overflow:auto}.coach small{color:#9ca3af}</style>
+<style>body{margin:0;background:#111827;color:#e5e7eb;font:15px system-ui}header{padding:16px}button{padding:10px 18px;margin-right:12px}iframe{width:100%;height:76vh;border:0}pre{white-space:pre-wrap;font-size:12px}#status{font-weight:bold}</style>
 <header><h1>AggroBot – lokaler Match-Test</h1><p>Originaler OpenFront-Client mit Spiel-Worker. Aufzeichnung erfolgt automatisch auf dem lokalen Testserver.</p>
 <button id="start">Testpartie starten</button><button id="stop" disabled>Beenden und sichern</button>
-<p id="status">Bereit</p><pre id="details"></pre></header><section class="coach" aria-live="polite"><h2>Qwen Code – Live-Spielanalyse</h2><p id="qwen-state">Verbindung wird geprüft …</p><pre id="qwen-reviews">Noch keine Beobachtungen.</pre><small>KI-Hinweise aus Spiel-Telemetrie, nicht aus Screenshots. Keine direkten Spielaktionen oder Codeänderungen. Nach Spielende: qwen-live-report.md im Matchordner.</small></section><div id="game"></div>
+<p id="status">Bereit</p><pre id="details"></pre></header><div id="game"></div>
 <script>
 const config=/*BENCHMARK_CONFIG*/;
 const $=id=>document.getElementById(id);
 $('details').textContent=JSON.stringify(config.metadata,null,2);
 let frame,bot,pending=[],busy=false,done=false,spawned=false,started=false,poll,startTime,lastCheckpoint=0;
-async function coachStatus(){
-  try{
-    const response=await fetch('/__aggrobot/qwen-status',{headers:{'X-Benchmark-Token':config.token}});
-    if(!response.ok)throw Error('HTTP '+response.status);
-    const q=await response.json();
-    $('qwen-state').textContent=!q.enabled?'Qwen deaktiviert – AGGROBOT_LIVE_QWEN=1 setzen':
-      'Qwen '+(q.busy?'analysiert gerade':'bereit')+(q.finished?' · Partie beendet':'')+
-      (q.report?' · Bericht: '+q.report:'')+(q.lastError?' · Fehler: '+q.lastError:'');
-    $('qwen-reviews').textContent=q.reviews?.length?q.reviews.map(r=>
-      (r.final?'SPIELENDE':'LIVE')+' · '+r.at+' · '+r.severity.toUpperCase()+
-      '\n'+r.summary+'\nBelege: '+r.evidence.join('; ')+
-      '\nPrüfen: '+r.recommendation).join('\n\n'):'Noch keine Beobachtungen.';
-  }catch(e){$('qwen-state').textContent='Qwen-Status nicht erreichbar: '+String(e);}
-}
-setInterval(coachStatus,3000);coachStatus();
 const post=async(route,data)=>{
   const response=await fetch('/__aggrobot/'+route,{method:'POST',headers:{'Content-Type':'application/json','X-Benchmark-Token':config.token},body:JSON.stringify(data)});
   if(!response.ok)throw Error('Aufzeichnung fehlgeschlagen: '+await response.text());
