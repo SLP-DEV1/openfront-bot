@@ -59,12 +59,13 @@ function exchange(v,now=Date.now()){
   if(existing&&existing.instance!==v.instance&&now-existing.updated<TTL)
     return {status:409,body:{error:'duplicate-player-id'}};
   if(v.auto===true){
+    // The same browser may obtain a new PlayerID while a previous
+    // record is still alive. Replace that record without a 10s stall.
+    for(const [id,p] of room)
+      if(id!==v.ownID&&p.instance===v.instance)room.delete(id);
     const other=[...room.entries()].filter(([id,p])=>
       id!==v.ownID&&p.instance!==v.instance);
     if(other.length>=2)return {status:409,body:{error:'room-has-more-than-two'}};
-    // The same instance cannot advertise two different current PlayerIDs.
-    if([...room.entries()].some(([id,p])=>id!==v.ownID&&p.instance===v.instance))
-      return {status:409,body:{error:'instance-already-registered'}};
     room.set(v.ownID,{instance:v.instance,partnerID:null,
       state:v.state,updated:now});
     const peers=[...room.entries()].filter(([id,p])=>
