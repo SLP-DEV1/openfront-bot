@@ -1,17 +1,23 @@
 # OpenFront Solo AggroBot
 
-**Version 1.19.6** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) · Singleplayer, Public und Private · [offene Validierungspunkte](https://github.com/SLP-DEV1/openfront-bot/issues/12)
+**Version 1.20.0** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) · Singleplayer, Public und Private · [offene Validierungspunkte](https://github.com/SLP-DEV1/openfront-bot/issues/12)
 
 Der Bot erkennt neue spielbare Matches, wählt bei manuellem Spawn eine Position und steuert Expansion, Verteidigung, Wirtschaft, Flotte, Handel und Diplomatie. Die trainierte Neural-Policy kann optional *begrenzt* mitentscheiden; es gibt keine localhost-Brain- oder Live-Qwen-Anbindung mehr. **Es gibt keine belegte garantierte Impossible- oder Multiplayer-Siegquote.**
 
+## Neuer Duo-Modus (zwei Browser am selben PC)
+
+Für zwei kontrollierte Spieler in **derselben Partie**: einmal `Start_Live_Duo.bat` starten, dann in beiden Bot-Panels unter **🤝 Duo-Modus** die **exakte PlayerID des jeweils anderen** sowie **denselben Raumcode** eingeben und „Lokales Duo“ aktivieren. Der Relay läuft ausschließlich auf `127.0.0.1:8767`; keine Accounts oder Spielbefehle passieren den Relay. Er teilt Spawn-Vorschläge, Bereitschaft, Ziel und Hilfebedarf. Der Bot schützt den eingetragenen Partner vor versehentlichem Angriff und führt Bündnisse nur über die reguläre Spielmechanik aus. **Eine Allianz gilt erst als bestätigt, wenn das Spiel sie anzeigt.** Jeder Bot behält seine Reserve-/Worker-/Verteidigungsprüfung; bei Relay-Ausfall spielt er autonom weiter. [Vollständige Anleitung und Grenzen](docs/LOCAL_DUO.md).
+
 ## Schnellstart / Update
+
+**1.20.0 – Lokaler Duo-Relay:** Zwei Browser/Profiles auf einem PC können sich anhand wechselseitiger PlayerIDs und eines gemeinsamen Raumcodes verbinden, getrennte sichere Spawngebiete bevorzugen, legale Allianzen austauschen und Ziele/Rollen/Hilfebedarf als unverbindliche Planungsabsichten teilen. Bei Ausfall der lokalen Verbindung bleibt jeder Bot unabhängig. Keine garantierte Live-Spielentscheidung oder Multiplayer-Erfolgsquote.
 
 **1.19.6 – Erstes wirtschaftliches Kerngebäude:** Der Bot unterscheidet einen vom Worker bestätigten Preis von einer tatsächlich legalen Baustelle. Bei realer Unterfinanzierung wird der Preis pro City/Factory und der fehlende Betrag gespeichert; unnötige Worker-Abfragen werden bis zur erneuten Finanzierung/Preisprüfung begrenzt. Ein dokumentierter Preis für City/Factory bleibt vor freiwilligen Schiffen, Nukes und Goldspenden geschützt; dringende Verteidigung und SAM-Gefahren haben Vorrang. Baufehler werden nach Preis, Worker-Angebot, Standort und Goldbudget getrennt diagnostiziert. Die Angriffsdiagnose nennt die tatsächlichen Reserveanteile, die Neural-Diagnose die Basis- und Policy-Reihung statt bloß eines Aktions-Deltas. **Diese Änderung erzeugt keine zusätzlichen Gold-Einnahmen, behauptet keinen legalen Standort und garantiert keinen Multiplayer-Sieg.**
 
 
 ## Neural-Live-Version (Impossible Run 3)
 
-Für den **experimentellen Live-Test** steht eine separate Tampermonkey-Datei bereit: [OpenFront_AggroBot_Impossible_Run3.user.js](./OpenFront_AggroBot_Impossible_Run3.user.js). Sie basiert auf AggroBot **1.19.6**, bündelt den [Schema-4-Champion von Impossible Run 3](./docs/training-analysis-20260921/schema4-impossible-world-europe-20260920-run3/champion.json) (1.000 Gewichte) direkt im Userscript und benötigt keinen Brain-Server, Qwen, Trainer oder Modellabruf im Browser. Der normale Bot bleibt unverändert.
+Für den **experimentellen Live-Test** steht eine separate Tampermonkey-Datei bereit: [OpenFront_AggroBot_Impossible_Run3.user.js](./OpenFront_AggroBot_Impossible_Run3.user.js). Sie basiert auf AggroBot **1.20.0**, bündelt den [Schema-4-Champion von Impossible Run 3](./docs/training-analysis-20260921/schema4-impossible-world-europe-20260920-run3/champion.json) (1.000 Gewichte) direkt im Userscript und benötigt keinen Brain-Server, Qwen, Trainer oder Modellabruf im Browser. Der normale Bot bleibt unverändert.
 
 Für den Test das **vollständige** Run-3-Userscript in Tampermonkey installieren, alle anderen AggroBot-Userscripts deaktivieren und OpenFront neu laden. Im Panel müssen **Vollautonom** und **Neurales Netz** aktiv sein; unter „Neurales Modell“ muss „Strategische Policy v4 (24 Signale)“ erscheinen. Der Schalter ohne geladenes Modell reicht nicht. Auto-Start und Unmöglich-Taktik sind optionale Bot-Einstellungen. Bei einer neu installierten Policy v4 wird der Neural-Schalter automatisch aktiviert, sofern nicht bereits eine gespeicherte Einstellung vorliegt.
 
