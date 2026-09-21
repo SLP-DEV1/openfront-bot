@@ -3172,6 +3172,49 @@ function boot(benchmarkOptions={}) {
     assert(dist>=28&&dist<=135);
     assert(x.b.spawnTileValid(x.game,candidate.tile));
   });
+  await check('1.20.1 local alliance credits observed attacks only',()=>{
+    const x=boot();
+    x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{
+      target:'strong',ready:true,needHelp:false,available:40000,
+      reserve:12000,allied:true,strikeTick:null}});
+    x.weak.isFriendly=()=>true;
+    x.weak.outgoingAttacks=()=>[{targetID:'strong',troops:12000,retreating:false}];
+    assert.equal(x.b.duoFocus(x.me,x.strong).on,12000);
+    assert.equal(x.b.duoBattleCredit(x.me,x.strong),6600);
+    x.weak.outgoingAttacks=()=>[];
+    assert.equal(x.b.duoBattleCredit(x.me,x.strong),0);
+  });
+  await check('1.20.1 follower uses ready partners scheduled tick',()=>{
+    const x=boot();
+    x.b.setDuo('strong','KITSU_DUO_123',{id:'strong',state:{
+      target:'weak',ready:true,needHelp:false,available:40000,
+      reserve:12000,allied:true,strikeTick:345}});
+    x.strong.isFriendly=()=>true;
+    const state=x.b.military(x.me,[]);
+    const plan=x.b.coordinateDuo(x.me,state,300);
+    assert.equal(plan.target,'weak');
+    assert.equal(plan.strikeTick,345);
+    assert.equal(x.b.duoState().strikeTick,345);
+    x.b.setDuo('strong','KITSU_DUO_123',{id:'strong',state:{
+      target:'weak',ready:false,needHelp:false,available:40000,
+      reserve:12000,allied:true,strikeTick:345}});
+    assert.equal(x.b.coordinateDuo(x.me,state,301).strikeTick,null);
+  });
+  await check('1.20.1 FFA ally receives safe emergency troop aid',()=>{
+    const x=boot();
+    x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{
+      target:null,ready:false,needHelp:true,available:0,
+      reserve:0,allied:true,strikeTick:null}});
+    x.weak.isFriendly=()=>true;
+    x.weak.incomingAttacks=()=>[{troops:20000,retreating:false,attackerID:'strong'}];
+    x.weak.troops=()=>4000;
+    x.me.canDonateTroops=()=>true;
+    x.b.setCtor('donateTroops',class DonateTroops{
+      constructor(partner,amount){this.partner=partner;this.amount=amount;}
+    });
+    assert.equal(x.b.teamSupport(x.me,300,x.b.military(x.me,[])),true);
+    assert.equal(x.sent[0].partner,x.weak);
+  });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
 })();
