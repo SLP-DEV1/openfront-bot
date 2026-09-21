@@ -29,22 +29,6 @@ jobs:
       - name: Test hybrid learning
         run: node tests/learning-regression.cjs
 
-      - name: Check Brain modules and tests
-        run: |
-          node --check brain/learning.cjs
-          node --check brain/store.cjs
-          node --check brain/qwen.cjs
-          node --check brain/server.cjs
-          node --check brain/import.cjs
-          node --check brain/train.cjs
-          node --check tests/brain-regression.cjs
-          node tests/brain-regression.cjs
-          node --check tests/qwen-regression.cjs
-          node tests/qwen-regression.cjs
-          node --check tests/qwen-triggers.cjs
-          node tests/qwen-triggers.cjs
-          python3 -m py_compile brain/policy_train.py
-
       - name: Check benchmark tools
         run: |
           node --check tools/benchmark/engine-match.mjs
@@ -53,13 +37,9 @@ jobs:
           node tests/benchmark-regression.cjs
           node --check tools/benchmark/impossible-matrix.mjs
           node tools/benchmark/impossible-matrix.mjs --dryRun true > /dev/null
-      - name: Test visible browser Qwen coach
+      - name: Test visible browser backend (no Qwen coach)
         run: |
-          node --check tools/benchmark/live-qwen.mjs
-          node --check tools/benchmark/propose-live-fix.mjs
           node --check tools/benchmark/serve-browser.mjs
-          node --check tests/live-qwen-regression.cjs
-          node tests/live-qwen-regression.cjs
           node --check tools/benchmark/openfront-backend.mjs
           node --check tests/openfront-backend-regression.cjs
           node tests/openfront-backend-regression.cjs

@@ -7,5 +7,6 @@ Confirmed `victory` / `defeat` are stored as metadata on a completed game; incom
 
 Run `node tests/learning-regression.cjs` for the isolated storage/context/reward/bounds test. Note that localStorage is browser-profile-local and is not imported into standalone engine matches automatically.
 
-## Optionaler Brain ab v1.11.0
-Das lokale Browser-Lernen oben bleibt unverändert und funktioniert ohne Netzwerk. Zusätzlich gibt es den optionalen, standardmäßig deaktivierten [Node.js-/SQLite-Brain](BRAIN.md). Er speichert **separate**, matchübergreifende Kontextdaten, liest offline importierte echte Engine-Beobachtungen und gibt ausschließlich begrenzte Parametervorschläge zurück. Der Brain ersetzt weder Sicherheitsprüfungen noch die normalen Angriffs-/Bau-/Verteidigungsregeln. Der Python-Kandidatenbericht wird nicht automatisch übernommen. Eine validierte Gewinnratenverbesserung oder Self-Play-Trainingsliga wird ausdrücklich nicht behauptet.
+## Abgrenzung zum entfernten Server-Brain
+
+Das begrenzte Browser-Lernen funktioniert weiterhin ohne Netzwerk. Der frühere optionale Node.js-/SQLite-Brain und der Live-Qwen-Berater wurden ab AggroBot 1.19.3 entfernt. Dieses Modul verändert keine Schema-4-Gewichte; das Offline-Neural-Training bleibt separat verfügbar.

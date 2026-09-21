@@ -1,10 +1,12 @@
 # OpenFront Solo AggroBot
 
-**Version 1.19.2** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) · Singleplayer, Public und Private · [offene Validierungspunkte](https://github.com/SLP-DEV1/openfront-bot/issues/12)
+**Version 1.19.3** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) · Singleplayer, Public und Private · [offene Validierungspunkte](https://github.com/SLP-DEV1/openfront-bot/issues/12)
 
-Der Bot erkennt neue spielbare Matches, wählt bei manuellem Spawn eine Position und steuert Expansion, Verteidigung, Wirtschaft, Flotte, Handel und Diplomatie. Optional können ein lokaler Brain und eine trainierte Neural-Policy *begrenzt* mitentscheiden. **Es gibt keine belegte garantierte Impossible- oder Multiplayer-Siegquote.**
+Der Bot erkennt neue spielbare Matches, wählt bei manuellem Spawn eine Position und steuert Expansion, Verteidigung, Wirtschaft, Flotte, Handel und Diplomatie. Die trainierte Neural-Policy kann optional *begrenzt* mitentscheiden; es gibt keine localhost-Brain- oder Live-Qwen-Anbindung mehr. **Es gibt keine belegte garantierte Impossible- oder Multiplayer-Siegquote.**
 
 ## Schnellstart / Update
+
+**1.19.3:** Externen localhost-Brain und Qwen-Live-Berater samt Token/UI aus dem Bot und lokalen Benchmark entfernt. Neural-Policy, Browser-Lernen, Offline-Training und Qwen Code als optionales Offline-Trainingsreview bleiben erhalten. Ein möglicherweise noch laufender alter Brain-Prozess wird durch ein Git-Update nicht automatisch beendet.
 
 **1.19.2 – Korrekturen aus der NYC-Diagnose:** Eingehende Friedensangebote können bei militärischem Druck trotz aktivem Konflikt angenommen werden. Moderate, anhaltende oder durch starke Gegner gestützte Angriffe geben das Verteidigungsbudget früher frei. Ein zentrales Befehlsjournal unterscheidet korrelierte Bot-Angriffe von Angriffen ungeklärter Herkunft. Details und Prüfgrenzen: [Diagnosekorrekturen 1.19.2](docs/DIAGNOSE_FIXES_1.19.2.md).
 
@@ -37,13 +39,15 @@ Der Bot erkennt neue spielbare Matches, wählt bei manuellem Spawn eine Position
 
 ## Panel, Diagnose und Live-Monitor
 
-Im Bot-Panel findest du Status, Automatik, Brain/Neural-Opt-in, Gegneranalyse, Operationen, 2v2-Fokus, Sieg-Frühwarnung und die letzten Entscheidungen. **„Diagnose JSON“ vor Neuladen/Matchwechsel exportieren**; dort sind Profile, Operation, letzte Timeline-Einträge, Matchzustand und tatsächlich beobachtete Ausführungen dokumentiert.
+Im Bot-Panel findest du Status, Automatik, Neural-Opt-in und lokales Browser-Lernen, Gegneranalyse, Operationen, 2v2-Fokus, Sieg-Frühwarnung und die letzten Entscheidungen. **„Diagnose JSON“ vor Neuladen/Matchwechsel exportieren**; dort sind Profile, Operation, letzte Timeline-Einträge, Matchzustand und tatsächlich beobachtete Ausführungen dokumentiert.
 
-Für eine lokale Live-Monitor-Ansicht: `Start_Live_Monitor.bat`. Siehe [LIVE_MONITOR.md](docs/LIVE_MONITOR.md). Für einen **sichtbaren lokalen Singleplayer-Test** mit nicht eingreifendem Qwen-Coach: `Start_Live_Qwen.bat` und [LIVE_QWEN.md](docs/LIVE_QWEN.md). Der Qwen-Coach sendet keine eigenen Spielbefehle.
+Für eine lokale Live-Monitor-Ansicht: `Start_Live_Monitor.bat`. Siehe [LIVE_MONITOR.md](docs/LIVE_MONITOR.md). Der sichtbare lokale Browser-Benchmark bleibt ohne Qwen-Berater verfügbar.
 
-## Optionaler lokaler Brain und Neural-Training
+## Neural-Modell und Offline-Training
 
-Für die **Spielsteuerung** ist weder Brain noch Node.js erforderlich. Der Brain ist standardmäßig aus. Mit Node.js 24: `node brain/server.cjs` starten, den ausgegebenen Token im Bot-Panel eintragen und Brain explizit aktivieren. Qwen-Beratung ist separat opt-in und ändert nicht eigenmächtig den Live-Code. [BRAIN.md](docs/BRAIN.md) · [LEARNING.md](docs/LEARNING.md)
+Der Live-Bot benötigt weder einen lokalen Brain-Server noch Qwen, Node.js oder einen Token. Die alten localhost-Brain-/Qwen-Regler wurden aus dem Panel entfernt. Das begrenzte, unabhängige Browser-Lernen über den Schalter „Lernen“ bleibt erhalten: [LEARNING.md](docs/LEARNING.md).
+
+**Qwen Code ist weiterhin optional für Offline-Training** (Trainer-Review zwischen Generationen). Das ist keine Qwen-Beratung während einer laufenden Partie.
 
 Das experimentelle lokale Training verwendet die **offizielle OpenFront-Engine/GameView**, getrennte Training-/Evaluations-Seeds und überprüfte Modell-/Bot-/Engine-Hashes. Ein Kandidat wird nicht allein wegen hoher Trainingspunkte zum Champion. Vorhandene Ausgabeverzeichnisse dürfen bei Holdouts nicht wiederverwendet werden.
 
@@ -72,6 +76,6 @@ node tests/neural-regression.cjs
 node tests/holdout-regression.cjs
 ~~~
 
-GitHub Actions führt zusätzlich Brain-/Qwen-/Benchmark-Prüfungen sowie gepinnte Engine-/Paired-Workflows aus: [Actions](https://github.com/SLP-DEV1/openfront-bot/actions). Ein grüner Workflow oder ein Tick-Limit ist **kein bestätigter Spielsieg**. Ein reiner Engine-Harness ersetzt nicht den öffentlichen Browser mit echten Web-Workern, Latenzen und Menschen.
+GitHub Actions führt zusätzlich Benchmark-, Offline-Trainer- und Qwen-Trainingsreview-Prüfungen sowie gepinnte Engine-/Paired-Workflows aus: [Actions](https://github.com/SLP-DEV1/openfront-bot/actions). Ein grüner Workflow oder ein Tick-Limit ist **kein bestätigter Spielsieg**. Ein reiner Engine-Harness ersetzt nicht den öffentlichen Browser mit echten Web-Workern, Latenzen und Menschen.
 
 **Noch offene Abnahme:** [Issue #12 – reproduzierbare vollständige Matches, Browser-Szenarien, Rail-/Attack-Proxies](https://github.com/SLP-DEV1/openfront-bot/issues/12). Alte Versionsnotizen stehen im [README-Archiv](docs/README_HISTORY.md) und sind **keine aktuellen Installationsanweisungen**.
