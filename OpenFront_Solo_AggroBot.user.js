@@ -5221,7 +5221,9 @@
   function teamSupport(me,tick,s){
     const peer=duoTrustedPeer();
     const local=peer&&actualFriendly(peer.player,me)?peer:null;
-    if((winStatus.mode!=='Team'&&!local)||tick-lastDonation<300||
+    const warning=local?.state?.warning||0;
+    const donationCooldown=local?(warning>=2?90:warning>=1?160:240):300;
+    if((winStatus.mode!=='Team'&&!local)||tick-lastDonation<donationCooldown||
       !actionBudget())return false;
     const team=me.team?.();
     if((team===null||team===undefined)&&!local)return false;
@@ -5238,20 +5240,26 @@
       const ownDanger=duoWarningLevel(s,tick)>0;
       // Donating from two symmetric bots must not form a back-and-forth
       // loop. Only donate on observed pressure and concrete troop shortage.
+      const critical=warning>=2||inbound>partnerHome*.25;
+      const recoveryNeed=warning>=2&&inbound===0&&s.home>partnerHome*1.35?
+        Math.min(partnerHome*.20,s.home*.07):0;
       const shortage=Math.max(0,inbound*1.55-partnerHome,
-        inbound>partnerHome*.08?inbound*.15:0);
-      const floor=Math.max(s.reserve,s.incoming*1.5,s.strongest*.60,s.home*.35);
+        inbound>partnerHome*.06?inbound*.18:0,recoveryNeed);
+      const floor=Math.max(s.reserve,s.incoming*1.7,
+        s.strongest*(critical?.72:.60),s.home*(critical?.42:.35));
       const safe=Math.max(0,Math.floor(s.home-floor));
-      const amount=Math.floor(Math.min(shortage,s.available*.22,
-        s.home*.10,safe));
-      if(!ownDanger&&inbound>partnerHome*.08&&amount>=1000&&
+      const amount=Math.floor(Math.min(shortage,
+        s.available*(critical?.32:.22),s.home*(critical?.14:.10),safe));
+      if(!ownDanger&&(inbound>partnerHome*.06||recoveryNeed>=1000)&&
+        amount>=1000&&
         ctors.donateTroops&&(!me.canDonateTroops||me.canDonateTroops(partner))&&
         send('donateTroops',[partner,amount],
           'DUO · TEAMHILFE → '+nameOf(partner))){
         lastDonation=tick;
         telemetry('duo_donation','Notfallhilfe gegen beobachtete Partnerfront',
-          {partner:duo.partnerID,partnerIncoming:inbound,
-            partnerHome,amount,ownHome:s.home,remaining:s.home-amount,floor});
+          {partner:duo.partnerID,partnerIncoming:inbound,warning,
+            partnerHome,amount,ownHome:s.home,remaining:s.home-amount,floor,
+            displayAmount:Math.round(amount/10)});
         return true;
       }
       // One-way economic assistance: only a clearly richer teammate with a
@@ -5807,7 +5815,9 @@
           readiness:context.readiness?.reason,ratio:s.ratio,maxTroops:s.max,growthPotential:s.growthPotential,
           victory:winStatus,victoryThreat,operation,duoPlan,
           opponentProfiles:[...opponentProfiles.values()],
-          decisions:decisionTimeline.slice(-8),income:incomeStatus,strategicTelemetry,
+          decisions:decisionTimeline.slice(-8),income:incomeStatus,
+          trade:{status:tradeStatus,stats:{...tradeStats},
+            botEmbargoes:[...botEmbargoes]},strategicTelemetry,
           attackBlockReport,crisisTrend,neuralEvidence:{...neuralEvidence,model:neuralModelInfo()},
           neuralDecisionEvidence,coreFunding,economyProbe:lastEconomyProbeReport,
            director:lastDirectorDecision,economyPosture:lastEconomyPosture,
@@ -5988,7 +5998,8 @@
       <div style="color:#a9efc9">KI-Strategie: ${escapeHTML(strategic.mode)} · ${escapeHTML(strategic.reason)} · Bau: ${escapeHTML(effectiveBuildStyle())}</div>
       <div style="color:#9bd0e4">Verteidigung: ${escapeHTML(defenseStatus)} · Rückzüge ${defenseStats.retreatsOrdered}/${defenseStats.retreatsObserved} beobachtet · unklar ${defenseStats.unknown} · unbestätigt ${defenseStats.unconfirmed}</div>
       <div style="color:#9bd0e4">Spielmodus: ${escapeHTML(winStatus.mode)} · Siegfortschritt: ${winStatus.progress===null?'unbekannt':(winStatus.progress*100).toFixed(1)+'%'} · Siegschwelle: ${winStatus.threshold===null?'unbekannt':winStatus.threshold+'%'} · Zeit: ${winStatus.remaining===null?'ohne Timer':Math.round(winStatus.remaining)+'s'} · Doomsday: ${winStatus.doomsday?'JA':'NEIN'}</div>
-      <div style="color:#9bd0e4">Handel / 60s: Bahn ${incomeStatus.train===null?'unbekannt':Math.round(incomeStatus.train)} · Schiff ${incomeStatus.trade===null?'unbekannt':Math.round(incomeStatus.trade)} · Marine: ${escapeHTML(fleetStatus)}</div>
+      <div style="color:#9bd0e4">Handel / 60s: Bahn ${incomeStatus.train===null?'unbekannt':Math.round(incomeStatus.train)} · Schiff ${incomeStatus.trade===null?'unbekannt':Math.round(incomeStatus.trade)} · ${escapeHTML(tradeStatus)} · geöffnet ${tradeStats.opened} / Embargos ${tradeStats.embargoed}</div>
+      <div style="color:#9bd0e4">Marine: ${escapeHTML(fleetStatus)}</div>
       <div style="color:#9bd0e4">Nukes: ${escapeHTML(nukeStatus)} · bestätigt ${nukeShots} / Versuche ${nukeAttempts} / unbestätigt ${nukeUnconfirmed} · SAM-Schutz ${nuclearCache?.assets?.length - nuclearCache?.uncovered?.length||0}/${nuclearCache?.assets?.length||0}</div>
       <div style="color:#9bd0e4">Allianzen: ${escapeHTML(diplomacyStatus)} · Bestätigt: ${diplomacyStats.accepted} angenommen, ${diplomacyStats.rejected} abgelehnt · ${diplomacyPending.size} ausstehend · ${diplomacyStats.offered} angeboten</div>
       </details>
@@ -6034,11 +6045,14 @@
   const interval=setInterval(step,400);
   const economyInterval=setInterval(economyStep,750);
   const diplomacyInterval=setInterval(diplomacyTick,950);
+  const tradeInterval=setInterval(()=>{tradeTick().catch(e=>{
+    tradeStatus='Handel: '+String(e?.message||e).slice(0,75);
+  });},1250);
   const nukeInterval=setInterval(nukeStep,1100);
   const duoInterval=setInterval(()=>{duoPublish().catch(e=>{
     duoLocal.status='Relay-Fehler: '+String(e?.message||e).slice(0,55);
   });},950);
-  window.addEventListener('beforeunload',()=>{clearInterval(interval);clearInterval(economyInterval);clearInterval(diplomacyInterval);clearInterval(nukeInterval);clearInterval(duoInterval);});
+  window.addEventListener('beforeunload',()=>{clearInterval(interval);clearInterval(economyInterval);clearInterval(diplomacyInterval);clearInterval(tradeInterval);clearInterval(nukeInterval);clearInterval(duoInterval);});
   if(benchmark){
     window.__OF_BENCHMARK__=Object.freeze({
       snapshot:diagnosticSnapshot,
