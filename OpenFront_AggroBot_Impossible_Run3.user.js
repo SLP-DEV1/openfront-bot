@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         OpenFront AggroBot Impossible Run3 Neural
 // @namespace    https://openfront.io/
-// @version      1.20.2
-// @description  AggroBot 1.20.2 with bundled Impossible Run3 schema-4 champion (experimental); no external Brain or Qwen.
+// @version      1.20.3
+// @description  AggroBot 1.20.3 with bundled Impossible Run3 schema-4 champion (experimental); no external Brain or Qwen.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
 // @run-at       document-start
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.20.2', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.20.3', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -984,26 +984,39 @@
       instance:duoLocal.instance,state:duoState()};
     duoLocal.lastPromise=(async()=>{
       const controller=new AbortController();
-      const timeout=setTimeout(()=>controller.abort(),1550);
+      // First browser request may wait for a local-network permission
+      // prompt. 1.55s aborted it before the user could allow it.
+      const timeout=setTimeout(()=>controller.abort(),8000);
       try{
         const response=await fetch('http://127.0.0.1:8767/duo',{
           method:'POST',mode:'cors',cache:'no-store',
           headers:{'Content-Type':'application/json'},
           body:JSON.stringify(payload),signal:controller.signal
         });
-        if(!response.ok)throw Error('HTTP '+response.status);
+        if(!response.ok){
+          const error=await response.json().catch(()=>null);
+          throw Error('HTTP '+response.status+
+            (error?.error?' · '+error.error:''));
+        }
         const data=await response.json();
         if(!opts.duoEnabled||!game||match!==duoMatchKey()||
           room!==opts.duoRoom||ownID!==safeID(myPlayer()))return;
         duoLocal.peer=data.partner||null;
         duoLocal.lastAt=data.partner?Date.now():0;
         duoLocal.status=data.partner?'Erkannt · '+data.partner.id:
+          data.reason==='different-match'?
+          'Raumcode gleich, aber Match-Kennung unterscheidet sich':
           'Warte auf zweite Browser-Instanz';
         if(data.partner)duoLocal.failures=0;
       }catch(e){
         duoLocal.failures++;duoLocal.peer=null;duoLocal.lastAt=0;
-        duoLocal.status='Relay offline / nicht erreichbar: '+
-          String(e?.message||e).slice(0,55);
+        const reason=e?.name==='AbortError'?
+          'Browser-Timeout (8s) – lokalen Netzwerkzugriff fuer openfront.io pruefen':
+          'Relay-Fehler: '+String(e?.message||e).slice(0,65);
+        duoLocal.status=reason;
+        if(duoLocal.failures===1||duoLocal.failures%10===0)
+          console.warn(PREFIX,'Duo-Verbindung:',reason,
+            'Match:',match,'Raum:',room);
       }finally{clearTimeout(timeout);}
     })();
     try{await duoLocal.lastPromise;}finally{duoLocal.lastPromise=null;}
@@ -5506,7 +5519,8 @@
       <label>Partnername (nur Anzeige)<input type="text" data-option="duoPartnerName" maxlength="80" value="${escapeHTML(opts.duoPartnerName||'')}" placeholder="z. B. KitsukamiBot2" style="box-sizing:border-box;width:100%"></label>
       <div>Partner-ID (automatisch): ${escapeHTML(duoTrustedPeer()?.id??"Warte auf Partner")}</div>
       <label>Duo-Raumcode (in beiden Browsern gleich)<input type="text" data-option="duoRoom" maxlength="64" value="${escapeHTML(opts.duoRoom)}" placeholder="z. B. KITSU_DUO_01" style="box-sizing:border-box;width:100%"></label>
-      <div>Status: ${escapeHTML(duoLocal.status)} · ${duoTrustedPeer()?'gegenseitige IDs bestätigt':'Partner nicht verbunden'}</div>
+      <div>Status: ${escapeHTML(duoLocal.status)} · ${duoTrustedPeer()?'Partner im aktuellen Match bestätigt':'Partner nicht verbunden'}</div>
+      <div style="color:#9bd0e4;font-size:10px">Matchkennung: ${escapeHTML(duoMatchKey())}</div>
       <div>Spielname: ${escapeHTML(duoTrustedPeer()?nameOf(duoTrustedPeer().player):'—')}${duoTrustedPeer()&&opts.duoPartnerName&&nameOf(duoTrustedPeer().player)!==opts.duoPartnerName?' · Name weicht von Anzeige ab (ID maßgeblich)':''}</div>
       <div>Partner: Ziel ${escapeHTML(duoTrustedPeer()?.state?.target??'—')} · verfügbar ${Math.round(duoTrustedPeer()?.state?.available||0)} · Reserve ${Math.round(duoTrustedPeer()?.state?.reserve||0)} · Hilfe ${duoTrustedPeer()?.state?.needHelp?'JA':'nein'}</div>
       <div>Gemeinsamer Plan: ${escapeHTML(duoPlan?duoPlan.role+' → '+duoPlan.targetName+(duoPlan.strikeTick!==null?' · Angriff ab Tick '+duoPlan.strikeTick:''):'Gemeinsam starten → Allianz bestätigen → Front aufteilen')}</div>
