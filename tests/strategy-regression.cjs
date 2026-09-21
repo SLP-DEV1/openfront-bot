@@ -3724,6 +3724,33 @@ function boot(benchmarkOptions={}) {
     assert(guard>0&&guard<targets,'stale borders must not enter candidate decisions');
     assert.match(source,/observedTick-tick>40/);
   });
+  await check('1.20.11 observed operation progress does not claim causality',()=>{
+    const x=boot();let land=1200;
+    x.strong.numTilesOwned=()=>land;
+    x.b.setOperation({target:'strong',type:'Front sichern',
+      since:300,initialLand:1200,lastObservedLand:1200,lastProgressTick:300,
+      successLand:900,budget:50000,spent:0});
+    land=1100;x.setTick(350);
+    x.b.planOperation(x.me,[],x.b.military(x.me,[]),350);
+    const op=x.b.state().operation;
+    assert.equal(op.lastObservedLand,1100);
+    assert.equal(op.lastProgressTick,350);
+    const proof=x.b.diagnosticSnapshot().records.find(r=>
+      r.kind==='operation_progress');
+    assert.equal(proof?.evidence,'observed-not-causal-proof');
+  });
+  await check('1.20.11 stalled operation is released only behind experiment flag',()=>{
+    const x=boot();
+    x.b.setOperation({target:'strong',type:'Front sichern',since:300,
+      initialLand:1200,lastObservedLand:1200,lastProgressTick:300,
+      successLand:900,budget:50000,spent:0});
+    x.setTick(790);x.b.opts.impossibleExperiment=false;
+    x.b.planOperation(x.me,[],x.b.military(x.me,[]),790);
+    assert.equal(x.b.state().operation?.target,'strong');
+    x.b.opts.impossibleExperiment=true;
+    x.b.planOperation(x.me,[],x.b.military(x.me,[]),790);
+    assert.equal(x.b.state().operation,null);
+  });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
 })();
