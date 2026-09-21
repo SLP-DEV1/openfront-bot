@@ -22,6 +22,11 @@ const mk=(ownID,partnerID,instance,match='v1|Public|World|Large|FFA|123|_')=>({
   assert.equal(relay.validate({...A,partnerID:'one'}),false);
   assert.equal(relay.validate({...A,state:{...A.state,target:'../bad'}}),false);
   assert.equal(relay.validate({...A,state:{...A.state,strikeTick:345}}),true);
+  assert.equal(relay.validate({...A,state:{...A.state,warning:1,warTarget:'enemy1'}}),true);
+  assert.equal(relay.validate({...A,state:{...A.state,warning:2}}),true);
+  assert.equal(relay.validate({...A,state:{...A.state,warning:3}}),false);
+  assert.equal(relay.validate({...A,state:{...A.state,warning:1.5}}),false);
+  assert.equal(relay.validate({...A,state:{...A.state,warTarget:'../unsafe'}}),false);
   assert.equal(relay.validate({...A,state:{...A.state,
     fronts:['enemy1','enemy2'],home:90000,incoming:0}}),true);
   assert.equal(relay.validate({...A,state:{...A.state,
@@ -68,7 +73,7 @@ const mk=(ownID,partnerID,instance,match='v1|Public|World|Large|FFA|123|_')=>({
   try{
     const health=await fetch('http://127.0.0.1:'+server.address().port+'/health');
     assert.equal(health.status,200);
-    assert.equal((await health.json()).version,'1.20.5');
+    assert.equal((await health.json()).version,'1.20.6');
     assert.equal((await call(A,'https://evil.example')).status,403);
     const preflight=await fetch(endpoint,{method:'OPTIONS',
       headers:{Origin:'https://play.openfront.io',
