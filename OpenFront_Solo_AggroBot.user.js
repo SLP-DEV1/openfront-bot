@@ -4611,7 +4611,9 @@
   function sendAllianceOffer(me,p,label,force=false){
     if(!opts.enabled||!opts.diplomacy||!opts.offerAlliances||
       !connected()||game.config().disableAlliances?.()===true||
-      !p?.isAlive?.()||friendly(p,me)||p.isTraitor?.()||
+      !p?.isAlive?.()||p.isTraitor?.()||
+      (friendly(p,me)&&!(duoTrustedPeer()?.id===safeID(p)&&
+        !actualFriendly(p,me)))||
       safeID(me)!==safeID(myPlayer()))return false;
     const path=allianceOfferPath();
     if(path==='intent')return send('alliance',[me,p],label,force);
