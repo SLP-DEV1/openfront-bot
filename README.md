@@ -1,10 +1,25 @@
 # OpenFront Solo AggroBot
 
-**Version 1.20.8** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) · Singleplayer, Public und Private · [offene Validierungspunkte](https://github.com/SLP-DEV1/openfront-bot/issues/12)
+**Version 1.20.9** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) · Singleplayer, Public und Private · [offene Validierungspunkte](https://github.com/SLP-DEV1/openfront-bot/issues/12)
 
 Der Bot erkennt neue spielbare Matches, wählt bei manuellem Spawn eine Position und steuert Expansion, Verteidigung, Wirtschaft, Flotte, Handel und Diplomatie. Die trainierte Neural-Policy kann optional *begrenzt* mitentscheiden; es gibt keine localhost-Brain- oder Live-Qwen-Anbindung mehr. **Es gibt keine belegte garantierte Impossible- oder Multiplayer-Siegquote.**
 
 ## Schnellstart / Update
+
+**1.20.9 – Truppenkapazität nach echter Spielmechanik:** Ein Kapazitätsengpass
+bevorzugt nun eine vom Worker freigegebene **City bzw. ein City-Upgrade**,
+nicht länger eine Factory. Laut der zu den Live-Diagnosen passenden
+[OpenFront-Engine](https://github.com/openfrontio/OpenFrontIO/blob/7c27263390d8f1976566e5c5ad9adf6fcad311b6/src/core/configuration/Config.ts#L1021)
+hängt das maximale Truppenlimit von Landfläche und fertiggestellten
+City-Leveln ab; Factories bleiben für Wirtschaft und Bahn relevant.
+Bei knapper Kapazität werden City-Bauplätze vor optionalen Hafen-/Factory-Probes
+geprüft, und der rein diskretionäre Goldpuffer verhindert keinen bereits
+bezahlbaren, legalen Kapazitätsbau. Echte Invasionen und der finale
+Worker-/Budgetcheck bleiben vorrangig. Der reproduzierte Russia-Plateau-Test
+(925.552/939.219 Engine-Truppen) sowie Vergleichsläufe mit/ohne
+Factory-Neural-Bias prüfen diese Auswahl; ein Live-Sieg ist damit nicht
+nachgewiesen. Beide Userscripts enthalten dieselbe Spiellogik.
+
 
 **1.20.8 – Handel und gegenseitige Verstärkung:** OpenFront erzeugt Hafenhandel
 automatisch; der Bot erfindet deshalb keine eigene Handelsroute. Stattdessen
