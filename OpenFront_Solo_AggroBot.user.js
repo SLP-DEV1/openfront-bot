@@ -5384,7 +5384,13 @@
         opts.fullAuto=!opts.fullAuto;
         if(opts.fullAuto){opts.autoStrategy=true;autoTuning.tick=-Infinity;}
       }else if(key==='autoStrategy'&&opts.fullAuto){opts.fullAuto=false;opts.autoStrategy=false;}
-      else if(['economy','boats','autoSpawn','defense','stopOnError','upgrades','safeMode','autoStrategy','diplomacy','offerAlliances','nukes','antiNuke','lateOffense','impossibleMode','impossibleExperiment','learningEnabled','neuralEnabled'].includes(key))opts[key]=!opts[key];
+      else if(['economy','boats','autoSpawn','defense','stopOnError','upgrades','safeMode','autoStrategy','diplomacy','offerAlliances','nukes','antiNuke','lateOffense','impossibleMode','impossibleExperiment','learningEnabled','neuralEnabled','duoEnabled'].includes(key)){
+        opts[key]=!opts[key];
+        if(key==='duoEnabled'){
+          duoLocal.peer=null;duoLocal.lastAt=0;duoLocal.match=null;
+          duoLocal.status=opts.duoEnabled?'Verbinde lokalen Relay':'AUS';
+        }
+      }
       else if(key==='plan'){opts.fullAuto=false;opts.autoStrategy=false;opts.plan=opts.plan==='Blitz'?'Adaptiv':opts.plan==='Adaptiv'?'Ökonomie':'Blitz';}
       else if(key==='buildStyle'){opts.fullAuto=false;opts.autoStrategy=false;opts.buildStyle=opts.buildStyle==='Ausgewogen'?'Wirtschaft':opts.buildStyle==='Wirtschaft'?'Defensiv':'Ausgewogen';}
       persist();lastPaint=0;paint();
@@ -5395,6 +5401,11 @@
       if(key==='reserve')opts.reserve=clamp(e.target.value,5,65);
       if(key==='actionsPerMinute')opts.actionsPerMinute=clamp(e.target.value,15,120);
       if(key==='maxTargets')opts.maxTargets=clamp(e.target.value,4,25);
+      if(key==='duoPartnerID'||key==='duoRoom'){
+        opts[key]=String(e.target.value||'').trim();
+        duoLocal.peer=null;duoLocal.lastAt=0;duoLocal.match=null;
+        duoLocal.status='Partnerdaten geändert · erneut verbinden';
+      }
       persist();lastPaint=0;paint();
     });
     document.body.appendChild(panel);
@@ -5425,6 +5436,15 @@
       <div>${b('diplomacy','Diplomatie')} ${b('offerAlliances','Bündnisse anbieten')}</div>
       <div>${b('nukes','Auto-Nukes')} ${b('antiNuke','Intelligente SAMs')} ${b('lateOffense','Late-Game-Offensive')}</div>
       <div>${b('impossibleExperiment','Impossible AI Test')} ${b('learningEnabled','Lernen')} ${b('neuralEnabled','Neurales Netz')} ${b('impossibleMode','Unmöglich-Taktik')}</div>
+      </details>
+      <details data-section="localduo"${openFor('localduo')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">🤝 Duo-Modus (2 Browser, 1 PC)</summary>
+      <div>${b('duoEnabled','Lokales Duo '+(opts.duoEnabled?'AN':'AUS'))}</div>
+      <div style="color:#9bd0e4">Eigene Spieler-ID: <b>${escapeHTML(safeID(myPlayer())??'noch nicht im Spiel')}</b></div>
+      <label>Partner-Spieler-ID<input type="text" data-option="duoPartnerID" maxlength="128" value="${escapeHTML(opts.duoPartnerID)}" placeholder="Exakte PlayerID des anderen Browsers" style="box-sizing:border-box;width:100%"></label>
+      <label>Duo-Raumcode (in beiden Browsern gleich)<input type="text" data-option="duoRoom" maxlength="64" value="${escapeHTML(opts.duoRoom)}" placeholder="z. B. KITSU_DUO_01" style="box-sizing:border-box;width:100%"></label>
+      <div>Status: ${escapeHTML(duoLocal.status)} · ${duoTrustedPeer()?'gegenseitige IDs bestätigt':'Partner nicht verbunden'}</div>
+      <div>Partner: Ziel ${escapeHTML(duoTrustedPeer()?.state?.target??'—')} · verfügbar ${Math.round(duoTrustedPeer()?.state?.available||0)} · Reserve ${Math.round(duoTrustedPeer()?.state?.reserve||0)} · Hilfe ${duoTrustedPeer()?.state?.needHelp?'JA':'nein'}</div>
+      <div style="color:#a9efc9">Start_Live_Duo.bat starten · Port 8767 · Bündnis gilt erst nach Bestätigung im Spiel · Relay-Ausfall ⇒ beide spielen autonom weiter.</div>
       </details>
       <details data-section="neural"${openFor('neural')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Neurales Modell</summary>
       <div style="color:#9bd0e4">Inferenz: ${escapeHTML(neuralModelInfo().fingerprint||'kein Modell')} · Signale ${neuralEvidence.nonzero}/${neuralEvidence.calls} · Ranking ${neuralEvidence.actionNonzero}/${neuralEvidence.actionCalls}</div>
@@ -5483,7 +5503,10 @@
   const economyInterval=setInterval(economyStep,750);
   const diplomacyInterval=setInterval(diplomacyTick,950);
   const nukeInterval=setInterval(nukeStep,1100);
-  window.addEventListener('beforeunload',()=>{clearInterval(interval);clearInterval(economyInterval);clearInterval(diplomacyInterval);clearInterval(nukeInterval);});
+  const duoInterval=setInterval(()=>{duoPublish().catch(e=>{
+    duoLocal.status='Relay-Fehler: '+String(e?.message||e).slice(0,55);
+  });},950);
+  window.addEventListener('beforeunload',()=>{clearInterval(interval);clearInterval(economyInterval);clearInterval(diplomacyInterval);clearInterval(nukeInterval);clearInterval(duoInterval);});
   if(benchmark){
     window.__OF_BENCHMARK__=Object.freeze({
       snapshot:diagnosticSnapshot,
