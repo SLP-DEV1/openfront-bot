@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.19.7
+// @version      1.19.8
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.19.7', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.19.8', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -182,11 +182,30 @@
   // planner; legalTarget(), worker actions, reserve and alliance rechecks
   // retain complete authority. No direct AI-generated game intents.
   function neuralActionDelta(kind,score,me,s=troopSnapshot,candidate={}) {
-    if(!opts.neuralEnabled||!opts.fullAuto||neuralModel?.schema!==2||
+    if(!opts.neuralEnabled||!opts.fullAuto||![2,3,4].includes(neuralModel?.schema)||
       s.incoming>0||recentHostilePressure(number(()=>game.ticks(),0))||
       s.strongest>Math.max(1,s.home)*1.25)return 0;
     const kinds=['attack','economy','naval'],index=kinds.indexOf(kind);
     if(index<0)return 0;
+    if(neuralModel.schema>=3){
+      // Modern strategic heads also rank legal, already-filtered actions;
+      // they never grant construction, combat or naval authorization.
+      const signals=neuralStrategicSignals(me,s);
+      const head=kind==='attack'?signals?.landPriority:kind==='naval'?
+        signals?.navalPriority:({City:signals?.cityPriority,
+          Factory:signals?.factoryPriority,Port:signals?.portPriority,
+          'Defense Post':signals?.defensePriority,
+          'SAM Launcher':signals?.defensePriority,
+          'Missile Silo':signals?.nuclearPriority})[candidate.type];
+      const delta=Number.isFinite(head)?clamp(head*(10+4*clamp(candidate.opportunity??0,0,1)-
+        3*clamp(candidate.cost??0,0,1)-3*clamp(candidate.risk??0,0,1)),-14,14):0;
+      neuralEvidence.actionCalls++;
+      if(Math.abs(delta)>1e-8)neuralEvidence.actionNonzero++;
+      if(neuralEvidence.actionCalls%30===1)telemetry('neural_action_inference',
+        'Neurales Aktionsranking beobachtet',{model:neuralModelInfo(),kind,
+          type:candidate.type??null,delta,baseline:score});
+      return delta;
+    }
     const home=Math.max(1,s.home),max=Math.max(1,s.max);
     const vector=[
       clamp(home/max,0,1.5)/1.5,
@@ -1667,11 +1686,13 @@
     const policyBaseline=home*clamp(baseline/home*100+policyReserve*8,12,75)/100;
     // Publish each independently computed floor. High reserve with zero
     // incoming is often explained by a far larger bordering army.
+    const activePressure=incoming>0||recentHostilePressure(tick,140)||
+      !!(crisisTrend&&tick<crisisTrend.expires);
     const borderFloor=strongest>0?
-      Math.min(home*(incoming>0?.85:.63),strongest*(hardMode()?.59:.53)):0;
+      Math.min(home*(activePressure?.85:.63),strongest*(hardMode()?.59:.53)):0;
     const incomingFloor=incoming>0?Math.min(home*.94,incoming*1.3):0;
     const capFloor=strongest>0?
-      Math.min(home*(incoming>0?.78:.58),max*(hardMode()?.12:.14)):0;
+      Math.min(home*(activePressure?.78:.58),max*(hardMode()?.12:.14)):0;
     const defensiveFloor=Math.max(policyBaseline,borderFloor,incomingFloor,capFloor);
     const context=matchContext(me);
     const predicted=(hardMode()||context.multiplayer)?
@@ -2546,9 +2567,10 @@
     const threat=defenseAssessment(me,s,tick);
     // Do not forbid every counterattack merely because the invasion is serious.
     // A counteroffensive is allowed only if the home defense remains funded.
-    if(threat.critical&&s.home<threat.incoming*1.4)return false;
-    // Only counterattack if enough troops remain safely at home.
-    if(s.activeEnemy||s.home<threat.incoming*1.6)return false;
+    if(threat.critical&&s.home<threat.incoming*1.35)return false;
+    // Keep the home force against active stacks; a large incoming percentage
+    // alone is not a reason to skip a safe raid on the attacker's weak home.
+    if(s.activeEnemy||s.home<threat.incoming*1.35)return false;
     const attacks=threat.hostile.slice().sort((a,b)=>b.troops-a.troops);
     for(const a of attacks.slice(0,3)){
       let attacker;
@@ -2556,8 +2578,7 @@
       if(!attacker?.isPlayer?.()||friendly(attacker,me))continue;
       const id=safeID(attacker),key=String(id),their=number(()=>attacker.troops(),Infinity);
       if(coordinatedWar()&&isWar()&&id!==warState.id)continue;
-      const spare=s.available;
-      if(spare<Math.max(500,their*1.25)||
+      if(!Number.isFinite(their)||their<0||
          tick-(cooldowns.get(key)??-Infinity)<160)continue;
       const candidate=groups.find(x=>x.id===id);
       if(!candidate||!await legalTarget(me,candidate,serial))continue;
@@ -2571,14 +2592,15 @@
         continue;
       }
       const fresh=military(me,strategic.groups);
-      if((threat.critical&&fresh.home<fresh.incoming*1.4)||fresh.activeEnemy||
-        fresh.available<Math.max(500,number(()=>current.troops(),Infinity)*1.25))continue;
-      const amount=Math.floor(Math.min(fresh.available*.42,fresh.home*.16,
-        Math.max(0,fresh.home-fresh.incoming*1.25)));
-      // This is an actual outgoing counterattack, not a retreat. Preserve
-      // the dynamic home reserve as well as the incoming-defense floor.
-      if(amount<100||fresh.home-amount<
-        Math.max(fresh.incoming*1.25,fresh.reserve))continue;
+      const enemyHome=number(()=>current.troops(),Infinity);
+      if(!Number.isFinite(enemyHome)||enemyHome<0||fresh.activeEnemy||
+        fresh.home<fresh.incoming*1.35)continue;
+      const homeFloor=Math.max(fresh.reserve,fresh.incoming*1.35);
+      const spare=Math.max(0,Math.min(fresh.available,fresh.home-homeFloor));
+      const amount=Math.floor(Math.min(spare*.84,fresh.home*.28));
+      // Commit only a force capable of pressuring the remaining enemy home;
+      // preserve our live incoming defense and dynamic reserve after dispatch.
+      if(amount<Math.max(500,enemyHome*1.10)||fresh.home-amount<homeFloor)continue;
       if(send('attack',[id,amount],'KONTROLLIERTER GEGENANGRIFF → '+nameOf(current))){
         const out=fresh.out.filter(x=>attackTargets(x.targetID,id)&&!x.retreating);
         pendingAttack={id,name:nameOf(current),tick,amount,ownLand:number(()=>me.numTilesOwned()),
@@ -2977,7 +2999,8 @@
       (siloCount===0?1:nukeShots>0&&gold>2500000?Math.min(3,1+Math.floor(mine/18000)):1):0;
     const pressure=troops/cap;
     // A near-full army without an active invasion needs more capacity, not idle gold.
-    const capStalled=pressure>=.90&&troopSnapshot.incoming<troops*.08&&!immediate;
+    const capStalled=pressure>=.85&&factoryEnabled&&factories<wantedFactory&&
+      troopSnapshot.incoming<troops*.08&&!immediate;
     const posture=economyPosture(me,troopSnapshot,nowTick);
     const style=effectiveBuildStyle() || 'Ausgewogen';
     const defBoost=style==='Defensiv'?22:0,econBoost=style==='Wirtschaft'?24:0;
@@ -2992,7 +3015,7 @@
       {type:'Factory',desired:wantedFactory,score:91+(productiveStall&&factories<3?110:0)+(neural?.factoryPriority||0)*90+econBoost+(posture==='bootstrap'?20:0)+
           (factories===0?100:hardMode()&&factories<2?85:0)+
           (gold<450000?15:0)+(pressure<.60&&factories>0?10:0)+
-          (factories<2&&cities>=2?24:0)+(capStalled?pressure>=.98?255:pressure>=.95?195:115:0)-
+          (factories<2&&cities>=2?24:0)+(capStalled?pressure>=.98?355:pressure>=.95?295:pressure>=.90?230:135:0)-
           (incomeStatus.observed&&incomeStatus.train===0&&factories>=2?26:0)},
       {type:'Port',desired:wantedPort,score:portMilestone?430:
         59+(neural?.portPriority||0)*90+econBoost/2+(posture==='breakout'?115:0)+(ports===0&&wantedPort?12:0)+
@@ -3035,10 +3058,11 @@
         // Provisional saving begins only after a productive core exists;
         // otherwise early harbor hoarding delays essential income buildings.
         cities>=2&&factories>=2&&!hardMode()?500000:0):0;
-    const savingsTarget=immediate?0:capStalled&&factories<wantedFactory&&!enemyNukes?0:samFund>0?samFund:portFund>0?portFund:
+    const savingsTarget=immediate?0:capStalled&&!enemyNukes?0:samFund>0?samFund:portFund>0?portFund:
       portMilestone||(threat&&intel.uncovered.length>0&&wantedSAM>0)?0:
       saveForSilo?1150000:saveForNuke?firstRocketFund:0;
     investmentStatus=immediate?'Verteidigung vor Investitionen':startup?'Erste Stadt/Fabrik':
+      capStalled&&!enemyNukes?'Truppenlimit: Fabrik/Upgrade priorisiert':
       samFund>0&&gold<samFund?'SAM-Schutz '+Math.round(samFund).toLocaleString()+' Gold':
       threat&&intel.uncovered.length>0&&wantedSAM>0?'SAM-Schutz vor Raketenfonds':
       portFund>0&&gold<portFund?'Hafen-Fonds '+Math.round(portFund).toLocaleString()+' Gold':
@@ -3471,12 +3495,12 @@
     const urgentSAM=requirements.nuclearThreat&&requirements.wantedSAM>0&&
       requirements.intel.uncovered.length>0;
     const urgentLand=requirements.immediate&&requirements.wantedDefense>0;
-    if(requirements.portMilestone&&!urgentSAM&&!urgentLand){
+    if(requirements.portMilestone&&!requirements.capStalled&&!urgentSAM&&!urgentLand){
       const portWork=work.filter(x=>x.entry.type==='Port'&&!x.entry.upgrade);
       if(portWork.length)work.splice(0,work.length,...portWork,
         ...work.filter(x=>x.entry.type!=='Port'||x.entry.upgrade));
     }
-    if(requirements.portMilestone && !urgentSAM && !urgentLand && coastal.length &&
+    if(requirements.portMilestone && !requirements.capStalled && !urgentSAM && !urgentLand && coastal.length &&
       !work.some(x=>x.entry.type==='Port'&&!x.entry.upgrade)){
       const portEntry=entries.find(x=>x.type==='Port'&&!x.upgrade);
       const portSite=portEntry&&rankedCoast.filter(x=>
@@ -3523,7 +3547,8 @@
             if(priceBlocked)samAffordableFailureSince=null;
             else if(Number.isInteger(quote.canBuild))samAffordableFailureSince=null;
             else if(samAffordableFailureSince===null)samAffordableFailureSince=tick;
-            if(requirements.nuclearThreat&&!requirements.samSearchBlocked)
+            if(requirements.nuclearThreat&&!requirements.samSearchBlocked&&
+              (!requirements.capStalled||requirements.incomingNukes))
               requirements.savingsTarget=quoted;
           }
           if(entry.type==='Port'&&requirements.portMilestone){
@@ -3592,7 +3617,7 @@
           // Fund the first economic structures before buying defensive posts,
           // ports or upgrades. Emergency SAM / defense remain possible.
           if(requirements.startup && (!economicCore || isUpgrade) && !essential)continue;
-          if(requirements.portMilestone&&!requirements.immediate&&
+          if(requirements.portMilestone&&!requirements.capStalled&&!requirements.immediate&&
             probe.portLegal>0 && item.type!=='Port' &&
             !(item.type==='SAM Launcher'&&requirements.nuclearThreat))
             continue;
@@ -3708,6 +3733,7 @@
     for(const item of proposals){
       item.baseScore=item.siteValue;
       item.neuralDelta=neuralActionDelta('economy',item.siteValue,me,troopSnapshot,{
+        type:item.type,
         magnitude:clamp((STRUCTURE_TYPES.indexOf(item.type)+1)/STRUCTURE_TYPES.length,0,1),
         opportunity:clamp(item.siteValue/150,0,1),
         cost:clamp(item.cost/Math.max(1,number(()=>Number(me.gold()),0)),0,1),
