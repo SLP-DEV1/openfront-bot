@@ -1,10 +1,12 @@
 # OpenFront Solo AggroBot
 
-**Version 1.19.4** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) · Singleplayer, Public und Private · [offene Validierungspunkte](https://github.com/SLP-DEV1/openfront-bot/issues/12)
+**Version 1.19.5** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) · Singleplayer, Public und Private · [offene Validierungspunkte](https://github.com/SLP-DEV1/openfront-bot/issues/12)
 
 Der Bot erkennt neue spielbare Matches, wählt bei manuellem Spawn eine Position und steuert Expansion, Verteidigung, Wirtschaft, Flotte, Handel und Diplomatie. Die trainierte Neural-Policy kann optional *begrenzt* mitentscheiden; es gibt keine localhost-Brain- oder Live-Qwen-Anbindung mehr. **Es gibt keine belegte garantierte Impossible- oder Multiplayer-Siegquote.**
 
 ## Schnellstart / Update
+
+**1.19.5 – Befunde aus drei Live-Diagnosen (1.19.2/1.19.3):** Vorher unsichtbare Landkriegs-Blockaden werden mit konkretem Grund, Heim-/Reservewerten und betroffenen Gegnern im JSON/Timeline protokolliert. Eine festgefahrene Public-/Private-Kriegsfront darf ohne aktiven Angriff und nur bei eigenständig sicherem Alternativziel neu bewertet werden. Ein kurzfristiger belegter Gebiets-/Gebäudeverlust erhöht den defensiven Vorlauf; wiederholt nicht bestätigte Seelandungen erhalten zunehmend längere, zielspezifische Sperren. Nach mehrfachen Bauprüfungen ohne Erfolg werden in ungefährdeten Situationen Stadt/Fabrik gegenüber spekulativem Silo-/Raketenfonds priorisiert; ein echter SAM-Fonds bleibt geschützt. Der Export zeigt Modell-Fingerprint (nicht kryptografisch), Schematyp, Gewichte und tatsächliche Null-/Nichtnull-Inferenz. **Die alten drei Mitschnitte enthalten kein verifiziertes Matchende; dies ist keine gemessene Steigerung der Siegquote.**
 
 **1.19.4 – Audit- und Datenintegrität:** Der optionale lokale Monitor erhält Match-IDs und schreibt verschiedene Partien/Tabs getrennt; aktuelle Entscheidungswerte überschreiben nicht mehr rückwirkend veraltete Snapshots. Die persönliche Eliminierung wird vor dem gesamten Spielende erkannt, im Teamspiel bleibt das offizielle Teamergebnis abwartbar. Wirtschaft, Flotte, Nukes und Goldspenden prüfen gemeinsam ausstehende Ausgaben und den SAM-Fonds; Browsertest-Abschluss und Ereigniswiederholungen sind wiederholbar. Benchmarks koppeln nur identische Gegnerkontexte, der Trainer verwendet einen eingefrorenen Bot-Hash und einen strengen Nachweisprüfer; bei zusätzlichen Siegen ist ebenfalls die dokumentierte No-Regression-Regel verbindlich. **Dies ist keine nachgewiesene Steigerung der Impossible- oder Human-Multiplayer-Siegquote.** Der seit 1.19.3 entfernte localhost-Brain/Qwen-Berater wird nicht wieder eingeführt.
 
