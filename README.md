@@ -1,6 +1,6 @@
 # OpenFront Solo AggroBot
 
-**Version 1.20.9** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) · Singleplayer, Public und Private · [offene Validierungspunkte](https://github.com/SLP-DEV1/openfront-bot/issues/12)
+**Version 1.20.10** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) · Singleplayer, Public und Private · [offene Validierungspunkte](https://github.com/SLP-DEV1/openfront-bot/issues/12)
 
 Der Bot erkennt neue spielbare Matches, wählt bei manuellem Spawn eine Position und steuert Expansion, Verteidigung, Wirtschaft, Flotte, Handel und Diplomatie. Die trainierte Neural-Policy kann optional *begrenzt* mitentscheiden; es gibt keine localhost-Brain- oder Live-Qwen-Anbindung mehr. **Es gibt keine belegte garantierte Impossible- oder Multiplayer-Siegquote.**
 
@@ -9,6 +9,19 @@ Der Bot erkennt neue spielbare Matches, wählt bei manuellem Spawn eine Position
 Der vollständige, eingereichte [mehrphasige Entwicklungsplan](docs/COMPETITIVE_PLAN_2026-09-22.md) ist archiviert. Die [laufende Statusübersicht](docs/COMPETITIVE_ROADMAP.md) zeigt **vorhandene Funktionen getrennt von abgenommenen Arbeitspaketen**. Im [Master-Issue #75](https://github.com/SLP-DEV1/openfront-bot/issues/75) sind alle Phasen P0–P6 mit eigenen abhakbaren Issues verlinkt. **P0 ist in Arbeit** (City-/Factory-Kapazitätskorrektur liegt laut 1.20.9 vor); eine vollständige Abnahme der Phasen oder eine neue Gesamt-Testmessung wird damit nicht behauptet. Die ursprüngliche Analyse bezog sich auf den älteren Commit `10e81ee` / 1.20.8.
 
 ## Schnellstart / Update
+
+**1.20.10 – P0 Aktionsnachverfolgung:** Jeder erfolgreich an den OpenFront-EventBus
+ausgesendete Intent erhält eine eindeutige, pro Match aufsteigende `actionId`
+und eine zugehörige `decisionId` (Match/Spiel-Tick). Bei Angriffen und
+Bau-/Upgrade-Aufträgen tragen die nachfolgenden Bestätigungs- bzw.
+Nichtbeobachtungsereignisse dieselbe `actionId` wie die Aussendung. Die
+Diagnose trennt `effect: unconfirmed` ausdrücklich vom später im
+GameView beobachteten Zustand. Eine beobachtete Stack-/Landänderung ist
+weiterhin **keine eindeutige Kausalitätsbestätigung** und ein Timeout kein
+Beweis für einen fehlgeschlagenen Spielbefehl. Regressionstest und
+Bundle-Gleichheit werden im P0-Tracker dokumentiert. Keine Änderung an
+Spenden-, Handels- oder Kampfentscheidungen durch diesen Trace.
+
 
 **1.20.9 – Truppenkapazität nach echter Spielmechanik:** Ein Kapazitätsengpass
 bevorzugt nun eine vom Worker freigegebene **City bzw. ein City-Upgrade**,
