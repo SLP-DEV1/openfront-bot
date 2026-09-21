@@ -2928,6 +2928,12 @@
       ['Atom Bomb','Hydrogen Bomb','MIRV'].includes(purpose)&&needs.saveForNuke&&
         !samFund)floor=0;
     if(emergency&&purpose==='Warship')floor=0;
+    // A provisional first-Port estimate is not a permanent spending lock
+    // once that estimate is funded but the worker offers no legal harbor.
+    // The economy may then buy productive City/Factory alternatives.
+    if(!samFund&&needs.portMilestone&&needs.portQuotedCost===0&&
+      needs.savingsTarget>0&&cash>=needs.savingsTarget&&
+      ['City','Factory'].includes(purpose))floor=0;
     if(cash-pending-cost>=floor)return true;
     telemetry('gold_budget_blocked','Gemeinsamer Goldfonds schützt '+purpose,
       {purpose,cost,cash,pending,floor,samFund,emergency});
