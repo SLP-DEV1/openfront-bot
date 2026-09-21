@@ -83,8 +83,8 @@ node trainer/train.mjs ^
   --out "%OUT%"
 if errorlevel 1 exit /b 1
 
+set "DEPLOYED=OpenFront_Solo_AggroBot_Neural_Multiplayer_%MODE%_%STAMP%.user.js"
 if exist "%OUT%\champion.json" (
-  set "DEPLOYED=OpenFront_Solo_AggroBot_Neural_Multiplayer_%MODE%_%STAMP%.user.js"
   node trainer/deploy.mjs --model "%OUT%\champion.json" --out "%DEPLOYED%" || exit /b 1
   echo Champion erzeugt: %DEPLOYED%
 ) else (

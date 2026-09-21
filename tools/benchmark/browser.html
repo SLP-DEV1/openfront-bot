@@ -7,26 +7,44 @@
 const config=/*BENCHMARK_CONFIG*/;
 const $=id=>document.getElementById(id);
 $('details').textContent=JSON.stringify(config.metadata,null,2);
-let frame,bot,pending=[],busy=false,done=false,spawned=false,started=false,poll,startTime,lastCheckpoint=0;
+let frame,bot,pending=[],busy=false,done=false,finishPromise=null,finishRecord=null,spawned=false,started=false,poll,startTime,lastCheckpoint=0;
 const post=async(route,data)=>{
   const response=await fetch('/__aggrobot/'+route,{method:'POST',headers:{'Content-Type':'application/json','X-Benchmark-Token':config.token},body:JSON.stringify(data)});
   if(!response.ok)throw Error('Aufzeichnung fehlgeschlagen: '+await response.text());
 };
 async function flush(){if(pending.length){const batch=pending;pending=[];try{await post('events',batch);}catch(e){pending.unshift(...batch);throw e;}}}
 async function finish(reason,error){
-  if(done)return;done=true;clearInterval(poll);$('stop').disabled=true;
-  const finalStatus=bot?.status();
-  const snapshot=bot?.snapshot()||{records:[],recording:{total:0,streamErrors:0}};
-  snapshot.liveState=finalStatus||null;
-  bot?.stop(); // Stop after snapshot: the match counters exclude this controller action.
-  pending=pending.filter(r=>r.seq<=snapshot.recording.total);
-  await flush();
-  if(reason==='eliminated'&&spawned&&finalStatus?.alive===false)
-    snapshot.gameEnd={outcome:'defeat',source:'browser-GameView-elimination',tick:finalStatus.tick,land:0};
-  snapshot.run={tick:finalStatus?.tick??null,termination:reason,error:error?String(error):null,spawned,elapsedMs:Date.now()-startTime};
-  await post('finish',snapshot);
-  $('status').textContent='Gesichert: '+reason+' · Ergebnis: '+(snapshot.gameEnd?.outcome||'unknown');
-  $('details').textContent=JSON.stringify({run:snapshot.run,gameEnd:snapshot.gameEnd,recording:snapshot.recording},null,2);
+  if(done)return;
+  if(finishPromise)return finishPromise;
+  if(!finishRecord){
+    clearInterval(poll);
+    const finalStatus=bot?.status();
+    const snapshot=bot?.snapshot()||{records:[],recording:{total:0,streamErrors:0}};
+    snapshot.liveState=finalStatus||null;
+    bot?.stop(); // Snapshot first; do not include the controller's stop action.
+    pending=pending.filter(r=>r.seq<=snapshot.recording.total);
+    if(reason==='eliminated'&&spawned&&finalStatus?.alive===false)
+      snapshot.gameEnd={outcome:'defeat',source:'browser-GameView-elimination',tick:finalStatus.tick,land:0};
+    snapshot.run={tick:finalStatus?.tick??null,termination:reason,
+      error:error?String(error):null,spawned,elapsedMs:Date.now()-startTime};
+    finishRecord=snapshot; // Freeze the same evidence for every retry.
+  }
+  $('status').textContent='Abschluss wird gesichert …';
+  finishPromise=(async()=>{
+    await flush();
+    await post('finish',finishRecord);
+    done=true;$('stop').disabled=true;
+    $('status').textContent='Gesichert: '+finishRecord.run.termination+
+      ' · Ergebnis: '+(finishRecord.gameEnd?.outcome||'unknown');
+    $('details').textContent=JSON.stringify({run:finishRecord.run,
+      gameEnd:finishRecord.gameEnd,recording:finishRecord.recording},null,2);
+  })();
+  try{return await finishPromise;}
+  catch(e){
+    $('stop').disabled=false;
+    $('status').textContent='Speichern fehlgeschlagen – „Beenden und sichern“ erneut klicken: '+String(e);
+    throw e;
+  }finally{finishPromise=null;}
 }
 $('start').onclick=async()=>{
   $('start').disabled=true;startTime=Date.now();$('status').textContent='OpenFront wird geladen …';

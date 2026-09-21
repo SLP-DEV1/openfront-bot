@@ -46,12 +46,14 @@ function compare(incumbent,candidate){
     }else if(elapsed<=-150 || (elapsed<=0 && area<=-Math.max(500,b.land*.08)))
       regressed++;
   }
-  const won=candidateWins>incumbentWins;
+  // A new victory does not compensate for verified regressions on other
+  // matched seeds. Keep the declared no-regression contract for BOTH gates.
+  const won=candidateWins>incumbentWins&&regressed===0;
   const survived=candidateWins===incumbentWins&&improved>=2&&
     regressed===0&&(survivalTicks>=600||survivalArea>=10000);
   return {valid:true,promoted:won||survived,
     reason:won?'more-observed-victories':survived?'consistent-survival-improvement':
-      'no-verified-improvement',incumbentWins,candidateWins,
+      regressed>0?'regressions-block-promotion':'no-verified-improvement',incumbentWins,candidateWins,
     improved,regressed,survivalTicks,survivalArea};
 }
 module.exports={compare};

@@ -43,6 +43,12 @@ jobs:
           node --check tools/benchmark/openfront-backend.mjs
           node --check tests/openfront-backend-regression.cjs
           node tests/openfront-backend-regression.cjs
+      - name: Test live monitor and browser persistence
+        run: |
+          node --check OpenFront_AggroBot_Monitor.user.js
+          node --check tools/live-monitor.cjs
+          node tests/live-monitor-regression.cjs
+          node tests/browser-finish-regression.cjs
       - name: Check generated neural scripts and holdout proof
         run: |
           node --check tools/generate-neural-variants.cjs

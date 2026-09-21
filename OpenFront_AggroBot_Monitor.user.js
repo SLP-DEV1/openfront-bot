@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront AggroBot Local Monitor
 // @namespace    https://openfront.io/
-// @version      1.0.0
+// @version      1.0.1
 // @description  Sends AggroBot diagnostics to a local, read-only match monitor.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -34,7 +34,9 @@
   page.addEventListener('aggrobot:telemetry',event=>{
     try{
       const record=JSON.parse(event.detail);
-      if(!Number.isSafeInteger(record?.seq)||typeof record.kind!=='string')return;
+      if(!Number.isSafeInteger(record?.seq)||typeof record.kind!=='string'||
+        typeof record.session!=='string'||
+        !/^[a-zA-Z0-9_-]{8,90}$/.test(record.session))return;
       queue.push(record);
       // Bound memory if the local monitor is unavailable for a long time.
       if(queue.length>1000)queue.splice(0,queue.length-1000);
@@ -46,7 +48,10 @@
     if(inFlight||!queue.length)return;
     const token=GM_getValue(tokenKey,'');
     if(!/^[a-f0-9]{64}$/i.test(token))return;
-    const batch=queue.splice(0,100);
+    // Batch boundaries never cross match/session boundaries.
+    const session=queue[0].session;
+    let n=0;while(n<100&&n<queue.length&&queue[n].session===session)n++;
+    const batch=queue.splice(0,n);
     inFlight=true;
     let settled=false;
     const retry=()=>{

@@ -30,7 +30,11 @@ function run(profile,seed,split){
   let result;
   try{result=spawnSync(process.execPath,[runner,'--engine',opts.engine,'--engineCommit',opts.engineCommit,'--map',opts.map,'--size',opts.size,
     '--difficulty',opts.difficulty,'--bots',String(opts.bots),'--nations',String(opts.nations),
-    '--ticks',String(opts.ticks),'--seed',seed,'--profile',profile,'--bot',opts.bot,'--out',out],
+    '--ticks',String(opts.ticks),'--seed',seed,'--profile',profile,'--bot',opts.bot,
+    '--gameType',opts.gameType,'--gameMode',opts.gameMode,
+    '--scriptedHumans',String(opts.scriptedHumans),
+    '--opponentProfile',opts.opponentProfile,
+    ...(opts.policy?['--policy',opts.policy]:[]),'--out',out],
     {stdio:['ignore',fd,fd],timeout:30*60*1000});}finally{fs.closeSync(fd);}
   let row;
   if(fs.existsSync(path.join(out,'match.json')))row=report.summarize(JSON.parse(fs.readFileSync(path.join(out,'match.json'),'utf8')),path.join(out,'match.json'));

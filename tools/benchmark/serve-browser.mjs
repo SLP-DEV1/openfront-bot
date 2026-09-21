@@ -6,7 +6,13 @@ import {createRequire} from 'node:module';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import common from './common.cjs';
 import {startBackend} from './openfront-backend.mjs';
-const opts=common.parse(process.argv.slice(2)),engineCommit=common.engineInfo(opts.engine,opts.engineCommit);
+const opts=common.parse(process.argv.slice(2));
+// Browser harness exposes only a local Singleplayer/FFA game, without a
+// policy injection or scripted-human clients. Reject other accepted options.
+if(opts.gameType!=='Singleplayer'||opts.gameMode!=='FFA'||opts.scriptedHumans!==0||
+  opts.opponentProfile!=='balanced'||opts.policy)
+  throw Error('Browser harness supports Singleplayer FFA without scripted humans or --policy');
+const engineCommit=common.engineInfo(opts.engine,opts.engineCommit);
 const requireEngine=createRequire(path.join(opts.engine,'package.json'));
 requireEngine('tsx/esm/api').register({tsconfig:path.join(opts.engine,'tsconfig.json')});
 const enums=await import(pathToFileURL(path.join(opts.engine,'src/core/game/Game.ts')).href);
@@ -19,7 +25,8 @@ const dir=common.outputDir(opts),source=fs.readFileSync(opts.bot,'utf8'),token=c
 const metadata={harness:'browser-localserver-worker-v1',engineCommit,botSHA256:common.digest(source),
   seed:opts.seed,gameID:common.digest(opts.seed).slice(0,8),seedSource:'sha256(seed)[0:8] -> GameStartInfo.gameID',profile:opts.profile,settings:common.profiles[opts.profile],gameConfig,maxTicks:opts.ticks,browser:true};
 common.writeJSON(path.join(dir,'run.json'),metadata);
-let lastSeq=0,finalized=false;
+let lastSeq=0,finalized=false,finalDigest=null;
+const acceptedRecords=new Map();
 const here=path.dirname(fileURLToPath(import.meta.url));
 const {createServer}=await import(pathToFileURL(requireEngine.resolve('vite')).href);
 let backend=null;
@@ -40,21 +47,46 @@ const plugin={name:'aggrobot-local-test',configureServer(server){server.middlewa
     res.end(html.replace('/*BENCHMARK_CONFIG*/',JSON.stringify({token,metadata})));return;
   }
   if(req.method==='GET'&&route==='/__aggrobot/bot.js'){res.setHeader('Content-Type','text/javascript');res.end(source);return;}
-  if(req.method!=='POST'||req.headers['x-benchmark-token']!==token||finalized){res.writeHead(403).end();return;}
+  if(req.method!=='POST'||req.headers['x-benchmark-token']!==token){res.writeHead(403).end();return;}
   try{
     let body='';for await(const chunk of req){body+=chunk;if(body.length>8*1024*1024)throw Error('Body too large');}
     const data=JSON.parse(body);
+    if(finalized){
+      if(route==='/__aggrobot/finish'&&common.digest(body)===finalDigest){
+        res.writeHead(200,{'Content-Type':'application/json'}).end('{"ok":true,"duplicate":true}');return;
+      }
+      res.writeHead(409).end();return;
+    }
     if(route==='/__aggrobot/events'){
-      if(!Array.isArray(data)||data.length>2000)throw Error('Invalid record batch');
-      let seq=lastSeq;for(const record of data){if(record.seq!==++seq)throw Error('Non-contiguous event sequence');}
-      fs.appendFileSync(path.join(dir,'events.jsonl'),data.map(r=>JSON.stringify(r)+'\n').join(''));lastSeq=seq;
+      if(!Array.isArray(data)||data.length<1||data.length>2000)
+        throw Error('Invalid record batch');
+      let seq=lastSeq;const fresh=[];
+      for(const record of data){
+        if(!Number.isSafeInteger(record.seq)||record.seq<1)
+          throw Error('Invalid sequence');
+        const hash=common.digest(JSON.stringify(record));
+        if(record.seq<=lastSeq){
+          if(acceptedRecords.get(record.seq)!==hash)
+            throw Error('Unverifiable replayed event');
+          continue;
+        }
+        if(record.seq!==++seq)throw Error('Non-contiguous event sequence');
+        fresh.push({record,hash});
+      }
+      if(fresh.length){
+        fs.appendFileSync(path.join(dir,'events.jsonl'),
+          fresh.map(({record})=>JSON.stringify(record)+'\n').join(''));
+        for(const {record,hash} of fresh)acceptedRecords.set(record.seq,hash);
+        while(acceptedRecords.size>5000)acceptedRecords.delete(acceptedRecords.keys().next().value);
+        lastSeq=seq;
+      }
     }else if(route==='/__aggrobot/checkpoint'||route==='/__aggrobot/finish'){
       data.benchmarkMeta={...data.benchmarkMeta,...metadata,gameMap:gameConfig.gameMap,gameMapSize:gameConfig.gameMapSize,gameMode:gameConfig.gameMode};
       data.recording={...data.recording,streamFile:'events.jsonl',streamCount:lastSeq,
         complete:lastSeq===data.recording?.total&&data.recording?.streamErrors===0};
       common.writeJSON(path.join(dir,route.endsWith('/finish')?'match.json':'checkpoint.json'),data);
       if(route.endsWith('/finish')){
-        finalized=true;
+        finalDigest=common.digest(body);finalized=true;
         console.log(JSON.stringify({output:dir,termination:data.run?.termination,outcome:data.gameEnd?.outcome??'unknown',records:lastSeq}));
       }
     }else{res.writeHead(404).end();return;}

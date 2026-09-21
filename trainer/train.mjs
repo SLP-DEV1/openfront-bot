@@ -8,6 +8,7 @@ import {fileURLToPath} from 'node:url';
 import policy from './strategic-policy.cjs';
 import policyV4 from './strategic-policy-v4.cjs';
 import common from '../tools/benchmark/common.cjs';
+import evidence from '../tools/benchmark/holdout-evidence.cjs';
 import evaluation from './evaluation.cjs';
 import scoring from './reward.cjs';
 import parallelPool from './parallel.cjs';
@@ -69,7 +70,11 @@ const engine=path.resolve(cfg.engine),bot=path.resolve(cfg.bot),out=path.resolve
 if(!fs.existsSync(bot))throw Error('Missing bot');
 common.engineInfo(engine,cfg.engineCommit);
 if(fs.existsSync(out))throw Error('Output directory already exists: '+out);
+const botSource=fs.readFileSync(bot,'utf8'),botSHA256=common.digest(botSource);
 fs.mkdirSync(out,{recursive:true});
+const pinnedBot=path.join(out,'pinned-bot.user.js');
+fs.writeFileSync(pinnedBot,botSource,{flag:'wx'});
+plan.botSHA256=botSHA256;
 common.writeJSON(path.join(out,'plan.json'),plan);
 const runner=fileURLToPath(new URL('../tools/benchmark/engine-match.mjs',import.meta.url));
 const save=(p,data)=>common.writeJSON(path.join(out,p),data);
@@ -88,7 +93,7 @@ async function match(model,phase,g,index,map,nation,seed){
       let child;
       try{
         child=spawn(process.execPath,[runner,'--engine',engine,
-          '--engineCommit',cfg.engineCommit,'--bot',bot,'--policy',modelFile,
+          '--engineCommit',cfg.engineCommit,'--bot',pinnedBot,'--policy',modelFile,
           '--map',map,'--size',cfg.size,'--difficulty',difficulty,
           '--bots','0','--nations',String(nation),'--seed',seed,
           '--gameType',cfg.gameType,'--gameMode',cfg.gameMode,
@@ -110,15 +115,18 @@ async function match(model,phase,g,index,map,nation,seed){
   let state=null;
   try{state=JSON.parse(fs.readFileSync(path.join(folder,'match.json'),'utf8'));}catch(_){}
   const termination=state?.run?.termination||'no-report',outcome=state?.gameEnd?.outcome;
-  const verified=proc.status===0&&!proc.error&&
-    state?.benchmarkMeta?.policySHA256===common.digest(JSON.stringify(model)) &&
-    state?.benchmarkMeta?.engineCommit===cfg.engineCommit &&
-    state?.benchmarkMeta?.gameConfig?.difficulty===difficulty &&
-    state?.benchmarkMeta?.gameConfig?.gameType===cfg.gameType &&
-    state?.benchmarkMeta?.gameConfig?.gameMode===
-      (cfg.gameMode==='FFA'?'Free For All':'Team') &&
-    Number(state?.benchmarkMeta?.scriptedHumans??0)===scriptedHumans &&
-    (state?.benchmarkMeta?.opponentProfile??'balanced')===cfg.opponentProfile;
+  // Import the same strict provenance contract used by standalone holdouts.
+  // A changed original script cannot affect children: they read pinnedBot.
+  let verified=false,proofError=null;
+  try{
+    const run=JSON.parse(fs.readFileSync(path.join(folder,'run.json'),'utf8'));
+    const expected={policySHA256:common.digest(JSON.stringify(model)),botSHA256,
+      engineCommit:cfg.engineCommit,seed,profile:'autonomous',
+      opponentProfile:cfg.opponentProfile,scriptedHumans,maxTicks:ticks,
+      map,size:cfg.size,difficulty,gameType:cfg.gameType,
+      gameMode:cfg.gameMode,nations:nation};
+    verified=evidence.verifyEvidence(run,state,expected,proc.status).valid;
+  }catch(error){proofError=error.message;}
   const confirmed=verified&&['game-over','eliminated'].includes(termination)&&
     ['victory','defeat'].includes(outcome);
   const validSample=confirmed||(verified&&termination==='tick-limit');
@@ -134,7 +142,8 @@ async function match(model,phase,g,index,map,nation,seed){
     dir:path.relative(out,folder),termination,outcome:confirmed?outcome:'incomplete',
     confirmed,validSample,land,endTick:elapsed,trajectory:state?.trajectory?.summary??null,
     reward:Math.round(reward*1e6)/1e6,
-    error:proc.error?.message||null,exitCode:proc.status};
+    error:proc.error?.message||proofError||null,exitCode:proc.status,
+    botSHA256};
   console.log(JSON.stringify(row));
   return row;
 }
