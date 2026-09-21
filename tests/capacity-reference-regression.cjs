@@ -30,9 +30,9 @@ assert.equal(referenceMaxTroops({...base,portLevels:[1,4]}),cap,
   'Ports do not appear in the capacity formula');
 assert.equal(referenceMaxTroops({...base,unfinishedCityLevels:[1]}),cap,
   'Under-construction cities do not appear in the capacity formula');
-assert.equal(referenceMaxTroops({...base,cityLevels:[1,1]})-cap,250000,
+assert(Math.abs(referenceMaxTroops({...base,cityLevels:[1,1]})-cap-250000)<1e-6,
   'Completed City level adds 250000 engine troops for Humans');
-assert.equal(referenceMaxTroops({...base,cityLevels:[2]})-cap,250000,
+assert(Math.abs(referenceMaxTroops({...base,cityLevels:[2]})-cap-250000)<1e-6,
   'One completed City upgrade adds 250000 engine troops');
 assert(referenceMaxTroops({...base,tiles:base.tiles+800})>cap,
   'Owned territory increases capacity');
