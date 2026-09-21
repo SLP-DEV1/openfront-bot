@@ -86,9 +86,11 @@ function boot(benchmarkOptions={}) {
     'setMode:m=>strategic.mode=m,setAllianceCtor:C=>ctors.alliance=C,setHostilePressure:t=>lastHostilePressure=t,',
     'setNukePending:p=>nukePending=p,setMonitorSession:x=>monitorSession=x,spendBudget,commitGoldSpend,coreFundingStatus,',
     'targetOpportunityCheck,reportAttackBlocks,earlyCrisis,landingFailure,neuralModelInfo,',
+    'duoConfigured,duoMatchKey,duoTrustedPeer,duoState,duoSpawnCandidate,duoPublish,actualFriendly,friendly,',
+    'setDuo:(partnerID,room,peer)=>{opts.duoEnabled=true;opts.duoPartnerID=partnerID;opts.duoRoom=room;duoLocal.ownID=safeID(myPlayer());duoLocal.partnerID=partnerID;duoLocal.match=duoMatchKey();duoLocal.lastAt=Date.now();duoLocal.peer=peer;},',
     'setPendingBoat:p=>pendingBoat=p,',
     'setPerf:(combat,border,economy)=>runtime={...runtime,combatMs:combat,borderMs:border,economyMs:economy},',
-    'state:()=>({economicPending,pendingAttack,attackReceipts,warState,lastBattle,gameEnd,attackBlockReport,crisisTrend,landingFailures:[...landingFailures],neuralEvidence,diagnostics,forecastAudits,incomeAttribution,spawnState,spawnCache,spawnJob,economicStatus,failedEconomyProbes,investmentStatus,pendingBoat,pendingWarship,marineStats,portProbeFailures,navalSiteNegative:[...navalSiteNegative],strategic,winStatus,opponentProfiles:[...opponentProfiles.values()],operation,duoPlan,victoryThreat,decisionTimeline,incomeStatus,fleetStatus,strategicTelemetry,defenseStatus,defenseStats,autoTuning,nukeShots,nukeAttempts,nukeUnconfirmed,nukePending,lastHostilePressure,lastProposalTick,diplomacyStatus,diplomacyPending:[...diplomacyPending.values()],retreatRequests:[...retreatRequests.values()]}),opts};'
+    'state:()=>({economicPending,pendingAttack,attackReceipts,warState,lastBattle,gameEnd,attackBlockReport,crisisTrend,landingFailures:[...landingFailures],neuralEvidence,diagnostics,forecastAudits,incomeAttribution,spawnState,spawnCache,spawnJob,economicStatus,failedEconomyProbes,investmentStatus,pendingBoat,pendingWarship,marineStats,portProbeFailures,navalSiteNegative:[...navalSiteNegative],strategic,winStatus,opponentProfiles:[...opponentProfiles.values()],operation,duoPlan,victoryThreat,decisionTimeline,incomeStatus,fleetStatus,strategicTelemetry,defenseStatus,defenseStats,autoTuning,nukeShots,nukeAttempts,nukeUnconfirmed,nukePending,lastHostilePressure,lastProposalTick,diplomacyStatus,diplomacyPending:[...diplomacyPending.values()],localDuo:{...duoLocal},retreatRequests:[...retreatRequests.values()]}),opts};'
   ].join('\n');
   vm.runInNewContext(source.replace(anchor, expose + '\n' + anchor), context, {timeout:2000});
   win.__test.setup(game, {emit:event=>sent.push(event)}, {attack:Attack, build:Build});
@@ -3116,6 +3118,59 @@ function boot(benchmarkOptions={}) {
     assert(ev.actionCalls>0,JSON.stringify(ev));
     assert(ev.actionNonzero>0,JSON.stringify(ev));
     assert.equal(x.sent[0].unit,'Factory');
+  });
+
+  await check('1.20 local Duo protects exact PlayerID before alliance without claiming alliance',()=>{
+    const x=boot();
+    x.b.setDuo('weak','KITSU_DUO_123',null);
+    assert.equal(x.b.duoConfigured(),true);
+    assert.equal(x.b.friendly(x.weak,x.me),true);
+    assert.equal(x.b.actualFriendly(x.weak,x.me),false);
+    assert.equal(x.b.friendly(x.strong,x.me),false);
+    assert.equal(x.b.duoTrustedPeer(),null);
+  });
+  await check('1.20 reciprocal relay hints require real in-game friendship before joint plan',()=>{
+    const x=boot();
+    x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{
+      target:'strong',ready:true,needHelp:false,available:50000,
+      reserve:40000,allied:true,spawn:5050,candidate:5050}});
+    assert(x.b.duoTrustedPeer());
+    assert.equal(x.b.actualFriendly(x.weak,x.me),false);
+    assert.equal(x.b.coordinateDuo(x.me,x.b.military(x.me,[]),300),null);
+    x.weak.isFriendly=()=>true;
+    const plan=x.b.coordinateDuo(x.me,x.b.military(x.me,[]),300);
+    assert.equal(plan.partner,'weak');
+    assert.equal(plan.target,'strong');
+    assert.match(plan.source,/lokaler Duo-Relay/);
+  });
+  await check('1.20 exact reciprocal ID auto-accepts real alliance request but waits for GameView confirmation',()=>{
+    const x=boot();
+    x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{
+      target:null,spawn:5050,candidate:5050,needHelp:false,ready:false,
+      available:0,reserve:0,allied:false}});
+    x.weak.isRequestingAllianceWith=()=>true;
+    x.b.setAllianceCtor(class Alliance{
+      constructor(me,partner){this.partner=partner;}
+    });
+    x.b.diplomacyTickSafe();
+    assert.equal(x.sent.length,1);
+    assert.equal(x.sent[0].partner,x.weak);
+    assert.equal(x.b.state().diplomacyPending[0].accept,true);
+    assert.equal(x.b.actualFriendly(x.weak,x.me),false);
+  });
+  await check('1.20 Duo nearby spawn stays separate and independently legal',()=>{
+    const x=boot();
+    x.game.hasOwner=()=>false;x.game.isBorder=()=>false;
+    x.game.config().minDistanceBetweenPlayers=()=>20;
+    x.weak.state.spawnTile=5050;x.strong.state.spawnTile=9999;
+    x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{
+      target:null,spawn:5050,candidate:5050,needHelp:false,ready:false,
+      available:0,reserve:0,allied:false}});
+    const candidate=x.b.duoSpawnCandidate(x.game,x.me,[],false);
+    assert(candidate&&candidate.tile!==5050);
+    const dist=Math.hypot(candidate.x-50,candidate.y-50);
+    assert(dist>=28&&dist<=135);
+    assert(x.b.spawnTileValid(x.game,candidate.tile));
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
