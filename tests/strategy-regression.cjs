@@ -268,6 +268,8 @@ function boot(benchmarkOptions={}) {
   });
   await check('audit ship cannot consume quoted SAM protection fund',async()=>{
     const x=samScenario();
+    assert.equal(await x.b.economy(x.me,2400,0,[]),false);
+    assert.equal(x.b.economicNeeds(x.me,x.me.units(),[]).savingsTarget,1500000);
     x.me.units=()=>[asset('City',5000,1),asset('Factory',5020,2),
       asset('Port',5100,3)];
     x.game.isWater=()=>true;
