@@ -4573,6 +4573,11 @@
         if(!live(serial)||!duoPeerAlly(target)||!opts.diplomacy||
           !opts.offerAlliances||game.config().disableAlliances?.()===true||
           actualFriendly(target,me)||target.isTraitor?.()||
+          safeID(target)===warState.id||
+          (me.outgoingAttacks?.()||[]).some(x=>
+            !x.retreating&&attackTargets(x.targetID,target))||
+          (me.incomingAttacks?.()||[]).some(x=>
+            !x.retreating&&attackTargetID(x.attackerID)===id)||
           safeID(game.owner(anchor))!==id||
           !a?.interaction?.canSendAllianceRequest)return;
         if(send('alliance',[me,target],
