@@ -3980,6 +3980,18 @@
     const urgentSAM=requirements.nuclearThreat&&requirements.wantedSAM>0&&
       requirements.intel.uncovered.length>0;
     const urgentLand=requirements.immediate&&requirements.wantedDefense>0;
+    if(requirements.capStalled&&!urgentSAM&&!urgentLand){
+      // The worker loop stops as soon as any legal proposal appears.
+      // Without a City-first probe, a cheaper Port can win before a legal
+      // capacity-building City is ever examined.
+      const citySlots=slots.filter(x=>x.entry.type==='City'&&
+        (economicNegative.get(x.entry.type+':'+!!x.entry.upgrade+':'+x.site.ref)??0)<=tick);
+      const cityWork=work.filter(x=>x.entry.type==='City');
+      if(!cityWork.length&&citySlots.length)
+        work.unshift(...citySlots.slice(0,Math.min(3,citySlots.length)));
+      work.sort((a,b)=>(b.entry.type==='City'?1:0)-
+        (a.entry.type==='City'?1:0));
+    }
     if(requirements.portMilestone&&!requirements.capStalled&&!urgentSAM&&!urgentLand){
       const portWork=work.filter(x=>x.entry.type==='Port'&&!x.entry.upgrade);
       if(portWork.length)work.splice(0,work.length,...portWork,
