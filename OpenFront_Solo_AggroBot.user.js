@@ -3591,13 +3591,15 @@
         // Provisional saving begins only after a productive core exists;
         // otherwise early harbor hoarding delays essential income buildings.
         cities>=2&&factories>=2&&!hardMode()?500000:0):0;
-    const savingsTarget=immediate?0:capStalled&&!enemyNukes?0:samFund>0?samFund:portFund>0?portFund:
+    const firstPortWindow=portMilestone&&pressure<.95;
+    const savingsTarget=immediate?0:samFund>0?samFund:
+      capStalled&&!firstPortWindow&&!enemyNukes?0:portFund>0?portFund:
       portMilestone||(threat&&intel.uncovered.length>0&&wantedSAM>0)?0:
       saveForSilo?1150000:saveForNuke?firstRocketFund:0;
     investmentStatus=immediate?'Verteidigung vor Investitionen':startup?'Erste Stadt/Fabrik':
-      capStalled&&!enemyNukes?'Truppenlimit: Stadt/City-Upgrade oder Landgewinn priorisiert':
       samFund>0&&gold<samFund?'SAM-Schutz '+Math.round(samFund).toLocaleString()+' Gold':
       threat&&intel.uncovered.length>0&&wantedSAM>0?'SAM-Schutz vor Raketenfonds':
+      capStalled&&!firstPortWindow&&!enemyNukes?'Truppenlimit: Stadt/City-Upgrade oder Landgewinn priorisiert':
       portFund>0&&gold<portFund?'Hafen-Fonds '+Math.round(portFund).toLocaleString()+' Gold':
       portMilestone?'Hafen vor Silo':basic?'Zwei Städte und zwei Fabriken':
       saveForSilo?'Silo-Fonds 1,15 Mio.':saveForNuke?'Raketen-Fonds '+firstRocketFund.toLocaleString():'Wirtschaft & Offensive';
@@ -3608,7 +3610,7 @@
       'SAM Launcher':0,
       'Missile Silo':(neural?.nuclearPriority||0)*75};
     return {list:value,policyBiases,threatened,gold,cities,factories,mine,pressure,nuclearThreat:threat,incomingNukes:enemyNukes,intel,
-      startup,basic,emergency,immediate,capStalled,savingsTarget,saveForSilo,saveForNuke,siloCount,
+      startup,basic,emergency,immediate,capStalled,firstPortWindow,savingsTarget,saveForSilo,saveForNuke,siloCount,
       enemySilos,proactiveSAM,wantedDefense,wantedSAM,portMilestone,coastSites:coastSites.length,portProbeFailures,
       samQuotedCost,portQuotedCost,posture,samSearchBlocked};
   }
@@ -3648,7 +3650,8 @@
     // A real, still-required SAM quote outranks discretionary fleet/nukes.
     const samFund=needs.nuclearThreat&&needs.wantedSAM>0&&
       needs.intel.uncovered.length>0&&!needs.samSearchBlocked&&
-      needs.savingsTarget===needs.samQuotedCost?needs.samQuotedCost:0;
+      Number.isFinite(needs.samQuotedCost)&&needs.samQuotedCost>0&&
+      tick-samQuotedTick<=300?needs.samQuotedCost:0;
     let floor=needs.savingsTarget;
     if(purpose==='Warship')floor=samFund;
     if(purpose==='SAM Launcher'||purpose==='Port'&&needs.portMilestone&&
@@ -3665,7 +3668,7 @@
       ['City','Factory'].includes(purpose))floor=0;
     // After repeated unsuccessful builds, release ONLY speculative silo/nuke
     // savings for a productive core. Never consume the observed SAM quote.
-    if(needs.capStalled&&purpose==='City'&&!needs.incomingNukes)floor=0;
+    if(needs.capStalled&&purpose==='City'&&!needs.incomingNukes&&!samFund)floor=0;
     if(!samFund&&!needs.nuclearThreat&&failedEconomyProbes>=5&&
       ['City','Factory'].includes(purpose)&&
       (needs.cities<3||needs.factories<3)&&
@@ -4028,7 +4031,7 @@
     const urgentSAM=requirements.nuclearThreat&&requirements.wantedSAM>0&&
       requirements.intel.uncovered.length>0;
     const urgentLand=requirements.immediate&&requirements.wantedDefense>0;
-    if(requirements.capStalled&&!urgentSAM&&!urgentLand){
+    if(requirements.capStalled&&!requirements.firstPortWindow&&!urgentSAM&&!urgentLand){
       // The worker loop stops as soon as any legal proposal appears.
       // Without a City-first probe, a cheaper Port can win before a legal
       // capacity-building City is ever examined.
@@ -4040,12 +4043,12 @@
       work.sort((a,b)=>(b.entry.type==='City'?1:0)-
         (a.entry.type==='City'?1:0));
     }
-    if(requirements.portMilestone&&!requirements.capStalled&&!urgentSAM&&!urgentLand){
+    if(requirements.firstPortWindow&&!urgentSAM&&!urgentLand){
       const portWork=work.filter(x=>x.entry.type==='Port'&&!x.entry.upgrade);
       if(portWork.length)work.splice(0,work.length,...portWork,
         ...work.filter(x=>x.entry.type!=='Port'||x.entry.upgrade));
     }
-    if(requirements.portMilestone && !requirements.capStalled && !urgentSAM && !urgentLand && coastal.length &&
+    if(requirements.firstPortWindow && !urgentSAM && !urgentLand && coastal.length &&
       !work.some(x=>x.entry.type==='Port'&&!x.entry.upgrade)){
       const portEntry=entries.find(x=>x.type==='Port'&&!x.upgrade);
       const portSite=portEntry&&rankedCoast.filter(x=>
@@ -4092,8 +4095,7 @@
             if(priceBlocked)samAffordableFailureSince=null;
             else if(Number.isInteger(quote.canBuild))samAffordableFailureSince=null;
             else if(samAffordableFailureSince===null)samAffordableFailureSince=tick;
-            if(requirements.nuclearThreat&&!requirements.samSearchBlocked&&
-              (!requirements.capStalled||requirements.incomingNukes))
+            if(requirements.nuclearThreat&&!requirements.samSearchBlocked)
               requirements.savingsTarget=quoted;
           }
           if(entry.type==='Port'&&requirements.portMilestone){
@@ -4162,7 +4164,7 @@
           // Fund the first economic structures before buying defensive posts,
           // ports or upgrades. Emergency SAM / defense remain possible.
           if(requirements.startup && (!economicCore || isUpgrade) && !essential)continue;
-          if(requirements.portMilestone&&!requirements.capStalled&&!requirements.immediate&&
+          if(requirements.firstPortWindow&&!requirements.immediate&&
             probe.portLegal>0 && item.type!=='Port' &&
             !(item.type==='SAM Launcher'&&requirements.nuclearThreat))
             continue;
@@ -4291,10 +4293,16 @@
     proposals.sort((a,b)=>b.siteValue-a.siteValue);
     // Near the troop cap, prioritize a worker-confirmed City or City upgrade,
     // not a Factory; the legal site, cost and invasion vetoes still apply.
-    const capCity=requirements.capStalled&&!requirements.incomingNukes?
+    const urgentSAMChoice=requirements.nuclearThreat&&
+      requirements.wantedSAM>0&&requirements.intel.uncovered.length>0?
+      proposals.find(x=>x.type==='SAM Launcher'):null;
+    const legalFirstPort=!urgentSAMChoice&&requirements.firstPortWindow?
+      proposals.find(x=>x.type==='Port'&&x.kind==='build'):null;
+    const capCity=requirements.capStalled&&!requirements.incomingNukes&&
+      !urgentSAMChoice&&!legalFirstPort?
       proposals.find(x=>x.type==='City'&&x.kind==='upgrade')||
       proposals.find(x=>x.type==='City'):null;
-    const chosen=capCity||proposals[0];
+    const chosen=urgentSAMChoice||legalFirstPort||capCity||proposals[0];
     const withoutPolicy=[...proposals].sort((a,b)=>
       (b.baseScore-(requirements.policyBiases[b.type]||0))-
       (a.baseScore-(requirements.policyBiases[a.type]||0)))[0];
