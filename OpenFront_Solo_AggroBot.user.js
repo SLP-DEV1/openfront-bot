@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.20.5
+// @version      1.20.6
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.20.5', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.20.6', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -965,6 +965,17 @@
       (safeID(me)===safeID(myPlayer())&&
        (safeID(p)===duoTrustedPeer()?.id||duoPeerAlly(p)));
   }
+  // 0 = clear, 1 = early warning, 2 = observed invasion/loss.
+  // Use engine troop units throughout; only UI display divides by ten.
+  function duoWarningLevel(s,tick=number(()=>game?.ticks?.(),0)){
+    if(!s||!s.home)return 0;
+    if(s.incoming>=Math.max(1200,s.home*.10)||
+      (crisisTrend&&tick<crisisTrend.expires&&
+        (crisisTrend.lostLand>0||crisisTrend.lostAssets>0)))return 2;
+    if(s.incoming>=Math.max(500,s.home*.025)||
+      s.strongest>=s.home*.90||recentHostilePressure(tick))return 1;
+    return 0;
+  }
   function duoState(){
     const me=myPlayer(),peer=duoTrustedPeer()?.player;
     const state=me?.hasSpawned?.()?military(me,strategic.groups):null;
@@ -982,6 +993,7 @@
         state.ratio>=.38&&!state.activeEnemy&&
         state.available>=Math.max(1200,state.home*.09)),
       needHelp:!!(state&&state.incoming>Math.max(1200,state.home*.1)),
+      warning:duoWarningLevel(state),
       allied:!!(peer&&actualFriendly(peer,me)),
       allies:duoOwnAllies(me),
       fronts:(strategic.groups||[]).filter(x=>x.id!==null&&
@@ -1587,14 +1599,31 @@
         b.item.tiles.length-a.item.tiles.length||
         String(a.item.id).localeCompare(String(b.item.id)));
     const danger=s.incoming>Math.max(1200,s.home*.08);
-    const partnerNeeds=incoming>partnerHome*.2||!!local?.state?.needHelp;
+    const partnerWarning=Math.max(duoWarningLevel(
+      {home:partnerHome,incoming,strongest:0},tick),
+      local?.state?.warning||0);
+    const partnerNeeds=incoming>Math.max(1200,partnerHome*.10)||
+      (local?.state?.warning===2&&incoming>0);
+    const invasion=danger||partnerNeeds||
+      (crisisTrend&&tick<crisisTrend.expires&&
+        (crisisTrend.lostLand>0||crisisTrend.lostAssets>0));
     // The lower PlayerID chooses the scheduled focus. A follower uses
     // that announcement only when paired with a valid strike tick.
     const follower=local&&String(safeID(me))>String(local.id);
     const jointTarget=common.find(x=>x.item.id===safeID(announced))||
       common[0];
-    const shared=partnerNeeds&&aggressor?.on>0?aggressor.p:
-      active?.on>0?active.p:
+    // A verified rendezvous remains the priority across harmless ECONOMY/
+    // TECH/RECOVER posture changes. Real invasion, lost alliance, lost
+    // common border or expired launch releases it without forcing an attack.
+    const retained=duoPlan?.strikeTick!==null&&
+      Number.isInteger(duoPlan?.strikeTick)&&
+      tick<=duoPlan.strikeTick+110&&!invasion&&local&&
+      actualFriendly(local.player,me)&&local.state?.allied===true&&
+      Array.isArray(local.state?.fronts)&&
+      local.state.fronts.includes(duoPlan.target)&&
+      common.find(x=>x.item.id===duoPlan.target)?.item.opponent;
+    const shared=invasion&&aggressor?.on>0?aggressor.p:
+      retained||active?.on>0&&active?.p||
       jointTarget?.item.opponent||
       (follower&&Number.isInteger(local?.state?.strikeTick)?announced:null)||
       targets[0];
@@ -1611,23 +1640,24 @@
       Number.isInteger(duoPlan.strikeTick)&&
       tick-duoPlan.strikeTick<180?duoPlan.strikeTick:null;
     const offered=local?.state?.strikeTick;
-    const strikeTick=sharedJoint&&active?.on>0&&held!==null&&
-      !danger?held:
-      !local||!bothReady||!sharedJoint?null:leader?
+    const strikeTick=sharedJoint&&held!==null&&!invasion?
+      held:
+      !local||!bothReady||!sharedJoint||invasion?null:leader?
       (held??tick+45):
       Number.isInteger(offered)&&offered>=tick-15&&offered<=tick+180&&
         local?.state?.target===safeID(shared)?offered:null;
     const role=danger?'Heimat verteidigen':
-      partnerNeeds?'Partner entlasten':
-      active?.on>0?'Partnerfront unterstützen':
+      partnerNeeds?'Partner in Invasion entlasten':
       strikeTick!==null?(tick<strikeTick?'Gemeinsamen Angriff vorbereiten':
         leader?'Gemeinsamen Angriff anführen':'Gemeinsamen Angriff unterstützen'):
+      partnerWarning>0?'Partnerfrühwarnung · Reserve schützen':
+      active?.on>0?'Partnerfront unterstützen':
       bothReady?'Auf Partner-Zeitpunkt warten':
       s.home>partnerHome*1.25?'Angriff vorbereiten':'Aufbauen / Landung vorbereiten';
     const plan={partner:duo.partnerID,target:shared?safeID(shared):null,
       targetName:shared?nameOf(shared):'Kein Gegner',role,
       partnerCommitted:active?.on||0,partnerIncoming:incoming,
-      partnerHome,needHelp:partnerNeeds,
+      partnerHome,needHelp:partnerNeeds,partnerWarning,
       partnerReady:!!local?.state?.ready,strikeTick,
       joint:sharedJoint?{own:sharedJoint.own,ally:sharedJoint.ally,
         needed:sharedJoint.needed}:null,
