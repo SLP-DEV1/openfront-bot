@@ -1674,6 +1674,9 @@
     const retained=duoPlan?.strikeTick!==null&&
       Number.isInteger(duoPlan?.strikeTick)&&
       tick<=duoPlan.strikeTick+110&&!invasion&&local&&
+      (local.state?.ready===true||
+        (local.player?.outgoingAttacks?.()||[]).some(a=>
+          !a.retreating&&attackTargets(a.targetID,duoPlan.target)))&&
       actualFriendly(local.player,me)&&local.state?.allied===true&&
       Array.isArray(local.state?.fronts)&&
       local.state.fronts.includes(duoPlan.target)&&
@@ -4304,9 +4307,12 @@
           unaffordable:probe.unaffordable,invalidSite:probe.invalidSite,
           lowestCost:Number.isFinite(probe.lowestCost)?probe.lowestCost:null});
       economicLastPlan=entries.slice(0,3).map(x=>x.type).join(' › ');return false;}
+    // Economy has its own async scheduler. Its action ranking must use the
+    // currently observed army, not a potentially uninitialized combat tick.
+    const rankingMilitary=military(me,strategic.groups);
     for(const item of proposals){
       item.baseScore=item.siteValue;
-      item.neuralDelta=neuralActionDelta('economy',item.siteValue,me,troopSnapshot,{
+      item.neuralDelta=neuralActionDelta('economy',item.siteValue,me,rankingMilitary,{
         type:item.type,
         magnitude:clamp((STRUCTURE_TYPES.indexOf(item.type)+1)/STRUCTURE_TYPES.length,0,1),
         opportunity:clamp(item.siteValue/150,0,1),
