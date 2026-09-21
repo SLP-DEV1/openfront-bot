@@ -81,7 +81,7 @@ function boot(benchmarkOptions={}) {
     'setPending:p=>pendingAttack=p,setLastBattle:p=>lastBattle=p,',
     'setWar:(id,name)=>warState={id,name,since:game.ticks(),blockedUntil:-Infinity},setWarBlockUntil:n=>warState.blockedUntil=n,',
     'setGroups:groups=>strategic.groups=groups,',
-    'setDuoPlan:p=>duoPlan=p,eventBus:()=>bus,',
+    'setDuoPlan:p=>duoPlan=p,setOperation:p=>operation=p,eventBus:()=>bus,',
     'setBoats:yes=>opts.boats=yes,setBoatCtor:C=>ctors.boat=C,',
     'setCancelCtor:C=>ctors.cancel=C,setTroopSnapshot:t=>troopSnapshot=t,setCtor:(key,C)=>ctors[key]=C,',
     'setMode:m=>strategic.mode=m,setAllianceCtor:C=>ctors.alliance=C,setHostilePressure:t=>lastHostilePressure=t,',
