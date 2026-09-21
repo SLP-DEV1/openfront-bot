@@ -150,6 +150,13 @@ function boot(benchmarkOptions={}) {
     x.b.planOperation(x.me,groups,state,401);
     assert.equal(x.b.state().operation,null);
     assert(x.b.state().decisionTimeline.some(d=>d.why.includes('Ziel jetzt verbündet')));
+    x.me.isFriendly=()=>false;
+    const next=x.b.planOperation(x.me,groups,state,500);
+    assert(next?.budget>0);
+    next.spent=next.budget;
+    assert.equal(x.b.planOperation(x.me,groups,state,610),null,
+      'spent budget cancels the operation and cools target down');
+    assert(x.b.state().decisionTimeline.some(d=>d.why.includes('Budget ausgeschöpft')));
   });
   await check('trained strategic policy switches land versus naval, zero model retains rules', () => {
     const x=boot();x.setTick(600);x.b.setBoatCtor(class {});
