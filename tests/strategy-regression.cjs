@@ -3115,6 +3115,33 @@ function boot(benchmarkOptions={}) {
     units=[mk('City',0,2),mk('Factory',1)];
     assert(x.game.config().maxTroops(x.me)>base,'City level lifts cap');
   });
+  await check('1.20.9 Russia-style plateau buys City with and without Factory neural bias',async()=>{
+    const simulate=async factoryBias=>{
+      const x=boot();x.setTick(2569);x.setLand(13044);
+      x.setHome(925552);x.setGold(2000000);
+      x.game.config().maxTroops=()=>939219;
+      const units=[asset('City',5000,1),asset('Factory',5030,2)];
+      x.me.units=()=>units;x.b.setTroopSnapshot(x.b.military(x.me,[]));
+      if(factoryBias){
+        const weights=Array(1000).fill(0);
+        weights[984+10]=5; // schema-4 factoryPriority output bias
+        x.b.setNeural({schema:4,arch:'24x24x16-tanh',weights});
+      }
+      const need=x.b.economicNeeds(x.me,units,[5000]);
+      assert.equal(need.capStalled,true);
+      x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
+        type,canBuild:tile,canUpgrade:false,
+        cost:BigInt(type==='City'?1000000:650000)
+      }))});
+      assert.equal(await x.b.economy(x.me,2569,0,[5000]),true);
+      assert.equal(x.sent[0].unit,'City','factory priority must not impersonate capacity');
+      if(factoryBias)assert(
+        x.b.diagnosticSnapshot().neuralDecisionEvidence?.headBiasByType.Factory>0,
+        'test must exercise nonzero Factory neural bias');
+      return x.sent[0].unit;
+    };
+    assert.equal(await simulate(false),await simulate(true));
+  });
   await check('1.19.8 cap relief does not override active land invasion',()=>{
     const x=boot();x.setHome(99000);x.setLand(4400);
     const units=['City','City','Factory','Factory'].map((type,i)=>asset(type,5000+i*25,i+1));
