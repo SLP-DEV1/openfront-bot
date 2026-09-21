@@ -78,7 +78,7 @@
     if(!opts.neuralEnabled||!opts.fullAuto||![3,4].includes(neuralModel?.schema)||
       !me||!s||s.home<=0)return null;
     const home=Math.max(1,s.home),max=Math.max(1,s.max||home);
-    const gold=number(()=>Number(me.gold?.()),0),
+    const gold=goldAmount(me),
       land=number(()=>me.numTilesOwned?.(),0);
     const units=ownStructures(me),groups=strategic.groups||[];
     const cities=units.filter(u=>u.type?.()==='City').length,
