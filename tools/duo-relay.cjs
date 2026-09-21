@@ -94,6 +94,14 @@ function allowed(origin){
 }
 function createServer(){
   return http.createServer((req,res)=>{
+    // Navigating to this address in either browser checks that the
+    // local Node process is reachable, independently of site permission.
+    if(req.method==='GET'&&req.url==='/health'){
+      res.writeHead(200,{'Content-Type':'application/json',
+        'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
+        .end(JSON.stringify({ok:true,service:'AggroBot Duo Relay',
+          version:'1.20.3'}));return;
+    }
     const origin=req.headers.origin;
     if(!allowed(origin)){
       console.warn('[AggroBot Duo] Browser-Ursprung abgewiesen:',origin||'ohne Origin');
@@ -147,7 +155,8 @@ function createServer(){
 if(require.main===module){
   const server=createServer();
   server.listen(port,host,()=>console.log(
-    '[AggroBot Duo] Nur lokal: http://'+host+':'+server.address().port+
-    ' · nur OpenFront-Seiten; STRG+C stoppt den Relay.'));
+    '[AggroBot Duo] v1.20.3 · Nur lokal: http://'+host+':'+server.address().port+
+    ' · Test: http://'+host+':'+server.address().port+
+    '/health · STRG+C stoppt den Relay.'));
 }
 module.exports={createServer,validate,exchange,rooms,trim,allowed,TTL};
