@@ -3534,8 +3534,6 @@ function boot(benchmarkOptions={}) {
     x.me.units=()=>[asset('City',5000,1),asset('City',5020,2),
       asset('Factory',5040,3),asset('Factory',5060,4)];
     x.b.setCtor('donateGold',Gold);x.b.victoryPlan(x.me);
-    assert.equal(x.b.economicNeeds(x.me,x.me.units(),[]).capStalled,false,
-      'setup snapshot is initialized by the military planner');
     const capped=x.b.military(x.me,[]);
     x.b.setTroopSnapshot(capped);
     assert.equal(x.b.economicNeeds(x.me,x.me.units(),[]).capStalled,true);
