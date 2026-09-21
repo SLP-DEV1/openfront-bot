@@ -4757,73 +4757,79 @@
       return;
     }
     if(renewAlliances(me,tick))return;
-    // Do not initiate different unrelated external alliances independently.
-    // Follow a confirmed third-party ally of the partner if OUR own worker
-    // permits it; a relay report never grants an alliance by itself.
+    // A Duo can actively form NEW outside alliances: lower PlayerID makes
+    // the initial offer and the follower later proposes the same alliance
+    // only after the first is genuinely confirmed by OpenFront.
     const paired=duoTrustedPeer();
-    if(paired){
-      if(!actualFriendly(paired.player,me)||!opts.offerAlliances||
-        !ctors.alliance||!actionBudget()||tick-lastProposalTick<55)return;
-      const targets=players.filter(p=>duoPeerAlly(p)&&
-        !actualFriendly(p,me)&&!p.isTraitor?.()&&
-        safeID(p)!==warState.id&&safeID(p)!==plan?.id&&
-        !diplomacyHandled.has(safeID(p))&&
-        !(me.outgoingAttacks?.()||[]).some(a=>
-          !a.retreating&&attackTargets(a.targetID,p))&&
-        !(me.incomingAttacks?.()||[]).some(a=>
-          !a.retreating&&attackTargetID(a.attackerID)===safeID(p)));
-      const target=targets[0];
-      if(!target)return;
-      const id=safeID(target),anchor=target.state?.spawnTile;
-      if(!Number.isInteger(anchor)||safeID(game.owner(anchor))!==id)return;
-      const serial=generation;lastProposalTick=tick;
-      Promise.resolve(me.actions(anchor,null)).then(a=>{
-        if(!live(serial)||!duoPeerAlly(target)||!opts.diplomacy||
-          !opts.offerAlliances||game.config().disableAlliances?.()===true||
-          actualFriendly(target,me)||target.isTraitor?.()||
-          safeID(target)===warState.id||
-          (me.outgoingAttacks?.()||[]).some(x=>
-            !x.retreating&&attackTargets(x.targetID,target))||
-          (me.incomingAttacks?.()||[]).some(x=>
-            !x.retreating&&attackTargetID(x.attackerID)===id)||
-          safeID(game.owner(anchor))!==id||
-          !a?.interaction?.canSendAllianceRequest)return;
-        if(send('alliance',[me,target],
-          'DUO · PARTNERBÜNDNIS ANFRAGEN: '+nameOf(target),true)){
-          diplomacyHandled.set(id,tick+200);diplomacyStats.offered++;
-          diplomacyStatus='Duo-Partnerbündnis angefragt: '+nameOf(target);
-        }
-      }).catch(e=>{duoLocal.status='Partnerbündnis: '+
-        String(e?.message||e).slice(0,55);});
+    if(!opts.offerAlliances||!allianceOfferPath()||!actionBudget()){
+      if(!allianceOfferPath()&&opts.offerAlliances)
+        diplomacyStatus='Eigene Angebote: Allianz-Intent / Spielerpanel noch nicht verfügbar';
       return;
     }
-    if(!opts.offerAlliances || !ctors.alliance || !actionBudget() ||
-      tick-lastProposalTick<450)return;
-    const s=military(me,strategic.groups);
-    const candidates=strategic.groups.filter(g=>g.id!==null&&g.opponent &&
-      !diplomacyHandled.has(g.id)&&!diplomacyPending.has(g.id)&&
-      (warState.id===null||g.id!==warState.id)&&
-      (!['ASSAULT','EXPAND'].includes(strategic.mode) ||
-        number(()=>g.opponent.troops(),0)>=number(()=>me.troops(),1)*.85)&&
-      !me.isRequestingAllianceWith?.(g.opponent))
-      .map(g=>({g,...diplomacyScore(me,g.opponent,s,true)}))
-      .filter(x=>x.score>=72).sort((a,b)=>b.score-a.score);
-    if(!candidates.length)return;
-    const chosen=candidates[0];
-    const target=chosen.g.opponent,serial=generation,anchor=chosen.g.tiles?.[0];
-    if(!Number.isInteger(anchor))return;
+    if(paired&&!actualFriendly(paired.player,me))return;
+    if(tick-lastProposalTick<(paired?90:450))return;
+    const peerWar=paired?.state?.warTarget,peerTarget=paired?.state?.target;
+    const safeOffer=(p)=>p&&p.isAlive?.()&&!friendly(p,me)&&
+      !p.isTraitor?.()&&!diplomacyHandled.has(safeID(p))&&
+      !diplomacyPending.has(safeID(p))&&
+      safeID(p)!==warState.id&&safeID(p)!==plan?.id&&
+      safeID(p)!==peerWar&&safeID(p)!==peerTarget&&
+      !me.isRequestingAllianceWith?.(p)&&
+      !(me.outgoingAttacks?.()||[]).some(a=>!a.retreating&&
+        attackTargets(a.targetID,p))&&
+      !(me.incomingAttacks?.()||[]).some(a=>!a.retreating&&
+        attackTargetID(a.attackerID)===safeID(p))&&
+      !(paired?.player.outgoingAttacks?.()||[]).some(a=>!a.retreating&&
+        attackTargets(a.targetID,p));
+    const inherited=paired?players.filter(p=>
+      duoPeerAlly(p)&&safeOffer(p)):[],follow=inherited[0]||null;
+    // Without an inherited third-party friend, only the leader starts a
+    // new offer: two independent browsers must not recruit enemies of
+    // their respective partner by accident.
+    const leader=!paired||String(safeID(me))<String(paired.id);
+    if(paired&&!follow&&!leader)return;
+    const army=military(me,strategic.groups);
+    const candidates=strategic.groups.filter(g=>g.id!==null&&
+      g.opponent&&g.tiles?.length&&safeOffer(g.opponent)&&
+      (!['ASSAULT','EXPAND'].includes(strategic.mode)||
+        number(()=>g.opponent.troops(),0)>=number(()=>me.troops(),1)*.85))
+      .map(g=>({g,...diplomacyScore(me,g.opponent,army,true)}))
+      .filter(x=>x.score>=72)
+      .sort((a,b)=>b.score-a.score||
+        String(a.g.id).localeCompare(String(b.g.id)));
+    const chosen=follow?null:candidates[0];
+    if(!follow&&!chosen)return;
+    const target=follow||chosen.g.opponent,id=safeID(target);
+    const anchor=(strategic.groups.find(g=>g.id===id)?.tiles||[])[0]??
+      target.state?.spawnTile;
+    if(!Number.isInteger(anchor)||safeID(game.owner(anchor))!==id)return;
+    const serial=generation,peerID=paired?.id??null;
     lastProposalTick=tick;
     Promise.resolve(me.actions(anchor,null)).then(a=>{
-      if(!live(serial)||game.inSpawnPhase?.()||!opts.diplomacy||!opts.offerAlliances)return;
-      if(!a?.interaction?.canSendAllianceRequest||safeID(game.owner(anchor))!==safeID(target) ||
-        me.isRequestingAllianceWith?.(target)||friendly(target,me))return;
-      if(send('alliance',[me,target],
-        'ALLIANZ ANGEBOTEN: '+nameOf(target)+' · Wert '+Math.round(chosen.score))) {
-        diplomacyHandled.set(safeID(target),tick+1050);diplomacyStats.offered++;
-        diplomacyStatus='Bündnis angeboten: '+nameOf(target);
-        telemetry('alliance_offer_sent',diplomacyStatus,{requestor:safeID(target)});
+      const connectedPair=duoTrustedPeer();
+      if(!live(serial)||game.inSpawnPhase?.()||!opts.diplomacy||
+        !opts.offerAlliances||game.config().disableAlliances?.()===true||
+        !a?.interaction?.canSendAllianceRequest||
+        safeID(game.owner(anchor))!==id||!safeOffer(target)||
+        (peerID!==null&&(!connectedPair||connectedPair.id!==peerID||
+          !actualFriendly(connectedPair.player,me)))||
+        (follow&&!duoPeerAlly(target))||
+        (!follow&&connectedPair&&
+          String(safeID(me))>=String(connectedPair.id)))return;
+      const label=follow?'DUO · PARTNERBÜNDNIS ANFRAGEN: ':
+        paired?'DUO · GEMEINSAMES BÜNDNIS ANFRAGEN: ':
+          'ALLIANZ ANGEBOTEN: ';
+      if(sendAllianceOffer(me,target,label+nameOf(target),!!paired)){
+        diplomacyHandled.set(id,tick+(paired?220:1050));
+        diplomacyStats.offered++;
+        diplomacyStatus='Bündnis angeboten: '+nameOf(target)+
+          ' · Bestätigung durch Spiel ausstehend';
+        telemetry('alliance_offer_sent',diplomacyStatus,
+          {requestor:id,path:allianceOfferPath(),
+            duo:!!paired,inherited:!!follow});
       }
-    }).catch(e=>{diplomacyStatus='Allianzangebot fehlgeschlagen: '+String(e.message);});
+    }).catch(e=>{diplomacyStatus='Allianzangebot fehlgeschlagen: '+
+      String(e?.message||e).slice(0,90);});
   }
   function landingFailure(boat,tick,tile,reason){
     const key=boat.key||String(boat.dest),prior=landingFailures.get(key);
