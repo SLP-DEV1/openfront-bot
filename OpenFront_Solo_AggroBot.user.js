@@ -2033,29 +2033,39 @@
         'Verbleibende Truppen reichen nach Risikobegrenzung nicht für den Angriff':
         'Heimschutz nach Großangriff'};
   }
-  function targetOpportunity(me,items,s,item) {
-    if(!item?.opponent?.isAlive?.()||friendly(item.opponent,me))return false;
+  function targetOpportunityCheck(me,items,s,item) {
+    if(!item?.opponent?.isAlive?.()||friendly(item.opponent,me))
+      return {ok:false,reason:'dead-or-friendly'};
     const late=lateGame(me);
     let rawTroops;
-    try{rawTroops=item.opponent.troops?.();}catch(_){return false;}
-    if(rawTroops===null||rawTroops===undefined)return false;
+    try{rawTroops=item.opponent.troops?.();}catch(_){return {ok:false,reason:'unknown-troops'};}
+    if(rawTroops===null||rawTroops===undefined)return {ok:false,reason:'unknown-troops'};
     const homeTroops=Number(rawTroops);
-    if(!Number.isFinite(homeTroops)||homeTroops<0)return false;
+    if(!Number.isFinite(homeTroops)||homeTroops<0)return {ok:false,reason:'unknown-troops'};
     // An empty home army is attackable, but deployed enemy forces may return.
     const deployed=(item.opponent.outgoingAttacks?.()||[])
       .filter(a=>!a.retreating).reduce((n,a)=>n+Math.max(0,number(()=>a.troops,0)),0);
     const troops=homeTroops+deployed;
-    if(s.incoming>s.home*(late?.15:.04)||s.ratio<(late?.29:.40))return false;
+    if(s.incoming>s.home*(late?.15:.04))return {ok:false,reason:'incoming-attack'};
+    if(s.ratio<(late?.29:.40))return {ok:false,reason:'low-home-ratio'};
     const minRatio=enemyOpportunityRatio(item.opponent,late,s.home);
     const credit=duoBattleCredit(me,item.opponent);
-    if(s.available+credit<troops*minRatio ||
-      s.home+credit<troops*targetHomeRatio(item.opponent,late))return false;
+    if(s.available+credit<troops*minRatio)return {ok:false,reason:'insufficient-available',
+      required:Math.ceil(troops*minRatio),available:s.available,credit};
+    if(s.home+credit<troops*targetHomeRatio(item.opponent,late))
+      return {ok:false,reason:'home-versus-target',required:Math.ceil(troops*targetHomeRatio(item.opponent,late)),home:s.home};
     const front=frontRiskPlan(items,s,item.id);
-    if(front.danger||front.pressure)return false;
+    if(front.danger||front.pressure)return {ok:false,reason:'other-front-pressure',other:front.other};
     const strike=Math.min(s.available*(hardMode()?.76:.80),
       Math.max(troops*(hardMode()?1.57:1.40),s.available*.48));
-    return strike<=front.safeStrike &&
-      strike+credit>=troops*(hardMode()?1.18:1.08);
+    if(strike>front.safeStrike)return {ok:false,reason:'post-attack-home-guard',
+      strike:Math.floor(strike),safeStrike:front.safeStrike};
+    if(strike+credit<troops*(hardMode()?1.18:1.08))
+      return {ok:false,reason:'strike-below-target-force',strike:Math.floor(strike),credit};
+    return {ok:true,reason:'candidate-safe',strike:Math.floor(strike)};
+  }
+  function targetOpportunity(me,items,s,item){
+    return targetOpportunityCheck(me,items,s,item).ok;
   }
   function warReadiness(me,items,s,tick,target=null) {
     if(!hardMode())return {ready:true,reason:'Normal'};
@@ -2271,6 +2281,43 @@
       return [{...item,key,score:score+neuralDelta,baseScore,neuralDelta,forecast,
         amount:Math.min(available,Math.floor(amount))}];
     }).sort((a,b)=>b.score-a.score);
+  }
+  // Explain why a visible front is absent from the ranked list. This is
+  // observational: it cannot authorize any attack or relax safety gates.
+  function reportAttackBlocks(me,items,s,context,ranked,tick){
+    if(tick-lastAttackBlockReport<90)return attackBlockReport;
+    lastAttackBlockReport=tick;
+    const admitted=new Set(ranked.map(x=>x.id));
+    const readiness=context.readiness||{ready:true,reason:'unknown'};
+    const rows=items.filter(x=>x.id!==null).slice(0,16).map(x=>{
+      let reason='unknown';
+      if(!x.opponent?.isAlive?.()||friendly(x.opponent,me))reason='dead-or-friendly';
+      else if(admitted.has(x.id))reason='admitted';
+      else if(pendingAttack?.id!=null&&pendingAttack.id!==x.id)reason='pending-other-target';
+      else if(isWar()&&warState.id!==x.id)reason='war-lock';
+      else if(tick<warState.blockedUntil)reason='war-cooldown';
+      else if(!readiness.ready)reason='war-readiness: '+readiness.reason;
+      else if((blockedTargets.get(x.id)||0)>tick)reason='blocked-target-cooldown';
+      else if(tick-(cooldowns.get(String(x.id))??-Infinity)<80)reason='attack-cooldown';
+      else if(s.activeEnemy>=1)reason='outgoing-attack-active';
+      else reason=targetOpportunityCheck(me,items,s,x).reason;
+      return {target:x.id,name:nameOf(x.opponent),reason,
+        home:Math.round(s.home),available:Math.round(s.available),
+        enemyHome:number(()=>x.opponent?.troops?.(),null)};
+    });
+    const counts={};for(const row of rows)counts[row.reason]=(counts[row.reason]||0)+1;
+    attackBlockReport={tick,ranked:ranked.length,home:s.home,
+      available:s.available,reserve:s.reserve,incoming:s.incoming,
+      committed:s.committed,readiness:readiness.reason,counts,targets:rows.slice(0,8)};
+    if(!ranked.some(x=>x.id!==null)&&rows.length){
+      telemetry('attack_block_report','Kein Landkriegsziel freigegeben',
+        {attackBlockReport});
+      decisionNote('ziel_verworfen','Landkrieg: '+Object.entries(counts)
+        .sort((a,b)=>b[1]-a[1]).slice(0,2)
+        .map(([k,v])=>k+' ('+v+')').join(', '),
+        rows.slice(0,3).map(x=>x.name+': '+x.reason),tick);
+    }
+    return attackBlockReport;
   }
   // Shared investment posture; never bypasses worker building legality.
   function economyPosture(me,s,tick=number(()=>game.ticks(),0)){
@@ -4808,6 +4855,7 @@
       status='Strategie: '+context.wanted+' · Heim '+Math.round(s.home/10)+
         ' · Reserve '+Math.round(s.reserve/10)+' · Front '+Math.round(s.committed/10);
       const ranked=rankedTargets(groups,me,tick,s,context);
+      reportAttackBlocks(me,groups,s,context,ranked,tick);
       // Do not open a new front while the homeland is under heavy assault.
       const dangerNow=defenseAssessment(me,s,tick);
       if(dangerNow.severe){await fleetDefense(me,tick,serial);
