@@ -1,7 +1,7 @@
 # AggroBot: Multiplayer-/Duo-Umbau — lebender Fortschrittstracker
 
 > **Master-Issue:** [#75 – Gesamtübersicht](https://github.com/SLP-DEV1/openfront-bot/issues/75) · **[Vollständiger eingereichter Entwicklungsplan](COMPETITIVE_PLAN_2026-09-22.md)** (neun Abschnitte einschließlich Befunde, Architektur, P0–P6, Messverfahren und Quellen).  
-> **Erstellt:** 22.09.2026. Ursprüngliche Analyse: Commit `10e81ee` / 1.20.8; beim Anlegen des Trackers ist das GitHub-Hauptskript laut README **1.20.9**. **Keine neue Gesamt-Testausführung** für 1.20.9 wurde für diese Plananlage durchgeführt.
+> **Erstellt:** 22.09.2026. Ursprüngliche Analyse: Commit `10e81ee` / 1.20.8; beim Anlegen des Trackers war das GitHub-Hauptskript laut README **1.20.9**; zwischenzeitlich wurde **1.20.10** mit Action-Trace erstellt. **Keine neue Gesamt-Testausführung** für 1.20.9 wurde für diese Plananlage durchgeführt.
 
 ## Status-Legende und Abnahmeregel
 
@@ -22,6 +22,13 @@
 - **[Offen]** Durchgängige Action-/Decision-IDs, reproduzierbares Match-Metadatenprotokoll, vollständiger CI-/Live-Nachweis und die restliche P0-Definition-of-Done.
 
 **Fortschritt und offene Nachweise:** [P0-Issue #68](https://github.com/SLP-DEV1/openfront-bot/issues/68). Die P0-/Master-Checkboxen bleiben bis zur Abnahme bewusst offen.
+
+## P0 – nächste konkrete Umsetzung (GitHub 1.20.10)
+
+- **[Im Code + gezielter Test bestanden]** Jede erfolgreich ausgesendete Bot-Aktion erhält eine pro Match eindeutige `actionId` und eine `decisionId` aus Session und Tick. Angriffe und Bau-/Upgrade-Aufträge führen diese ID in Pending-Status und beobachtete Bestätigung bzw. Nichtbeobachtung weiter. `action` meldet ausdrücklich `effect: unconfirmed`; eine sichtbare Folge ist kein Kausalitätsbeweis. [Implementierung](https://github.com/SLP-DEV1/openfront-bot/commit/6ceced049c7daa61ce4108b9408019a108acd18e), [gezielter Regressionstest](https://github.com/SLP-DEV1/openfront-bot/commit/e522d3f1e2c639acb8184c2c7c46cae6e1baf121), [neues Neural-Bundle](https://github.com/SLP-DEV1/openfront-bot/commit/8f1515c3f3034d573604cc5a437262ff0290db01).
+- **[Im isolierten V8-Nachbau, nicht nativem Node]** 291 vorhandene Strategieregressionen durchlaufen: 272 bestanden, 19 fehlgeschlagen. Davon sind zwei durch die simulierte Laufzeit (`setImmediate`, `../tools/match-report.cjs`) nicht ausführbar; 17 weitere Fälle bleiben offen. Das ist **kein aktueller grüner CI-Nachweis** und keine fachliche Entwarnung; insbesondere SAM-/Silo-/Port-Konkurrenz, Neural-Ranking, README-Erwartung und Duo-Termin noch einzeln mit unverfälschtem Node/Engine-Test klassifizieren.
+- **[Syntax/Parität jeweils separat nachprüfen]** Die reguläre und die Run3-Datei tragen 1.20.10 und Run3 wurde aus demselben Quellskript mit dem unveränderten Schema-4-Champion synchronisiert. GitHub Actions und lokal vollständiger `node tests/bundled-run3-regression.cjs` sind noch nicht nachgewiesen.
+- **[Offen]** Der Action-Trace deckt nicht automatisch alle Spenden-/Schiffs-/Nuke-Wirkungsnachweise ab. Auch Quell-/Optionshash, tatsächliche Engine-Szenarien, historische Regressionstriage und zwei vollständige Bot-Clients fehlen weiterhin. **P0 bleibt offen.**
 
 ## Phasenstatus – die zentrale Abarbeitungsansicht
 
