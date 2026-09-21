@@ -1,0 +1,72 @@
+{
+  "runId": "neural-v2-2hour-20260921",
+  "engineCommit": "bb8af015b515b3b717bd4d901074c5f4c16641cb",
+  "botAtEvaluation": {
+    "file": "OpenFront_Solo_AggroBot.user.js",
+    "version": "1.19.4",
+    "botSHA256": "f07144847e6ad55d9cf317c4f24f89d469589692a14609ab3752c64b948d6c9d"
+  },
+  "models": {
+    "baseline-stageC": {
+      "modelId": "84d1f593039166f9e953272524ac1018b4034adcf4304cb4e6c49757d752d2e1",
+      "fileSHA256": "d2a5fce385fa9b0a1432b2ee336ef0dde04ebccd8278ba21cc171abe14c31e51"
+    },
+    "baseline-zero": "zero weights (schema 4, 24x24x16-tanh, 1000 weights)",
+    "candidate-hard": {
+      "file": "stage2-hard/provisional.json",
+      "fileSHA256": "ceb9858b4d74648b669cd7055c22ad5a1bee4b3009076096941e5d866e8db685"
+    },
+    "candidate-impossible": {
+      "file": "stage3-impossible/provisional.json",
+      "fileSHA256": "5b745a8e7faeb4823b2ad7bdcf6d0ea4dfdba72838fb93ba90f472311bf09fa7"
+    }
+  },
+  "protocol": {
+    "seeds": ["hold-0", "hold-1", "hold-2", "hold-3"],
+    "seedProperty": "hold-* disjoint from all training seeds (train-*); paired by seed+map+nation across all models",
+    "maps": ["World", "Europe"],
+    "nations": [1, 4],
+    "nPerModel": 16,
+    "ticks": 18000,
+    "outcomeRanking": "victory(2) > censored tick-limit/incomplete(1) > defeat(0)",
+    "gate": "trainer/evaluation-v2.cjs"
+  },
+  "results": {
+    "Hard": {
+      "wallMs": 104140,
+      "generatedAt": "2026-09-21T20:01:18.453Z",
+      "summary": {
+        "baseline-stageC": { "wins": 0, "losses": 15, "endLand": 29487.19, "peakLand": 55831.13, "retention": 0.4953, "territoryGained": 1.3125, "goldIncome": 215988.75, "survivalTicks": 10912.69, "buildConfirmed": 15.94 },
+        "baseline-zero": { "wins": 2, "losses": 12, "endLand": 41662.69, "peakLand": 57805.56, "retention": 0.6399, "territoryGained": 1.0625, "goldIncome": 804737.81, "survivalTicks": 10261.75, "buildConfirmed": 18.25 },
+        "candidate-hard": { "wins": 1, "losses": 14, "endLand": 37865.88, "peakLand": 55589.06, "retention": 0.5704, "territoryGained": 1.0625, "goldIncome": 505305.94, "survivalTicks": 9140.56, "buildConfirmed": 14.06 },
+        "candidate-impossible": { "wins": 0, "losses": 14, "endLand": 31425.13, "peakLand": 57781.0, "retention": 0.5269, "territoryGained": 1.0, "goldIncome": 165374.53, "survivalTicks": 9948.69, "buildConfirmed": 14.5 }
+      },
+      "impact": {
+        "candidate-hard": { "attackCommandDelta": 0.1875, "decisionTimelineDelta": -1.0 },
+        "candidate-impossible": { "attackCommandDelta": 1.125, "decisionTimelineDelta": 0.0 }
+      }
+    },
+    "Impossible": {
+      "wallMs": 43226,
+      "generatedAt": "2026-09-21T20:00:17.526Z",
+      "summary": {
+        "baseline-stageC": { "wins": 0, "losses": 15, "endLand": 24633.19, "peakLand": 50341.5, "retention": 0.3775, "territoryGained": 0.1875, "goldIncome": 246042.66, "survivalTicks": 8182.31, "buildConfirmed": 9.31 },
+        "baseline-zero": { "wins": 1, "losses": 15, "endLand": 27664.56, "peakLand": 47179.13, "retention": 0.4425, "territoryGained": 0.0625, "goldIncome": 404976.56, "survivalTicks": 7605.06, "buildConfirmed": 9.0 },
+        "candidate-hard": { "wins": 0, "losses": 15, "endLand": 27314.13, "peakLand": 49487.75, "retention": 0.4497, "territoryGained": 0.1875, "goldIncome": 236630.16, "survivalTicks": 9333.81, "buildConfirmed": 14.75 },
+        "candidate-impossible": { "wins": 0, "losses": 15, "endLand": 28753.06, "peakLand": 54363.81, "retention": 0.4223, "territoryGained": 0.5625, "goldIncome": 281084.06, "survivalTicks": 9269.06, "buildConfirmed": 11.69 }
+      },
+      "impact": {
+        "candidate-hard": { "attackCommandDelta": -1.4375, "decisionTimelineDelta": -3.4375 },
+        "candidate-impossible": { "attackCommandDelta": -1.125, "decisionTimelineDelta": -0.5 }
+      }
+    }
+  },
+  "decision": {
+    "outcome": "no-promotion",
+    "keptChampion": "84d1f593039166f9e953272524ac1018b4034adcf4304cb4e6c49757d752d2e1",
+    "bestProvisional": "candidate-impossible",
+    "rationale": "Kein Kandidat dominiert beide Schwierigkeitsgrade: auf Hard fuehrt die zero-Baseline (2 Siege, endLand 41662.69, retention 0.6399, gold 804737.81); auf Impossible fuehrt candidate-impossible in endLand/peakLand/survival/territoryGained, aber ohne mehr Siege und mit retention unter candidate-hard. evaluation-v2-Gate: Kriterium (a) mehr Siege unter Regressions-Obergrenze und (b) gleiche Siege plus regression-freie wiederholbare Gewinne ueber alle Seeds beide nicht erfuellt."
+  },
+  "source": "benchmark-results/neural-v2-2hour-20260921/evaluation.json",
+  "generatedAt": "2026-09-21T20:35:00Z"
+}
