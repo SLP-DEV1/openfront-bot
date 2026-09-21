@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.19.2
+// @version      1.19.3
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,12 +14,12 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.19.2', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
-  const defaults = {enabled:false, autoStart:true, learningEnabled:true, brainEnabled:false, brainToken:'', fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
+  const VERSION = '1.19.3', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const defaults = {enabled:false, autoStart:true, learningEnabled:true, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
     autoStrategy:true, diplomacy:true, offerAlliances:true, nukes:true, antiNuke:true, lateOffense:true,
-    impossibleMode:true,impossibleExperiment:false,qwenPolicy:false,neuralEnabled:false};
+    impossibleMode:true,impossibleExperiment:false,neuralEnabled:false};
   let opts;
   try { opts = {...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; }
   catch (_) {opts = {...defaults};}
@@ -27,6 +27,8 @@
     opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v1110')||localStorage.getItem('of-solo-aggrobot-v11010')||localStorage.getItem('of-solo-aggrobot-v1109')||localStorage.getItem('of-solo-aggrobot-v1108')||localStorage.getItem('of-solo-aggrobot-v1107')||localStorage.getItem('of-solo-aggrobot-v1106')||localStorage.getItem('of-solo-aggrobot-v1105')||localStorage.getItem('of-solo-aggrobot-v1104')||localStorage.getItem('of-solo-aggrobot-v1103')||localStorage.getItem('of-solo-aggrobot-v1102')||localStorage.getItem('of-solo-aggrobot-v1101')||localStorage.getItem('of-solo-aggrobot-v1100')||localStorage.getItem('of-solo-aggrobot-v199')||localStorage.getItem('of-solo-aggrobot-v198')||localStorage.getItem('of-solo-aggrobot-v197')||localStorage.getItem('of-solo-aggrobot-v196')||localStorage.getItem('of-solo-aggrobot-v195')||localStorage.getItem('of-solo-aggrobot-v194')||localStorage.getItem('of-solo-aggrobot-v193')||localStorage.getItem('of-solo-aggrobot-v192')||localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
     // Only import user-adjustable preferences, never a previously enabled bot.
   }}catch(_){}
+  // Ignore retired Brain/Qwen settings imported from older installations.
+  delete opts.brainEnabled;delete opts.brainToken;delete opts.qwenPolicy;
   opts.enabled = false;                         // Start only after a playable match and EventBus are discovered.
   // One-time v1.10 migration: full autonomy includes marine operation;
   // a later manual choice is saved under the new key as usual.
@@ -147,7 +149,7 @@
       for(let j=0;j<8;j++)z+=h[j]*w[72+j*2+k];
       out.push(Math.tanh(z));
     }
-    // Baseline-relative bounds prevent stacked learning/Brain/NN adjustments
+    // Baseline-relative bounds prevent stacked browser-learning/NN adjustments
     // from bypassing reserves. Military and worker legality still recheck.
     return {...v,
       aggressive:clamp(v.aggressive+Math.round(out[0]*8),base.aggressive-8,base.aggressive+8),
@@ -243,83 +245,6 @@
     learn.lastResult=outcome;saveLearn();
   }
 
-
-  // Optional localhost Brain advisory. The page remains the only issuer of game intents.
-  // No network traffic unless explicitly enabled; no grants that isolate page GameView.
-  const BRAIN_URL='http://127.0.0.1:8765';
-  let brainMatchId='match-'+Date.now().toString(36)+'-'+Math.floor(Math.random()*0xffffffff).toString(36).padStart(8,'0');
-  let brainSeq=0,brainLastTick=-Infinity,brainLastSampleTick=-Infinity,brainBusy=false,brainBackoff=0;
-  let brainState={status:'Aus',advice:null,receivedTick:-Infinity,lastError:null,qwen:null};
-  function brainReady(){
-    return opts.brainEnabled&&opts.learningEnabled&&opts.fullAuto&&opts.enabled&&
-      typeof fetch==='function'&&typeof opts.brainToken==='string'&&opts.brainToken.length>=24;
-  }
-  function brainAdjust(v,base,mode,s,emergency){
-    const advice=brainState.advice,key=learnKey(mode,s);
-    if(!brainReady()||emergency||!advice||advice.context!==key||
-      brainState.receivedTick<0||number(()=>game.ticks(),Infinity)-brainState.receivedTick>480)return v;
-    // Hard bound is relative to the UNLEARNED baseline: local + Brain cannot stack unboundedly.
-    return {...v,aggressive:clamp(v.aggressive+advice.aggressiveDelta,base.aggressive-5,base.aggressive+5),
-      reserve:clamp(v.reserve+advice.reserveDelta,base.reserve-4,base.reserve+4)};
-  }
-  function brainSend(tick,me,s){
-    // Training samples are emitted in normal benchmark runs WITHOUT localhost access.
-    if(opts.fullAuto&&opts.learningEnabled&&tick-brainLastSampleTick>=240){
-      brainLastSampleTick=tick;
-      telemetry('brain_sample','Aggregierter Strategie-Zustand',
-        {brainMode:autoTuning.mode,maxTroops:Math.max(1,s.max),strongest:Math.max(0,s.strongest)});
-    }
-    if(!opts.brainEnabled)return;
-    if(!opts.brainToken||opts.brainToken.length<24){brainState.status='Token fehlt';return;}
-    if(typeof fetch!=='function'){brainState.status='fetch nicht verfügbar';return;}
-    if(!brainReady()||brainBusy||tick-brainLastTick<240||Date.now()<brainBackoff)return;
-    const mode=autoTuning.mode;if(!learnKey(mode,s))return;
-    brainLastTick=tick;brainBusy=true;
-    const seq=++brainSeq,matchId=brainMatchId;
-    const payload={schema:1,matchId,seq,tick,mode,land:number(()=>me.numTilesOwned(),0),
-      home:number(()=>me.troops(),0),max:Math.max(1,s.max),incoming:Math.max(0,s.incoming),
-      strongest:Math.max(0,s.strongest)};
-    brainState.status='Verbinde …';
-    const controller=typeof AbortController==='function'?new AbortController():null;
-    const timeout=controller?setTimeout(()=>controller.abort(),1600):null;
-    fetch(BRAIN_URL+'/v1/observe',{method:'POST',mode:'cors',credentials:'omit',cache:'no-store',
-      headers:{'Content-Type':'application/json','X-Aggrobot-Token':opts.brainToken},
-      body:JSON.stringify(payload),signal:controller?.signal}).then(async response=>{
-        if(!response.ok)throw Error('HTTP '+response.status);
-        const data=await response.json();
-        if(data?.schema!==1||data.matchId!==matchId||data.seq!==seq||
-          !/^([A-Z]+):(SAFE|THREAT)$/.test(data.context||'')||
-          !Number.isInteger(data.aggressiveDelta)||Math.abs(data.aggressiveDelta)>5||
-          !Number.isInteger(data.reserveDelta)||Math.abs(data.reserveDelta)>4||
-          !Number.isInteger(data.samples)||data.samples<0)
-          throw Error('Ungültige Brain-Antwort');
-        if(matchId!==brainMatchId||!opts.brainEnabled)return;
-        const q=data.qwen,allowedKinds=['periodic','stagnation','threat'];
-        const validatedQwen=q&&q.matchId===brainMatchId &&
-          Number.isSafeInteger(q.tick)&&q.tick>=0&&q.tick<=tick &&
-          tick-q.tick<=480&&allowedKinds.includes(q.kind) &&
-          ['DEFEND','ECONOMY','EXPAND'].includes(q.strategy) &&
-          ['THREAT','STAGNATION','RESOURCE','EXPANSION','OTHER'].includes(q.reasonCode)?
-          {matchId:q.matchId,tick:q.tick,kind:q.kind,
-            strategy:q.strategy,reasonCode:q.reasonCode}:null;
-        brainState={status:'Verbunden · '+data.samples+' Erfahrungen',
-          advice:{context:data.context,aggressiveDelta:data.aggressiveDelta,
-            reserveDelta:data.reserveDelta},receivedTick:tick,lastError:null,
-          qwen:validatedQwen};
-      }).catch(e=>{
-        if(matchId!==brainMatchId)return;
-        brainState={status:'Offline · lokaler Bot aktiv',advice:null,
-          receivedTick:-Infinity,lastError:String(e?.message||e).slice(0,90)};
-        brainBackoff=Date.now()+12000;
-      }).finally(()=>{if(timeout!==null)clearTimeout(timeout);brainBusy=false;});
-  }
-  function brainFinish(outcome){
-    if(!opts.brainEnabled||!opts.brainToken||typeof fetch!=='function'||brainSeq===0)return;
-    if(!['victory','defeat','unknown','incomplete'].includes(outcome))return;
-    fetch(BRAIN_URL+'/v1/finish',{method:'POST',mode:'cors',credentials:'omit',cache:'no-store',
-      headers:{'Content-Type':'application/json','X-Aggrobot-Token':opts.brainToken},
-      body:JSON.stringify({matchId:brainMatchId,outcome}),keepalive:true}).catch(()=>{});
-  }
 
   const escapeHTML = v => String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const clamp = (n,a,b) => Math.min(b,Math.max(a,Number.isFinite(+n)?+n:a));
@@ -480,14 +405,14 @@
   }
   function diagnosticSnapshot() {
     const config=game?.config?.().gameConfig?.()||{};
-    const details={bot:VERSION,brain:{enabled:!!opts.brainEnabled,status:brainState.status,advice:brainState.advice,receivedTick:brainState.receivedTick,lastError:brainState.lastError},learning:{enabled:!!opts.learningEnabled,updates:learn.updates,contexts:jsonCopy(learn.contexts),lastResult:learn.lastResult,lastResultScope:'persistent-learning-history',currentMatchResult:gameEnd?.outcome??null},gameType:config.gameType,
+    const details={bot:VERSION,learning:{enabled:!!opts.learningEnabled,updates:learn.updates,contexts:jsonCopy(learn.contexts),lastResult:learn.lastResult,lastResultScope:'persistent-learning-history',currentMatchResult:gameEnd?.outcome??null},gameType:config.gameType,
       difficulty:config.difficulty,
       benchmarkMeta:{gameMap:config.gameMap??null,
         gameMapSize:config.gameMapSize??null,gameMode:config.gameMode??null,
         seed:config.seed??null,engineCommit:window.BOOTSTRAP_CONFIG?.gitCommit??null,
         matchEndObserved:gameEnd!==null,resultsVerifiedByBrowser:false},
       matchContext:matchContext(),
-      options:{...opts,brainToken:opts.brainToken?'[redacted]':'',enabled:false},intents:intentHealth(),tuning:{...autoTuning,enabled:!!opts.fullAuto,
+      options:{...opts,enabled:false},intents:intentHealth(),tuning:{...autoTuning,enabled:!!opts.fullAuto,
         effective:{aggressive:setting('aggressive'),reserve:setting('reserve'),
           actionsPerMinute:setting('actionsPerMinute'),maxTargets:setting('maxTargets')}},attackReceipts, pendingAttack, attackCommands, attackOrigins:[...observedAttacks.values()],
       construction:{pending:economicPending,blocked:[...economicBlocked.entries()],failedProbes:failedEconomyProbes,lastConfirmed:successfulEconomyTick,investment:investmentStatus},
@@ -732,9 +657,6 @@
     strategicTelemetry={favorableVictims:0,falloutSkipped:0,falloutFallback:0,afkTargets:0,assists:0,neutralLandings:0,forecastCount:0,engineForecasts:0,proxyForecasts:0,forecastComparisons:0,forecastUnavailable:0};
     nukeBusy=false;lastNuke=-Infinity;nukePending=null;nukeStatus='Warte auf Silo';nukeShots=0;nukeAttempts=0;nukeUnconfirmed=0;nuclearCache=null;nuclearCacheTick=-Infinity;
     learnMatch={sample:null,key:null,finished:false};
-    brainMatchId='match-'+Date.now().toString(36)+'-'+Math.floor(Math.random()*0xffffffff).toString(36).padStart(8,'0');
-    brainSeq=0;brainLastTick=-Infinity;brainLastSampleTick=-Infinity;brainBusy=false;brainBackoff=0;
-    brainState={status:opts.brainEnabled?'Warte auf Match':'Aus',advice:null,receivedTick:-Infinity,lastError:null};
     opponentProfiles.clear();operation=null;operationCooldown.clear();duoPlan=null;victoryThreat=null;decisionTimeline=[];decisionKeys.clear();
     warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};diagnostics=[];recordSequence=0;recordCounts={};recordsDropped=0;streamErrors=0;lastDiagnosticTick=-Infinity;gameEnd=null;forecastAudits=[];lastForecastAudit=null;incomeAttribution=[];
     investmentStatus='Grundaufbau';lastWarReview=-Infinity;
@@ -813,7 +735,6 @@
     if(runtime.economyMs>1600)v.actionsPerMinute-=6;
     const unlearned={...v};
     v=learnAdjust(v,mode,s,emergency);
-    v=brainAdjust(v,unlearned,mode,s,emergency);
     v=neuralAdjust(v,unlearned,me,s,items,emergency);
     if(!emergency){const policy=neuralStrategicSignals(me,s,tick);
       if(policy){v.aggressive+=Math.round(policy.aggression*12);
@@ -2111,22 +2032,6 @@
     }
     return {ready:true,reason:'Kriegsfreigabe'};
   }
-  // Optional conservative policy hint: never runs game intents, never opens
-  // wars and never overrides a threat/recovery or a manual strategy.
-  function qwenStrategyHint(me,items,s,tick,wanted){
-    if(!opts.qwenPolicy||!brainReady()||!opts.autoStrategy||
-      ['RECOVER','DEFEND','TECH','ASSAULT'].includes(wanted)||
-      s.incoming>0||recentHostilePressure(tick)||isWar())return wanted;
-    const q=brainState.qwen;
-    if(!q||q.matchId!==brainMatchId||tick<q.tick||tick-q.tick>480)return wanted;
-    const neutral=items.some(x=>x.id===null&&!x.fallout);
-    if(q.strategy==='DEFEND'&&
-      q.reasonCode==='THREAT'&&s.strongest>=s.home*.78)return 'DEFEND';
-    if(q.strategy==='EXPAND'&&neutral&&s.ratio>=.58&&
-      s.strongest<s.home*.60)return 'EXPAND';
-    if(q.strategy==='ECONOMY'&&s.strongest<s.home*.80)return 'ECONOMY';
-    return wanted;
-  }
   function strategy(me,items,s) {
     const tick=number(()=>game.ticks());
     const coolingDown=recentHostilePressure(tick);
@@ -2174,7 +2079,6 @@
     else if(danger){wanted='DEFEND';reason='Starker Nachbar an der Grenze';}
     else if(neutral){wanted='EXPAND';reason='Landnahme vor riskanter Offensive';}
     else {wanted='ECONOMY';reason='Aufbauen und auf sichere Angriffsgelegenheit warten';}
-    if(opts.fullAuto&&opts.autoStrategy)wanted=qwenStrategyHint(me,items,s,tick,wanted);
     if(!opts.autoStrategy){
       if(rebuilding)wanted='RECOVER';
       else if(seriousAttack)wanted='DEFEND';
@@ -4678,7 +4582,6 @@
       if(opts.enabled){
         gameEnd=gameOutcome(game,myPlayer());
         learnFinish(gameEnd.outcome);
-        brainFinish(gameEnd.outcome);
         telemetry('game_over','Partie beendet · Bot automatisch gestoppt',{gameEnd});
         opts.enabled=false;generation++;persist();
       }
@@ -4750,7 +4653,6 @@
       troopSnapshot=s;
       coordinateDuo(me,s,tick);
       planOperation(me,groups,s,tick);
-      brainSend(tick,me,s);
       if(tick-lastDiagnosticTick>=80){lastDiagnosticTick=tick;
         telemetry('snapshot','Spielzustand',{difficulty:game.config().gameConfig().difficulty,
           gameType:game.config().gameConfig().gameType,matchContext:matchContext(me),
@@ -4860,7 +4762,7 @@
         opts.fullAuto=!opts.fullAuto;
         if(opts.fullAuto){opts.autoStrategy=true;autoTuning.tick=-Infinity;}
       }else if(key==='autoStrategy'&&opts.fullAuto){opts.fullAuto=false;opts.autoStrategy=false;}
-      else if(['economy','boats','autoSpawn','defense','stopOnError','upgrades','safeMode','autoStrategy','diplomacy','offerAlliances','nukes','antiNuke','lateOffense','impossibleMode','impossibleExperiment','learningEnabled','brainEnabled','qwenPolicy','neuralEnabled'].includes(key))opts[key]=!opts[key];
+      else if(['economy','boats','autoSpawn','defense','stopOnError','upgrades','safeMode','autoStrategy','diplomacy','offerAlliances','nukes','antiNuke','lateOffense','impossibleMode','impossibleExperiment','learningEnabled','neuralEnabled'].includes(key))opts[key]=!opts[key];
       else if(key==='plan'){opts.fullAuto=false;opts.autoStrategy=false;opts.plan=opts.plan==='Blitz'?'Adaptiv':opts.plan==='Adaptiv'?'Ökonomie':'Blitz';}
       else if(key==='buildStyle'){opts.fullAuto=false;opts.autoStrategy=false;opts.buildStyle=opts.buildStyle==='Ausgewogen'?'Wirtschaft':opts.buildStyle==='Wirtschaft'?'Defensiv':'Ausgewogen';}
       persist();lastPaint=0;paint();
@@ -4871,11 +4773,6 @@
       if(key==='reserve')opts.reserve=clamp(e.target.value,5,65);
       if(key==='actionsPerMinute')opts.actionsPerMinute=clamp(e.target.value,15,120);
       if(key==='maxTargets')opts.maxTargets=clamp(e.target.value,4,25);
-      if(key==='brainToken'){
-        const token=String(e.target.value||'').trim();
-        if(token.length>=24&&token.length<=256){opts.brainToken=token;brainState.status='Token gespeichert';}
-        else brainState.status='Token ungültig (mind. 24 Zeichen)';
-      }
       persist();lastPaint=0;paint();
     });
     document.body.appendChild(panel);
@@ -4905,12 +4802,10 @@
       <div>${b('upgrades','Upgrades')} ${b('safeMode','Not-Aus')} ${b('autoStrategy','Auto-Strategie '+(opts.autoStrategy?'AN':'AUS'))} ${b('fullAuto','Vollautonom '+(opts.fullAuto?'AN':'AUS'))}</div>
       <div>${b('diplomacy','Diplomatie')} ${b('offerAlliances','Bündnisse anbieten')}</div>
       <div>${b('nukes','Auto-Nukes')} ${b('antiNuke','Intelligente SAMs')} ${b('lateOffense','Late-Game-Offensive')}</div>
-      <div>${b('impossibleExperiment','Impossible AI Test')} ${b('learningEnabled','Lernen')} ${b('brainEnabled','🧠 Lokaler Brain')} ${b('qwenPolicy','Qwen-Hinweise (Test)')} ${b('neuralEnabled','Neurales Netz')} ${b('impossibleMode','Unmöglich-Taktik')}</div>
+      <div>${b('impossibleExperiment','Impossible AI Test')} ${b('learningEnabled','Lernen')} ${b('neuralEnabled','Neurales Netz')} ${b('impossibleMode','Unmöglich-Taktik')}</div>
       </details>
-      <details data-section="brain"${openFor('brain')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Lokaler Brain &amp; Token</summary>
+      <details data-section="neural"${openFor('neural')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Neurales Modell</summary>
       <div style="color:#9bd0e4">Neurales Modell: ${neuralModel?.schema===4?'Strategische Policy v4 (24 Signale)':neuralModel?.schema===3?'Strategische Policy v3 (16 Signale)':neuralModel?.schema===2?'Aktionsranking (max. ±14 Punkte)':neuralModel?.schema===1?'Slider (max. ±8 Punkte)':'nicht geladen'} · nur bei freigegebener Partie</div>
-      <div style="color:#9bd0e4">Brain: ${escapeHTML(brainState.status)}${brainState.lastError?' · '+escapeHTML(brainState.lastError):''} · ${escapeHTML(BRAIN_URL)}</div>
-      <label>Brain-Token: <input type="password" data-option="brainToken" placeholder="${opts.brainToken?'Gespeichert – neu einfügen zum Ändern':'Aus Terminal einfügen'}" autocomplete="off" style="width:100%;box-sizing:border-box"></label>
       </details>
       <details data-section="situation"${openFor('situation')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Lage &amp; Diplomatie</summary>
       <div style="color:#a9efc9">Hauptfront: ${escapeHTML(warState.name)} · Krieg ${isWar()?'aktiv':'frei'} · ${escapeHTML(lastRecoveryReason||'bereit')}</div>
