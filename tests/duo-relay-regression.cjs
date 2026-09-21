@@ -22,6 +22,16 @@ const mk=(ownID,partnerID,instance,match='v1|Public|World|Large|FFA|123|_')=>({
   assert.equal(relay.validate({...A,partnerID:'one'}),false);
   assert.equal(relay.validate({...A,state:{...A.state,target:'../bad'}}),false);
   assert.equal(relay.validate({...A,state:{...A.state,strikeTick:345}}),true);
+  assert.equal(relay.validate({...A,state:{...A.state,
+    fronts:['enemy1','enemy2'],home:90000,incoming:0}}),true);
+  assert.equal(relay.validate({...A,state:{...A.state,
+    fronts:['enemy1','enemy1']}}),false);
+  assert.equal(relay.validate({...A,state:{...A.state,
+    fronts:Array.from({length:17},(_,i)=>'target'+i)}}),false);
+  assert.equal(relay.validate({...A,state:{...A.state,home:-100}}),false);
+  assert.equal(relay.validate({...A,state:{...A.state,incoming:-1}}),false);
+  assert.equal(relay.validate({...A,state:{...A.state,
+    home:null,incoming:null,fronts:[]}}),true);
   assert.equal(relay.validate({...A,state:{...A.state,strikeTick:-3}}),false);
   assert.equal(relay.validate({...A,state:{...A.state,strikeTick:'345'}}),false);
   assert.equal(relay.validate({...A,state:{...A.state,allies:['friend1','friend2']}}),true);
