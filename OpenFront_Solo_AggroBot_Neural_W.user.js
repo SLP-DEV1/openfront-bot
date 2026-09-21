@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.19.4
+// @version      1.19.5
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.19.4', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.19.5', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -1753,7 +1753,10 @@
     const latest=troopSamples[troopSamples.length-1];
     const prior=[...troopSamples].reverse().find(v=>
       tick-v.tick>=100&&tick-v.tick<=360);
-    if(!latest||!prior)return crisisTrend;
+    if(!latest||!prior){
+      if(crisisTrend&&tick>=crisisTrend.expires)crisisTrend=null;
+      return crisisTrend;
+    }
     const lostLand=Math.max(0,prior.tiles-latest.tiles);
     const lostAssets=prior.assets.filter(id=>!latest.assets.includes(id)).length;
     const material=lostLand>=Math.max(180,prior.tiles*.045)||lostAssets>=2||
@@ -1898,10 +1901,13 @@
         // while a different independently safe opportunity is available.
         const alternatives=foes.filter(x=>x.id!==warState.id&&
           targetOpportunity(me,items,s,x));
-        if(opts.impossibleExperiment &&
+        // In Public/Private an observed, independently safe alternative
+        // releases a stalled target even without the Impossible experiment.
+        // Never open two fronts while a stack is still fighting or HOME is hit.
+        if((opts.impossibleExperiment||!hardMode()) &&
           !active.some(a=>attackTargets(a.targetID,warState.id))&&
-          tick-lastEnemySend>110&&alternatives.length&&
-          !recentHostilePressure(tick)){
+          tick-lastEnemySend>(hardMode()?110:260)&&alternatives.length&&
+          s.incoming===0&&!recentHostilePressure(tick)){
           blockedTargets.set(warState.id,Math.max(warState.blockedUntil,tick+160));
           telemetry('war_replan','Festgefahrene Front freigegeben',
             {oldTarget:warState.id,alternatives:alternatives.map(x=>x.id)});
