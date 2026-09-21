@@ -1,0 +1,56 @@
+{
+  "entity": "rule-based",
+  "config": "Europe-1-B",
+  "map": "Europe",
+  "nation": 1,
+  "variant": "B",
+  "seed": "cmp-Europe-1-B",
+  "engineCommit": "bb8af015b515b3b717bd4d901074c5f4c16641cb",
+  "botSHA256": "798fc7ba3805183f2038ef78008d41560c6f9973edf52a64b6a84aeeaba641f0",
+  "policySHA256": null,
+  "outcome": "defeat",
+  "termination": "game-over",
+  "endTick": 9191,
+  "recordingComplete": true,
+  "land": {
+    "peak": 48821,
+    "mean": 28638.782608695652,
+    "end": 47001,
+    "retention": 0.9627209602425186
+  },
+  "finalState": {
+    "land": 47001,
+    "gold": 1355494,
+    "units": null,
+    "alive": true
+  },
+  "income": {
+    "gold": 1100850,
+    "train": 262500,
+    "trade": 778350
+  },
+  "counts": {
+    "attack_intent": 15,
+    "attack_confirmed": 15,
+    "boat_intent": 9,
+    "boat_arrived": 8,
+    "build_confirmed": 7,
+    "build_stalled": 47,
+    "economy_posture": 59,
+    "neural_economy_choice": 7,
+    "income_after_build": 6,
+    "director_decision": 206,
+    "decision": 106,
+    "action": 37
+  },
+  "rockets": {
+    "confirmed": 0,
+    "attempts": 0
+  },
+  "territoryGained": 0,
+  "strategic": {
+    "assists": 0,
+    "neutralLandings": 9,
+    "favorableVictims": 0
+  }
+}

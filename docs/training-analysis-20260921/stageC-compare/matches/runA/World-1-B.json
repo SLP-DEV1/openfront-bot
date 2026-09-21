@@ -1,0 +1,56 @@
+{
+  "entity": "runA",
+  "config": "World-1-B",
+  "map": "World",
+  "nation": 1,
+  "variant": "B",
+  "seed": "cmp-World-1-B",
+  "engineCommit": "bb8af015b515b3b717bd4d901074c5f4c16641cb",
+  "botSHA256": "798fc7ba3805183f2038ef78008d41560c6f9973edf52a64b6a84aeeaba641f0",
+  "policySHA256": "2c0698d8dcd0493c511860471cf6132295b409fb3396b9696bffc2df8a09647f",
+  "outcome": "defeat",
+  "termination": "eliminated",
+  "endTick": 1755,
+  "recordingComplete": true,
+  "land": {
+    "peak": 19088,
+    "mean": 12552,
+    "end": 0,
+    "retention": 0
+  },
+  "finalState": {
+    "land": 0,
+    "gold": 0,
+    "units": 0,
+    "alive": false
+  },
+  "income": {
+    "gold": 60000,
+    "train": 0,
+    "trade": 0
+  },
+  "counts": {
+    "attack_intent": 34,
+    "attack_confirmed": 34,
+    "boat_intent": 0,
+    "boat_arrived": 0,
+    "build_confirmed": 1,
+    "build_stalled": 10,
+    "economy_posture": 1,
+    "neural_economy_choice": 1,
+    "income_after_build": 1,
+    "director_decision": 79,
+    "decision": 48,
+    "action": 37
+  },
+  "rockets": {
+    "confirmed": 0,
+    "attempts": 0
+  },
+  "territoryGained": 0,
+  "strategic": {
+    "assists": 0,
+    "neutralLandings": 0,
+    "favorableVictims": 0
+  }
+}
