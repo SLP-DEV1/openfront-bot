@@ -87,7 +87,7 @@ function boot(benchmarkOptions={}) {
     'setMode:m=>strategic.mode=m,setAllianceCtor:C=>ctors.alliance=C,setHostilePressure:t=>lastHostilePressure=t,',
     'setNukePending:p=>nukePending=p,setMonitorSession:x=>monitorSession=x,spendBudget,commitGoldSpend,coreFundingStatus,',
     'targetOpportunityCheck,sameFrontFollowUp,reportAttackBlocks,earlyCrisis,landingFailure,neuralModelInfo,',
-    'duoConfigured,duoMatchKey,duoTrustedPeer,duoPeerAlly,duoOwnAllies,duoWarningLevel,duoJointOpportunity,duoState,duoSpawnCandidate,duoPublish,actualFriendly,friendly,',
+    'duoConfigured,duoMatchKey,duoTrustedPeer,duoPeerAlly,duoOwnAllies,duoWarningLevel,duoJointOpportunity,duoState,duoSpawnCandidate,duoPublish,decisionFrame,decisionFrameFresh,actualFriendly,friendly,',
     'setDuo:(partnerID,room,peer)=>{opts.duoEnabled=true;opts.duoPartnerID=partnerID;opts.duoRoom=room;duoLocal.ownID=safeID(myPlayer());duoLocal.partnerID=partnerID;duoLocal.match=duoMatchKey();duoLocal.lastAt=Date.now();duoLocal.peer=peer;},',
     'setPendingBoat:p=>pendingBoat=p,',
     'setPerf:(combat,border,economy)=>runtime={...runtime,combatMs:combat,borderMs:border,economyMs:economy},',
@@ -3699,6 +3699,25 @@ function boot(benchmarkOptions={}) {
       r.kind==='attack_confirmed');
     assert.equal(confirmed.actionId,emitted[0].actionId);
     assert.equal(confirmed.evidence,'observed-change-not-causal-proof');
+  });
+  await check('1.20.11 P1 immutable frame separates engine units, relations and age',()=>{
+    const x=boot(),groups=[{id:'strong',opponent:x.strong,
+      tiles:[6,7],front:2}];
+    x.b.setGroups(groups);
+    const army=x.b.military(x.me,groups);
+    const frame=x.b.decisionFrame(x.me,groups,army,300);
+    assert.equal(frame.tick,300);
+    assert.equal(frame.home,90000);
+    assert.equal(frame.gold,1000000);
+    assert.equal(frame.opponents[0].id,'strong');
+    assert.equal(frame.opponents[0].front,2);
+    assert(Object.isFrozen(frame));
+    assert(Object.isFrozen(frame.opponents[0]));
+    assert.equal(x.b.decisionFrameFresh(frame,320),true);
+    assert.equal(x.b.decisionFrameFresh(frame,321),false);
+    assert.equal(x.b.decisionFrameFresh(frame,299),false);
+    x.me.id=()=> 'another';
+    assert.equal(x.b.decisionFrameFresh(frame,301),false);
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
