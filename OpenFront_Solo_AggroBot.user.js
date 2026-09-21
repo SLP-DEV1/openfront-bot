@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.20.4
+// @version      1.20.5
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.20.4', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.20.5', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -977,10 +977,17 @@
       target:duoID(target)?target:null,
       strikeTick:Number.isInteger(duoPlan?.strikeTick)?duoPlan.strikeTick:null,
       ready:!!(state&&state.incoming===0&&
-        state.available>=Math.max(1200,state.home*.2)),
+        !recentHostilePressure(number(()=>game?.ticks?.(),0))&&
+        !(crisisTrend&&number(()=>game?.ticks?.(),0)<crisisTrend.expires)&&
+        state.ratio>=.38&&!state.activeEnemy&&
+        state.available>=Math.max(1200,state.home*.09)),
       needHelp:!!(state&&state.incoming>Math.max(1200,state.home*.1)),
       allied:!!(peer&&actualFriendly(peer,me)),
       allies:duoOwnAllies(me),
+      fronts:(strategic.groups||[]).filter(x=>x.id!==null&&
+        x.tiles?.length&&x.opponent?.isAlive?.()&&!friendly(x.opponent,me))
+        .map(x=>x.id).filter(duoID).sort().slice(0,16),
+      home:state?.home??null,incoming:state?.incoming??null,
       available:state?.available??null,reserve:state?.reserve??null,
       role:state&&state.incoming>Math.max(1200,state.home*.1)?'defend':
         operation?'attack':game?.inSpawnPhase?.()?'spawn':
@@ -1492,6 +1499,47 @@
   // Ranked team state still works without the relay. When the explicitly
   // configured PlayerID is connected AND the game itself confirms friendship,
   // relay state may break ties between otherwise legal/safe targets.
+  // A joint attack uses two INDEPENDENTLY protected deployment budgets.
+  // Neither browser treats a relay promise as a deployed friendly stack.
+  // The shared target must touch both frontiers; the launch must be
+  // acknowledged by both before a weaker individual assault is allowed.
+  function duoJointOpportunity(me,items,s,item,tick,launch=false){
+    const peer=duoTrustedPeer(),id=item?.id,p=peer?.player,info=peer?.state;
+    if(!peer||!actualFriendly(p,me)||info?.allied!==true||
+      !duoID(id)||!item?.tiles?.length||friendly(item.opponent,me)||
+      !Array.isArray(info.fronts)||!info.fronts.includes(id)||
+      !Number.isFinite(info.available)||!Number.isFinite(info.reserve)||
+      !Number.isFinite(info.home)||!Number.isFinite(info.incoming)||
+      info.incoming>0||s.incoming>0||!info.ready||
+      !Number.isInteger(info.tick)||Math.abs(info.tick-tick)>40||
+      s.ratio<.38||s.activeEnemy||!info.available||
+      recentHostilePressure(tick)||
+      (crisisTrend&&tick<crisisTrend.expires))return null;
+    const observedHome=number(()=>p.troops?.(),NaN);
+    if(!Number.isFinite(observedHome)||observedHome<=0||
+      Math.abs(info.home-observedHome)>Math.max(3500,observedHome*.15)||
+      info.available>Math.max(0,info.home-info.reserve)+2||
+      info.available>observedHome*.8||
+      (p.incomingAttacks?.()||[]).some(a=>!a.retreating&&a.troops>0))return null;
+    const front=frontRiskPlan(items,s,id);
+    if(front.danger||front.pressure||front.safeStrike<1000)return null;
+    const own=Math.floor(Math.min(s.available*.72,front.safeStrike));
+    const ally=Math.floor(Math.min(info.available*.72,observedHome*.55));
+    const enemyHome=number(()=>item.opponent?.troops?.(),NaN);
+    if(!Number.isFinite(enemyHome)||enemyHome<0)return null;
+    const enemyDeployed=(item.opponent?.outgoingAttacks?.()||[])
+      .filter(a=>!a.retreating).reduce((n,a)=>
+        n+Math.max(0,number(()=>a.troops,0)),0);
+    const enemy=enemyHome+enemyDeployed;
+    const needed=Math.max(2400,enemy*(hardMode()?1.35:1.22));
+    if(own<Math.max(1000,enemy*.12)||
+      ally<Math.max(1000,enemy*.12)||own+ally<needed)return null;
+    if(launch&&(!duoPlan||duoPlan.target!==id||
+      !Number.isInteger(duoPlan.strikeTick)||tick<duoPlan.strikeTick||
+      info.target!==id||info.strikeTick!==duoPlan.strikeTick))return null;
+    return {target:id,own,ally,needed,enemy,front,
+      strikeTick:duoPlan?.strikeTick??null};
+  }
   function coordinateDuo(me,s,tick){
     let duo=rankedDuo(me);
     const connectedPeer=duoTrustedPeer();
@@ -1525,17 +1573,31 @@
       String(safeID(a)).localeCompare(String(safeID(b))));
     const announced=local?.state?.target&&duo.enemies.find(p=>
       safeID(p)===local.state.target);
+    const common=(strategic.groups||[]).filter(x=>x.id!==null&&
+      duo.enemies.some(p=>safeID(p)===x.id))
+      .map(x=>({item:x,joint:duoJointOpportunity(me,strategic.groups,s,x,tick)}))
+      .filter(x=>x.joint)
+      .sort((a,b)=>a.joint.enemy-b.joint.enemy||
+        b.item.tiles.length-a.item.tiles.length||
+        String(a.item.id).localeCompare(String(b.item.id)));
     const danger=s.incoming>Math.max(1200,s.home*.08);
     const partnerNeeds=incoming>partnerHome*.2||!!local?.state?.needHelp;
     // The lower PlayerID chooses the scheduled focus. A follower uses
     // that announcement only when paired with a valid strike tick.
     const follower=local&&String(safeID(me))>String(local.id);
+    const jointTarget=common.find(x=>x.item.id===safeID(announced))||
+      common[0];
     const shared=partnerNeeds&&aggressor?.on>0?aggressor.p:
       active?.on>0?active.p:
+      jointTarget?.item.opponent||
       (follower&&Number.isInteger(local?.state?.strikeTick)?announced:null)||
       targets[0];
     const bothReady=!!local?.state?.ready&&!danger&&
-      s.available>=Math.max(1200,s.home*.2);
+      s.incoming===0&&s.ratio>=.38&&!s.activeEnemy&&
+      !recentHostilePressure(tick)&&
+      !(crisisTrend&&tick<crisisTrend.expires)&&
+      s.available>=Math.max(1200,s.home*.09);
+    const sharedJoint=common.find(x=>x.item.id===safeID(shared))?.joint||null;
     const leader=local&&String(safeID(me))<String(local.id);
     // The lower PlayerID proposes a stable tick; the second adopts it
     // only while both are ready. Neither skips the game's action checks.
@@ -1543,7 +1605,7 @@
       Number.isInteger(duoPlan.strikeTick)&&
       tick-duoPlan.strikeTick<180?duoPlan.strikeTick:null;
     const offered=local?.state?.strikeTick;
-    const strikeTick=!local||!bothReady?null:leader?
+    const strikeTick=!local||!bothReady||!sharedJoint?null:leader?
       (held??tick+45):
       Number.isInteger(offered)&&offered>=tick-15&&offered<=tick+180&&
         local?.state?.target===safeID(shared)?offered:null;
@@ -1559,8 +1621,9 @@
       partnerCommitted:active?.on||0,partnerIncoming:incoming,
       partnerHome,needHelp:partnerNeeds,
       partnerReady:!!local?.state?.ready,strikeTick,
-      ready:!danger&&s.available>=Math.max(1200,s.home*.2),
-      ownReserve:s.reserve,tick,source:local?
+      joint:sharedJoint?{own:sharedJoint.own,ally:sharedJoint.ally,
+        needed:sharedJoint.needed}:null,
+      ready:bothReady,ownReserve:s.reserve,tick,source:local?
         'lokaler Duo-Relay + bestätigter Spielzustand':
         'sichtbare Spielzustände (kein Relay)'};
     if(!duoPlan||duoPlan.target!==plan.target||duoPlan.role!==role||
