@@ -1655,16 +1655,25 @@
         operation=null;
       }
     }
-    if(operation||danger||s.available<Math.max(1200,s.home*.16))return operation;
+    if(operation&&duoPlan?.joint&&operation.target!==duoPlan.target&&
+      s.incoming===0&&!s.activeEnemy&&!pendingAttack&&
+      tick-lastEnemySend>80){
+      decisionNote('2v2','Inaktive Operation beendet für gemeinsame Front',[],tick);
+      operation=null;
+    }
+    if(operation||danger||s.available<Math.max(1200,s.home*.09))return operation;
     const eligible=items.filter(x=>x.id!==null&&x.opponent?.isAlive?.()&&
       !friendly(x.opponent,me)&&tick>=(operationCooldown.get(x.id)||0)&&
-      targetOpportunity(me,items,s,x));
+      (targetOpportunity(me,items,s,x)||
+        !!duoJointOpportunity(me,items,s,x,tick,true)));
+    const shared=eligible.find(x=>duoPlan?.strikeTick!==null&&
+      duoPlan?.target===x.id&&duoJointOpportunity(me,items,s,x,tick,true));
     const locked=eligible.find(x=>x.id===warState.id);
     const ally=eligible.find(x=>duoFocus(me,x.opponent)?.on>0);
     const alert=eligible.find(x=>victoryThreat?.urgent&&
       (victoryThreat.team!==null?x.opponent.team?.()===victoryThreat.team:
         x.id===victoryThreat.id));
-    const chosen=locked||alert||ally||
+    const chosen=locked||alert||shared||ally||
       eligible.sort((a,b)=>number(()=>b.opponent.numTilesOwned(),0)-
         number(()=>a.opponent.numTilesOwned(),0))[0];
     if(!chosen)return null;
@@ -2269,6 +2278,19 @@
         warState={id:null,name:'—',since:tick,blockedUntil:-Infinity};plan=null;
       }
     }
+    // A mutually reachable joint front may replace an idle solo lock.
+    // Do not replan while own stacks are out or an invasion is active.
+    const shared=duoPlan?.joint&&items.find(x=>x.id===duoPlan.target);
+    if(shared&&warState.id!==null&&warState.id!==shared.id&&
+      !active.length&&!pendingAttack&&s.incoming===0&&
+      !recentHostilePressure(tick)&&tick-lastEnemySend>80&&
+      duoJointOpportunity(me,items,s,shared,tick)){
+      decisionNote('2v2','Inaktive Solofront freigegeben für Duo-Ziel '+
+        nameOf(shared.opponent),[],tick);
+      warState={id:null,name:'—',since:tick,blockedUntil:-Infinity};
+      plan=null;
+      if(operation?.target!==shared.id)operation=null;
+    }
     // Two independent ranked clients can converge on a teammate's observed
     // live attack. Release an idle stale solo target lock, not an own active
     // attack or the worker/reserve checks used to authorize a new one.
@@ -2496,8 +2518,10 @@
     const rebuilding=(s.ratio<(late?.17:.25) && (s.strongest>s.home*.52 || s.incoming>s.home*.12)) ||
       (losing&&(!late||s.incoming>s.home*.10)) || (s.incoming>s.home*.40);
     const readiness=warReadiness(me,items,s,tick);
-    const weak=enemies.filter(x=>hardMode()?targetOpportunity(me,items,s,x):
-      s.available>number(()=>x.opponent.troops(),Infinity)*(late?1.17:1.5));
+    const weak=enemies.filter(x=>
+      !!duoJointOpportunity(me,items,s,x,tick,true)||
+      (hardMode()?targetOpportunity(me,items,s,x):
+        s.available>number(()=>x.opponent.troops(),Infinity)*(late?1.17:1.5)));
     const fullLate=late&&s.ratio>.78&&!s.incoming&&enemies.length>0;
     const nuclearReady=opts.nukes && game.config().isUnitDisabled?.('Missile Silo')!==true &&
       game.config().isUnitDisabled?.('Atom Bomb')!==true;
@@ -2523,7 +2547,9 @@
       wanted='EXPAND';reason='Unbesetzte Gebiete und Platz für Wachstum';
     }
     else if((factoryCount===0||cityCount===0)&&!rich){wanted='ECONOMY';reason='Wirtschaftlicher Engpass';}
-    else if(weak.length && s.ratio>.55 && !s.activeEnemy && !seriousAttack && readiness.ready){
+    else if(weak.length && (s.ratio>.55||
+      weak.some(x=>duoJointOpportunity(me,items,s,x,tick,true)))&&
+      !s.activeEnemy&&!seriousAttack&&readiness.ready){
       wanted='ASSAULT';reason='Erreichbarer Gegner mit Kräftevorteil';
     }
     else if(danger){wanted='DEFEND';reason='Starker Nachbar an der Grenze';}
@@ -5476,6 +5502,8 @@
       observeHumanProfiles(me,tick);
       observeVictoryThreat(me,tick);
       let s=military(me,groups);rememberHostilePressure(s,tick);troopSnapshot=s;
+      strategic.groups=groups;
+      coordinateDuo(me,s,tick);
       manageWar(me,groups,s,tick);
       const context=strategy(me,groups,s);
       s=tuneAutonomously(me,groups,s,tick,context);
