@@ -10,6 +10,17 @@ Der vollständige, eingereichte [mehrphasige Entwicklungsplan](docs/COMPETITIVE_
 
 ## Schnellstart / Update
 
+**P0 Prüfbarkeit:** `node tools/p0-audit.cjs` führt im sauberen Worktree
+den nativen Node-Testkatalog read-only aus und speichert vollständige
+Einzel-Logs, Git-Zustand und Quell-/Modellhashes unter
+`benchmark-results/p0-audit-.../report.json`. Zusätzlich prüft
+`node tests/capacity-reference-regression.cjs` die Kapazitätsformel
+des gepinnten offiziellen Engine-Commits einschließlich des
+Russia-Falls (939.219 rohe Truppen; UI ≈ 93.922).
+**Dieser reine Referenzformeltest ist keine vollständige Engine-Integration.**
+Die Testsuite/CI und P0–P6 bleiben bis zu den dokumentierten
+Abnahmen offen. [Status & Abnahmekriterien](docs/COMPETITIVE_ROADMAP.md).
+
 **1.20.10 – P0 Aktionsnachverfolgung:** Jeder erfolgreich an den OpenFront-EventBus
 ausgesendete Intent erhält eine eindeutige, pro Match aufsteigende `actionId`
 und eine zugehörige `decisionId` (Match/Spiel-Tick). Bei Angriffen und
