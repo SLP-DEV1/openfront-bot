@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.20.3
+// @version      1.20.4
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.20.3', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.20.4', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -943,12 +943,27 @@
       safeID(p)===peer.id&&p.isPlayer?.());
     return player&&player.isAlive?.()!==false?{player,...peer}:null;
   }
+  // Foreign alliances are not automatically OUR in-game alliances. A
+  // recent, same-match peer report only adds a conservative attack veto.
+  // The game alone decides whether either bot can send alliance commands.
+  function duoPeerAlly(p){
+    const peer=duoTrustedPeer(),id=safeID(p);
+    return !!(peer&&duoID(id)&&id!==peer.id&&
+      Array.isArray(peer.state?.allies)&&peer.state.allies.includes(id));
+  }
+  function duoOwnAllies(me){
+    return (game?.playerViews?.()||[]).filter(p=>
+      p?.isPlayer?.()&&p.isAlive?.()!==false&&
+      safeID(p)!==safeID(me)&&duoID(safeID(p))&&
+      (actualFriendly(p,me)||me.isOnSameTeam?.(p)))
+      .map(safeID).sort().slice(0,16);
+  }
   function friendly(p,me){
-    // Only a verified same-match peer is exempt from attack. A stale
-    // ID from an earlier match cannot protect a random new opponent.
+    // Protect a verified partner and its current confirmed third-party
+    // allies. Do not inherit diplomatic status or retain old match IDs.
     return actualFriendly(p,me)||
       (safeID(me)===safeID(myPlayer())&&
-       safeID(p)===duoTrustedPeer()?.id);
+       (safeID(p)===duoTrustedPeer()?.id||duoPeerAlly(p)));
   }
   function duoState(){
     const me=myPlayer(),peer=duoTrustedPeer()?.player;
@@ -965,6 +980,7 @@
         state.available>=Math.max(1200,state.home*.2)),
       needHelp:!!(state&&state.incoming>Math.max(1200,state.home*.1)),
       allied:!!(peer&&actualFriendly(peer,me)),
+      allies:duoOwnAllies(me),
       available:state?.available??null,reserve:state?.reserve??null,
       role:state&&state.incoming>Math.max(1200,state.home*.1)?'defend':
         operation?'attack':game?.inSpawnPhase?.()?'spawn':
@@ -1487,6 +1503,9 @@
       duo={partner:local.player,partnerID:local.id,enemies,team:null};
     }
     if(!duo){duoPlan=null;return null;}
+    // No shared operation against a player protected by EITHER bot's
+    // actual alliances; independent enemy scoring still checks friendly().
+    duo.enemies=duo.enemies.filter(p=>!friendly(p,me));
     const partner=duo.partner;
     const observedIncoming=(partner.incomingAttacks?.()||[])
       .filter(a=>!a.retreating);
@@ -4498,7 +4517,7 @@
         }
       }
     }
-    const incoming=players.filter(p=>!friendly(p,me)&&
+    const incoming=players.filter(p=>!actualFriendly(p,me)&&
       (p.isRequestingAllianceWith?.(me)||cards.has(safeID(p))));
     if(incoming.length) {
       const s=military(me,strategic.groups);
@@ -4506,7 +4525,19 @@
         const id=safeID(p);
         const previous=diplomacyPending.get(id);
         if(diplomacyHandled.has(id)|| (previous && tick-previous.sentTick<45))continue;
-        const judgement=diplomacyScore(me,p,s,false,true),accept=judgement.score>=58;
+        const peer=duoTrustedPeer();
+        const allyOfPeer=peer&&actualFriendly(peer.player,me)&&duoPeerAlly(p);
+        const fighting=safeID(p)===warState.id||
+          (me.outgoingAttacks?.()||[]).some(a=>!a.retreating&&attackTargets(a.targetID,p))||
+          (me.incomingAttacks?.()||[]).some(a=>!a.retreating&&
+            attackTargetID(a.attackerID)===safeID(p));
+        const judgement=peer?
+          {score:allyOfPeer&&!fighting&&!p.isTraitor?.()?100:-999,
+            reason:allyOfPeer&&!fighting?
+              'Duo: bestätigtes Partnerbündnis angleichen':
+              'Duo: fremdes Bündnis vermeiden / laufenden Konflikt schützen'}:
+          diplomacyScore(me,p,s,false,true);
+        const accept=judgement.score>=58;
         const oldTry=previous?.tries||0;
         diplomacyPending.delete(id);
         telemetry('alliance_detected','Anfrage von '+nameOf(p),
@@ -4518,6 +4549,41 @@
       return;
     }
     if(renewAlliances(me,tick))return;
+    // Do not initiate different unrelated external alliances independently.
+    // Follow a confirmed third-party ally of the partner if OUR own worker
+    // permits it; a relay report never grants an alliance by itself.
+    const paired=duoTrustedPeer();
+    if(paired){
+      if(!actualFriendly(paired.player,me)||!opts.offerAlliances||
+        !ctors.alliance||!actionBudget()||tick-lastProposalTick<55)return;
+      const targets=players.filter(p=>duoPeerAlly(p)&&
+        !actualFriendly(p,me)&&!p.isTraitor?.()&&
+        safeID(p)!==warState.id&&safeID(p)!==plan?.id&&
+        !diplomacyHandled.has(safeID(p))&&
+        !(me.outgoingAttacks?.()||[]).some(a=>
+          !a.retreating&&attackTargets(a.targetID,p))&&
+        !(me.incomingAttacks?.()||[]).some(a=>
+          !a.retreating&&attackTargetID(a.attackerID)===safeID(p)));
+      const target=targets[0];
+      if(!target)return;
+      const id=safeID(target),anchor=target.state?.spawnTile;
+      if(!Number.isInteger(anchor)||safeID(game.owner(anchor))!==id)return;
+      const serial=generation;lastProposalTick=tick;
+      Promise.resolve(me.actions(anchor,null)).then(a=>{
+        if(!live(serial)||!duoPeerAlly(target)||!opts.diplomacy||
+          !opts.offerAlliances||game.config().disableAlliances?.()===true||
+          actualFriendly(target,me)||target.isTraitor?.()||
+          safeID(game.owner(anchor))!==id||
+          !a?.interaction?.canSendAllianceRequest)return;
+        if(send('alliance',[me,target],
+          'DUO · PARTNERBÜNDNIS ANFRAGEN: '+nameOf(target),true)){
+          diplomacyHandled.set(id,tick+200);diplomacyStats.offered++;
+          diplomacyStatus='Duo-Partnerbündnis angefragt: '+nameOf(target);
+        }
+      }).catch(e=>{duoLocal.status='Partnerbündnis: '+
+        String(e?.message||e).slice(0,55);});
+      return;
+    }
     if(!opts.offerAlliances || !ctors.alliance || !actionBudget() ||
       tick-lastProposalTick<450)return;
     const s=military(me,strategic.groups);
@@ -5522,6 +5588,7 @@
       <div>Status: ${escapeHTML(duoLocal.status)} · ${duoTrustedPeer()?'Partner im aktuellen Match bestätigt':'Partner nicht verbunden'}</div>
       <div style="color:#9bd0e4;font-size:10px">Matchkennung: ${escapeHTML(duoMatchKey())}</div>
       <div>Spielname: ${escapeHTML(duoTrustedPeer()?nameOf(duoTrustedPeer().player):'—')}${duoTrustedPeer()&&opts.duoPartnerName&&nameOf(duoTrustedPeer().player)!==opts.duoPartnerName?' · Name weicht von Anzeige ab (ID maßgeblich)':''}</div>
+      <div>Duo-Fremdbündnisse (Angriffsschutz): ${escapeHTML((duoTrustedPeer()?.state?.allies||[]).map(id=>nameOf((game?.playerViews?.()||[]).find(p=>safeID(p)===id)||{id:()=>id})).join(', ')||'—')}</div>
       <div>Partner: Ziel ${escapeHTML(duoTrustedPeer()?.state?.target??'—')} · verfügbar ${Math.round(duoTrustedPeer()?.state?.available||0)} · Reserve ${Math.round(duoTrustedPeer()?.state?.reserve||0)} · Hilfe ${duoTrustedPeer()?.state?.needHelp?'JA':'nein'}</div>
       <div>Gemeinsamer Plan: ${escapeHTML(duoPlan?duoPlan.role+' → '+duoPlan.targetName+(duoPlan.strikeTick!==null?' · Angriff ab Tick '+duoPlan.strikeTick:''):'Gemeinsam starten → Allianz bestätigen → Front aufteilen')}</div>
       <div style="margin-top:4px"><b>Duo-Timeline</b>${decisionTimeline.filter(d=>d.kind==='2v2').slice(-4).reverse().map(d=>'<div style="border-top:1px solid #354d66;padding:2px 0">'+escapeHTML('Tick '+d.tick+' · '+d.why)+'</div>').join('')}</div>
