@@ -2430,7 +2430,10 @@
       front.other*(hardMode()?.87:.80),
       Math.min(enemy*.35,s.home*.32));
     const amount=Math.floor(Math.min(requested,Math.max(0,s.home-floor)));
-    const minimum=Math.max(enemy*.45,
+    const joint=duoJointOpportunity(myPlayer(),items,s,item,
+      number(()=>game?.ticks?.(),0),true);
+    const minimum=joint?Math.max(1000,joint.own*.75,
+      joint.needed-joint.ally):Math.max(enemy*.45,
       enemy*(hardMode()?1.16:1.04)-duoBattleCredit(myPlayer(),item.opponent));
     return {amount:amount>=minimum?amount:0,capped:amount<requested,
       floor,other:front.other,minimum,reason:amount<minimum?
@@ -2986,13 +2989,15 @@
       }
       // The game state may advance during the async worker legality probe.
       const fresh=military(me,strategic.groups); // Never forget stronger OTHER neighbors on recheck.
+      const freshJoint=item.id!==null?duoJointOpportunity(me,strategic.groups,
+        fresh,item,number(()=>game.ticks(),tick),true):null;
       const freshFront=item.id!==null?frontRiskPlan(strategic.groups,fresh,item.id):null;
       if(item.id!==null && (freshFront.danger||freshFront.pressure||
         fresh.incoming>fresh.home*(lateGame(me)?.15:.04) ||
         fresh.activeEnemy>=(lateGame(me)&&fresh.strongest<fresh.home*.55?2:1) ||
-        fresh.available+duoBattleCredit(me,item.opponent)<
+        (!freshJoint&&fresh.available+duoBattleCredit(me,item.opponent)<
           Math.max(100,number(()=>item.opponent.troops(),Infinity)*
-            (lateGame(me)?1.15:1.3))))continue;
+            (lateGame(me)?1.15:1.3)))))continue;
       if(item.id===null && fresh.activeNeutral>=1)continue;
       if(item.fallout && (fresh.incoming>0 ||
         fresh.strongest>fresh.home*.65 || fresh.ratio<.60 ||
@@ -3018,6 +3023,13 @@
         amount=protectedStrike.amount;
         if(operation?.target===item.id)
           amount=Math.min(amount,Math.max(0,operation.budget-operation.spent));
+        if(freshJoint&&amount+freshJoint.ally<freshJoint.needed){
+          telemetry('duo_strike_veto',
+            'Duo-Angriff gestoppt: eigener Einsatz plus Partnerbudget reicht nicht',
+            {target:item.id,own:amount,ally:freshJoint.ally,
+              required:freshJoint.needed});
+          continue;
+        }
       }
       if(amount<100){
         decisionNote('ziel_verworfen','Ziel '+(item.opponent?nameOf(item.opponent):'Neutralland')+
@@ -5697,6 +5709,7 @@
       <div>Duo-Fremdbündnisse (Angriffsschutz): ${escapeHTML((duoTrustedPeer()?.state?.allies||[]).map(id=>nameOf((game?.playerViews?.()||[]).find(p=>safeID(p)===id)||{id:()=>id})).join(', ')||'—')}</div>
       <div>Partner: Ziel ${escapeHTML(duoTrustedPeer()?.state?.target??'—')} · verfügbar ${Math.round(duoTrustedPeer()?.state?.available||0)} · Reserve ${Math.round(duoTrustedPeer()?.state?.reserve||0)} · Hilfe ${duoTrustedPeer()?.state?.needHelp?'JA':'nein'}</div>
       <div>Gemeinsamer Plan: ${escapeHTML(duoPlan?duoPlan.role+' → '+duoPlan.targetName+(duoPlan.strikeTick!==null?' · Angriff ab Tick '+duoPlan.strikeTick:''):'Gemeinsam starten → Allianz bestätigen → Front aufteilen')}</div>
+      <div>Duo-Angriffsbudget: ${duoPlan?.joint?escapeHTML(Math.round(duoPlan.joint.own)+' eigene + '+Math.round(duoPlan.joint.ally)+' Partner-Truppen · nötig '+Math.round(duoPlan.joint.needed)):'Noch keine gemeinsam sichere Front'}</div>
       <div style="margin-top:4px"><b>Duo-Timeline</b>${decisionTimeline.filter(d=>d.kind==='2v2').slice(-4).reverse().map(d=>'<div style="border-top:1px solid #354d66;padding:2px 0">'+escapeHTML('Tick '+d.tick+' · '+d.why)+'</div>').join('')}</div>
       <div style="color:#a9efc9">Start_Live_Duo.bat starten · Port 8767 · nur Raumcode in beiden Browsern gleich · Bündnis gilt erst nach Bestätigung im Spiel · Relay-Ausfall ⇒ beide spielen autonom weiter.</div>
       </details>
