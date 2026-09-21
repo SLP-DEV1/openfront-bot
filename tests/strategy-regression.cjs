@@ -3120,14 +3120,17 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.sent[0].unit,'Factory');
   });
 
-  await check('1.20 local Duo protects exact PlayerID before alliance without claiming alliance',()=>{
+  await check('1.20.2 auto Duo only protects current verified peer',()=>{
     const x=boot();
     x.b.setDuo('weak','KITSU_DUO_123',null);
     assert.equal(x.b.duoConfigured(),true);
-    assert.equal(x.b.friendly(x.weak,x.me),true);
+    assert.equal(x.b.friendly(x.weak,x.me),false);
     assert.equal(x.b.actualFriendly(x.weak,x.me),false);
     assert.equal(x.b.friendly(x.strong,x.me),false);
     assert.equal(x.b.duoTrustedPeer(),null);
+    x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{}});
+    assert.equal(x.b.friendly(x.weak,x.me),true);
+    assert.equal(x.b.friendly(x.strong,x.me),false);
   });
   await check('1.20 reciprocal relay hints require real in-game friendship before joint plan',()=>{
     const x=boot();
