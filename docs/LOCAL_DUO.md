@@ -1,4 +1,4 @@
-# AggroBot 1.20.5 – lokaler Duo-Modus (zwei Browser, ein PC)
+# AggroBot 1.20.6 – lokaler Duo-Modus (zwei Browser, ein PC)
 
 **Zweck:** Zwei separat laufende OpenFront-Userscripts können Beobachtungen über denselben
 localhost-Relay austauschen. Jeder Browser kontrolliert **nur den eigenen Spieler**.
@@ -32,11 +32,11 @@ kein Ersatz für Worker-Aktionsprüfung, Eigentumskontrolle oder Heimreserve.
 
 1. Beide Userscripts und den Repository-Ordner aktualisieren. Den **alten**
    Duo-Relay mit STRG+C beenden und `Start_Live_Duo.bat` neu starten.
-   Das Fenster muss `v1.20.5` zeigen; ein altes Relay wird nicht automatisch
+   Das Fenster muss `v1.20.6` zeigen; ein altes Relay wird nicht automatisch
    durch die neue Browser-Version ersetzt.
 2. In **beiden** Browsern `http://127.0.0.1:8767/health` direkt in der
    Adresszeile öffnen. Erwartet wird eine JSON-Antwort mit
-   `"ok":true` und `"version":"1.20.5"`. Dieser direkte Aufruf
+   `"ok":true` und `"version":"1.20.6"`. Dieser direkte Aufruf
    prüft nur den lokalen Server, **nicht** die Freigabe für OpenFront.
 3. Bei Chrome/Edge für `https://openfront.io` die Website-Berechtigung
    für **Apps auf dem Gerät / Loopback-Netzwerk** erlauben; eine eventuell
@@ -110,6 +110,36 @@ kein Ersatz für Worker-Aktionsprüfung, Eigentumskontrolle oder Heimreserve.
   bestehen, wenn echte Übermacht, aktuelle Angriffe oder Gebietsverluste
   sie erforderlich machen. Unterschiedliche Landesgrenzen, unzureichende
   Truppen oder ein unsicherer Partner führen zu eigenständigem Spiel.
+- **Stabiler Duo-Angriff (1.20.6):** Ein gemeinsam bestätigtes Ziel und sein
+  Angriffstick bleiben gegen reine ECONOMY/TECH/RECOVER-Wechsel bis 110 Ticks
+  nach dem Starttermin bestehen. Bei einem echten Heimangriff, einer
+  bestätigten kritischen Partnerwarnung, verlorenem Bündnis oder
+  verschwundener gemeinsamer Front wird die Bindung aufgehoben. Wird ein
+  geschütztes Teilbudget vorübergehend zu klein, bleibt der Plan nur
+  vorgemerkt: **kein Angriff** ohne aktuelle beidseitige Freigabe,
+  Eigentümer-/Allianzprüfung und rechtmäßige Worker-Aktion.
+- **Gemeinsame Frühwarnung:** Die Partner tauschen Stufen 0 (ruhig),
+  1 (beobachtete leichte Angriffe oder starker Nachbar) und 2
+  (beobachtete Invasion oder relevante Gebiets-/Anlagenverluste) aus.
+  Ein beobachteter Angreifer auf den Partner wird frühzeitig als mögliches
+  Entlastungsziel geprüft. Helfende Truppen werden höchstens in engen,
+  separat abgesicherten Kontingenten gegeben; bei eigener Frontwarnung
+  sendet der Bot keine automatische Truppenspende. Eine Warnung
+  verändert **nicht** die Truppen-Sicherheitsreserve nach unten.
+- **Bündnisse aktiv anbieten:** Der Bot sucht den Allianz-Intent auch nach
+  Matchstart erneut. Wenn OpenFront den Konstruktor im EventBus nicht
+  verfügbar macht, kann er nur über das **tatsächliche, für das aktuelle
+  Spiel bestätigte OpenFront-Spielerpanel** auf dessen offizielle
+  Allianz-Aktion zugreifen. Gibt es weder den echten Intent noch diese
+  überprüfte UI-Aktion, meldet das Panel, dass Angebote noch nicht
+  verfügbar sind; es wird kein fremder Intent erfunden. Im Duo kann
+  die niedrigere PlayerID konfliktfreie neue Allianzen anbieten; der
+  andere Bot folgt erst, wenn das Bündnis für den ersten im GameView
+  sichtbar bestätigt wurde. Bei aktuell bekämpften Partnergegnern
+  wird kein eigener Allianz-Antrag erzeugt.
+- **Truppenzahlen:** JSON und Engine verwenden Rohwerte; das
+  Spiel-/Bot-Panel zeigt für Duo-Budgets die Rohwerte / 10. Das ist
+  nur eine Anzeigeumrechnung, **keine** Korrektur der Angriffslogik.
 - **Ausfall:** Nach wenigen Sekunden ohne validierte Partnerdaten werden
   keine Relay-Operationshinweise mehr verwendet; beide Bots bleiben autonom.
   Nur die für das aktuelle Match verifizierte Partner-ID ist vom Angriff ausgenommen; eine alte ID wird nicht übernommen.
