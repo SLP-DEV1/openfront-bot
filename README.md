@@ -1,10 +1,32 @@
 # OpenFront Solo AggroBot
 
-**Version 1.20.5** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) · Singleplayer, Public und Private · [offene Validierungspunkte](https://github.com/SLP-DEV1/openfront-bot/issues/12)
+**Version 1.20.6** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) · Singleplayer, Public und Private · [offene Validierungspunkte](https://github.com/SLP-DEV1/openfront-bot/issues/12)
 
 Der Bot erkennt neue spielbare Matches, wählt bei manuellem Spawn eine Position und steuert Expansion, Verteidigung, Wirtschaft, Flotte, Handel und Diplomatie. Die trainierte Neural-Policy kann optional *begrenzt* mitentscheiden; es gibt keine localhost-Brain- oder Live-Qwen-Anbindung mehr. **Es gibt keine belegte garantierte Impossible- oder Multiplayer-Siegquote.**
 
 ## Schnellstart / Update
+
+**1.20.6 – Duo-Front halten, Frühwarnung und Bündnisangebote:** Ein bereits
+abgestimmtes Ziel samt Tick bleibt bis höchstens 110 Ticks nach dem
+Starttermin gegen gewöhnliche ECONOMY/TECH/RECOVER-Wechsel stabil; ein
+wirklicher Heimangriff, bestätigter Partnernotfall, verlorene Allianz oder
+fehlender gemeinsamer Grenzgegner beendet den Plan. Der tatsächliche
+Angriff benötigt weiterhin beide einzeln geschützten Budgets, eine frische
+Partnerbestätigung und die legale Worker-Aktion. Die beiden Browser teilen
+Frühwarnstufen (beobachteter Druck, Frontübermacht, Verlust); begrenzte
+Truppenhilfe kann früher erfolgen, jedoch nur ohne Risiko für die eigene
+Reserve. Sicher erreichbare, gemeinsam freigegebene Angriffe erhalten
+früher ASSAULT-Priorität; kein niedrigerer Reserveschutz gegen reale
+Invasionen. Der Allianz-Intent wird auch nach der ersten Initialisierung
+erneut geprüft; falls sein Konstruktor fehlt, kann ausschließlich das
+**verifizierte offizielle Spielerpanel** den echten ausgehenden
+Allianz-Intent senden. Der Duo-Leader kann neue, konfliktfreie
+Drittallianzen anbieten; nach Bestätigung durch das Spiel kann der
+Partner selbst dasselbe Bündnis anfragen. Weder Relay noch ein
+ausgesendeter Request gilt als Bündnisbestätigung. Truppenwerte im
+Duo-Panel sind nun auf die Spielanzeige umgerechnet (Engine-Wert / 10).
+[Weitere Details](docs/LOCAL_DUO.md).
+
 
 **1.20.5 – Gemeinsame Duo-Offensive:** Die Bots tauschen eigene, begrenzte Angriffsbudgets und tatsächlich erreichbare Grenzgegner aus. Sie wählen einen gemeinsamen Gegner **nur**, wenn beide eine Front zu ihm besitzen, beide die Allianz im echten Spielzustand bestätigen, beide ihre eigene Reserve halten können und die addierten, vorsichtig begrenzten Kontingente gegen dessen sichtbare Truppen reichen. Die niedriger sortierte Spieler-ID setzt einen stabilen Angriffstick; die zweite bestätigt dasselbe Ziel. Inaktive unterschiedliche Solokriegsziele werden zugunsten der gemeinsamen Front freigegeben, nicht aber laufende Angriffe. Die Angriffszulässigkeit wird unmittelbar vor dem Befehl erneut im GameView/Worker überprüft. Beginnt ein Bot zuerst, darf der andere eine bereits **sichtbare** Partnerarmee auf dasselbe Ziel berücksichtigen. Bei eingehenden Angriffen, kürzlichen Verlusten, fehlendem gemeinsamen Grenzgegner, abweichenden Bündnissen oder Relay-Ausfall bleibt die alte autonome Sicherheitslogik aktiv. Es wird **keine pauschale 88-%-Reserve freigegeben**, wenn der Frontprognose-Schutz sie benötigt. Das Panel zeigt getrennte eigene/Partnerbudgets und erforderliche Zielstärke.
 
@@ -24,11 +46,11 @@ Der Bot erkennt neue spielbare Matches, wählt bei manuellem Spawn eine Position
 
 ## Neural-Live-Version (Impossible Run 3)
 
-Für den **experimentellen Live-Test** steht eine separate Tampermonkey-Datei bereit: [OpenFront_AggroBot_Impossible_Run3.user.js](./OpenFront_AggroBot_Impossible_Run3.user.js). Sie basiert auf AggroBot **1.20.4**, bündelt den [Schema-4-Champion von Impossible Run 3](./docs/training-analysis-20260921/schema4-impossible-world-europe-20260920-run3/champion.json) (1.000 Gewichte) direkt im Userscript und benötigt keinen Brain-Server, Qwen, Trainer oder Modellabruf im Browser. Der normale Bot bleibt unverändert.
+Für den **experimentellen Live-Test** steht eine separate Tampermonkey-Datei bereit: [OpenFront_AggroBot_Impossible_Run3.user.js](./OpenFront_AggroBot_Impossible_Run3.user.js). Sie basiert auf AggroBot **1.20.6**, bündelt den [Schema-4-Champion von Impossible Run 3](./docs/training-analysis-20260921/schema4-impossible-world-europe-20260920-run3/champion.json) (1.000 Gewichte) direkt im Userscript und benötigt keinen Brain-Server, Qwen, Trainer oder Modellabruf im Browser. Der normale Bot bleibt unverändert.
 
 Für den Test das **vollständige** Run-3-Userscript in Tampermonkey installieren, alle anderen AggroBot-Userscripts deaktivieren und OpenFront neu laden. Im Panel müssen **Vollautonom** und **Neurales Netz** aktiv sein; unter „Neurales Modell“ muss „Strategische Policy v4 (24 Signale)“ erscheinen. Der Schalter ohne geladenes Modell reicht nicht. Auto-Start und Unmöglich-Taktik sind optionale Bot-Einstellungen. Bei einer neu installierten Policy v4 wird der Neural-Schalter automatisch aktiviert, sofern nicht bereits eine gespeicherte Einstellung vorliegt.
 
-**Hinweis:** Das gebündelte Modell ist weiterhin der unveränderte Impossible-Run3-Champion; die *Bot-Logik* entspricht 1.20.4. Künftige Codeänderungen müssen in beide Userscripts übernommen werden; `tests/bundled-run3-regression.cjs` prüft die Quellcodegleichheit abzüglich Header und Modelldaten. Die bisherigen acht unabhängigen Impossible-Holdout-Spiele von Run 3 endeten ohne Sieg (0/8), mit Ø 5.940 Ticks gegenüber Ø 5.393 Ticks der Null-Policy in demselben Test. Ein Live-Multiplayer-Vorteil ist damit nicht nachgewiesen. Die CI prüft die Datei gegen Quellstand und Modell.
+**Hinweis:** Das gebündelte Modell ist weiterhin der unveränderte Impossible-Run3-Champion; die *Bot-Logik* entspricht 1.20.6. Künftige Codeänderungen müssen in beide Userscripts übernommen werden; `tests/bundled-run3-regression.cjs` prüft die Quellcodegleichheit abzüglich Header und Modelldaten. Die bisherigen acht unabhängigen Impossible-Holdout-Spiele von Run 3 endeten ohne Sieg (0/8), mit Ø 5.940 Ticks gegenüber Ø 5.393 Ticks der Null-Policy in demselben Test. Ein Live-Multiplayer-Vorteil ist damit nicht nachgewiesen. Die CI prüft die Datei gegen Quellstand und Modell.
 
 
 **1.19.5 – Befunde aus drei Live-Diagnosen (1.19.2/1.19.3):** Vorher unsichtbare Landkriegs-Blockaden werden mit konkretem Grund, Heim-/Reservewerten und betroffenen Gegnern im JSON/Timeline protokolliert. Eine festgefahrene Public-/Private-Kriegsfront darf ohne aktiven Angriff und nur bei eigenständig sicherem Alternativziel neu bewertet werden. Ein kurzfristiger belegter Gebiets-/Gebäudeverlust erhöht den defensiven Vorlauf; wiederholt nicht bestätigte Seelandungen erhalten zunehmend längere, zielspezifische Sperren. Nach mehrfachen Bauprüfungen ohne Erfolg werden in ungefährdeten Situationen Stadt/Fabrik gegenüber spekulativem Silo-/Raketenfonds priorisiert; ein echter SAM-Fonds bleibt geschützt. Der Export zeigt Modell-Fingerprint (nicht kryptografisch), Schematyp, Gewichte und tatsächliche Null-/Nichtnull-Inferenz. **Die alten drei Mitschnitte enthalten kein verifiziertes Matchende; dies ist keine gemessene Steigerung der Siegquote.**
