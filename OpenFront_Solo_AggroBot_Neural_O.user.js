@@ -1380,13 +1380,29 @@
     return Math.floor(Math.min(safeBudget,amount*
       (1+neuralChannel('neutralCommit',myPlayer(),s)*.35)));
   }
+  // An alliance, team change or elimination invalidates a remembered threat
+  // immediately, including when a border scan is temporarily missing.
+  function pruneFrontMemory(me){
+    if(typeof game?.playerViews!=='function')return;
+    const players=new Map((game.playerViews()||[]).map(p=>[safeID(p),p]));
+    for(const id of frontMemory.keys()){
+      const p=players.get(id);
+      if(!p?.isAlive?.()||friendly(p,me)||me.isOnSameTeam?.(p))
+        frontMemory.delete(id);
+    }
+  }
   // Retain short-lived border pressure across transient missing border scans.
   function observeFronts(me,items,tick){
     // Human multiplayer pressure must not disappear merely because native
     // Nation difficulty is Medium/Hard. Impossible keeps its existing logic.
-    if(!hardMode()&&!multiplayerMatch(game))return;
+    pruneFrontMemory(me);
+    if(!hardMode()&&!multiplayerMatch(game)){frontMemory.clear();return;}
     for(const item of items){
-      if(item.id===null||!item.opponent?.isAlive?.()||friendly(item.opponent,me))continue;
+      if(item.id===null||!item.opponent?.isAlive?.()||friendly(item.opponent,me)||
+        me.isOnSameTeam?.(item.opponent)){
+        if(item.id!==null)frontMemory.delete(item.id);
+        continue;
+      }
       const troops=Math.max(0,number(()=>item.opponent.troops(),0));
       const old=frontMemory.get(item.id);
       frontMemory.set(item.id,{troops,lastTick:tick,
@@ -1433,7 +1449,9 @@
     const inc=(me.incomingAttacks?.()||[]).filter(a=>!a.retreating&&a.troops>0);
     const committed=out.reduce((sum,a)=>sum+a.troops,0);
     const incoming=inc.reduce((sum,a)=>sum+a.troops,0);
-    const hostile=items.filter(t=>t.id!==null && t.opponent?.isAlive?.());
+    pruneFrontMemory(me);
+    const hostile=items.filter(t=>t.id!==null && t.opponent?.isAlive?.() &&
+      !friendly(t.opponent,me) && !me.isOnSameTeam?.(t.opponent));
     const tick=number(()=>game?.ticks?.(),0);
     const historical=[...frontMemory.values()].reduce((v,x)=>
       Math.max(v,tick-x.lastTick<=240?x.peak*.72:0),0);
@@ -1744,8 +1762,11 @@
   // Attack budget against OTHER fronts, independent of the chosen victim.
   // These checks cannot be bypassed by target scores or AI suggestions.
   function frontRiskPlan(items,s,targetID=null) {
+    const me=myPlayer();
+    pruneFrontMemory(me);
     const other=items.filter(x=>x.id!==null&&x.id!==targetID&&
-      x.opponent?.isAlive?.()).reduce((v,x)=>Math.max(v,
+      x.opponent?.isAlive?.()&&!friendly(x.opponent,me)&&
+      !me.isOnSameTeam?.(x.opponent)).reduce((v,x)=>Math.max(v,
       number(()=>x.opponent.troops(),0)),0);
     const tick=number(()=>game?.ticks?.(),0);
     const remembered=[...frontMemory].reduce((v,[id,x])=>
@@ -1753,7 +1774,8 @@
         Math.max(v,x.peak*.72):v,0);
     const otherThreat=Math.max(other,remembered);
     const secondary=items.filter(x=>x.id!==null&&x.id!==targetID&&
-      x.opponent?.isAlive?.()).map(x=>number(()=>x.opponent.troops(),0))
+      x.opponent?.isAlive?.()&&!friendly(x.opponent,me)&&
+      !me.isOnSameTeam?.(x.opponent)).map(x=>number(()=>x.opponent.troops(),0))
       .sort((a,b)=>b-a)[1]||0;
     const combined=otherThreat+Math.min(secondary*.35,s.home*.4);
     const danger=otherThreat>s.home*1.15 ||
@@ -1790,8 +1812,17 @@
   }
   function targetOpportunity(me,items,s,item) {
     if(!item?.opponent?.isAlive?.()||friendly(item.opponent,me))return false;
-    const late=lateGame(me),troops=number(()=>item.opponent.troops(),Infinity);
-    if(!(troops>0)||s.incoming>s.home*(late?.15:.04)||s.ratio<(late?.29:.40))return false;
+    const late=lateGame(me);
+    let rawTroops;
+    try{rawTroops=item.opponent.troops?.();}catch(_){return false;}
+    if(rawTroops===null||rawTroops===undefined)return false;
+    const homeTroops=Number(rawTroops);
+    if(!Number.isFinite(homeTroops)||homeTroops<0)return false;
+    // An empty home army is attackable, but deployed enemy forces may return.
+    const deployed=(item.opponent.outgoingAttacks?.()||[])
+      .filter(a=>!a.retreating).reduce((n,a)=>n+Math.max(0,number(()=>a.troops,0)),0);
+    const troops=homeTroops+deployed;
+    if(s.incoming>s.home*(late?.15:.04)||s.ratio<(late?.29:.40))return false;
     const minRatio=enemyOpportunityRatio(item.opponent,late,s.home);
     const credit=duoBattleCredit(me,item.opponent);
     if(s.available+credit<troops*minRatio ||
@@ -3179,6 +3210,38 @@
     }
     return false;
   }
+  // This is deliberately uncached and runs AFTER the async worker check.
+  // Sampled ring checks in nukeTargets are only a planning optimization;
+  // the final launch gate must cover every tile and allied structure.
+  function nukeCollateralSafe(me,tile,kind){
+    try{
+      const owner=game.owner(tile);
+      if(!owner?.isPlayer?.()||friendly(owner,me)||me.isOnSameTeam?.(owner))return false;
+      const radius=number(()=>game.config().nukeMagnitudes?.(kind).outer,
+        kind==='Hydrogen Bomb'||kind==='MIRV'?100:30)+5;
+      const tx=game.x(tile),ty=game.y(tile),r2=radius*radius;
+      const width=game.width(),height=game.height();
+      if(!Number.isInteger(width)||!Number.isInteger(height)||
+        !Number.isFinite(tx)||!Number.isFinite(ty))return false;
+      for(const u of game.units()){
+        if(!STRUCTURE_TYPES.includes(u.type?.())||!u.isActive?.())continue;
+        const p=u.owner?.();
+        if(!p?.isPlayer?.()||(!friendly(p,me)&&!me.isOnSameTeam?.(p)))continue;
+        const ut=u.tile?.();
+        if(!Number.isInteger(ut))return false;
+        const dx=tx-game.x(ut),dy=ty-game.y(ut);
+        if(dx*dx+dy*dy<=r2)return false;
+      }
+      for(let y=Math.max(0,Math.ceil(ty-radius));y<=Math.min(height-1,Math.floor(ty+radius));y++)
+        for(let x=Math.max(0,Math.ceil(tx-radius));x<=Math.min(width-1,Math.floor(tx+radius));x++){
+          const dx=x-tx,dy=y-ty;
+          if(dx*dx+dy*dy>r2)continue;
+          const p=game.owner(game.ref(x,y));
+          if(p?.isPlayer?.()&&(friendly(p,me)||me.isOnSameTeam?.(p)))return false;
+        }
+      return true;
+    }catch(_){return false;}
+  }
   // Launcher uses the SAME BuildUnitIntentEvent the game's build menu uses.
   // For nukes, tile is the ENEMY TARGET, not the launching silo location.
   function nukeTargets(me,intel,kind) {
@@ -3382,7 +3445,8 @@
           if(!infinite&&gold-cost*salvo.amount<250000)continue;
           // Target may have changed owner while worker checked its legality.
           const o=game.owner(candidate.tile);
-          if(!o?.isPlayer?.() || friendly(o,me))continue;
+          if(!o?.isPlayer?.() || friendly(o,me)||me.isOnSameTeam?.(o))continue;
+          if(!nukeCollateralSafe(me,candidate.tile,kind))continue;
           const prior=ownMissiles(me).filter(u=>u.type?.()===kind &&
             Number.isInteger(u.targetTile?.()) &&
             Math.hypot(game.x(u.targetTile())-game.x(candidate.tile),
