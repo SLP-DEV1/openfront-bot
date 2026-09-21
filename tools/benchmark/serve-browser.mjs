@@ -5,7 +5,6 @@ import crypto from 'node:crypto';
 import {createRequire} from 'node:module';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import common from './common.cjs';
-import {makeLiveCoach} from './live-qwen.mjs';
 import {startBackend} from './openfront-backend.mjs';
 const opts=common.parse(process.argv.slice(2)),engineCommit=common.engineInfo(opts.engine,opts.engineCommit);
 const requireEngine=createRequire(path.join(opts.engine,'package.json'));
@@ -17,7 +16,6 @@ const gameConfig={gameMap:resolve(enums.GameMapType,opts.map),gameMapSize:resolv
   nations:opts.nations===0?'disabled':opts.nations,bots:opts.bots,donateGold:false,donateTroops:false,
   infiniteGold:false,infiniteTroops:false,instantBuild:false,randomSpawn:false};
 const dir=common.outputDir(opts),source=fs.readFileSync(opts.bot,'utf8'),token=crypto.randomBytes(24).toString('hex');
-const coach=makeLiveCoach({enabled:process.env.AGGROBOT_LIVE_QWEN==='1',dir});
 const metadata={harness:'browser-localserver-worker-v1',engineCommit,botSHA256:common.digest(source),
   seed:opts.seed,gameID:common.digest(opts.seed).slice(0,8),seedSource:'sha256(seed)[0:8] -> GameStartInfo.gameID',profile:opts.profile,settings:common.profiles[opts.profile],gameConfig,maxTicks:opts.ticks,browser:true};
 common.writeJSON(path.join(dir,'run.json'),metadata);
@@ -42,11 +40,6 @@ const plugin={name:'aggrobot-local-test',configureServer(server){server.middlewa
     res.end(html.replace('/*BENCHMARK_CONFIG*/',JSON.stringify({token,metadata})));return;
   }
   if(req.method==='GET'&&route==='/__aggrobot/bot.js'){res.setHeader('Content-Type','text/javascript');res.end(source);return;}
-  if(req.method==='GET'&&route==='/__aggrobot/qwen-status'){
-    if(req.headers['x-benchmark-token']!==token){res.writeHead(403).end();return;}
-    res.setHeader('Content-Type','application/json');
-    res.end(JSON.stringify(coach.status()));return;
-  }
   if(req.method!=='POST'||req.headers['x-benchmark-token']!==token||finalized){res.writeHead(403).end();return;}
   try{
     let body='';for await(const chunk of req){body+=chunk;if(body.length>8*1024*1024)throw Error('Body too large');}
@@ -55,16 +48,15 @@ const plugin={name:'aggrobot-local-test',configureServer(server){server.middlewa
       if(!Array.isArray(data)||data.length>2000)throw Error('Invalid record batch');
       let seq=lastSeq;for(const record of data){if(record.seq!==++seq)throw Error('Non-contiguous event sequence');}
       fs.appendFileSync(path.join(dir,'events.jsonl'),data.map(r=>JSON.stringify(r)+'\n').join(''));lastSeq=seq;
-      coach.records(data);
     }else if(route==='/__aggrobot/checkpoint'||route==='/__aggrobot/finish'){
       data.benchmarkMeta={...data.benchmarkMeta,...metadata,gameMap:gameConfig.gameMap,gameMapSize:gameConfig.gameMapSize,gameMode:gameConfig.gameMode};
       data.recording={...data.recording,streamFile:'events.jsonl',streamCount:lastSeq,
         complete:lastSeq===data.recording?.total&&data.recording?.streamErrors===0};
       common.writeJSON(path.join(dir,route.endsWith('/finish')?'match.json':'checkpoint.json'),data);
       if(route.endsWith('/finish')){
-        finalized=true;coach.finish(data);
+        finalized=true;
         console.log(JSON.stringify({output:dir,termination:data.run?.termination,outcome:data.gameEnd?.outcome??'unknown',records:lastSeq}));
-      }else coach.checkpoint(data);
+      }
     }else{res.writeHead(404).end();return;}
     res.writeHead(200,{'Content-Type':'application/json'}).end('{"ok":true}');
   }catch(error){res.writeHead(400,{'Content-Type':'application/json'}).end(JSON.stringify({error:error.message}));}
@@ -73,8 +65,6 @@ const server=await createServer({root:opts.engine,plugins:[plugin],server:{host:
 await server.listen();
 console.log(`Browser benchmark: http://127.0.0.1:${opts.port}/__aggrobot/`);
 console.log('Output: '+dir);
-console.log('Qwen Code live coach: '+(coach.status().enabled?'ENABLED':'OFF (AGGROBOT_LIVE_QWEN=1)'));
-console.log('Qwen results: '+path.join(dir,'qwen-live-report.md'));
 if(process.env.AGGROBOT_OPEN_BROWSER==='1'&&process.platform==='win32'){
   // Static localhost URL; no user input or secrets on the command line.
   const {spawn}=await import('node:child_process');
