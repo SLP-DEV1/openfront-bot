@@ -1,4 +1,4 @@
-# AggroBot 1.20.2 – lokaler Duo-Modus (zwei Browser, ein PC)
+# AggroBot 1.20.3 – lokaler Duo-Modus (zwei Browser, ein PC)
 
 **Zweck:** Zwei separat laufende OpenFront-Userscripts können Beobachtungen über denselben
 localhost-Relay austauschen. Jeder Browser kontrolliert **nur den eigenen Spieler**.
@@ -25,6 +25,34 @@ kein Ersatz für Worker-Aktionsprüfung, Eigentumskontrolle oder Heimreserve.
    aktuellen GameView vorhanden ist. Bei jedem Matchstart werden die
    wechselnden PlayerIDs automatisch neu entdeckt; bei fehlender
    Verbindung oder mehr als zwei Instanzen spielen die Bots autonom.
+
+
+
+## Wenn ein Browser nicht verbindet
+
+1. Beide Userscripts und den Repository-Ordner aktualisieren. Den **alten**
+   Duo-Relay mit STRG+C beenden und `Start_Live_Duo.bat` neu starten.
+   Das Fenster muss `v1.20.3` zeigen; ein altes Relay wird nicht automatisch
+   durch die neue Browser-Version ersetzt.
+2. In **beiden** Browsern `http://127.0.0.1:8767/health` direkt in der
+   Adresszeile öffnen. Erwartet wird eine JSON-Antwort mit
+   `"ok":true` und `"version":"1.20.3"`. Dieser direkte Aufruf
+   prüft nur den lokalen Server, **nicht** die Freigabe für OpenFront.
+3. Bei Chrome/Edge für `https://openfront.io` die Website-Berechtigung
+   für **Apps auf dem Gerät / Loopback-Netzwerk** erlauben; eine eventuell
+   angezeigte Zugriffsanfrage bestätigen. Kein Browser-Schutz sollte
+   pauschal deaktiviert werden. Zwei verschiedene Browserprofile benötigen
+   gegebenenfalls jeweils eine eigene Freigabe.
+4. Die beiden `Matchkennung:`-Zeilen im Duo-Panel vergleichen. Bei
+   `Raumcode gleich, aber Match-Kennung unterscheidet sich` laufen die
+   Browser nicht unter derselben berechneten Partiekennung. Die
+   Node-Konsole protokolliert dann die von beiden Browsern empfangenen
+   Kennungen. Bei **nur einem** Browser-Eintrag erreicht der andere die
+   lokale Schnittstelle nicht; die DevTools-Konsole (F12) zeigt
+   gegebenenfalls die konkrete Browser-Blockierung.
+5. Ein `Browser-Timeout (8s)` ist **keine** bestätigte Server-Abschaltung.
+   Es kann auch auftreten, wenn die Browser-Berechtigung noch aussteht.
+   Bei einem HTTP-Fehler nennt das Panel nun den Relay-Fehlercode.
 
 
 ## Was passiert im Spiel?
