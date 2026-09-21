@@ -1,4 +1,4 @@
-# AggroBot 1.20.6 – lokaler Duo-Modus (zwei Browser, ein PC)
+# AggroBot 1.20.8 – lokaler Duo-Modus (zwei Browser, ein PC)
 
 **Zweck:** Zwei separat laufende OpenFront-Userscripts können Beobachtungen über denselben
 localhost-Relay austauschen. Jeder Browser kontrolliert **nur den eigenen Spieler**.
@@ -32,11 +32,11 @@ kein Ersatz für Worker-Aktionsprüfung, Eigentumskontrolle oder Heimreserve.
 
 1. Beide Userscripts und den Repository-Ordner aktualisieren. Den **alten**
    Duo-Relay mit STRG+C beenden und `Start_Live_Duo.bat` neu starten.
-   Das Fenster muss `v1.20.6` zeigen; ein altes Relay wird nicht automatisch
+   Das Fenster muss `v1.20.8` zeigen; ein altes Relay wird nicht automatisch
    durch die neue Browser-Version ersetzt.
 2. In **beiden** Browsern `http://127.0.0.1:8767/health` direkt in der
    Adresszeile öffnen. Erwartet wird eine JSON-Antwort mit
-   `"ok":true` und `"version":"1.20.6"`. Dieser direkte Aufruf
+   `"ok":true` und `"version":"1.20.8"`. Dieser direkte Aufruf
    prüft nur den lokalen Server, **nicht** die Freigabe für OpenFront.
 3. Bei Chrome/Edge für `https://openfront.io` die Website-Berechtigung
    für **Apps auf dem Gerät / Loopback-Netzwerk** erlauben; eine eventuell
@@ -140,6 +140,27 @@ kein Ersatz für Worker-Aktionsprüfung, Eigentumskontrolle oder Heimreserve.
 - **Truppenzahlen:** JSON und Engine verwenden Rohwerte; das
   Spiel-/Bot-Panel zeigt für Duo-Budgets die Rohwerte / 10. Das ist
   nur eine Anzeigeumrechnung, **keine** Korrektur der Angriffslogik.
+- **Handel und Embargos (1.20.8):** OpenFront startet Hafenhandel
+  automatisch zu handelbaren Spielern. Der Bot erzeugt deshalb keinen
+  erfundenen Handelsrouten-Intent. Er hält stattdessen Handel mit im
+  Spiel bestätigten Verbündeten offen, setzt bei einem tatsächlich
+  aktiven Kriegsgegner ein eigenes Embargo und hebt **nur seine selbst
+  gesetzten** Embargos nach Konfliktende wieder auf. Wenn der EventBus
+  den offiziellen `SendEmbargoIntentEvent` nicht offenlegt, darf nur
+  das verifizierte aktuelle OpenFront-Spielerpanel als Fallback verwendet
+  werden. Neutrale Spieler werden nicht vorsorglich embargoiert.
+  Besitzt der bestätigte Duo-Partner bereits einen fertigen Hafen, bekommt
+  der erste eigene legale Hafen zusätzliche Wirtschaftspriorität.
+- **Gegenseitige Truppenhilfe (1.20.8):** Die Spendenentscheidung verwendet
+  weiterhin nur den im echten Spiel bestätigten Partner und
+  `canDonateTroops`. Bei Warnstufe 1/2 wird der Prüf-Cooldown verkürzt;
+  bei einer kritischen Partnerlage darf ein etwas größeres, aber separat
+  begrenztes Kontingent geschickt werden. Eigene Warnstufe > 0 blockiert
+  die Spende vollständig. Nach dem Transfer müssen eigene Reserve,
+  Frontdruck und Mindest-Heimtruppen weiterhin erfüllt sein. Bei einer
+  Partnerkrise ohne laufenden Angriff ist eine einmalige
+  Wiederaufbau-Verstärkung nur erlaubt, wenn der Spender deutlich stärker
+  ist; dadurch sollen symmetrische Hin-und-her-Spenden vermieden werden.
 - **Ausfall:** Nach wenigen Sekunden ohne validierte Partnerdaten werden
   keine Relay-Operationshinweise mehr verwendet; beide Bots bleiben autonom.
   Nur die für das aktuelle Match verifizierte Partner-ID ist vom Angriff ausgenommen; eine alte ID wird nicht übernommen.
