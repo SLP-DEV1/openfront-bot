@@ -4,6 +4,10 @@
 
 Der Bot erkennt neue spielbare Matches, wählt bei manuellem Spawn eine Position und steuert Expansion, Verteidigung, Wirtschaft, Flotte, Handel und Diplomatie. Die trainierte Neural-Policy kann optional *begrenzt* mitentscheiden; es gibt keine localhost-Brain- oder Live-Qwen-Anbindung mehr. **Es gibt keine belegte garantierte Impossible- oder Multiplayer-Siegquote.**
 
+## Multiplayer-Umbau: Gesamtplan und Fortschritt
+
+Der vollständige, eingereichte [mehrphasige Entwicklungsplan](docs/COMPETITIVE_PLAN_2026-09-22.md) ist archiviert. Die [laufende Statusübersicht](docs/COMPETITIVE_ROADMAP.md) zeigt **vorhandene Funktionen getrennt von abgenommenen Arbeitspaketen**. Im [Master-Issue #75](https://github.com/SLP-DEV1/openfront-bot/issues/75) sind alle Phasen P0–P6 mit eigenen abhakbaren Issues verlinkt. **P0 ist in Arbeit** (City-/Factory-Kapazitätskorrektur liegt laut 1.20.9 vor); eine vollständige Abnahme der Phasen oder eine neue Gesamt-Testmessung wird damit nicht behauptet. Die ursprüngliche Analyse bezog sich auf den älteren Commit `10e81ee` / 1.20.8.
+
 ## Schnellstart / Update
 
 **1.20.9 – Truppenkapazität nach echter Spielmechanik:** Ein Kapazitätsengpass
