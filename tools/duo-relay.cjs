@@ -5,7 +5,7 @@
 const http=require('node:http');
 const port=Number(process.env.AGGROBOT_DUO_PORT||8767);
 if(!Number.isInteger(port)||port<0||port>65535)throw Error('Invalid relay port');
-const host='127.0.0.1',TTL=10000,MAX=80;
+const host='127.0.0.1',TTL=10000,MAX=80,VERSION='1.20.10';
 const rooms=new Map();
 const connectionLogs=new Map();
 const idOK=s=>typeof s==='string'&&s.length>=1&&s.length<=128&&
@@ -111,7 +111,7 @@ function createServer(){
       res.writeHead(200,{'Content-Type':'application/json',
         'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
         .end(JSON.stringify({ok:true,service:'AggroBot Duo Relay',
-          version:'1.20.8'}));return;
+          version:VERSION}));return;
     }
     const origin=req.headers.origin;
     if(!allowed(origin)){
@@ -166,8 +166,8 @@ function createServer(){
 if(require.main===module){
   const server=createServer();
   server.listen(port,host,()=>console.log(
-    '[AggroBot Duo] v1.20.8 · Nur lokal: http://'+host+':'+server.address().port+
+    '[AggroBot Duo] v'+VERSION+' · Nur lokal: http://'+host+':'+server.address().port+
     ' · Test: http://'+host+':'+server.address().port+
     '/health · STRG+C stoppt den Relay.'));
 }
-module.exports={createServer,validate,exchange,rooms,trim,allowed,TTL};
+module.exports={createServer,validate,exchange,rooms,trim,allowed,TTL,VERSION};

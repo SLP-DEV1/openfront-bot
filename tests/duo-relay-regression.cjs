@@ -73,7 +73,7 @@ const mk=(ownID,partnerID,instance,match='v1|Public|World|Large|FFA|123|_')=>({
   try{
     const health=await fetch('http://127.0.0.1:'+server.address().port+'/health');
     assert.equal(health.status,200);
-    assert.equal((await health.json()).version,'1.20.8');
+    assert.equal((await health.json()).version,relay.VERSION||'1.20.10');
     assert.equal((await call(A,'https://evil.example')).status,403);
     const preflight=await fetch(endpoint,{method:'OPTIONS',
       headers:{Origin:'https://play.openfront.io',
