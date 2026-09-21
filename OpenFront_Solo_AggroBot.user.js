@@ -1593,6 +1593,9 @@
       ally<Math.max(1000,enemy*.12)||own+ally<needed)return null;
     if(launch&&(!duoPlan||duoPlan.target!==id||
       !Number.isInteger(duoPlan.strikeTick)||tick<duoPlan.strikeTick||
+      tick>(Number.isInteger(duoPlan.expiresTick)?duoPlan.expiresTick:duoPlan.strikeTick+110)||
+      (Number.isInteger(info.expiresTick)&&tick>info.expiresTick&&observedOn<=0)||
+      (info.planId&&duoPlan.planId&&info.planId!==duoPlan.planId&&observedOn<=0)||
       info.target!==id||
       (info.strikeTick!==duoPlan.strikeTick&&observedOn<=0)))return null;
     return {target:id,own,ally,needed,enemy,front,
@@ -2038,6 +2041,15 @@
         frontMemory.delete(id);
     }
   }
+  // A vanished front is remembered briefly, never treated as a current
+  // 240-tick enemy peak. Current observed armies retain full priority.
+  function rememberedFrontStrength(id,tick,observed=0){
+    const old=frontMemory.get(id);
+    if(!old)return observed;
+    const age=Math.max(0,tick-old.lastTick);
+    const tail=age>=90?0:old.peak*.72*(1-age/90);
+    return Math.max(observed,tail);
+  }
   // Retain short-lived border pressure across transient missing border scans.
   function observeFronts(me,items,tick){
     // Human multiplayer pressure must not disappear merely because native
@@ -2071,8 +2083,8 @@
       !friendly(g.opponent,me)).map(g=>{
       const now=Math.max(0,number(()=>g.opponent.troops(),0));
       const prior=frontMemory.get(g.id);
-      const recent=prior&&tick-prior.lastTick<=240?prior.peak*.72:0;
-      return {id:g.id,troops:Math.max(now,recent)};
+      const recent=rememberedFrontStrength(g.id,tick,now);
+      return {id:g.id,troops:recent};
     }).sort((a,b)=>b.troops-a.troops);
     const primary=fronts[0]?.troops||0,secondary=fronts[1]?.troops||0;
     const trend=armyTrend(tick),lost=trend&&trend.ticks>=80?
@@ -2100,8 +2112,8 @@
     const hostile=items.filter(t=>t.id!==null && t.opponent?.isAlive?.() &&
       !friendly(t.opponent,me) && !me.isOnSameTeam?.(t.opponent));
     const tick=number(()=>game?.ticks?.(),0);
-    const historical=[...frontMemory.values()].reduce((v,x)=>
-      Math.max(v,tick-x.lastTick<=240?x.peak*.72:0),0);
+    const historical=[...frontMemory].reduce((v,[id,x])=>
+      Math.max(v,rememberedFrontStrength(id,tick)),0);
     const strongest=Math.max(historical,
       hostile.reduce((v,t)=>Math.max(v,number(()=>t.opponent.troops())),0));
     const ratio=home/max;
@@ -4324,6 +4336,13 @@
       lowestCost:Number.isFinite(probe.lowestCost)?probe.lowestCost:null,
       selected:chosen.type,coreFunding:coreFundingStatus(me,units,tick)};
     if(!live(serial))return false;
+    // Revalidate the *selected* worker option after the async site scan.
+    // A candidate may have lost its tile, upgrade ID or price meanwhile.
+    const freshTick=number(()=>game.ticks(),tick);
+    if(freshTick<tick||freshTick-tick>12){
+      telemetry('build_stale_skip','Bauplan zu alt; frischen Worker-Zustand abwarten',
+        {type:chosen.type,plannedTick:tick,freshTick});return false;
+    }
     const currentMilitary=military(me,strategic.groups);
     if(economicDefensePressure(me,currentMilitary)&&
       !['Defense Post','SAM Launcher'].includes(chosen.type)){
@@ -4331,8 +4350,36 @@
         {type:chosen.type,incoming:currentMilitary.incoming,home:currentMilitary.home});
       return false;
     }
-    const args=chosen.kind==='upgrade'?[chosen.unitId,chosen.type,1]:[chosen.type,chosen.requestTile];
+    const liveNeeds=economicNeeds(me,ownStructures(me),tiles);
+    if(chosen.type!=='SAM Launcher'&&chosen.type!=='Defense Post'&&
+      liveNeeds.nuclearThreat&&liveNeeds.wantedSAM>0&&liveNeeds.intel.uncovered.length>0&&
+      !requirements.nuclearThreat){
+      telemetry('build_stale_skip','Neue Nuklearbedrohung: Bau neu priorisieren',
+        {type:chosen.type,plannedTick:tick,freshTick});return false;
+    }
+    let verified;
+    try{verified=await me.actions(chosen.requestTile,[chosen.type]);}
+    catch(e){telemetry('build_stale_skip','Worker-Verifikation fehlgeschlagen',
+      {type:chosen.type,error:String(e?.message||e).slice(0,90)});return false;}
+    if(!live(serial)||number(()=>game.ticks(),tick)-tick>12)return false;
+    const worker=verified?.buildableUnits?.find(x=>x.type===chosen.type);
+    const isUpgrade=chosen.kind==='upgrade';
+    const freshCost=Number(isUpgrade?(worker?.upgradeCosts?.[0]??worker?.cost):worker?.cost);
+    const actualTile=isUpgrade?chosen.requestTile:worker?.canBuild;
+    const validWorker=worker&&(isUpgrade?
+      worker.canUpgrade!==false&&worker.canUpgrade!==undefined&&
+        worker.canUpgrade===chosen.unitId:
+      Number.isInteger(worker.canBuild)&&
+        (worker.canUpgrade===false||worker.canUpgrade===undefined));
+    if(!validWorker||!Number.isFinite(freshCost)||freshCost<0||
+      actualTile!==chosen.tile||!ownedTile(chosen.tile,me)){
+      telemetry('build_stale_skip','Bauplatz, Upgrade oder Preis nicht mehr bestätigt',
+        {type:chosen.type,tile:chosen.tile,plannedCost:chosen.cost,freshCost});
+      return false;
+    }
+    chosen.cost=freshCost;
     if(!spendBudget(me,chosen.cost,chosen.type,false,tiles))return false;
+    const args=isUpgrade?[chosen.unitId,chosen.type,1]:[chosen.type,chosen.requestTile];
     if(send(chosen.kind,args,`${chosen.kind==='upgrade'?'UPGRADE':'BAU'} ${chosen.type} · ${chosen.cost.toLocaleString()} Gold`)){
       commitGoldSpend(me,chosen.cost,chosen.type);
       economicPending={...chosen,tick,actionId:lastActionId};
