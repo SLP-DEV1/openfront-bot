@@ -86,7 +86,7 @@ function boot(benchmarkOptions={}) {
     'setCancelCtor:C=>ctors.cancel=C,setTroopSnapshot:t=>troopSnapshot=t,setCtor:(key,C)=>ctors[key]=C,',
     'setMode:m=>strategic.mode=m,setAllianceCtor:C=>ctors.alliance=C,setHostilePressure:t=>lastHostilePressure=t,',
     'setNukePending:p=>nukePending=p,setMonitorSession:x=>monitorSession=x,spendBudget,commitGoldSpend,coreFundingStatus,',
-    'targetOpportunityCheck,reportAttackBlocks,earlyCrisis,landingFailure,neuralModelInfo,',
+    'targetOpportunityCheck,sameFrontFollowUp,reportAttackBlocks,earlyCrisis,landingFailure,neuralModelInfo,',
     'duoConfigured,duoMatchKey,duoTrustedPeer,duoPeerAlly,duoOwnAllies,duoWarningLevel,duoJointOpportunity,duoState,duoSpawnCandidate,duoPublish,actualFriendly,friendly,',
     'setDuo:(partnerID,room,peer)=>{opts.duoEnabled=true;opts.duoPartnerID=partnerID;opts.duoRoom=room;duoLocal.ownID=safeID(myPlayer());duoLocal.partnerID=partnerID;duoLocal.match=duoMatchKey();duoLocal.lastAt=Date.now();duoLocal.peer=peer;},',
     'setPendingBoat:p=>pendingBoat=p,',
@@ -3475,6 +3475,72 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.sent[0].recipient,x.strong);
     assert.equal(x.b.actualFriendly(x.strong,x.me),false,
       'only the game can confirm the follow-up request');
+  });
+
+  await check('1.20.7 one safe reinforcement of the SAME ongoing war front',()=>{
+    const x=boot();x.setTick(2000);x.setHome(180000);
+    x.b.setWar('weak','weak');
+    x.out.push({id:'active-wave',targetID:'weak',troops:25000,retreating:false});
+    const g=[{id:'weak',opponent:x.weak,tiles:[5],front:10}];
+    x.b.setGroups(g);
+    const s=x.b.military(x.me,g);
+    assert.equal(x.b.sameFrontFollowUp(x.me,g,s,g[0],2000),true);
+    const ranked=x.b.rankedTargets(g,x.me,2000,s,
+      {wanted:'ASSAULT',foes:1,readiness:{ready:true},rebuilding:false,underAttack:false});
+    assert(ranked.some(t=>t.id==='weak'),'ongoing same front can be ranked again');
+    x.out.push({id:'other-wave',targetID:'weak',troops:25000,retreating:false});
+    assert.equal(x.b.sameFrontFollowUp(x.me,g,x.b.military(x.me,g),g[0],2000),false,
+      'never start a third simultaneous wave');
+  });
+  await check('1.20.7 no follow-up against a different target, alliance, or invasion',()=>{
+    const x=boot();x.setTick(2000);x.setHome(180000);x.b.setWar('weak','weak');
+    x.out.push({id:'other-war',targetID:'strong',troops:22000,retreating:false});
+    const g=[{id:'weak',opponent:x.weak,tiles:[5],front:10}];x.b.setGroups(g);
+    assert.equal(x.b.sameFrontFollowUp(x.me,g,x.b.military(x.me,g),g[0],2000),false);
+    x.out[0].targetID='weak';
+    x.me.incomingAttacks=()=>[{id:'invasion',attackerID:3,troops:15000,retreating:false}];
+    assert.equal(x.b.sameFrontFollowUp(x.me,g,x.b.military(x.me,g),g[0],2000),false);
+    x.me.incomingAttacks=()=>[];
+    x.me.isFriendly=p=>p===x.weak;
+    assert.equal(x.b.sameFrontFollowUp(x.me,g,x.b.military(x.me,g),g[0],2000),false);
+  });
+  await check('1.20.7 large late-game gold aid retains own productive capital',()=>{
+    const x=boot();class Gold{constructor(recipient,gold){this.recipient=recipient;this.gold=gold;}}
+    x.game.config().gameConfig=()=>({gameType:'Public',gameMode:'Team',
+      difficulty:'Medium',rankedType:'2v2',donateGold:true});
+    x.game.config().maxTroops=()=>200000;
+    x.setGold(10000000);x.setHome(160000);x.setLand(3000);
+    x.me.team=()=>1;x.weak.team=()=>1;x.strong.team=()=>2;
+    x.me.isOnSameTeam=p=>p===x.weak;
+    x.weak.gold=()=>700000n;x.weak.troops=()=>25000;
+    x.me.units=()=>[asset('City',5000,1),asset('City',5020,2),
+      asset('Factory',5040,3),asset('Factory',5060,4)];
+    x.b.setCtor('donateGold',Gold);x.b.victoryPlan(x.me);
+    assert.equal(x.b.teamSupport(x.me,300,x.b.military(x.me,[])),true);
+    const donated=Number(x.sent[0].gold);
+    assert(donated>200000&&donated<=2000000,{donated});
+    assert(10000000-donated>=3000000);
+    assert.equal(x.b.teamSupport(x.me,301,x.b.military(x.me,[])),false,
+      'keep cooldown; never repeat high-value aid every tick');
+  });
+  await check('1.20.7 no large gold aid at own troop cap or under attack',()=>{
+    const x=boot();class Gold{constructor(recipient,gold){this.recipient=recipient;this.gold=gold;}}
+    x.game.config().gameConfig=()=>({gameType:'Public',gameMode:'Team',
+      difficulty:'Medium',rankedType:'2v2',donateGold:true});
+    x.game.config().maxTroops=()=>200000;
+    x.setGold(10000000);x.setHome(190000);x.setLand(3000);
+    x.me.team=()=>1;x.weak.team=()=>1;x.strong.team=()=>2;
+    x.me.isOnSameTeam=p=>p===x.weak;x.weak.gold=()=>700000n;
+    x.me.units=()=>[asset('City',5000,1),asset('City',5020,2),
+      asset('Factory',5040,3),asset('Factory',5060,4)];
+    x.b.setCtor('donateGold',Gold);x.b.victoryPlan(x.me);
+    assert.equal(x.b.economicNeeds(x.me,x.me.units(),[]).capStalled,false,
+      'setup snapshot is initialized by the military planner');
+    const capped=x.b.military(x.me,[]);
+    x.b.setTroopSnapshot(capped);
+    assert.equal(x.b.economicNeeds(x.me,x.me.units(),[]).capStalled,true);
+    assert.equal(x.b.teamSupport(x.me,300,capped),false);
+    assert.equal(x.sent.length,0);
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
