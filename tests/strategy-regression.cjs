@@ -75,7 +75,7 @@ function boot(benchmarkOptions={}) {
     'sampleTroops,navalHomeRisk,navalRouteRisk,diagnosticSnapshot,learnFinish,economicDefensePressure,observeAttackOrigins,',
     'strategicDirector,economyPosture,observeOpponents,opponentTrend,observeHumanProfiles,observeVictoryThreat,coordinateDuo,planOperation,decisionNote,navalCommitmentRatio,landingThirdPartyRisk,targetHomeRatio,matchContext,rankedDuo,duoFocus,duoBattleCredit,railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,frontPressureForecast,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,offensiveCommitment,globalNavalHomeGuard,observeFronts,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,samBuildAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,tradePolicy,tradeIntentPath,sendTradeToggle,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,allianceOfferPath,sendAllianceOffer,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),setLastEmission:n=>lastEmission=n,',
-    'setNeural:m=>{neuralModel=neuralValidate(m);opts.neuralEnabled=!!neuralModel;neuralPolicyCache={key:null,output:null};},neuralStrategicSignals,neuralChannel,',
+    'setNeural:m=>{neuralModel=neuralValidate(m);opts.neuralEnabled=!!neuralModel;neuralPolicyCache={key:null,output:null};neuralEvidence={calls:0,nonzero:0,actionCalls:0,actionNonzero:0,last:null};},neuralStrategicSignals,neuralChannel,',
     'setPortBackoff:(fail,tick)=>{portProbeFailures=fail;lastPortRetryTick=tick;},',
     'setWarWait:n=>warWaitSince=n,setEconFails:n=>failedEconomyProbes=n,',
     'setPending:p=>pendingAttack=p,setLastBattle:p=>lastBattle=p,',
@@ -3181,7 +3181,8 @@ function boot(benchmarkOptions={}) {
     assert(calm.reserve<=calm.home*.63+1);
   });
   await check('1.19.8 schema4 supplies nonzero action ranking only for legal builds',async()=>{
-    const x=boot();x.setTick(300);
+    const x=boot();x.setTick(300);x.strong.troops=()=>20000;
+    x.b.setTroopSnapshot(x.b.military(x.me,[]));
     x.b.setNeural({schema:4,arch:'24x24x16-tanh',weights:Array(1000).fill(.04)});
     assert.equal(await x.b.economy(x.me,300,0,[]),true);
     const ev=x.b.diagnosticSnapshot().neuralEvidence;

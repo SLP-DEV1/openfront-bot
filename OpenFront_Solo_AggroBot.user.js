@@ -1657,6 +1657,7 @@
     const retained=duoPlan?.strikeTick!==null&&
       Number.isInteger(duoPlan?.strikeTick)&&
       tick<=duoPlan.strikeTick+110&&!invasion&&local&&
+      (tick>=duoPlan.strikeTick||local.state?.ready===true||(active?.on||0)>0)&&
       actualFriendly(local.player,me)&&local.state?.allied===true&&
       Array.isArray(local.state?.fronts)&&
       local.state.fronts.includes(duoPlan.target)&&
@@ -3496,7 +3497,7 @@
     // Only territory and COMPLETED City levels increase maxTroops in the
     // pinned OpenFront engine. A Factory is evaluated for economic returns,
     // never treated as troop-cap relief.
-    const capStalled=pressure>=.85&&cityEnabled&&
+    const capStalled=pressure>=.95&&cityEnabled&&
       troopSnapshot.incoming<troops*.08&&!immediate;
     const capacityCityDesired=capStalled?
       Math.max(wantedCity,cities+1):wantedCity;
@@ -3561,7 +3562,8 @@
         // Provisional saving begins only after a productive core exists;
         // otherwise early harbor hoarding delays essential income buildings.
         cities>=2&&factories>=2&&!hardMode()?500000:0):0;
-    const savingsTarget=immediate?0:capStalled&&!enemyNukes?0:samFund>0?samFund:portFund>0?portFund:
+    const savingsTarget=immediate?0:samFund>0?samFund:portFund>0?portFund:
+      capStalled&&!enemyNukes?0:
       portMilestone||(threat&&intel.uncovered.length>0&&wantedSAM>0)?0:
       saveForSilo?1150000:saveForNuke?firstRocketFund:0;
     investmentStatus=immediate?'Verteidigung vor Investitionen':startup?'Erste Stadt/Fabrik':
@@ -4062,8 +4064,7 @@
             if(priceBlocked)samAffordableFailureSince=null;
             else if(Number.isInteger(quote.canBuild))samAffordableFailureSince=null;
             else if(samAffordableFailureSince===null)samAffordableFailureSince=tick;
-            if(requirements.nuclearThreat&&!requirements.samSearchBlocked&&
-              (!requirements.capStalled||requirements.incomingNukes))
+            if(requirements.nuclearThreat&&!requirements.samSearchBlocked)
               requirements.savingsTarget=quoted;
           }
           if(entry.type==='Port'&&requirements.portMilestone){
