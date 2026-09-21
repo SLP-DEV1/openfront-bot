@@ -5114,6 +5114,108 @@
     }
     return false;
   }
+  function tradeIntentPath(){
+    if(typeof ctors.embargo==='function')return 'intent';
+    const p=document.querySelector('player-panel');
+    return p?.g===game&&p?.eventBus===bus&&
+      typeof p.handleEmbargoClick==='function'&&
+      typeof p.handleStopEmbargoClick==='function'?'player-panel':null;
+  }
+  function sendTradeToggle(me,target,action,label){
+    if(!target?.isAlive?.()||safeID(target)===safeID(me)||
+      !['start','stop'].includes(action))return false;
+    if(typeof ctors.embargo==='function')
+      return send('embargo',[target,action],label);
+    const p=document.querySelector('player-panel');
+    if(tradeIntentPath()!=='player-panel'||p?.g!==game||p?.eventBus!==bus)return false;
+    try{
+      const ev={stopPropagation(){}};
+      (action==='start'?p.handleEmbargoClick:p.handleStopEmbargoClick)
+        .call(p,ev,me,target);
+      actions.push(Date.now());lastEmission=Date.now();totalSent++;
+      log(label+' (offizielles Spielerpanel)');
+      telemetry('trade_toggle',label,{target:safeID(target),action,path:'player-panel'});
+      return true;
+    }catch(e){totalFailed++;return false;}
+  }
+  function tradeAnchor(p){
+    const id=safeID(p),front=(strategic.groups||[])
+      .find(g=>g.id===id)?.tiles?.[0];
+    if(Number.isInteger(front)&&safeID(game.owner(front))===id)return front;
+    const spawn=p?.state?.spawnTile;
+    return Number.isInteger(spawn)&&safeID(game.owner(spawn))===id?spawn:null;
+  }
+  async function tradePolicy(me,tick){
+    if(!opts.economy||tick-lastTradeTick<80||!actionBudget())return false;
+    if(!tradeIntentPath()){
+      tradeStatus='Handel automatisch · Embargo-Intent noch nicht erkannt';
+      tradeStats.skipped++;return false;
+    }
+    const players=(game.playerViews?.()||[]).filter(p=>p?.isPlayer?.()&&
+      p.isAlive?.()&&safeID(p)!==safeID(me));
+    const open=players.filter(p=>actualFriendly(p,me)&&me.hasEmbargoAgainst?.(p));
+    for(const p of open){
+      const tile=tradeAnchor(p);if(!Number.isInteger(tile))continue;
+      lastTradeTick=tick;try{
+        await me.actions(tile,null);
+        if(safeID(game.owner(tile))===safeID(p)&&me.hasEmbargoAgainst?.(p)&&
+          sendTradeToggle(me,p,'stop','HANDEL ÖFFNEN → '+nameOf(p))){
+          botEmbargoes.delete(safeID(p));tradeStats.opened++;
+          tradeStatus='Handel geöffnet mit '+nameOf(p);return true;
+        }
+      }catch(_){tradeStats.skipped++;}
+    }
+    const hostile=players.filter(p=>{
+      const id=safeID(p);if(friendly(p,me)||me.hasEmbargoAgainst?.(p))return false;
+      return id===warState.id||id===plan?.id||id===operation?.target||
+        (me.outgoingAttacks?.()||[]).some(a=>!a.retreating&&attackTargets(a.targetID,p))||
+        (me.incomingAttacks?.()||[]).some(a=>!a.retreating&&attackTargetID(a.attackerID)===id);
+    });
+    if(hostile.length){
+      const p=hostile.sort((a,b)=>number(()=>b.troops?.(),0)-number(()=>a.troops?.(),0))[0],
+        tile=tradeAnchor(p);
+      if(Number.isInteger(tile)){lastTradeTick=tick;try{
+        const a=await me.actions(tile,null);
+        if(a?.interaction?.canEmbargo===true&&
+          safeID(game.owner(tile))===safeID(p)&&!me.hasEmbargoAgainst?.(p)&&
+          sendTradeToggle(me,p,'start','HANDEL STOPPEN → '+nameOf(p))){
+          botEmbargoes.add(safeID(p));tradeStats.embargoed++;
+          tradeStatus='Embargo gegen aktiven Gegner: '+nameOf(p);return true;
+        }
+      }catch(_){tradeStats.skipped++;}}
+    }
+    for(const id of [...botEmbargoes]){
+      const p=players.find(x=>safeID(x)===id);
+      if(!p){botEmbargoes.delete(id);continue;}
+      const active=id===warState.id||id===plan?.id||id===operation?.target||
+        (me.outgoingAttacks?.()||[]).some(a=>!a.retreating&&attackTargets(a.targetID,p))||
+        (me.incomingAttacks?.()||[]).some(a=>!a.retreating&&attackTargetID(a.attackerID)===id);
+      if(active||!me.hasEmbargoAgainst?.(p))continue;
+      const tile=tradeAnchor(p);if(!Number.isInteger(tile))continue;
+      lastTradeTick=tick;try{
+        await me.actions(tile,null);
+        if(me.hasEmbargoAgainst?.(p)&&sendTradeToggle(me,p,'stop',
+          'HANDEL WIEDER ÖFFNEN → '+nameOf(p))){
+          botEmbargoes.delete(id);tradeStats.opened++;
+          tradeStatus='Handel wieder geöffnet mit '+nameOf(p);return true;
+        }
+      }catch(_){tradeStats.skipped++;}
+    }
+    const ports=ownStructures(me).filter(u=>u.type?.()==='Port'&&
+      !u.isUnderConstruction?.()).length;
+    tradeStatus=ports?'Handel offen · '+ports+' Hafen/Häfen · Schiffe automatisch':
+      'Noch kein fertiger Hafen · Handelsausbau wird bewertet';
+    return false;
+  }
+  async function tradeTick(){
+    if(tradeBusy||!opts.enabled||!connected())return;
+    const me=myPlayer(),tick=number(()=>game?.ticks?.(),-1);
+    if(!me?.hasSpawned?.()||!me?.isAlive?.()||tick<0)return;
+    tradeBusy=true;
+    try{await tradePolicy(me,tick);}
+    catch(e){tradeStatus='Handel: '+String(e?.message||e).slice(0,75);}
+    finally{tradeBusy=false;}
+  }
   // Team aid is guarded by same-team identity, real incoming threats,
   // available HOME troops, and the silo fund. No speculative allied donations.
   function teamSupport(me,tick,s){
