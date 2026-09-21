@@ -377,7 +377,19 @@
   let targetIntelCache=new Map(),frontMemory=new Map(),lastFrontWarning=-Infinity;
   let opponentHistory=new Map(),opponentProfiles=new Map(),lastEconomyPosture='—',lastDirectorDecision=null;
   let operation=null,operationCooldown=new Map(),duoPlan=null,victoryThreat=null,decisionTimeline=[],decisionKeys=new Map();
-  let duoLocal={instance:'tab-'+Math.random().toString(36).slice(2)+Date.now().toString(36),
+  // sessionStorage is tab-scoped: survives reloads but never assigns the
+  // same ID to two ordinary tabs sharing one browser profile.
+  function duoInstanceID(){
+    const key='aggrobot-duo-tab-instance-v1';
+    try{
+      const old=sessionStorage.getItem(key);
+      if(old&&/^[a-zA-Z0-9_.:@-]{1,128}$/.test(old))return old;
+      const id='tab-'+(typeof crypto!=='undefined'&&crypto.randomUUID?
+        crypto.randomUUID():Math.random().toString(36).slice(2)+Date.now().toString(36));
+      sessionStorage.setItem(key,id);return id;
+    }catch(_){return 'tab-'+Math.random().toString(36).slice(2)+Date.now().toString(36);}
+  }
+  let duoLocal={instance:duoInstanceID(),
     peer:null,status:'AUS',lastAt:0,lastPublished:0,match:null,
     partnerID:null,ownID:null,failures:0,lastPromise:null};
   let retreatRequests=new Map(),defenseStats={retreatsOrdered:0,retreatsObserved:0,unknown:0,unconfirmed:0};
