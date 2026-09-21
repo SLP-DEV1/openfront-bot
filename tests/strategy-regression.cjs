@@ -3172,6 +3172,27 @@ function boot(benchmarkOptions={}) {
     assert(dist>=28&&dist<=135);
     assert(x.b.spawnTileValid(x.game,candidate.tile));
   });
+  await check('1.20.1 Duo publishes valid null troop state before spawn',()=>{
+    const x=boot();
+    x.me.hasSpawned=()=>false;
+    x.game.inSpawnPhase=()=>true;
+    const state=x.b.duoState();
+    assert.equal(state.role,'spawn');
+    assert.equal(state.available,null);
+    assert.equal(state.reserve,null);
+    assert.equal(state.strikeTick,null);
+  });
+  await check('1.20.1 leader retains rendezvous tick between decisions',()=>{
+    const x=boot();
+    x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{
+      target:'strong',ready:true,needHelp:false,available:40000,
+      reserve:12000,allied:true,strikeTick:null}});
+    x.weak.isFriendly=()=>true;
+    const state=x.b.military(x.me,[]);
+    const first=x.b.coordinateDuo(x.me,state,300);
+    assert.equal(first.strikeTick,345);
+    assert.equal(x.b.coordinateDuo(x.me,state,301).strikeTick,345);
+  });
   await check('1.20.1 local alliance credits observed attacks only',()=>{
     const x=boot();
     x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{
