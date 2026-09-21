@@ -97,7 +97,7 @@ function boot(benchmarkOptions={}) {
 (async () => {
   await check('human profiles use observations, per-match confidence and stop on alliance', () => {
     const x=boot();x.weak.type=()=> 'HUMAN';
-    x.weak.outgoingAttacks=()=>[{troops:25000,targetID:3,retreating:false}];
+    x.weak.outgoingAttacks=()=>[{troops:25000,targetID:1,retreating:false}];
     x.b.observeHumanProfiles(x.me,300);
     let p=x.b.state().opponentProfiles.find(p=>p.id==='weak');
     assert.equal(p.profile,'Früher Angreifer');
