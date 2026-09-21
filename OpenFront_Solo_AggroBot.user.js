@@ -1619,7 +1619,7 @@
       {home:partnerHome,incoming,strongest:0},tick),
       local?.state?.warning||0);
     const partnerNeeds=incoming>Math.max(1200,partnerHome*.10)||
-      (local?.state?.warning===2&&incoming>0);
+      local?.state?.warning===2;
     const invasion=danger||partnerNeeds||
       (crisisTrend&&tick<crisisTrend.expires&&
         (crisisTrend.lostLand>0||crisisTrend.lostAssets>0));
@@ -1641,7 +1641,9 @@
         x.tiles?.length&&x.opponent?.isAlive?.()&&
         !friendly(x.opponent,me))?.opponent;
     const shared=invasion&&aggressor?.on>0?aggressor.p:
-      retained||active?.on>0&&active?.p||
+      retained||
+      (partnerWarning>0&&aggressor?.on>0?aggressor.p:null)||
+      (active?.on>0?active.p:null)||
       jointTarget?.item.opponent||
       (follower&&Number.isInteger(local?.state?.strikeTick)?announced:null)||
       targets[0];
@@ -1665,7 +1667,7 @@
       Number.isInteger(offered)&&offered>=tick-15&&offered<=tick+180&&
         local?.state?.target===safeID(shared)?offered:null;
     const role=danger?'Heimat verteidigen':
-      partnerNeeds?'Partner in Invasion entlasten':
+      partnerNeeds?'Partner unter Druck unterstützen':
       strikeTick!==null?(tick<strikeTick?'Gemeinsamen Angriff vorbereiten':
         leader?'Gemeinsamen Angriff anführen':'Gemeinsamen Angriff unterstützen'):
       partnerWarning>0?'Partnerfrühwarnung · Reserve schützen':
