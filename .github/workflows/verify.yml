@@ -20,6 +20,8 @@ jobs:
           node tools/build-run3-bundle.cjs --check
           node --check tests/bundled-run3-regression.cjs
           node tests/bundled-run3-regression.cjs
+      - name: Verify pinned capacity formula (not integrated engine)
+        run: node tests/capacity-reference-regression.cjs
       - name: Check regression test syntax
         run: node --check tests/strategy-regression.cjs
       - name: Check match report syntax
