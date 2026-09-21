@@ -397,7 +397,7 @@
   let defenseStatus='Keine Bedrohung',lastEmergencyRetreat=-Infinity,lastDefenseLog=-Infinity;
   let targetIntelCache=new Map(),frontMemory=new Map(),lastFrontWarning=-Infinity;
   let opponentHistory=new Map(),opponentProfiles=new Map(),lastEconomyPosture='—',lastDirectorDecision=null;
-  let operation=null,duoPlan=null,victoryThreat=null,decisionTimeline=[],decisionKeys=new Map();
+  let operation=null,operationCooldown=new Map(),duoPlan=null,victoryThreat=null,decisionTimeline=[],decisionKeys=new Map();
   let retreatRequests=new Map(),defenseStats={retreatsOrdered:0,retreatsObserved:0,unknown:0,unconfirmed:0};
   // Manual slider values remain saved; fullAuto computes independent live values.
   let autoTuning={aggressive:85,reserve:35,actionsPerMinute:72,maxTargets:16,
@@ -730,7 +730,7 @@
     brainMatchId='match-'+Date.now().toString(36)+'-'+Math.floor(Math.random()*0xffffffff).toString(36).padStart(8,'0');
     brainSeq=0;brainLastTick=-Infinity;brainLastSampleTick=-Infinity;brainBusy=false;brainBackoff=0;
     brainState={status:opts.brainEnabled?'Warte auf Match':'Aus',advice:null,receivedTick:-Infinity,lastError:null};
-    opponentProfiles.clear();operation=null;duoPlan=null;victoryThreat=null;decisionTimeline=[];decisionKeys.clear();
+    opponentProfiles.clear();operation=null;operationCooldown.clear();duoPlan=null;victoryThreat=null;decisionTimeline=[];decisionKeys.clear();
     warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};diagnostics=[];recordSequence=0;recordCounts={};recordsDropped=0;streamErrors=0;lastDiagnosticTick=-Infinity;gameEnd=null;forecastAudits=[];lastForecastAudit=null;incomeAttribution=[];
     investmentStatus='Grundaufbau';lastWarReview=-Infinity;
     defenseStatus='Keine Bedrohung';lastEmergencyRetreat=-Infinity;lastDefenseLog=-Infinity;
@@ -1304,10 +1304,15 @@
       const reason=!p?.isAlive?.()?'Ziel ausgeschieden':
         friendly(p,me)||me.isOnSameTeam?.(p)?'Ziel jetzt verbündet':
         danger?'Heimat unter Angriff':
+        operation.spent>=operation.budget &&
+          !s.out.some(a=>attackTargets(a.targetID,operation.target))?
+            'Truppenbudget ausgeschöpft':
         tick-operation.since>1100?'Operationsfrist erreicht':
         number(()=>p.numTilesOwned?.(),Infinity)<=operation.successLand?
           'Gebietsziel beobachtet':null;
       if(reason){
+        if(reason==='Truppenbudget ausgeschöpft')
+          operationCooldown.set(operation.target,tick+160);
         decisionNote('operation','Operation '+operation.type+' beendet: '+reason,
           ['Nächste sichere Gelegenheit neu prüfen'],tick);
         operation=null;
@@ -1315,7 +1320,8 @@
     }
     if(operation||danger||s.available<Math.max(1200,s.home*.16))return operation;
     const eligible=items.filter(x=>x.id!==null&&x.opponent?.isAlive?.()&&
-      !friendly(x.opponent,me)&&targetOpportunity(me,items,s,x));
+      !friendly(x.opponent,me)&&tick>=(operationCooldown.get(x.id)||0)&&
+      targetOpportunity(me,items,s,x));
     const locked=eligible.find(x=>x.id===warState.id);
     const ally=eligible.find(x=>duoFocus(me,x.opponent)?.on>0);
     const alert=eligible.find(x=>victoryThreat?.urgent&&
@@ -2146,6 +2152,7 @@
     return items.flatMap(item=>{
       const enemy=item.opponent,key=item.id===null?'neutral':String(item.id);
       if(enemy && !enemy.isAlive?.())return [];
+      if(enemy&&operation?.target===item.id&&operation.spent>=operation.budget)return [];
       if(enemy && coordinatedWar() && (
         (pendingAttack?.id!==null && pendingAttack?.id!==undefined && pendingAttack.id!==item.id) ||
         (isWar() && item.id!==warState.id) || tick<warState.blockedUntil ||
@@ -2468,7 +2475,11 @@
     for(const item of ranked.slice(0,clamp(setting('maxTargets'),4,25))){
       if(!live(serial)||!actionBudget('combat'))return false;
       const tile=await legalTarget(me,item,serial);
-      if(tile===null){rejected.set(item.key,tick);continue;}
+      if(tile===null){rejected.set(item.key,tick);
+        decisionNote('ziel_verworfen','Ziel '+(item.opponent?nameOf(item.opponent):'Neutralland')+
+          ': keine bestätigte legale Angriffsposition',[
+            'Nächster Schritt: andere Grenze oder Marine prüfen'],tick);
+        continue;}
       // Re-read the live relation after the async worker legality probe.
       if(item.id!==null){
         const current=game.playerViews?.().find(p=>safeID(p)===item.id);
@@ -2476,6 +2487,8 @@
           (coordinatedWar()&&isWar()&&warState.id!==item.id)){
           telemetry('attack_allied_skip','Angriff nach Allianz-/Frontwechsel verhindert',
             {target:item.id,friendly:!!current&&friendly(current,me)});
+          decisionNote('ziel_verworfen','Ziel '+item.id+
+            ': Allianz oder Front nach Worker-Abfrage gewechselt',[],tick);
           continue;
         }
       }
@@ -2514,7 +2527,11 @@
         if(operation?.target===item.id)
           amount=Math.min(amount,Math.max(0,operation.budget-operation.spent));
       }
-      if(amount<100)continue;
+      if(amount<100){
+        decisionNote('ziel_verworfen','Ziel '+(item.opponent?nameOf(item.opponent):'Neutralland')+
+          ': Truppenbudget oder Heimschutz begrenzt',[],tick);
+        continue;
+      }
       const label=item.opponent?nameOf(item.opponent):'neutrales Land';
       if(send('attack',[item.id,amount],`ANGRIFF → ${label} (${Math.floor(amount/10)} Tr.)`)){
         cooldowns.set(item.key,tick);
