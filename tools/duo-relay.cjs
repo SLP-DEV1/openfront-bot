@@ -30,8 +30,8 @@ function validate(v){
     (q.fronts===undefined||(Array.isArray(q.fronts)&&q.fronts.length<=16&&
       q.fronts.every(id=>idOK(id)&&id!==v.ownID)&&
       new Set(q.fronts).size===q.fronts.length))&&
-    (q.home===undefined||(Number.isFinite(q.home)&&q.home>=0))&&
-    (q.incoming===undefined||(Number.isFinite(q.incoming)&&q.incoming>=0))&&
+    (q.home==null||(Number.isFinite(q.home)&&q.home>=0))&&
+    (q.incoming==null||(Number.isFinite(q.incoming)&&q.incoming>=0))&&
     (q.allies===undefined||(Array.isArray(q.allies)&&q.allies.length<=16&&
       q.allies.every(id=>idOK(id)&&id!==v.ownID)&&
       new Set(q.allies).size===q.allies.length))&&
