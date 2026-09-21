@@ -21,7 +21,14 @@ assert(reward({validSample:true,confirmed:true,outcome:'defeat',land:30000,
 assert(reward({validSample:true,confirmed:true,outcome:'defeat',land:0,endTick:1000,ticks:18000})<
   reward({validSample:true,confirmed:true,outcome:'defeat',land:0,endTick:9000,ticks:18000}));
 
-const {compare}=require('../trainer/evaluation.cjs');
+// Resolve the exact evaluation module used by train.mjs. This also catches
+// local changes to evaluation-v2 instead of silently testing the old scorer.
+const trainerSource=fs.readFileSync(path.join(__dirname,'../trainer/train.mjs'),'utf8');
+const evaluationImport=trainerSource.match(/import evaluation from '\.\/(evaluation(?:-v[0-9]+)?\.cjs)'/);
+assert(evaluationImport,'Trainer evaluation import not found');
+const evaluationFile=path.join(__dirname,'../trainer',evaluationImport[1]);
+assert(fs.existsSync(evaluationFile),'Trainer evaluation module missing: '+evaluationFile);
+const {compare}=require(evaluationFile);
 // Rows mirror train.mjs: verified tick-limit rows are censored outcomes
 // with confirmed=false but validSample=true.
 const pair=(seed,outcome,confirmed=true,endTick=4000,land=1000)=>
