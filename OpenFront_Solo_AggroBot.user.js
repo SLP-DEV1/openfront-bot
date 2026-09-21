@@ -2903,6 +2903,41 @@
       enemySilos,proactiveSAM,wantedDefense,wantedSAM,portMilestone,coastSites:coastSites.length,portProbeFailures,
       samQuotedCost,portQuotedCost,posture,samSearchBlocked};
   }
+  // One shared, short-lived spending ledger across economy, ships, missiles
+  // and donations. Worker quotes are checked against current gold immediately
+  // before send; unconfirmed overlapping intents cannot spend the same money.
+  function spendBudget(me,cost,purpose,emergency=false){
+    const infinite=game.config().infiniteGold?.()===true;
+    if(infinite)return true;
+    const cash=number(()=>Number(me.gold()),NaN);
+    if(!Number.isFinite(cash)||!Number.isFinite(cost)||cost<0)return false;
+    const tick=number(()=>game.ticks(),0);
+    budgetCommitments=budgetCommitments.filter(c=>
+      tick-c.tick<=35&&cash>c.startGold-c.cost+1);
+    const pending=budgetCommitments.reduce((n,c)=>n+c.cost,0);
+    const needs=economicNeeds(me,ownStructures(me),[]);
+    // A real, still-required SAM quote outranks discretionary fleet/nukes.
+    const samFund=needs.nuclearThreat&&needs.wantedSAM>0&&
+      needs.intel.uncovered.length>0&&!needs.samSearchBlocked&&
+      needs.savingsTarget===needs.samQuotedCost?needs.samQuotedCost:0;
+    let floor=needs.savingsTarget;
+    if(purpose==='Warship')floor=samFund;
+    if(purpose==='SAM Launcher'||purpose==='Port'&&needs.portMilestone&&
+      needs.savingsTarget===needs.portQuotedCost||
+      purpose==='Missile Silo'&&needs.saveForSilo||
+      ['Atom Bomb','Hydrogen Bomb','MIRV'].includes(purpose)&&needs.saveForNuke&&
+        !samFund)floor=0;
+    if(emergency&&purpose==='Warship')floor=0;
+    if(cash-pending-cost>=floor)return true;
+    telemetry('gold_budget_blocked','Gemeinsamer Goldfonds schützt '+purpose,
+      {purpose,cost,cash,pending,floor,samFund,emergency});
+    return false;
+  }
+  function commitGoldSpend(me,cost,purpose){
+    if(game.config().infiniteGold?.()===true)return;
+    budgetCommitments.push({tick:number(()=>game.ticks(),0),
+      startGold:number(()=>Number(me.gold()),0),cost,purpose});
+  }
   function economicAnchors(me,tiles,units,tick) {
     const w=game.width(),h=game.height(),anchors=[],seen=new Set();
     const add=ref=>{
@@ -3444,7 +3479,9 @@
       return false;
     }
     const args=chosen.kind==='upgrade'?[chosen.unitId,chosen.type,1]:[chosen.type,chosen.requestTile];
+    if(!spendBudget(me,chosen.cost,chosen.type))return false;
     if(send(chosen.kind,args,`${chosen.kind==='upgrade'?'UPGRADE':'BAU'} ${chosen.type} · ${chosen.cost.toLocaleString()} Gold`)){
+      commitGoldSpend(me,chosen.cost,chosen.type);
       economicPending={...chosen,tick};failedEconomyProbes=0;lastEconomy=tick;lastEconomicAction=tick;
       if(chosen.type==='SAM Launcher')telemetry('sam_intent','SAM-Bau angefordert',
         {tile:chosen.tile,gold:requirements.gold,cost:chosen.cost,
@@ -3697,6 +3734,7 @@
           const salvo=nukeSalvoPlan(kind,candidate,silos,me,cost,gold,infinite);
           if(salvo.amount<1)continue;
           if(!infinite&&gold-cost*salvo.amount<250000)continue;
+          if(!spendBudget(me,cost*salvo.amount,kind))continue;
           // Target may have changed owner while worker checked its legality.
           const o=game.owner(candidate.tile);
           if(!o?.isPlayer?.() || friendly(o,me)||me.isOnSameTeam?.(o))continue;
@@ -3708,6 +3746,7 @@
           const beforeIds=prior.map(u=>u.id?.()).filter(id=>id!==undefined&&id!==null).map(String);
           const args=salvo.amount>1?[kind,candidate.tile,undefined,salvo.amount]:[kind,candidate.tile];
           if(send('build',args,`NUKE ${kind} x${salvo.amount} → ${nameOf(o)} (${candidate.hit} Gebäude · ${candidate.value.toFixed(0)} Punkte)`)){
+            commitGoldSpend(me,cost*salvo.amount,kind);
             lastNuke=tick;nukeAttempts++;
             nukePending={tile:candidate.tile,type:kind,tick,beforeIds,amount:salvo.amount,
               beforeMatches:prior.length,attempt:nukeAttempts};
@@ -4127,8 +4166,10 @@
           if(!game.config().infiniteGold?.() &&
             (!Number.isFinite(cost)||gold<cost))continue;
           // canBuild is the launch PORT; the intent expects the queried WATER patrol tile.
+          if(!spendBudget(me,cost,'Warship',!!active))continue;
           if(send('build',['Warship',tile],
             (active?'KÜSTENSCHUTZ':'FLOTTENAUFBAU')+' → Kriegsschiff')){
+            commitGoldSpend(me,cost,'Warship');
             pendingWarship={tick,tile,spawnTile:ship.canBuild,cost,
               beforeIds:ownWarships.map(u=>u.id?.())};
             marineStats.warshipSent++;lastFleet=tick;
@@ -4200,8 +4241,10 @@
         const amountGold=Math.floor(Math.min(200000,
           (ownGold-cashFloor)*.20,400000-partnerGold));
         if(amountGold>=50000&&ownGold-amountGold>=cashFloor&&
+          spendBudget(me,amountGold,'donateGold')&&
           send('donateGold',[partner,BigInt(amountGold)],
             'RANKED 2V2 · AUFBAUHILFE → '+nameOf(partner))){
+          commitGoldSpend(me,amountGold,'donateGold');
           lastDonation=tick;
           telemetry('duo_gold','Goldhilfe bei eindeutigem Wirtschaftsrückstand',
             {partner:duo.partnerID,partnerGold,ownGold,
@@ -4229,7 +4272,9 @@
     const amountGold=Math.floor(Math.min(gold*.06,250000));
     if(ctors.donateGold && gold>1200000 && amountGold>=50000 &&
       gold-amountGold>=Math.max(reserve,750000) &&
+      spendBudget(me,amountGold,'donateGold')&&
       send('donateGold',[needy.p,BigInt(amountGold)],'TEAMGOLD → '+nameOf(needy.p))){
+      commitGoldSpend(me,amountGold,'donateGold');
       lastDonation=tick;return true;
     }
     return false;
