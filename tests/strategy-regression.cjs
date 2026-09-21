@@ -66,7 +66,8 @@ function boot(benchmarkOptions={}) {
     setInterval: () => 1, clearInterval: () => {}, setTimeout: fn => {timers.push(fn);return 1;},
     performance: {now: () => 0},
     URL: {createObjectURL: () => '', revokeObjectURL: () => {}},
-    Blob: class {},fetch:async()=>{throw Error('Unexpected network request in regression');}
+    Blob: class {},CustomEvent:class {constructor(type,options){this.type=type;this.detail=options.detail;}},
+    fetch:async()=>{throw Error('Unexpected network request in regression');}
   };
   const expose = [
     'window.__test={',
@@ -83,7 +84,7 @@ function boot(benchmarkOptions={}) {
     'setBoats:yes=>opts.boats=yes,setBoatCtor:C=>ctors.boat=C,',
     'setCancelCtor:C=>ctors.cancel=C,setTroopSnapshot:t=>troopSnapshot=t,setCtor:(key,C)=>ctors[key]=C,',
     'setMode:m=>strategic.mode=m,setAllianceCtor:C=>ctors.alliance=C,setHostilePressure:t=>lastHostilePressure=t,',
-    'setNukePending:p=>nukePending=p,',
+    'setNukePending:p=>nukePending=p,setMonitorSession:x=>monitorSession=x,spendBudget,commitGoldSpend,',
     'setPerf:(combat,border,economy)=>runtime={...runtime,combatMs:combat,borderMs:border,economyMs:economy},',
     'state:()=>({economicPending,pendingAttack,attackReceipts,warState,lastBattle,gameEnd,diagnostics,forecastAudits,incomeAttribution,spawnState,spawnCache,spawnJob,economicStatus,failedEconomyProbes,investmentStatus,pendingBoat,pendingWarship,marineStats,portProbeFailures,navalSiteNegative:[...navalSiteNegative],strategic,winStatus,opponentProfiles:[...opponentProfiles.values()],operation,duoPlan,victoryThreat,decisionTimeline,incomeStatus,fleetStatus,strategicTelemetry,defenseStatus,defenseStats,autoTuning,nukeShots,nukeAttempts,nukeUnconfirmed,nukePending,lastHostilePressure,lastProposalTick,diplomacyStatus,diplomacyPending:[...diplomacyPending.values()],retreatRequests:[...retreatRequests.values()]}),opts};'
   ].join('\n');
@@ -220,6 +221,68 @@ function boot(benchmarkOptions={}) {
       canUpgrade:false,cost:type==='SAM Launcher'?1500000n:125000n}))});
     return x;
   }
+  await check('audit monitor bridge preserves fresh decision metrics and session',()=>{
+    const events=[];
+    const x=boot({__OF_LOCAL_MONITOR_ACTIVE__:true,dispatchEvent:e=>events.push(e)});
+    x.b.setMonitorSession('match-regression-1234');
+    x.b.setTroopSnapshot({...x.b.military(x.me,[]),incoming:0});
+    x.b.telemetry('budget_guard','Live risk',{incoming:26000,committed:500,
+      marker:'fresh'});
+    assert.equal(events.length,1,'one read-only page event');
+    assert.equal(events[0].type,'aggrobot:telemetry');
+    const record=JSON.parse(events[0].detail);
+    assert.equal(record.session,'match-regression-1234');
+    assert.equal(record.incoming,26000,'fresh decision beats older snapshot');
+    assert.equal(record.committed,500);
+    assert.equal(record.kind,'budget_guard');
+    assert.equal(x.b.diagnosticSnapshot().records.at(-1).incoming,26000);
+    x.b.setMonitorSession('match-new-5678');
+    x.b.telemetry('snapshot','second',{});
+    assert.equal(JSON.parse(events[1].detail).session,'match-new-5678');
+  });
+  await check('audit personal elimination ends own FFA game before world ends',async()=>{
+    const x=boot();x.game.terrainByte=()=>1;
+    x.doc.querySelector=tag=>tag==='spawn-timer'?
+      {game:x.game,eventBus:{listeners:new Map(),emit:()=>{}}}:null;
+    x.me.isAlive=()=>false;
+    await x.b.step();
+    assert.equal(x.b.state().gameEnd.outcome,'defeat');
+    assert.equal(x.b.state().gameEnd.source,'player-elimination');
+    assert.equal(x.b.opts.enabled,false);
+    assert.equal(x.b.state().diagnostics.filter(r=>r.kind==='game_over').length,1);
+  });
+  await check('audit team personal elimination waits for official team result',async()=>{
+    const x=boot();x.game.terrainByte=()=>1;
+    x.game.config().gameConfig=()=>({gameType:'Public',gameMode:'Team',difficulty:'Medium'});
+    x.me.team=()=>1;x.me.isAlive=()=>false;
+    x.doc.querySelector=tag=>tag==='spawn-timer'?
+      {game:x.game,eventBus:{listeners:new Map(),emit:()=>{}}}:null;
+    await x.b.step();
+    assert.equal(x.b.state().gameEnd.outcome,'unknown');
+    assert.equal(x.b.state().gameEnd.teamOutcomePending,true);
+    x.game.updatesSinceLastTick=()=>({one:[{winner:['team',1,'client-me'],allPlayersStats:{}}]});
+    x.setOver(true);
+    await x.b.step();
+    assert.equal(x.b.state().gameEnd.outcome,'victory');
+    assert.equal(x.b.state().diagnostics.filter(r=>r.kind==='game_over').length,2);
+  });
+  await check('audit ship cannot consume quoted SAM protection fund',async()=>{
+    const x=samScenario();
+    x.me.units=()=>[asset('City',5000,1),asset('Factory',5020,2),
+      asset('Port',5100,3)];
+    x.game.isWater=()=>true;
+    x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
+      type,canBuild:type==='Warship'?tile:false,
+      canUpgrade:false,cost:type==='Warship'?300000n:1500000n}))});
+    // A quote was obtained by the economy when gold was insufficient.
+    // The common ledger uses the same current SAM savings target.
+    x.b.setTroopSnapshot(x.b.military(x.me,[]));
+    assert.equal(x.b.economicNeeds(x.me,x.me.units(),[]).nuclearThreat,true);
+    const can=x.b.spendBudget(x.me,300000,'Warship',false);
+    assert.equal(can,false,'discretionary fleet must respect SAM savings');
+    assert.equal(await x.b.fleetDefense(x.me,2400,0),false);
+    assert.equal(x.sent.length,0);
+  });
   await check('1.19.1 SAM denied by budget still funds actual worker price and builds once funded',async()=>{
     const x=samScenario();
     assert.equal(await x.b.economy(x.me,2400,0,[]),false);
