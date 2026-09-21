@@ -39,6 +39,11 @@ function validate(v){
       q.allies.every(id=>idOK(id)&&id!==v.ownID)&&
       new Set(q.allies).size===q.allies.length))&&
     (q.strikeTick==null||Number.isInteger(q.strikeTick)&&q.strikeTick>=0)&&
+    (q.planId==null||(idOK(q.planId)&&q.strikeTick!=null&&
+      Number.isInteger(q.expiresTick)&&q.expiresTick>=q.strikeTick&&
+      q.expiresTick<=q.strikeTick+180))&&
+    (q.expiresTick==null||(q.planId!=null&&
+      Number.isInteger(q.expiresTick)))&&
     typeof q.ready==='boolean'&&typeof q.needHelp==='boolean'&&
     typeof q.allied==='boolean'&&
     (q.available===null||Number.isFinite(q.available)&&q.available>=0)&&
