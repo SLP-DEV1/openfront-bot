@@ -3057,7 +3057,7 @@ function boot(benchmarkOptions={}) {
     assert.equal(proof.evidence,'ranking-only-worker-legality-preserved');
   });
 
-  await check('1.19.8 capped army buys Factory even with legal coastal Port',async()=>{
+  await check('1.20.9 capped army buys City instead of Factory even with legal Port',async()=>{
     const x=boot();x.setTick(2400);x.setLand(4400);x.setGold(1700000);x.setHome(99000);
     x.game.isShore=()=>true;
     const units=['City','City','Factory','Factory'].map((type,i)=>asset(type,5000+i*25,i+1));
@@ -3065,13 +3065,55 @@ function boot(benchmarkOptions={}) {
     x.b.setTroopSnapshot(x.b.military(x.me,[]));
     const need=x.b.economicNeeds(x.me,units,[5000]);
     assert.equal(need.capStalled,true);
-    assert.equal(need.savingsTarget,0,'speculative port/silo savings cannot block capacity');
+    assert.equal(need.savingsTarget,0,'speculative port/silo savings cannot block city capacity');
     x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
       type,canBuild:tile,canUpgrade:false,
       cost:BigInt(type==='Factory'?1000000:type==='Port'?500000:1500000)
     }))});
     assert.equal(await x.b.economy(x.me,2400,0,[5000]),true);
-    assert.equal(x.sent[0].unit,'Factory',JSON.stringify(x.b.diagnosticSnapshot().construction));
+    assert.equal(x.sent[0].unit,'City',JSON.stringify(x.b.diagnosticSnapshot().construction));
+  });
+  await check('1.20.9 Factory never counts as City-based troop capacity',()=>{
+    const x=boot();x.setTick(2400);x.setLand(4400);x.setHome(99000);
+    const mk=(type,i,level=1)=>({
+      type:()=>type,isActive:()=>true,isUnderConstruction:()=>false,
+      tile:()=>5000+i*25,id:()=>i+1,level:()=>level
+    });
+    const units=[mk('City',0),mk('City',1),...Array.from({length:8},(_,i)=>mk('Factory',i+2))];
+    x.me.units=()=>units;
+    x.b.setTroopSnapshot(x.b.military(x.me,[]));
+    const need=x.b.economicNeeds(x.me,units,[5000]);
+    assert.equal(need.capStalled,true,'many Factories do not add troop capacity');
+    assert(need.list.some(v=>v.type==='City'),
+      'a city candidate must exist even if normal city quota is already met');
+    assert(need.list.every(v=>v.type!=='Factory' || v.urgency<
+      Math.max(...need.list.filter(v=>v.type==='City').map(v=>v.urgency))),
+      'Factory must not receive the cap-relief scoring bonus');
+    assert.match(x.b.state().investmentStatus,/Stadt\/City-Upgrade|City/);
+  });
+  await check('1.20.9 model capacity depends on City levels and land, not Factories',()=>{
+    const x=boot();x.setTick(2400);x.setLand(4400);
+    const mk=(type,i,level=1,building=false)=>({
+      type:()=>type,isActive:()=>true,isUnderConstruction:()=>building,
+      tile:()=>5000+i*25,id:()=>i+1,level:()=>level
+    });
+    const original=[mk('City',0),mk('Factory',1)];
+    let units=original;
+    x.me.units=()=>units;
+    // Formula shape from pinned engine Config.maxTroops: land + completed City levels.
+    x.game.config().maxTroops=()=>2*(4400**.6*1000+50000)+
+      units.filter(u=>u.type()==='City'&&!u.isUnderConstruction())
+        .reduce((sum,u)=>sum+u.level(),0)*12000;
+    const base=x.game.config().maxTroops(x.me);
+    units=[...original,mk('Factory',2)];
+    assert.equal(x.game.config().maxTroops(x.me),base);
+    units=[...original,mk('City',2,1,true)];
+    assert.equal(x.game.config().maxTroops(x.me),base,
+      'unfinished City must not count');
+    units=[...original,mk('City',2,1,false)];
+    assert(x.game.config().maxTroops(x.me)>base,'completed City lifts cap');
+    units=[mk('City',0,2),mk('Factory',1)];
+    assert(x.game.config().maxTroops(x.me)>base,'City level lifts cap');
   });
   await check('1.19.8 cap relief does not override active land invasion',()=>{
     const x=boot();x.setHome(99000);x.setLand(4400);
