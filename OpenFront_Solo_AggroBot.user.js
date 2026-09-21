@@ -1026,6 +1026,7 @@
       target:duoID(target)?target:null,
       warTarget:duoID(warState.id)?warState.id:null,
       strikeTick:Number.isInteger(duoPlan?.strikeTick)?duoPlan.strikeTick:null,
+      planId:duoPlan?.planId??null,expiresTick:duoPlan?.expiresTick??null,
       ready:!!(state&&state.incoming===0&&
         !recentHostilePressure(number(()=>game?.ticks?.(),0))&&
         !(crisisTrend&&number(()=>game?.ticks?.(),0)<crisisTrend.expires)&&
@@ -1702,6 +1703,9 @@
       partnerCommitted:active?.on||0,partnerIncoming:incoming,
       partnerHome,needHelp:partnerNeeds,partnerWarning,
       partnerReady:!!local?.state?.ready,strikeTick,
+      planId:strikeTick===null||!shared?null:
+        String(safeID(shared)).slice(0,96)+':'+String(strikeTick),
+      expiresTick:strikeTick===null?null:strikeTick+110,
       strikeStatus:strikeTick===null?'none':
         !sharedJoint?'locked-awaiting-safe-budget':
         tick<strikeTick?'locked-preparing':'locked-launch-window',
@@ -1731,10 +1735,28 @@
         tick-operation.since>1100?'Operationsfrist erreicht':
         number(()=>p.numTilesOwned?.(),Infinity)<=operation.successLand?
           'Gebietsziel beobachtet':null;
-      if(reason){
-        if(reason==='Truppenbudget ausgeschöpft')
+      if(!reason&&p){
+        const land=number(()=>p.numTilesOwned?.(),Infinity);
+        if(Number.isFinite(land)&&
+          land<(operation.lastObservedLand??operation.initialLand)){
+          const gained=(operation.lastObservedLand??operation.initialLand)-land;
+          operation.lastObservedLand=land;operation.lastProgressTick=tick;
+          telemetry('operation_progress','Beobachteter Zielgebietsverlust',
+            {target:operation.target,observedTiles:land,
+              delta:gained,operationSince:operation.since,
+              evidence:'observed-not-causal-proof'});
+        }
+      }
+      const stall=!reason&&opts.impossibleExperiment&&
+        tick-(operation.lastProgressTick??operation.since)>440&&
+        !s.out.some(a=>!a.retreating&&
+          attackTargets(a.targetID,operation.target))&&
+        !pendingAttack&&s.incoming===0;
+      if(reason||stall){
+        const finishedReason=reason||(stall?'Operation ohne beobachteten Fortschritt':null);
+        if(stall||reason==='Truppenbudget ausgeschöpft')
           operationCooldown.set(operation.target,tick+160);
-        decisionNote('operation','Operation '+operation.type+' beendet: '+reason,
+        decisionNote('operation','Operation '+operation.type+' beendet: '+finishedReason,
           ['Nächste sichere Gelegenheit neu prüfen'],tick);
         operation=null;
       }
@@ -1773,7 +1795,8 @@
       since:tick,until:tick+1100,initialLand:land,
       successLand:type==='Gegner ausschalten'?0:
         Math.max(0,Math.floor(land*.90)),
-      budget,spent:0,abort:'Verlust des Ziels, Heimatinvasion oder Frist'};
+      budget,spent:0,lastObservedLand:land,lastProgressTick:tick,
+      abort:'Verlust des Ziels, Heimatinvasion oder Frist; experimentell auch Stillstand'};
     decisionNote('operation',type+' → '+operation.targetName+
       ' · Budget '+budget+' · Ziel ≤ '+operation.successLand+' Felder',
       eligible.filter(x=>x.id!==chosen.id).slice(0,3).map(x=>
