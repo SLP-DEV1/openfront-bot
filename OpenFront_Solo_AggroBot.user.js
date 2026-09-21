@@ -1681,7 +1681,9 @@
       return p?.profile==='Früher Angreifer'&&p.confidence>=.45;
     });
     const profileFloor=observedRaider?Math.min(home*.86,policyBaseline+home*.06):0;
-    const reserve=Math.min(home,Math.ceil(Math.max(defensiveFloor,forecastFloor,profileFloor)));
+    const crisisFloor=crisisTrend&&tick<crisisTrend.expires&&
+      (incoming>0||strongest>home*.50)?Math.min(home*.90,home*.12+policyBaseline):0;
+    const reserve=Math.min(home,Math.ceil(Math.max(defensiveFloor,forecastFloor,profileFloor,crisisFloor)));
     const available=Math.max(0,Math.floor(home-reserve));
     const total=home+committed;
     const activeEnemy=out.filter(a=>a.targetID!==0 && a.targetID!==null).length;
@@ -1743,6 +1745,34 @@
       assets:ownStructures(me).filter(u=>['City','Factory','Port','Missile Silo'].includes(u.type?.()))
         .map(u=>u.id?.()??u.type()+':'+u.tile?.())});
     while(troopSamples.length>2&&tick-troopSamples[0].tick>900)troopSamples.shift();
+    earlyCrisis(me,tick);
+  }
+  // Compare against a RECENT prior observation, not an all-time peak:
+  // ancient expansion cannot permanently force defensive mode.
+  function earlyCrisis(me,tick){
+    const latest=troopSamples[troopSamples.length-1];
+    const prior=[...troopSamples].reverse().find(v=>
+      tick-v.tick>=100&&tick-v.tick<=360);
+    if(!latest||!prior)return crisisTrend;
+    const lostLand=Math.max(0,prior.tiles-latest.tiles);
+    const lostAssets=prior.assets.filter(id=>!latest.assets.includes(id)).length;
+    const material=lostLand>=Math.max(180,prior.tiles*.045)||lostAssets>=2||
+      (lostAssets>=1&&lostLand>=Math.max(70,prior.tiles*.02));
+    if(material){
+      crisisTrend={tick,referenceTick:prior.tick,lostLand,lostAssets,
+        land:latest.tiles,home:latest.home,
+        incoming:latest.incoming,expires:tick+180};
+      if(tick-lastCrisisReport>=120){
+        lastCrisisReport=tick;
+        telemetry('crisis_early_warning',
+          'Früher Verlusttrend vor Zusammenbruch der Heimat',
+          {crisis:crisisTrend,evidence:'observed-land-and-owned-structure-change'});
+        decisionNote('fruehwarnung',
+          'Landverlust '+lostLand+', Gebäude verloren '+lostAssets,
+          ['Reserve und Verteidigung neu prüfen','Keine neue riskante Seeoffensive'],tick);
+      }
+    }else if(crisisTrend&&tick>=crisisTrend.expires)crisisTrend=null;
+    return crisisTrend;
   }
   function armyTrend(tick) {
     const latest=troopSamples[troopSamples.length-1], earliest=troopSamples[0];
@@ -2106,7 +2136,8 @@
     const gold=number(()=>Number(me.gold())),tiles=number(()=>me.numTilesOwned());
     const factoryCount=number(()=>me.units().filter(u=>u.isActive?.()&&u.type?.()==='Factory').length);
     const cityCount=number(()=>me.units().filter(u=>u.isActive?.()&&u.type?.()==='City').length);
-    const danger=s.incoming>0 || s.strongest>s.home*.95;
+    const danger=s.incoming>0 || s.strongest>s.home*.95 ||
+      !!(crisisTrend&&tick<crisisTrend.expires&&s.strongest>s.home*.55);
     const rich=gold>900000 || game.config().infiniteGold?.()===true;
     const losing=!!(trend&&trend.home<-Math.max(2000,s.home*.21)&&trend.tiles<=0);
     const late=lateGame(me);
@@ -2120,7 +2151,8 @@
       game.config().isUnitDisabled?.('Atom Bomb')!==true;
     const hasSilo=ownStructures(me).some(u=>u.type?.()==='Missile Silo');
 
-    const seriousAttack=s.incoming>s.home*(late?.15:.05);
+    const seriousAttack=s.incoming>s.home*(late?.15:.05)||
+      !!(crisisTrend&&tick<crisisTrend.expires&&s.incoming>s.home*.08);
     let wanted,reason;
     if(rebuilding){wanted='RECOVER';reason='Truppenverlust oder geringe Reserve';}
     else if(coolingDown){wanted='RECOVER';reason='Nach Großangriff Heimatarmee stabilisieren';}
@@ -2900,7 +2932,8 @@
     const late=lateGame(me),siloCount=count('Missile Silo');
     // Begin anti-nuclear coverage before the late game, especially when a
     // nearby opponent has a silo; keep the first City/Factory affordable.
-    const proactiveSAM=!basic&&intel.uncovered.length>0&&
+    const proactiveSAM=!basic&&!(crisisTrend&&nowTick<crisisTrend.expires)&&
+      intel.uncovered.length>0&&
       intel.assets.length>=2&&gold>=350000&&
       troopSnapshot.incoming<troops*.10&&
       (hostileFronts>0||late);
