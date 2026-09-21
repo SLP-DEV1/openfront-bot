@@ -12,6 +12,15 @@
 
 **Abgenommen: 0/7 Phasen (noch keine neue Abnahme durch diesen Tracker).** Die historische Angabe „265 bestanden / 17 fehlgeschlagen“ stammt ausschließlich von `10e81ee` / 1.20.8 aus dem Originalplan. Sie darf nicht als aktueller CI-Status oder Ergebnis von 1.20.9 erscheinen.
 
+## P0 – erster überprüfter Arbeitsstand (GitHub 1.20.9, 22.09.2026)
+
+- **[Im Code + lokal quellgleich geprüft]** `tools/build-run3-bundle.cjs` erzeugt die Impossible-Run3-Datei deterministisch aus Hauptskript und unverändertem Champion; `--check` ist read-only, `--write` explizit. Commits: [Generator](https://github.com/SLP-DEV1/openfront-bot/commit/4455cd5d2a899cdaa19fb6c77eb7a3917de2f67b), [gemeinsamer Paritätstest](https://github.com/SLP-DEV1/openfront-bot/commit/287f784fdc8f0b4de189747e7f9f4dd41e7cbbdb), [CI-Gate](https://github.com/SLP-DEV1/openfront-bot/commit/dfffda3815001758d828740ee8a4a8620644b9aa).
+- **[Geprüft, kein vollständiger CI-Lauf]** Hauptskript und Bundle sind syntaktisch gültig; aus dem gegenwärtig gebündelten 1.000-Gewichte-Modell wird die vorhandene 1.20.9-Run3-Datei **bytegenau** generiert. Die bestehende Bundle-Regression vergleicht zusätzlich mit `champion.json`; der gesamte CI-Job muss noch auf GitHub grün bestätigt werden.
+- **[Im Code, Abnahme offen]** Die 1.20.9-Korrektur koppelt Kapazitätsstau an City/Upgrade, nicht Factory. Vorhandene Tests enthalten Kapazitäts- und Russia-Plateau-Fälle. Die zum Live-Commit passende **echte Engine-Kapazitätsprobe** und die fachliche Klassifikation aller historischen Fehler stehen aus.
+- **[Offen]** Durchgängige Action-/Decision-IDs, reproduzierbares Match-Metadatenprotokoll, vollständiger CI-/Live-Nachweis und die restliche P0-Definition-of-Done.
+
+**Fortschritt und offene Nachweise:** [P0-Issue #68](https://github.com/SLP-DEV1/openfront-bot/issues/68). Die P0-/Master-Checkboxen bleiben bis zur Abnahme bewusst offen.
+
 ## Phasenstatus – die zentrale Abarbeitungsansicht
 
 | Phase | Status | Schon vorhanden / begonnen | Noch offen bis „fertig“ | Aufgaben |
