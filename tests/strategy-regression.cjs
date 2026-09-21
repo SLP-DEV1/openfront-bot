@@ -3516,7 +3516,8 @@ function boot(benchmarkOptions={}) {
     x.me.units=()=>[asset('City',5000,1),asset('City',5020,2),
       asset('Factory',5040,3),asset('Factory',5060,4)];
     x.b.setCtor('donateGold',Gold);x.b.victoryPlan(x.me);
-    assert.equal(x.b.teamSupport(x.me,300,x.b.military(x.me,[])),true);
+    const state=x.b.military(x.me,[]);x.b.setTroopSnapshot(state);
+    assert.equal(x.b.teamSupport(x.me,300,state),true);
     const donated=Number(x.sent[0].gold);
     assert(donated>200000&&donated<=2000000,{donated});
     assert(10000000-donated>=3000000);
