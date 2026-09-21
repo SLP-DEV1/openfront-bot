@@ -854,7 +854,9 @@
     const changed=mode!==autoTuning.mode || ['aggressive','reserve','actionsPerMinute','maxTargets']
       .some(k=>autoTuning[k]!==v[k]);
     if(!changed)return s;
-    if(!emergency && tick-autoTuning.tick<45)return s;
+    if(!emergency && tick-autoTuning.tick<45 &&
+      !(mode==='ASSAULT'&&duoPlan?.strikeStatus==='locked-launch-window'&&
+        s.incoming===0&&!recentHostilePressure(tick)))return s;
     autoTuning={...v,mode,reason,tick};
     if(mode!=='DEFEND'||tick-lastDefenseLog>=75){
       telemetry('auto_tuning','Autonome Parameter: '+mode,{...v,reason});
@@ -2569,8 +2571,10 @@
     const rebuilding=(s.ratio<(late?.17:.25) && (s.strongest>s.home*.52 || s.incoming>s.home*.12)) ||
       (losing&&(!late||s.incoming>s.home*.10)) || (s.incoming>s.home*.40);
     const readiness=warReadiness(me,items,s,tick);
+    const jointReady=enemies.filter(x=>
+      !!duoJointOpportunity(me,items,s,x,tick,true));
     const weak=enemies.filter(x=>
-      !!duoJointOpportunity(me,items,s,x,tick,true)||
+      jointReady.some(y=>y.id===x.id)||
       (hardMode()?targetOpportunity(me,items,s,x):
         s.available>number(()=>x.opponent.troops(),Infinity)*(late?1.17:1.5)));
     const fullLate=late&&s.ratio>.78&&!s.incoming&&enemies.length>0;
@@ -2587,6 +2591,11 @@
     else if(danger&&s.strongest>s.home*1.08 && !weak.length &&
       !(fullLate&&nuclearReady)){
       wanted='DEFEND';reason='Überlegener Nachbar: keine neue Kriegsfront';
+    }
+    else if(jointReady.length&&!seriousAttack&&!coolingDown&&
+      !s.incoming&&readiness.ready){
+      wanted='ASSAULT';
+      reason='Bestätigte gemeinsame Duo-Front, getrennte Reserven gesichert';
     }
     else if(late && weak.length && s.ratio>.30 && !seriousAttack && readiness.ready){
       wanted='ASSAULT';reason='Late Game: günstige Offensivchance';
@@ -2614,7 +2623,10 @@
       reason='Manuelle Strategie: '+opts.plan;
     }
     if(wanted!==strategic.mode){
-      const emergency=wanted==='RECOVER'||(wanted==='DEFEND'&&s.incoming>0);
+      const emergency=wanted==='RECOVER'||(wanted==='DEFEND'&&s.incoming>0)||
+        (wanted==='ASSAULT'&&jointReady.length>0&&
+          duoPlan?.strikeStatus==='locked-launch-window'&&
+          s.incoming===0&&!coolingDown);
       if(emergency||tick-strategic.since>=65){
         strategic.mode=wanted;strategic.since=tick;strategic.reason=reason;
         log('STRATEGIE → '+wanted+' · '+reason);
@@ -5027,15 +5039,16 @@
       const inbound=(partner.incomingAttacks?.()||[]).filter(a=>!a.retreating)
         .reduce((n,a)=>n+Math.max(0,number(()=>a.troops,0)),0);
       const partnerHome=Math.max(1,number(()=>partner.troops(),1));
-      const ownDanger=s.incoming>Math.max(1200,s.home*.08);
+      const ownDanger=duoWarningLevel(s,tick)>0;
       // Donating from two symmetric bots must not form a back-and-forth
       // loop. Only donate on observed pressure and concrete troop shortage.
-      const shortage=Math.max(0,inbound*1.55-partnerHome);
+      const shortage=Math.max(0,inbound*1.55-partnerHome,
+        inbound>partnerHome*.08?inbound*.15:0);
       const floor=Math.max(s.reserve,s.incoming*1.5,s.strongest*.60,s.home*.35);
       const safe=Math.max(0,Math.floor(s.home-floor));
       const amount=Math.floor(Math.min(shortage,s.available*.22,
         s.home*.10,safe));
-      if(!ownDanger&&inbound>partnerHome*.20&&amount>=1000&&
+      if(!ownDanger&&inbound>partnerHome*.08&&amount>=1000&&
         ctors.donateTroops&&(!me.canDonateTroops||me.canDonateTroops(partner))&&
         send('donateTroops',[partner,amount],
           'DUO · TEAMHILFE → '+nameOf(partner))){
