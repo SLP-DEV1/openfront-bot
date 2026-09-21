@@ -3292,6 +3292,46 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.b.state().diplomacyPending[0].accept,true);
     assert.equal(x.b.actualFriendly(x.strong,x.me),false);
   });
+  await check('1.20.5 common front authorizes a combined, individually protected assault',()=>{
+    const x=boot();x.weak.troops=()=>90000;x.strong.troops=()=>42000;
+    const groups=[{id:'strong',opponent:x.strong,front:8,tiles:[6]}];
+    x.b.setGroups(groups);
+    const peer={id:'weak',state:{tick:300,home:90000,incoming:0,
+      fronts:['strong'],target:'strong',strikeTick:345,allied:true,
+      available:40000,reserve:45000,ready:true,needHelp:false}};
+    x.b.setDuo('weak','KITSU_DUO_123',peer);
+    x.weak.isFriendly=()=>true;
+    let military=x.b.military(x.me,groups);
+    assert(x.b.duoJointOpportunity(x.me,groups,military,groups[0],300));
+    assert.equal(x.b.duoJointOpportunity(x.me,groups,military,groups[0],300,true),null,
+      'not yet authorized before both acknowledge the launch');
+    const plan=x.b.coordinateDuo(x.me,military,300);
+    assert.equal(plan.target,'strong');assert.equal(plan.strikeTick,345);
+    x.setTick(350);peer.state.tick=350;
+    military=x.b.military(x.me,groups);
+    x.b.coordinateDuo(x.me,military,350);
+    const joint=x.b.duoJointOpportunity(x.me,groups,military,groups[0],350,true);
+    assert(joint&&joint.own>0&&joint.ally>0);
+    assert(joint.own+joint.ally>=joint.needed);
+  });
+  await check('1.20.5 no joint attack on stale, unallied or inaccessible partner data',()=>{
+    const x=boot();x.weak.troops=()=>90000;x.strong.troops=()=>42000;
+    const groups=[{id:'strong',opponent:x.strong,front:8,tiles:[6]}];
+    x.b.setGroups(groups);
+    const peer={id:'weak',state:{tick:300,home:90000,incoming:0,
+      fronts:['strong'],target:'strong',strikeTick:345,allied:true,
+      available:40000,reserve:45000,ready:true,needHelp:false}};
+    x.b.setDuo('weak','KITSU_DUO_123',peer);x.weak.isFriendly=()=>true;
+    const army=x.b.military(x.me,groups);
+    const available=()=>x.b.duoJointOpportunity(x.me,groups,army,groups[0],300);
+    assert(available());
+    peer.state.fronts=[];assert.equal(available(),null);peer.state.fronts=['strong'];
+    peer.state.tick=200;assert.equal(available(),null);peer.state.tick=300;
+    peer.state.incoming=2500;assert.equal(available(),null);peer.state.incoming=0;
+    peer.state.allied=false;assert.equal(available(),null);
+    peer.state.allied=true;x.weak.isFriendly=()=>false;
+    assert.equal(available(),null);
+  });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
 })();
