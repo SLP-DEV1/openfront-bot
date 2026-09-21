@@ -2454,17 +2454,19 @@
     if(s.ratio<(late?.29:.40))return {ok:false,reason:'low-home-ratio'};
     const minRatio=enemyOpportunityRatio(item.opponent,late,s.home);
     const credit=duoBattleCredit(me,item.opponent);
-    if(s.available+credit<troops*minRatio)return {ok:false,reason:'insufficient-available',
+    const joint=duoJointOpportunity(me,items,s,item,
+      number(()=>game?.ticks?.(),0),true);
+    if(!joint&&s.available+credit<troops*minRatio)return {ok:false,reason:'insufficient-available',
       required:Math.ceil(troops*minRatio),available:s.available,credit};
-    if(s.home+credit<troops*targetHomeRatio(item.opponent,late))
+    if(!joint&&s.home+credit<troops*targetHomeRatio(item.opponent,late))
       return {ok:false,reason:'home-versus-target',required:Math.ceil(troops*targetHomeRatio(item.opponent,late)),home:s.home};
     const front=frontRiskPlan(items,s,item.id);
     if(front.danger||front.pressure)return {ok:false,reason:'other-front-pressure',other:front.other};
-    const strike=Math.min(s.available*(hardMode()?.76:.80),
+    const strike=joint?joint.own:Math.min(s.available*(hardMode()?.76:.80),
       Math.max(troops*(hardMode()?1.57:1.40),s.available*.48));
     if(strike>front.safeStrike)return {ok:false,reason:'post-attack-home-guard',
       strike:Math.floor(strike),safeStrike:front.safeStrike};
-    if(strike+credit<troops*(hardMode()?1.18:1.08))
+    if(!joint&&strike+credit<troops*(hardMode()?1.18:1.08))
       return {ok:false,reason:'strike-below-target-force',strike:Math.floor(strike),credit};
     return {ok:true,reason:'candidate-safe',strike:Math.floor(strike)};
   }
@@ -2493,11 +2495,13 @@
       if(tick-warWaitSince<200 && gold>=180000)
         return {ready:false,reason:'Bauplatzprüfung vor Kriegsfreigabe'};
     } else warWaitSince=-Infinity;
-    if(s.ratio<(late?.32:.47))return {ready:false,reason:'Truppen auffüllen'};
+    const safeJoint=target&&duoJointOpportunity(me,items,s,target,tick,true);
+    if(s.ratio<(late?.32:.47)&&!safeJoint)
+      return {ready:false,reason:'Truppen auffüllen'};
     if(s.committed>Math.max(s.home*.70,s.max*.20))return {ready:false,reason:'Truppen bereits an Front gebunden'};
     if(s.home<Math.max(5500,s.strongest*(late?1.25:1.48))&&s.strongest>0){
       const candidates=target?[target]:items.filter(x=>x.id!==null);
-      if(!candidates.some(x=>targetOpportunity(me,items,s,x)))
+      if(!safeJoint&&!candidates.some(x=>targetOpportunity(me,items,s,x)))
         return {ready:false,reason:'Keine sichere Hinterland-Reserve'};
     }
     return {ready:true,reason:'Kriegsfreigabe'};
@@ -2605,14 +2609,18 @@
       // still border our home. This was the main multi-front failure in 1.4.
       const front=enemy?frontRiskPlan(items,s,item.id):null;
       const enemyTiles=enemy?number(()=>enemy.numTilesOwned(),0):0;
+      const joint=!isNeutral?duoJointOpportunity(me,items,s,item,tick,true):null;
       if(!isNeutral) {
         const minimumRatio=enemyOpportunityRatio(enemy,late,s.home,effectivePlan()==='Blitz');
         const partnerCredit=duoBattleCredit(me,enemy);
-        if(s.ratio<(late?.29:.40) || available+partnerCredit<enemyTroops*minimumRatio ||
-          s.home+partnerCredit<enemyTroops*targetHomeRatio(enemy,late) ||
+        if(s.ratio<(late?.29:.40) ||
+          (!joint&&(available+partnerCredit<enemyTroops*minimumRatio||
+            s.home+partnerCredit<enemyTroops*targetHomeRatio(enemy,late)))||
           front.danger||front.pressure||
-          Math.min(available*(hardMode()?.76:.80),
-            Math.max(enemyTroops*(hardMode()?1.57:1.40),available*.48))>front.safeStrike||
+          (joint?joint.own:
+            Math.min(available*(hardMode()?.76:.80),
+              Math.max(enemyTroops*(hardMode()?1.57:1.40),available*.48))
+          )>front.safeStrike||
           enemyTroops<=0 && enemyTiles<=0)return [];
       }
       let score=isNeutral?75:52;
@@ -2662,7 +2670,8 @@
         if(profile?.confidence>=.45&&profile.profile==='Gelegenheitsangreifer'&&
           opening.exposed)score+=12;
         if(operation?.target===item.id)score+=28;
-        if(duoPlan?.target===item.id)score+=duoPlan.partnerCommitted>0?25:10;
+        if(duoPlan?.target===item.id)score+=
+          joint?72:duoPlan.partnerCommitted>0?25:10;
         if(victoryThreat?.urgent && (victoryThreat.team!==null?
           enemy.team?.()===victoryThreat.team:item.id===victoryThreat.id))score+=38;
         if(me.hasTransitiveTarget?.(enemy.smallID?.()))score+=12;
@@ -2672,6 +2681,7 @@
       }
       const amount=isNeutral ?
         Math.floor(neutralAttackAmount(s,aggression)*(item.fallout?.48:1)) :
+        joint?joint.own:
         Math.min(front.safeStrike,available*(hardMode()?.76:.80),
           Math.max(enemyTroops*(hardMode()?1.57:(1.25+aggression*.20)),available*.48)) *
           (1+neuralChannel('enemyCommit',me,s,tick)*.22);
