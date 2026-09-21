@@ -1,4 +1,4 @@
-# AggroBot 1.20.4 – lokaler Duo-Modus (zwei Browser, ein PC)
+# AggroBot 1.20.5 – lokaler Duo-Modus (zwei Browser, ein PC)
 
 **Zweck:** Zwei separat laufende OpenFront-Userscripts können Beobachtungen über denselben
 localhost-Relay austauschen. Jeder Browser kontrolliert **nur den eigenen Spieler**.
@@ -32,11 +32,11 @@ kein Ersatz für Worker-Aktionsprüfung, Eigentumskontrolle oder Heimreserve.
 
 1. Beide Userscripts und den Repository-Ordner aktualisieren. Den **alten**
    Duo-Relay mit STRG+C beenden und `Start_Live_Duo.bat` neu starten.
-   Das Fenster muss `v1.20.4` zeigen; ein altes Relay wird nicht automatisch
+   Das Fenster muss `v1.20.5` zeigen; ein altes Relay wird nicht automatisch
    durch die neue Browser-Version ersetzt.
 2. In **beiden** Browsern `http://127.0.0.1:8767/health` direkt in der
    Adresszeile öffnen. Erwartet wird eine JSON-Antwort mit
-   `"ok":true` und `"version":"1.20.4"`. Dieser direkte Aufruf
+   `"ok":true` und `"version":"1.20.5"`. Dieser direkte Aufruf
    prüft nur den lokalen Server, **nicht** die Freigabe für OpenFront.
 3. Bei Chrome/Edge für `https://openfront.io` die Website-Berechtigung
    für **Apps auf dem Gerät / Loopback-Netzwerk** erlauben; eine eventuell
@@ -91,6 +91,25 @@ kein Ersatz für Worker-Aktionsprüfung, Eigentumskontrolle oder Heimreserve.
   Bestehende abweichende Bündnisse werden nicht aufgekündigt. Greift ein
   fremder Partner-Verbündeter einen Bot an, verbleibt dessen eigene
   Notverteidigung aktiv; ein gemeinsamer Angriff auf ihn wird nicht geplant.
+- **Gemeinsame Offensive (1.20.5):** Beide Bots melden bis zu 16
+  aktuell erreichbare **Grenzgegner**, eigenes Heimheer, eingehende
+  Angriffe, verfügbare Truppen und ihre unabhängig berechnete Reserve.
+  Der Relay schlägt niemals eigenmächtig einen Spielbefehl vor. Erst bei
+  einer im GameView bestätigten gegenseitigen Allianz, einem tatsächlich
+  gemeinsamen Grenzgegner und zwei ausreichend großen **geschützten**
+  Teilbudgets legt die niedrigere PlayerID Ziel und Angriffstick fest.
+  Der Partner bestätigt Ziel und Tick; jeder Browser prüft seine
+  vollständige eigene Front-, Reserve- und Worker-Legalität direkt vor
+  dem tatsächlichen Angriff nochmals. Wird der erste Einsatz bereits
+  im Spielzustand sichtbar, darf der zweite ihn vorsichtig berücksichtigen
+  und dem begonnenen Angriff noch beitreten. Inaktive, veraltete
+  Solo-Kriegsziele weichen dann einem sicheren gemeinsamen Ziel; laufende
+  Angriffe werden nicht zwangsweise abgebrochen. Der Duo-Plan zeigt
+  beide Teilbudgets und die erforderliche Zielstärke.
+  **Keine pauschale Reservesenkkung:** Eine 88-%-Frontprognose bleibt
+  bestehen, wenn echte Übermacht, aktuelle Angriffe oder Gebietsverluste
+  sie erforderlich machen. Unterschiedliche Landesgrenzen, unzureichende
+  Truppen oder ein unsicherer Partner führen zu eigenständigem Spiel.
 - **Ausfall:** Nach wenigen Sekunden ohne validierte Partnerdaten werden
   keine Relay-Operationshinweise mehr verwendet; beide Bots bleiben autonom.
   Nur die für das aktuelle Match verifizierte Partner-ID ist vom Angriff ausgenommen; eine alte ID wird nicht übernommen.
