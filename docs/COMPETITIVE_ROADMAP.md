@@ -40,6 +40,32 @@
   OpenFront-Engine-Szenario**. [Testcommit](https://github.com/SLP-DEV1/openfront-bot/commit/7a3fddbf5714efc9feb22f0ae302e0949c96bf56).
 - **[Offen]** Der Action-Trace deckt nicht automatisch alle Spenden-/Schiffs-/Nuke-Wirkungsnachweise ab. Auch Quell-/Optionshash, tatsächliche Engine-Szenarien, historische Regressionstriage und zwei vollständige Bot-Clients fehlen weiterhin. **P0 bleibt offen.**
 
+## P1 – experimenteller Entscheidungsframe (Branch 1.20.11, noch nicht gemergt)
+
+- **[Im separaten Branch, nicht abgenommen]** `decisionFrame()` hält für
+  einen Entscheidungszyklus ausschließlich unveränderliche Rohwerte von
+  Heimtruppen, Reserve, Incoming, Gold, Land, nachweislich sichtbaren
+  Gegnern und der aktuell bestätigten Duo-ID fest. Das ist zunächst
+  **Beobachtung/Diagnose**, keine neue Angriffsberechtigung.
+- **[Sicherheitskorrektur]** Wenn die asynchrone Grenz-Worker-Abfrage
+  über 20 Spielticks alt zurückkommt, bricht der Kampfzyklus ab; ein
+  frischer Zyklus wertet die Lage neu. Bestehende Notverteidigung vor
+  der Worker-Abfrage bleibt bestehen. Diese Schwelle ist zunächst
+  experimentell und benötigt Laufzeitmessungen in echten Matches.
+- **[Gezielt getestet]** Standalone-V8-Probe: immutable Frame, rohe
+  Truppen-/Goldwerte, gültiger Zustand bis 20 Ticks und Ablehnung
+  älterer/vordatierter Frames. Hauptskript, Run3 und Testdatei bestehen
+  JavaScript-Syntax; Run3 ist auf diesem Branch quellgleich mit
+  dem unveränderten 1.000-Gewichte-Champion.
+- **[Noch offen]** Ein vollständiger nativer Node-/CI-Lauf, wirkliche
+  Mehrfrontszenarien, mehrfache gegnerische Reaktionsmodelle,
+  Wirkung von „Halten“ und die gesamte P1-Abnahme. Bestehende
+  P0-Regressionsfehler bleiben dadurch unverändert offen. Die Branch-
+  Änderungen nicht als Nachweis eines Multiplayer-Siegs ausgeben.
+
+**Branch:** [feature/competitive-p1-decision-frame-20260922](https://github.com/SLP-DEV1/openfront-bot/tree/feature/competitive-p1-decision-frame-20260922).
+**P1-Issue:** [#69](https://github.com/SLP-DEV1/openfront-bot/issues/69).
+
 ## Phasenstatus – die zentrale Abarbeitungsansicht
 
 | Phase | Status | Schon vorhanden / begonnen | Noch offen bis „fertig“ | Aufgaben |
