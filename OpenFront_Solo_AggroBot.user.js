@@ -2952,11 +2952,15 @@
     const posture=economyPosture(me,troopSnapshot,nowTick);
     const style=effectiveBuildStyle() || 'Ausgewogen';
     const defBoost=style==='Defensiv'?22:0,econBoost=style==='Wirtschaft'?24:0;
+    // Repeated failed location/quote probes must not postpone the first
+    // productive buildings forever. This changes priority, never worker legality.
+    const productiveStall=failedEconomyProbes>=5&&!immediate&&!threat&&
+      ((cityEnabled&&cities<3)||(factoryEnabled&&factories<3));
     const neural=neuralStrategicSignals(me,troopSnapshot,nowTick);
     const list=[
-      {type:'City',desired:wantedCity,score:92+(neural?.cityPriority||0)*90+econBoost/2+(posture==='recruit'?38:0)+Math.max(0,pressure-.35)*75+
+      {type:'City',desired:wantedCity,score:92+(productiveStall&&cities<3?110:0)+(neural?.cityPriority||0)*90+econBoost/2+(posture==='recruit'?38:0)+Math.max(0,pressure-.35)*75+
           (pressure>.80&&!immediate?30:0)+(cities===0?115:hardMode()&&cities<2?80:0)},
-      {type:'Factory',desired:wantedFactory,score:91+(neural?.factoryPriority||0)*90+econBoost+(posture==='bootstrap'?20:0)+
+      {type:'Factory',desired:wantedFactory,score:91+(productiveStall&&factories<3?110:0)+(neural?.factoryPriority||0)*90+econBoost+(posture==='bootstrap'?20:0)+
           (factories===0?100:hardMode()&&factories<2?85:0)+
           (gold<450000?15:0)+(pressure<.60&&factories>0?10:0)+
           (factories<2&&cities>=2?24:0)-
@@ -3047,6 +3051,12 @@
     if(!samFund&&needs.portMilestone&&needs.portQuotedCost===0&&
       needs.savingsTarget>0&&cash>=needs.savingsTarget&&
       ['City','Factory'].includes(purpose))floor=0;
+    // After repeated unsuccessful builds, release ONLY speculative silo/nuke
+    // savings for a productive core. Never consume the observed SAM quote.
+    if(!samFund&&!needs.nuclearThreat&&failedEconomyProbes>=5&&
+      ['City','Factory'].includes(purpose)&&
+      (needs.cities<3||needs.factories<3)&&
+      (needs.saveForSilo||needs.saveForNuke))floor=0;
     if(cash-pending-cost>=floor)return true;
     telemetry('gold_budget_blocked','Gemeinsamer Goldfonds schützt '+purpose,
       {purpose,cost,cash,pending,floor,samFund,emergency});
@@ -4897,6 +4907,7 @@
           victory:winStatus,victoryThreat,operation,duoPlan,
           opponentProfiles:[...opponentProfiles.values()],
           decisions:decisionTimeline.slice(-8),income:incomeStatus,strategicTelemetry,
+          attackBlockReport,crisisTrend,neuralEvidence:{...neuralEvidence,model:neuralModelInfo()},
            director:lastDirectorDecision,economyPosture:lastEconomyPosture,
           forecastAudit:lastForecastAudit,
           recentIncomeSamples:incomeAttribution.slice(-4).map(v=>({...v})),
@@ -5038,6 +5049,7 @@
       <div>${b('impossibleExperiment','Impossible AI Test')} ${b('learningEnabled','Lernen')} ${b('neuralEnabled','Neurales Netz')} ${b('impossibleMode','Unmöglich-Taktik')}</div>
       </details>
       <details data-section="neural"${openFor('neural')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Neurales Modell</summary>
+      <div style="color:#9bd0e4">Inferenz: ${escapeHTML(neuralModelInfo().fingerprint||'kein Modell')} · Signale ${neuralEvidence.nonzero}/${neuralEvidence.calls} · Ranking ${neuralEvidence.actionNonzero}/${neuralEvidence.actionCalls}</div>
       <div style="color:#9bd0e4">Neurales Modell: ${neuralModel?.schema===4?'Strategische Policy v4 (24 Signale)':neuralModel?.schema===3?'Strategische Policy v3 (16 Signale)':neuralModel?.schema===2?'Aktionsranking (max. ±14 Punkte)':neuralModel?.schema===1?'Slider (max. ±8 Punkte)':'nicht geladen'} · nur bei freigegebener Partie</div>
       </details>
       <details data-section="situation"${openFor('situation')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Lage &amp; Diplomatie</summary>
