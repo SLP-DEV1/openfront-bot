@@ -79,6 +79,31 @@ Für die tatsächliche Abarbeitung ist **P0 die erste Abnahme**, auch wenn berei
 5. Neurale Änderungen nur mit eigener Baseline, gefrorenem Training-/Validierungs-/Holdout-Split und Promotion-Gate übernehmen; Daten alter Engine-/Bot-Versionen nicht als aktuelle Siegquote ausgeben.
 6. Bei fehlender Engine-Rekonstruktion Replays nur als Hypothesenquelle behandeln, nicht als vollwertige Zustands-/Aktions-Trainingspaare.
 
+## P0 Native-Audit zum Einsammeln der echten Fehlermeldungen
+
+**Neu:** [`tools/p0-audit.cjs`](../tools/p0-audit.cjs) ist ein
+schreibgeschützter Teststarter für Node 24. Er führt Syntax-, Bundle-,
+Strategie-, Duo-, Neural-, Benchmark- und weitere Repository-Suiten
+einzeln aus, speichert **jede** stdout/stderr-Ausgabe als eigene
+`.log` und schreibt Hashes der wichtigsten Dateien sowie
+`git status --porcelain` in `report.json`.
+Sein eigener Report sagt ausdrücklich `engineMatchesExecuted:false`
+und `fullMultiplayerMatchesExecuted:false`; ein isolierter
+Unit-Testlauf ist keine echte Match-Abnahme.
+
+```powershell
+# Im getrennten, sauberen Git-Worktree mit Node 24
+node tools/p0-audit.cjs
+# Der angezeigte Ordner liegt unter benchmark-results/p0-audit-...
+```
+
+**Status:** Der Starter wurde auf Syntax geprüft und eingecheckt,
+aber nicht in einer vollständigen lokalen Node-Arbeitskopie ausgeführt.
+Seine tatsächlichen Testausgaben stehen deshalb noch aus. Bei
+fehlgeschlagenen Prüfungen wird ein Exit-Code 1 gesetzt; bereits
+gesammelte Logs und report.json bleiben erhalten. Bitte den
+Original-WIP-Ordner nicht durch reset/clean gefährden.
+
 ## Direkt ausführbare Repository-Prüfungen (im **sauberen** Arbeitsordner)
 
 ```powershell
