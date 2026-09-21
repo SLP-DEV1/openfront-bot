@@ -1014,7 +1014,7 @@
         if(!Number.isInteger(tile)||(typeof g.isValidRef==='function'&&!g.isValidRef(tile)))return null;
         return {x:g.x(tile),y:g.y(tile),
           teammate:ownTeam!==null&&ownTeam!==undefined &&
-            p.team?.()===ownTeam};
+            p.team?.()===ownTeam || safeID(p)===duoTrustedPeer()?.id};
       }).filter(Boolean);
   }
   // Use the actual 4-tile spawn footprint and three additional land rings.
@@ -1213,6 +1213,15 @@
     }
     if(spawnJob && spawnRemaining(game)>110 &&
       (spawnState.scanned<120 || spawnCache.score<.62))return;
+    // The second ID waits briefly for a nearby published anchor, but never
+    // misses the spawn deadline if the relay/other browser is slow.
+    const peer=duoTrustedPeer();
+    if(peer&&String(safeID(me))>String(peer.id)&&
+      !Number.isSafeInteger(peer.state.spawn)&&
+      !Number.isSafeInteger(peer.state.candidate)&&
+      spawnRemaining(game)>85){
+      spawnState.phase='Duo: Warte kurz auf Partner-Spawn';return;
+    }
     const rivals=spawnRivals(game,me),urgent=spawnRemaining(game)<=55;
     const candidates=[spawnCache,...spawnAlternatives,...(spawnJob?.candidates?.values()||[])];
     let best=null;
@@ -1224,6 +1233,12 @@
       if(spawnState.lastSent?.tile===current.tile &&
         tick-spawnState.lastSent.tick>=30 && candidates.length>1)continue;
       if(!best||current.score>best.score)best=current;
+    }
+    const nearby=duoSpawnCandidate(game,me,candidates,urgent);
+    if(nearby){
+      // Use a real independent evaluation: no forced tile and no override
+      // of the spawn footprint, ownership or minimum separation veto.
+      best=nearby;spawnState.phase='Duo: sicherer Nachbar-Spawn';
     }
     if(!best && urgent)best=emergencySpawnSearch(game,me);
     if(!best){
@@ -2430,6 +2445,10 @@
         if(profile?.confidence>=.45&&profile.profile==='Gelegenheitsangreifer'&&
           opening.exposed)score+=12;
         if(operation?.target===item.id)score+=28;
+      const teammate=duoTrustedPeer();
+      if(teammate&&actualFriendly(teammate.player,me)&&
+        teammate.state?.target===item.id&&
+        !teammate.state.needHelp)score+=32;
         if(duoPlan?.target===item.id)score+=duoPlan.partnerCommitted>0?25:10;
         if(victoryThreat?.urgent && (victoryThreat.team!==null?
           enemy.team?.()===victoryThreat.team:item.id===victoryThreat.id))score+=38;
