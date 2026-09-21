@@ -3379,7 +3379,8 @@
     if(item.type==='SAM Launcher'&&requirements.nuclearThreat)
       return requirements.intel.uncovered.length?46:9;
     if(item.type==='Defense Post'&&requirements.immediate)return 35;
-    if(item.type==='City')return requirements.pressure>.70?28:0;
+    if(item.type==='City')return (requirements.pressure>.70?28:0)+
+      (requirements.capStalled?35:0);
     if(item.type==='Factory'&&income?.train>0)
       return Math.min(24,income.train/Math.max(1,cost)*18);
     if(item.type==='Port'){
@@ -3474,9 +3475,13 @@
     const wantedSilo=siloAllowed && (!cityEnabled||cities>=2)&&(!factoryEnabled||factories>=2) && late && mine>900 ?
       (siloCount===0?1:nukeShots>0&&gold>2500000?Math.min(3,1+Math.floor(mine/18000)):1):0;
     const pressure=troops/cap;
-    // A near-full army without an active invasion needs more capacity, not idle gold.
-    const capStalled=pressure>=.85&&factoryEnabled&&factories<wantedFactory&&
+    // Only territory and COMPLETED City levels increase maxTroops in the
+    // pinned OpenFront engine. A Factory is evaluated for economic returns,
+    // never treated as troop-cap relief.
+    const capStalled=pressure>=.85&&cityEnabled&&
       troopSnapshot.incoming<troops*.08&&!immediate;
+    const capacityCityDesired=capStalled?
+      Math.max(wantedCity,cities+1):wantedCity;
     const posture=economyPosture(me,troopSnapshot,nowTick);
     const style=effectiveBuildStyle() || 'Ausgewogen';
     const defBoost=style==='Defensiv'?22:0,econBoost=style==='Wirtschaft'?24:0;
@@ -3486,12 +3491,13 @@
       ((cityEnabled&&cities<3)||(factoryEnabled&&factories<3));
     const neural=neuralStrategicSignals(me,troopSnapshot,nowTick);
     const list=[
-      {type:'City',desired:wantedCity,score:92+(productiveStall&&cities<3?110:0)+(neural?.cityPriority||0)*90+econBoost/2+(posture==='recruit'?38:0)+Math.max(0,pressure-.35)*75+
-          (pressure>.80&&!immediate?30:0)+(cities===0?115:hardMode()&&cities<2?80:0)},
+      {type:'City',desired:capacityCityDesired,score:92+(productiveStall&&cities<3?110:0)+(neural?.cityPriority||0)*90+econBoost/2+(posture==='recruit'?38:0)+Math.max(0,pressure-.35)*75+
+          (pressure>.80&&!immediate?30:0)+(cities===0?115:hardMode()&&cities<2?80:0)+
+          (capStalled?pressure>=.98?355:pressure>=.95?295:pressure>=.90?230:135:0)},
       {type:'Factory',desired:wantedFactory,score:91+(productiveStall&&factories<3?110:0)+(neural?.factoryPriority||0)*90+econBoost+(posture==='bootstrap'?20:0)+
           (factories===0?100:hardMode()&&factories<2?85:0)+
           (gold<450000?15:0)+(pressure<.60&&factories>0?10:0)+
-          (factories<2&&cities>=2?24:0)+(capStalled?pressure>=.98?355:pressure>=.95?295:pressure>=.90?230:135:0)-
+          (factories<2&&cities>=2?24:0)-
           (incomeStatus.observed&&incomeStatus.train===0&&factories>=2?26:0)},
       {type:'Port',desired:wantedPort,score:tradePortMilestone?485:portMilestone?430:
         59+(neural?.portPriority||0)*90+econBoost/2+(posture==='breakout'?115:0)+(ports===0&&wantedPort?12:0)+
@@ -3509,7 +3515,9 @@
       for(const x of list.filter(x=>crisisAllowed(x.type)&&['City','Factory','Port','SAM Launcher','Missile Silo'].includes(x.type)&&count(x.type)>0 &&
         (x.type!=='SAM Launcher'||opts.antiNuke&&(threat||proactiveSAM)) && (x.type!=='Missile Silo'||opts.nukes))){
         const upgradeScore=x.score-(count(x.type)<x.desired?17:36)+
-          (x.type==='City'&&pressure>.75?27:0)+(x.type==='SAM Launcher'&&threat?32:0)+
+          (x.type==='City'&&pressure>.75?27:0)+
+          (x.type==='City'&&capStalled?35:0)+
+          (x.type==='SAM Launcher'&&threat?32:0)+
           (x.type==='Missile Silo'&&late&&opts.nukes?22:0);
         value.push({...x,count:count(x.type),upgrade:true,urgency:upgradeScore});
       }
@@ -3539,7 +3547,7 @@
       portMilestone||(threat&&intel.uncovered.length>0&&wantedSAM>0)?0:
       saveForSilo?1150000:saveForNuke?firstRocketFund:0;
     investmentStatus=immediate?'Verteidigung vor Investitionen':startup?'Erste Stadt/Fabrik':
-      capStalled&&!enemyNukes?'Truppenlimit: Fabrik/Upgrade priorisiert':
+      capStalled&&!enemyNukes?'Truppenlimit: Stadt/City-Upgrade oder Landgewinn priorisiert':
       samFund>0&&gold<samFund?'SAM-Schutz '+Math.round(samFund).toLocaleString()+' Gold':
       threat&&intel.uncovered.length>0&&wantedSAM>0?'SAM-Schutz vor Raketenfonds':
       portFund>0&&gold<portFund?'Hafen-Fonds '+Math.round(portFund).toLocaleString()+' Gold':
@@ -3609,7 +3617,7 @@
       ['City','Factory'].includes(purpose))floor=0;
     // After repeated unsuccessful builds, release ONLY speculative silo/nuke
     // savings for a productive core. Never consume the observed SAM quote.
-    if(needs.capStalled&&purpose==='Factory'&&!needs.incomingNukes)floor=0;
+    if(needs.capStalled&&purpose==='City'&&!needs.incomingNukes)floor=0;
     if(!samFund&&!needs.nuclearThreat&&failedEconomyProbes>=5&&
       ['City','Factory'].includes(purpose)&&
       (needs.cities<3||needs.factories<3)&&
@@ -4219,12 +4227,12 @@
       item.siteValue+=item.neuralDelta;
     }
     proposals.sort((a,b)=>b.siteValue-a.siteValue);
-    // When our army is capped, a confirmed affordable Factory must not lose
-    // again to a speculative first-harbor milestone or a discretionary SAM.
-    // The worker, site, budget and current-invasion checks above still apply.
-    const capFactory=requirements.capStalled&&!requirements.incomingNukes?
-      proposals.find(x=>x.type==='Factory'):null;
-    const chosen=capFactory||proposals[0];
+    // Near the troop cap, prioritize a worker-confirmed City or City upgrade,
+    // not a Factory; the legal site, cost and invasion vetoes still apply.
+    const capCity=requirements.capStalled&&!requirements.incomingNukes?
+      proposals.find(x=>x.type==='City'&&x.kind==='upgrade')||
+      proposals.find(x=>x.type==='City'):null;
+    const chosen=capCity||proposals[0];
     const withoutPolicy=[...proposals].sort((a,b)=>
       (b.baseScore-(requirements.policyBiases[b.type]||0))-
       (a.baseScore-(requirements.policyBiases[a.type]||0)))[0];
