@@ -690,6 +690,8 @@ function boot(benchmarkOptions={}) {
     x.me.units=()=>[...own,silo];
     const enemyCity={type:()=> 'City',isActive:()=>true,owner:()=>x.weak,tile:()=>5};
     x.game.units=()=>[enemyCity];
+    // Unowned cells in the mock must not masquerade as friendly territory.
+    x.game.owner=t=>t===5?x.weak:null;
     x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
       type,canBuild:tile,canUpgrade:false,cost:750000n}))});
     await x.b.nukeStep();
@@ -702,6 +704,53 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.b.state().nukeShots,0);
     assert.equal(x.b.state().nukeUnconfirmed,1);
     assert.equal(x.b.economicNeeds(x.me,x.me.units(),[]).saveForNuke,true);
+  });
+  await check('alliance during asynchronous nuclear legality rejects collateral city', async () => {
+    const x=boot();x.setTick(2400);x.setLand(51613);x.setGold(1200000);
+    x.game.owner=t=>t===5?x.weak:t===6?x.strong:null;
+    x.me.units=()=>[{type:()=> 'Missile Silo',isActive:()=>true,
+      isUnderConstruction:()=>false,isInCooldown:()=>false,tile:()=>5500,id:()=>99}];
+    x.game.units=()=>[5,6].map((tile,i)=>({
+      type:()=> 'City',isActive:()=>true,tile:()=>tile,
+      owner:()=>i===0?x.weak:x.strong}));
+    x.me.actions=async(tile,types)=>{
+      // Alliances change while the worker's answer is in flight.
+      x.me.isFriendly=p=>p===x.strong;
+      return {buildableUnits:(types||[]).map(type=>({
+        type,canBuild:tile,canUpgrade:false,cost:750000n}))};
+    };
+    await x.b.nukeStep();
+    assert.equal(x.sent.length,0,'no missile launched next to new ally');
+    assert.equal(x.b.state().nukeAttempts,0);
+  });
+  await check('allied and eliminated fronts never poison reserves or risk plans', () => {
+    const x=boot(),group={id:'strong',opponent:x.strong};
+    x.b.observeFronts(x.me,[group],300);
+    assert(x.b.military(x.me,[]).strongest>0,'hostile pressure is remembered');
+    x.me.isFriendly=p=>p===x.strong;
+    const allied=x.b.military(x.me,[group]);
+    assert.equal(allied.strongest,0,'allied enemy filtered on read');
+    assert.equal(x.b.frontRiskPlan([group],allied,'weak').other,0);
+    x.b.observeFronts(x.me,[group],300);
+    assert.equal(x.b.military(x.me,[]).strongest,0,'no allied memory reinserted');
+    x.me.isFriendly=()=>false;
+    x.strong.isAlive=()=>false;
+    x.b.observeFronts(x.me,[group],301);
+    assert.equal(x.b.military(x.me,[]).strongest,0,'eliminated enemy removed');
+  });
+  await check('zero home troops is a valid attack opportunity, unknown is not', () => {
+    const x=boot(),item={id:'weak',opponent:x.weak};
+    x.weak.troops=()=>0;
+    const state=x.b.military(x.me,[item]);
+    assert.equal(x.b.targetOpportunity(x.me,[item],state,item),true);
+    x.weak.outgoingAttacks=()=>[{troops:200000,retreating:false}];
+    assert.equal(x.b.targetOpportunity(x.me,[item],state,item),false,
+      'deployed enemy troops must remain in the threat budget');
+    x.weak.outgoingAttacks=()=>[];
+    x.weak.troops=()=>undefined;
+    assert.equal(x.b.targetOpportunity(x.me,[item],state,item),false);
+    x.weak.troops=()=>NaN;
+    assert.equal(x.b.targetOpportunity(x.me,[item],state,item),false);
   });
   await check('issue #2 a newly observed missile is confirmed exactly once', () => {
     const x=boot();x.setTick(2400);
