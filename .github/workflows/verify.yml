@@ -30,6 +30,16 @@ jobs:
         run: |
           node --check tools/duo-relay.cjs
           node tests/duo-relay-regression.cjs
+      - name: Verify experiment manifest provenance
+        run: |
+          node --check tools/benchmark/experiment-manifest.cjs
+          node --check tests/experiment-manifest-regression.cjs
+          node tests/experiment-manifest-regression.cjs
+      - name: Check signed income and observed-trade regressions
+        run: |
+          node --check OpenFront_Solo_AggroBot.user.js
+          node --check OpenFront_AggroBot_Impossible_Run3.user.js
+          node --check tests/strategy-regression.cjs
       - name: Test bot strategy
         run: node tests/strategy-regression.cjs
 
