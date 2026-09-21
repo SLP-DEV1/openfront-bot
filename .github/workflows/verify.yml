@@ -68,3 +68,7 @@ jobs:
           node --check trainer/deploy.mjs
           node --check trainer/policy.cjs
           node tests/neural-regression.cjs
+          node --check trainer/reward.cjs
+          node --check trainer/evaluation-v2.cjs
+          node --check tests/neural-v2-regression.cjs
+          node tests/neural-v2-regression.cjs

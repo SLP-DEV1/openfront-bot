@@ -51,7 +51,7 @@ const blockedMixed=compare(incumbentMixed,candidateMixed);
 assert.equal(blockedMixed.valid,true);
 assert.equal(blockedMixed.regressed,2);
 assert.equal(blockedMixed.promoted,false);
-assert.equal(blockedMixed.reason,'regressions-block-promotion');
+assert.equal(blockedMixed.reason,'wins-up-but-collapse-too-large');
 // A single censored survival gain is not yet repeatable progress.
 assert.equal(compare([pair('one','defeat'),pair('two','defeat')],
   [pair('one','incomplete',false,18000,50000),pair('two','defeat')]).promoted,false);

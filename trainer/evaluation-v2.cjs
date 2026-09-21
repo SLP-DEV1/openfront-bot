@@ -3,8 +3,9 @@
 // Outcomes rank victory(2) > censored tick-limit/incomplete(1) > defeat(0).
 // A tick limit is right-censored survival, never a victory.
 //
-// v2 is strictly more conservative than v1 (evaluation.cjs) and is used by a
-// NEW, clearly-versioned series. The rule is fixed before any comparison:
+// v2 differs from v1: added victories allow a bounded number of
+// per-seed regressions, while equal-win promotion still requires zero.
+// The rule is fixed before any comparison:
 //   * Invalid on <2 rows, unequal lengths, unpaired/duplicate/invalid sample,
 //     non-zero exit code, or non-finite endTick/land.
 //   * Wins are primary, BUT a single extra win must not auto-justify a massive

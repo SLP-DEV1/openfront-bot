@@ -9,7 +9,7 @@ import policy from './strategic-policy.cjs';
 import policyV4 from './strategic-policy-v4.cjs';
 import common from '../tools/benchmark/common.cjs';
 import evidence from '../tools/benchmark/holdout-evidence.cjs';
-import evaluation from './evaluation.cjs';
+import evaluation from './evaluation-v2.cjs';
 import scoring from './reward.cjs';
 import parallelPool from './parallel.cjs';
 
@@ -63,7 +63,8 @@ const total=runsPerGeneration*generations;
 const plan={engineCommit:cfg.engineCommit,difficulty,maps,nations,generations,population,
   trainSeeds,evalSeeds,ticks,sigma,parallel,matches:total,policySchema:modelSchema,
   gameType:cfg.gameType,gameMode:cfg.gameMode,scriptedHumans,opponentProfile:cfg.opponentProfile,
-  promotion:'verified paired holdout: more victories, or repeatable survival/territory gains (tick-limits rank below victory, above defeat), without regressions'};
+  rewardVersion:scoring.VERSION,promotionGate:'evaluation-v2',
+  promotion:'verified paired holdout v2: more wins with bounded regressions, or repeatable survival/territory gains without per-seed regressions; tick-limits are censored'};
 if(cfg.dryRun==='true'){console.log(JSON.stringify(plan,null,2));process.exit(0);}
 if(!cfg.engine)throw Error('Provide --engine or --dryRun true');
 const engine=path.resolve(cfg.engine),bot=path.resolve(cfg.bot),out=path.resolve(cfg.out);
@@ -135,13 +136,13 @@ async function match(model,phase,g,index,map,nation,seed){
   const land=Math.max(0,Number(state?.finalState?.land)||0),
     elapsed=Math.max(0,Number(state?.run?.tick)||0);
   const reward=scoring.reward({validSample,confirmed,outcome,land,
-    endTick:elapsed,ticks,trajectory:state?.trajectory});
+    endTick:elapsed,ticks,trajectory:state?.trajectory,report:state});
   const row={phase,generation:g,index,map,nation,difficulty,seed,
     gameType:cfg.gameType,gameMode:cfg.gameMode,scriptedHumans,opponentProfile:cfg.opponentProfile,
     model:selectedPolicy.sha(model),
     dir:path.relative(out,folder),termination,outcome:confirmed?outcome:'incomplete',
     confirmed,validSample,land,endTick:elapsed,trajectory:state?.trajectory?.summary??null,
-    reward:Math.round(reward*1e6)/1e6,
+    reward:Math.round(reward*1e6)/1e6,rewardVersion:scoring.VERSION,
     error:proc.error?.message||proofError||null,exitCode:proc.status,
     botSHA256};
   console.log(JSON.stringify(row));
