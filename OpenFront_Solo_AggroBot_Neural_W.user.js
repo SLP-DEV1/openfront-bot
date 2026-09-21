@@ -348,9 +348,11 @@
   const benchmark = ['localhost','127.0.0.1','[::1]'].includes(window.location?.hostname) &&
     window.__OF_BENCHMARK_CONFIG__?.enabled===true ? window.__OF_BENCHMARK_CONFIG__ : null;
   let recordSequence=0,recordCounts={},recordsDropped=0,streamErrors=0;
+  let monitorSession='';
+  let budgetCommitments=[];
   const jsonCopy=value=>JSON.parse(JSON.stringify(value,(_,v)=>typeof v==='bigint'?v.toString():v));
   function telemetry(kind,message,extra={}) {
-    if(!opts.enabled || !permittedMatch(game))return;
+    if((!opts.enabled&&kind!=='game_over') || !permittedMatch(game))return;
     let m=myPlayer(),tick=number(()=>game.ticks(),0);
     // Freeze each historical snapshot; otherwise shared mutable metrics can
     // make every old record appear to contain the latest values.
@@ -360,14 +362,28 @@
         typeof v==='bigint'?v.toString():v));}
       catch(_){frozen={snapshotError:'Daten konnten nicht eingefroren werden'};}
     }
-    const record={...frozen,detailKind:frozen.kind,seq:++recordSequence,time:new Date().toISOString(),tick,kind,message,mode:strategic.mode,
-      warTarget:warState.name,home:number(()=>m?.troops?.()),gold:number(()=>Number(m?.gold?.())),
+    // Generic troopSnapshot values are fallbacks; decision-local measurements
+    // supplied by a caller after an async worker check must take precedence.
+    const record={detailKind:frozen.kind,session:monitorSession,
+      snapshotTick:lastTick,seq:++recordSequence,time:new Date().toISOString(),
+      tick,kind,message,mode:strategic.mode,warTarget:warState.name,
+      home:number(()=>m?.troops?.()),gold:number(()=>Number(m?.gold?.())),
       land:number(()=>m?.numTilesOwned?.()),committed:troopSnapshot.committed,
-      incoming:troopSnapshot.incoming};
+      incoming:troopSnapshot.incoming,...frozen};
+    // Protect recording identity and metadata from an accidental extra field.
+    record.session=monitorSession;record.seq=recordSequence;
+    record.time=new Date().toISOString();record.tick=tick;
+    record.kind=kind;record.message=message;
     diagnostics.push(record);
     recordCounts[kind]=(recordCounts[kind]||0)+1;
     if(benchmark && typeof benchmark.onRecord==='function'){
       try{benchmark.onRecord(jsonCopy(record));}catch(_){streamErrors++;}
+    }
+    if(window.__OF_LOCAL_MONITOR_ACTIVE__===true){
+      try{
+        window.dispatchEvent(new CustomEvent('aggrobot:telemetry',{
+          detail:JSON.stringify(record,(_,v)=>typeof v==='bigint'?v.toString():v)}));
+      }catch(_){streamErrors++;}
     }
     if(diagnostics.length>1400){
       const dropped=diagnostics.length-1400;recordsDropped+=dropped;
@@ -632,6 +648,9 @@
   }
   function reset(g,b) {
     generation++; game=g;bus=b;ctors=recognize(b);busy=false;lastWinnerSignal=null;
+    monitorSession='match-'+Date.now().toString(36)+'-'+
+      Math.floor(Math.random()*0xffffffff).toString(36).padStart(8,'0');
+    budgetCommitments=[];
     autoStartGame=null;
     bindWinnerCapture(bus,ctors);
     lastIntentHealth=null;lastIntentProbe=-Infinity;missingIntentLogged.clear();
@@ -2884,6 +2903,41 @@
       enemySilos,proactiveSAM,wantedDefense,wantedSAM,portMilestone,coastSites:coastSites.length,portProbeFailures,
       samQuotedCost,portQuotedCost,posture,samSearchBlocked};
   }
+  // One shared, short-lived spending ledger across economy, ships, missiles
+  // and donations. Worker quotes are checked against current gold immediately
+  // before send; unconfirmed overlapping intents cannot spend the same money.
+  function spendBudget(me,cost,purpose,emergency=false){
+    const infinite=game.config().infiniteGold?.()===true;
+    if(infinite)return true;
+    const cash=number(()=>Number(me.gold()),NaN);
+    if(!Number.isFinite(cash)||!Number.isFinite(cost)||cost<0)return false;
+    const tick=number(()=>game.ticks(),0);
+    budgetCommitments=budgetCommitments.filter(c=>
+      tick-c.tick<=35&&cash>c.startGold-c.cost+1);
+    const pending=budgetCommitments.reduce((n,c)=>n+c.cost,0);
+    const needs=economicNeeds(me,ownStructures(me),[]);
+    // A real, still-required SAM quote outranks discretionary fleet/nukes.
+    const samFund=needs.nuclearThreat&&needs.wantedSAM>0&&
+      needs.intel.uncovered.length>0&&!needs.samSearchBlocked&&
+      needs.savingsTarget===needs.samQuotedCost?needs.samQuotedCost:0;
+    let floor=needs.savingsTarget;
+    if(purpose==='Warship')floor=samFund;
+    if(purpose==='SAM Launcher'||purpose==='Port'&&needs.portMilestone&&
+      needs.savingsTarget===needs.portQuotedCost||
+      purpose==='Missile Silo'&&needs.saveForSilo||
+      ['Atom Bomb','Hydrogen Bomb','MIRV'].includes(purpose)&&needs.saveForNuke&&
+        !samFund)floor=0;
+    if(emergency&&purpose==='Warship')floor=0;
+    if(cash-pending-cost>=floor)return true;
+    telemetry('gold_budget_blocked','Gemeinsamer Goldfonds schützt '+purpose,
+      {purpose,cost,cash,pending,floor,samFund,emergency});
+    return false;
+  }
+  function commitGoldSpend(me,cost,purpose){
+    if(game.config().infiniteGold?.()===true)return;
+    budgetCommitments.push({tick:number(()=>game.ticks(),0),
+      startGold:number(()=>Number(me.gold()),0),cost,purpose});
+  }
   function economicAnchors(me,tiles,units,tick) {
     const w=game.width(),h=game.height(),anchors=[],seen=new Set();
     const add=ref=>{
@@ -3425,7 +3479,9 @@
       return false;
     }
     const args=chosen.kind==='upgrade'?[chosen.unitId,chosen.type,1]:[chosen.type,chosen.requestTile];
+    if(!spendBudget(me,chosen.cost,chosen.type))return false;
     if(send(chosen.kind,args,`${chosen.kind==='upgrade'?'UPGRADE':'BAU'} ${chosen.type} · ${chosen.cost.toLocaleString()} Gold`)){
+      commitGoldSpend(me,chosen.cost,chosen.type);
       economicPending={...chosen,tick};failedEconomyProbes=0;lastEconomy=tick;lastEconomicAction=tick;
       if(chosen.type==='SAM Launcher')telemetry('sam_intent','SAM-Bau angefordert',
         {tile:chosen.tile,gold:requirements.gold,cost:chosen.cost,
@@ -3678,6 +3734,7 @@
           const salvo=nukeSalvoPlan(kind,candidate,silos,me,cost,gold,infinite);
           if(salvo.amount<1)continue;
           if(!infinite&&gold-cost*salvo.amount<250000)continue;
+          if(!spendBudget(me,cost*salvo.amount,kind))continue;
           // Target may have changed owner while worker checked its legality.
           const o=game.owner(candidate.tile);
           if(!o?.isPlayer?.() || friendly(o,me)||me.isOnSameTeam?.(o))continue;
@@ -3689,6 +3746,7 @@
           const beforeIds=prior.map(u=>u.id?.()).filter(id=>id!==undefined&&id!==null).map(String);
           const args=salvo.amount>1?[kind,candidate.tile,undefined,salvo.amount]:[kind,candidate.tile];
           if(send('build',args,`NUKE ${kind} x${salvo.amount} → ${nameOf(o)} (${candidate.hit} Gebäude · ${candidate.value.toFixed(0)} Punkte)`)){
+            commitGoldSpend(me,cost*salvo.amount,kind);
             lastNuke=tick;nukeAttempts++;
             nukePending={tile:candidate.tile,type:kind,tick,beforeIds,amount:salvo.amount,
               beforeMatches:prior.length,attempt:nukeAttempts};
@@ -4108,8 +4166,10 @@
           if(!game.config().infiniteGold?.() &&
             (!Number.isFinite(cost)||gold<cost))continue;
           // canBuild is the launch PORT; the intent expects the queried WATER patrol tile.
+          if(!spendBudget(me,cost,'Warship',!!active))continue;
           if(send('build',['Warship',tile],
             (active?'KÜSTENSCHUTZ':'FLOTTENAUFBAU')+' → Kriegsschiff')){
+            commitGoldSpend(me,cost,'Warship');
             pendingWarship={tick,tile,spawnTile:ship.canBuild,cost,
               beforeIds:ownWarships.map(u=>u.id?.())};
             marineStats.warshipSent++;lastFleet=tick;
@@ -4181,8 +4241,10 @@
         const amountGold=Math.floor(Math.min(200000,
           (ownGold-cashFloor)*.20,400000-partnerGold));
         if(amountGold>=50000&&ownGold-amountGold>=cashFloor&&
+          spendBudget(me,amountGold,'donateGold')&&
           send('donateGold',[partner,BigInt(amountGold)],
             'RANKED 2V2 · AUFBAUHILFE → '+nameOf(partner))){
+          commitGoldSpend(me,amountGold,'donateGold');
           lastDonation=tick;
           telemetry('duo_gold','Goldhilfe bei eindeutigem Wirtschaftsrückstand',
             {partner:duo.partnerID,partnerGold,ownGold,
@@ -4210,7 +4272,9 @@
     const amountGold=Math.floor(Math.min(gold*.06,250000));
     if(ctors.donateGold && gold>1200000 && amountGold>=50000 &&
       gold-amountGold>=Math.max(reserve,750000) &&
+      spendBudget(me,amountGold,'donateGold')&&
       send('donateGold',[needy.p,BigInt(amountGold)],'TEAMGOLD → '+nameOf(needy.p))){
+      commitGoldSpend(me,amountGold,'donateGold');
       lastDonation=tick;return true;
     }
     return false;
@@ -4583,13 +4647,29 @@
       paint();return;
     }
     if(game?.gameOver?.()){
-      if(opts.enabled){
+      if(opts.enabled||gameEnd?.teamOutcomePending){
         gameEnd=gameOutcome(game,myPlayer());
         learnFinish(gameEnd.outcome);
         telemetry('game_over','Partie beendet · Bot automatisch gestoppt',{gameEnd});
-        opts.enabled=false;generation++;persist();
+        if(opts.enabled){opts.enabled=false;generation++;persist();}
       }
       status='Partie beendet · Bot AUS';paint();return;
+    }
+    // A player can be eliminated before the whole FFA/Team match ends.
+    // Do not treat an already spawned dead player as awaiting spawn.
+    const eliminated=myPlayer();
+    if(eliminated?.hasSpawned?.()&&eliminated.isAlive?.()===false){
+      if(!gameEnd){
+        const team=game?.config?.().gameConfig?.().gameMode==='Team';
+        gameEnd={outcome:team?'unknown':'defeat',source:'player-elimination',
+          tick:number(()=>game.ticks(),-1),land:0,personalEliminated:true,
+          teamOutcomePending:team};
+        if(!team)learnFinish('defeat');
+        telemetry('game_over',team?'Eigener Spieler eliminiert · Teamergebnis offen':
+          'Eigener Spieler eliminiert · Niederlage',{gameEnd});
+      }
+      if(opts.enabled){opts.enabled=false;generation++;persist();}
+      status='Spieler eliminiert · Bot AUS';paint();return;
     }
     if(!bus&&found.b){bus=found.b;ctors=recognize(bus);bindWinnerCapture(bus,ctors);reportIntents();}
     // EventBus listeners may register after initial discovery. Retry at a
