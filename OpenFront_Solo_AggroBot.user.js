@@ -4134,7 +4134,9 @@
               gold>=requirements.savingsTarget) &&
             gold-cost<requirements.savingsTarget){probe.budgetRejected++;continue;}
           const reserve=gold>650000?Math.min(220000,gold*.12):0;
-          if(!infinite&&!essential&&gold-cost<reserve){probe.budgetRejected++;continue;}
+          if(!infinite&&!essential&&
+            !(requirements.capStalled&&item.type==='City'&&!requirements.incomingNukes)&&
+            gold-cost<reserve){probe.budgetRejected++;continue;}
           let siteValue=siteScore(item.type,tile,fronts,units,item.urgency);
           if(!Number.isFinite(siteValue)){
             if(item.type==='SAM Launcher')probe.samUnsafe++;
