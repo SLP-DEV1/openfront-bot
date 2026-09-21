@@ -50,6 +50,28 @@ Jede Zeile erst nach **nativem Node-Lauf** mit konkreten `GameView`-/`Worker`-An
 
 **Zählkontrolle:** 4 SAM + 4 Fonds + 6 Hafen + 2 weitere = **16** fachlich noch offene Fälle, plus die drei Laufzeit-Artefakte = 19 beobachtete rote Tests in der Näherung.
 
+## Aktualisierung aus 1.20.10 (isolierter V8-Nachbau, kein natives Node)
+
+Der erneute Durchlauf auf dem GitHub-Stand mit Action-Trace umfasst
+**291 Tests: 272 bestanden, 19 fehlgeschlagen**. Die ursprüngliche
+1.20.9-Liste wird als historische Liste oben nicht umgedeutet.
+Im Nachbau fehlen nach wie vor `setImmediate` und das native
+`../tools/match-report.cjs` (zwei explizite Umgebungsfehler).
+Der README-Test ist in diesem Durchlauf weiter rot, weil der
+In-Memory-`fs` für eine zweite Datei noch das Userscript liefert;
+**direkt aus GitHub** wurden dagegen alle fünf Prüfbedingungen
+(aktueller Userscript-Link, kein alter 1.9.0-Link,
+Archiv 1.9.9/„entfernt“) separat bestätigt. Es bleiben 16 fachliche
+SAM-/Silo-/Hafen-/Neural-/Duo-Fälle, die noch nicht als echte
+Produktfehler oder veraltete Erwartungen eingestuft werden dürfen.
+
+Ein neuer gezielter Test für eindeutige Action-IDs,
+korrespondierende Attack-Commands und eine ausdrücklich nur
+`observed-change-not-causal-proof` genannte Bestätigung bestand
+im selben isolierten Harness.
+**Weiterhin nicht belegt:** native Node-Suite grün,
+passender kompletter Engine-Lauf, stabiler Live-Multiplayer-Vorteil.
+
 ## Nicht überspringen
 
 - [ ] Den vollständigen nativen CI-/Node-Lauf **auf demselben SHA** dokumentieren.
