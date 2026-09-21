@@ -21,6 +21,7 @@ const checks=[
   ['syntax-run3',['--check','OpenFront_AggroBot_Impossible_Run3.user.js']],
   ['bundle',['tools/build-run3-bundle.cjs','--check']],
   ['bundle-regression',['tests/bundled-run3-regression.cjs']],
+  ['capacity-formula',['tests/capacity-reference-regression.cjs']],
   ['strategy',['tests/strategy-regression.cjs']],
   ['duo-relay',['tests/duo-relay-regression.cjs']],
   ['neural',['tests/neural-regression.cjs']],
