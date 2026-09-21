@@ -1477,8 +1477,13 @@
       safeID(p)===local.state.target);
     const danger=s.incoming>Math.max(1200,s.home*.08);
     const partnerNeeds=incoming>partnerHome*.2||!!local?.state?.needHelp;
+    // The lower PlayerID chooses the scheduled focus. A follower uses
+    // that announcement only when paired with a valid strike tick.
+    const follower=local&&String(safeID(me))>String(local.id);
     const shared=partnerNeeds&&aggressor?.on>0?aggressor.p:
-      active?.on>0?active.p:announced||targets[0];
+      active?.on>0?active.p:
+      (follower&&Number.isInteger(local?.state?.strikeTick)?announced:null)||
+      targets[0];
     const bothReady=!!local?.state?.ready&&!danger&&
       s.available>=Math.max(1200,s.home*.2);
     const leader=local&&String(safeID(me))<String(local.id);
@@ -1490,8 +1495,8 @@
     const offered=local?.state?.strikeTick;
     const strikeTick=!local||!bothReady?null:leader?
       (held??tick+45):
-      Number.isInteger(offered)&&offered>=tick-15&&offered<=tick+180?
-        offered:null;
+      Number.isInteger(offered)&&offered>=tick-15&&offered<=tick+180&&
+        local?.state?.target===safeID(shared)?offered:null;
     const role=danger?'Heimat verteidigen':
       partnerNeeds?'Partner entlasten':
       active?.on>0?'Partnerfront unterstützen':
