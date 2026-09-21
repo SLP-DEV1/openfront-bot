@@ -86,7 +86,7 @@ function boot(benchmarkOptions={}) {
     'setMode:m=>strategic.mode=m,setAllianceCtor:C=>ctors.alliance=C,setHostilePressure:t=>lastHostilePressure=t,',
     'setNukePending:p=>nukePending=p,setMonitorSession:x=>monitorSession=x,spendBudget,commitGoldSpend,coreFundingStatus,',
     'targetOpportunityCheck,reportAttackBlocks,earlyCrisis,landingFailure,neuralModelInfo,',
-    'duoConfigured,duoMatchKey,duoTrustedPeer,duoState,duoSpawnCandidate,duoPublish,actualFriendly,friendly,',
+    'duoConfigured,duoMatchKey,duoTrustedPeer,duoPeerAlly,duoOwnAllies,duoState,duoSpawnCandidate,duoPublish,actualFriendly,friendly,',
     'setDuo:(partnerID,room,peer)=>{opts.duoEnabled=true;opts.duoPartnerID=partnerID;opts.duoRoom=room;duoLocal.ownID=safeID(myPlayer());duoLocal.partnerID=partnerID;duoLocal.match=duoMatchKey();duoLocal.lastAt=Date.now();duoLocal.peer=peer;},',
     'setPendingBoat:p=>pendingBoat=p,',
     'setPerf:(combat,border,economy)=>runtime={...runtime,combatMs:combat,borderMs:border,economyMs:economy},',
@@ -3238,6 +3238,49 @@ function boot(benchmarkOptions={}) {
     });
     assert.equal(x.b.teamSupport(x.me,300,x.b.military(x.me,[])),true);
     assert.equal(x.sent[0].partner,x.weak);
+  });
+  await check('1.20.4 partner third-party alliance is attack-protected, not our own alliance',()=>{
+    const x=boot();
+    x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{
+      target:'strong',allies:['strong'],ready:true,needHelp:false,
+      available:30000,reserve:10000,allied:true}});
+    x.weak.isFriendly=()=>true;
+    assert.equal(x.b.duoPeerAlly(x.strong),true);
+    assert.equal(x.b.friendly(x.strong,x.me),true);
+    assert.equal(x.b.actualFriendly(x.strong,x.me),false,
+      'peer relationship must not masquerade as our own alliance');
+    const plan=x.b.coordinateDuo(x.me,x.b.military(x.me,[]),300);
+    assert.equal(plan.target,null,'never plan a shared attack on peer ally');
+    x.b.setDuo('weak','KITSU_DUO_123',null);
+    assert.equal(x.b.friendly(x.strong,x.me),false,
+      'no inherited attack veto after relay disconnect');
+  });
+  await check('1.20.4 own confirmed alliances are announced without peer guesses',()=>{
+    const x=boot();
+    x.strong.isFriendly=()=>true;
+    assert.equal(x.b.duoState().allies.join(','),'strong');
+    x.strong.isFriendly=()=>false;
+    assert.equal(x.b.duoState().allies.length,0);
+  });
+  await check('1.20.4 paired bots reject unrelated third-party incoming offers',()=>{
+    const x=boot();
+    x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{allies:[]}});
+    x.weak.isFriendly=()=>true;
+    x.strong.isRequestingAllianceWith=()=>true;
+    x.b.setAllianceCtor(class Alliance{constructor(me,p){this.partner=p;}});
+    x.b.setCtor('reject',class Reject{constructor(p){this.partner=p;}});
+    x.b.diplomacyTickSafe();
+    assert.equal(x.b.state().diplomacyPending[0].accept,false);
+  });
+  await check('1.20.4 paired bots accept actual partner ally offer when not fighting',()=>{
+    const x=boot();
+    x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{allies:['strong']}});
+    x.weak.isFriendly=()=>true;
+    x.strong.isRequestingAllianceWith=()=>true;
+    x.b.setAllianceCtor(class Alliance{constructor(me,p){this.partner=p;}});
+    x.b.diplomacyTickSafe();
+    assert.equal(x.b.state().diplomacyPending[0].accept,true);
+    assert.equal(x.b.actualFriendly(x.strong,x.me),false);
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
