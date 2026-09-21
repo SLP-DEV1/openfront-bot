@@ -8,6 +8,7 @@ const crypto=require('node:crypto');
 const host='127.0.0.1',port=8766,maxBody=1024*1024;
 const token=crypto.randomBytes(32).toString('hex');
 const root=path.resolve(__dirname,'../benchmark-results');
+fs.mkdirSync(root,{recursive:true});
 const sessions=new Map();
 const startedAt=new Date().toISOString();
 function sessionState(id){
