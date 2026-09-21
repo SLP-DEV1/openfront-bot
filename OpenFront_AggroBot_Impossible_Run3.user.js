@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         OpenFront AggroBot Impossible Run3 Neural
 // @namespace    https://openfront.io/
-// @version      1.19.5
-// @description  AggroBot 1.19.5 with bundled Impossible Run3 schema-4 champion (experimental); no external Brain or Qwen.
+// @version      1.19.6
+// @description  AggroBot 1.19.6 with bundled Impossible Run3 schema-4 champion (experimental); no external Brain or Qwen.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
 // @run-at       document-start
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.19.5', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.19.6', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -350,6 +350,8 @@
   let attackCommands=[],attackCommandSequence=0,observedAttacks=new Map();
   let forecastAudits=[],lastForecastAudit=null,incomeAttribution=[];
   let failedEconomyProbes=0,successfulEconomyTick=-Infinity,warWaitSince=-Infinity;
+  let coreQuotes=new Map(),lastCoreFundingReport=-Infinity,coreFunding=null;
+  let lastEconomyProbeReport=null,neuralDecisionEvidence=null;
   let investmentStatus='Grundaufbau',lastWarReview=-Infinity;
   let defenseStatus='Keine Bedrohung',lastEmergencyRetreat=-Infinity,lastDefenseLog=-Infinity;
   let targetIntelCache=new Map(),frontMemory=new Map(),lastFrontWarning=-Infinity;
@@ -464,7 +466,9 @@
       options:{...opts,enabled:false},intents:intentHealth(),tuning:{...autoTuning,enabled:!!opts.fullAuto,
         effective:{aggressive:setting('aggressive'),reserve:setting('reserve'),
           actionsPerMinute:setting('actionsPerMinute'),maxTargets:setting('maxTargets')}},attackReceipts, pendingAttack, attackCommands, attackOrigins:[...observedAttacks.values()],
-      construction:{pending:economicPending,blocked:[...economicBlocked.entries()],failedProbes:failedEconomyProbes,lastConfirmed:successfulEconomyTick,investment:investmentStatus},
+      construction:{pending:economicPending,blocked:[...economicBlocked.entries()],failedProbes:failedEconomyProbes,lastConfirmed:successfulEconomyTick,investment:investmentStatus,
+        coreFunding,lastProbe:lastEconomyProbeReport},
+      neuralDecisionEvidence,
       attackBlockReport,crisisTrend,landingFailures:[...landingFailures],
       neuralEvidence:{...neuralEvidence,model:neuralModelInfo()},
       validation:{forecastAudits,incomeAttribution,
@@ -696,6 +700,8 @@
     attackReceipts={confirmed:0,unconfirmed:0,territoryGained:0};blockedTargets.clear();
     attackCommands=[];attackCommandSequence=0;observedAttacks.clear();
     failedEconomyProbes=0;successfulEconomyTick=-Infinity;warWaitSince=-Infinity;
+    coreQuotes.clear();coreFunding=null;lastCoreFundingReport=-Infinity;
+    lastEconomyProbeReport=null;neuralDecisionEvidence=null;
     lastEconomicAction=-Infinity;lastNeutralSend=-Infinity;lastEnemySend=-Infinity;lastHostilePressure=-Infinity;consecutiveIdle=0;
     economicPending=null;economicBlocked.clear();economicNegative.clear();economicStatus='Bauplanung bereit';economicLastPlan='—';
     samQuotedCost=0;portQuotedCost=0;samQuotedTick=-Infinity;portQuotedTick=-Infinity;
@@ -1659,12 +1665,14 @@
     const policyReserve=neuralChannel('reserve',me,{home,max,committed,incoming,strongest,ratio,
       available:Math.max(0,home-baseline)},tick);
     const policyBaseline=home*clamp(baseline/home*100+policyReserve*8,12,75)/100;
-    const defensiveFloor=Math.max(policyBaseline,
-      // Defending against one enemy does not require parking its entire army
-      // at home while an attacking stack is already fighting that same enemy.
-      strongest>0 ? Math.min(home*.85,strongest*(hardMode()?.59:.53)) : 0,
-      incoming>0 ? Math.min(home*.94,incoming*1.3) : 0,
-      strongest>0 ? Math.min(home*.78,max*(hardMode()?.12:.14)) : 0);
+    // Publish each independently computed floor. High reserve with zero
+    // incoming is often explained by a far larger bordering army.
+    const borderFloor=strongest>0?
+      Math.min(home*.85,strongest*(hardMode()?.59:.53)):0;
+    const incomingFloor=incoming>0?Math.min(home*.94,incoming*1.3):0;
+    const capFloor=strongest>0?
+      Math.min(home*.78,max*(hardMode()?.12:.14)):0;
+    const defensiveFloor=Math.max(policyBaseline,borderFloor,incomingFloor,capFloor);
     const context=matchContext(me);
     const predicted=(hardMode()||context.multiplayer)?
       frontPressureForecast(me,items,tick):null;
@@ -1688,7 +1696,14 @@
     const total=home+committed;
     const activeEnemy=out.filter(a=>a.targetID!==0 && a.targetID!==null).length;
     const activeNeutral=out.filter(a=>a.targetID===0||a.targetID===null).length;
+    const reserveFloors={ruleBaseline:baseline,neuralAdjustment:policyBaseline-baseline,
+      policyBaseline,borderFloor,incomingFloor,capFloor,forecastFloor,
+      profileFloor,crisisFloor,winningFloor:reserve};
+    const reserveReason=Object.entries({policyBaseline,borderFloor,incomingFloor,capFloor,
+      forecastFloor,profileFloor,crisisFloor})
+      .filter(([,value])=>value>=reserve-.501).map(([name])=>name).join('+')||'baseline';
     return {home,max,committed,incoming,strongest,ratio,reserve,available,total,
+      reserveFloors,reserveReason,reserveShare:home>0?reserve/home:0,
       growthPotential:Math.max(0,(10+Math.pow(home,.73)/4)*(1-ratio)),
       out,inc,activeEnemy,activeNeutral};
   }
@@ -2346,6 +2361,9 @@
     const counts={};for(const row of rows)counts[row.reason]=(counts[row.reason]||0)+1;
     attackBlockReport={tick,ranked:ranked.length,home:s.home,
       available:s.available,reserve:s.reserve,incoming:s.incoming,
+      reserveShare:s.reserveShare??null,
+      reserveReason:s.reserveReason??null,
+      reserveFloors:s.reserveFloors??null,
       committed:s.committed,readiness:readiness.reason,counts,targets:rows.slice(0,8)};
     if(!ranked.some(x=>x.id!==null)&&rows.length){
       telemetry('attack_block_report','Kein Landkriegsziel freigegeben',
@@ -3021,10 +3039,34 @@
       portFund>0&&gold<portFund?'Hafen-Fonds '+Math.round(portFund).toLocaleString()+' Gold':
       portMilestone?'Hafen vor Silo':basic?'Zwei Städte und zwei Fabriken':
       saveForSilo?'Silo-Fonds 1,15 Mio.':saveForNuke?'Raketen-Fonds '+firstRocketFund.toLocaleString():'Wirtschaft & Offensive';
-    return {list:value,threatened,gold,cities,factories,mine,pressure,nuclearThreat:threat,incomingNukes:enemyNukes,intel,
+    const policyBiases={City:(neural?.cityPriority||0)*90,
+      Factory:(neural?.factoryPriority||0)*90,
+      Port:(neural?.portPriority||0)*90,
+      'Defense Post':(neural?.defensePriority||0)*90,
+      'SAM Launcher':0,
+      'Missile Silo':(neural?.nuclearPriority||0)*75};
+    return {list:value,policyBiases,threatened,gold,cities,factories,mine,pressure,nuclearThreat:threat,incomingNukes:enemyNukes,intel,
       startup,basic,emergency,immediate,savingsTarget,saveForSilo,saveForNuke,siloCount,
       enemySilos,proactiveSAM,wantedDefense,wantedSAM,portMilestone,coastSites:coastSites.length,portProbeFailures,
       samQuotedCost,portQuotedCost,posture,samSearchBlocked};
+  }
+  // Only actual worker quotes can establish a core funding target. A quote
+  // when canBuild=false due to insufficient gold proves PRICE, not SITE.
+  function coreFundingStatus(me,units=ownStructures(me),tick=number(()=>game.ticks(),0)){
+    const missing=['City','Factory'].filter(type=>
+      game.config().isUnitDisabled?.(type)!==true&&
+      !units.some(u=>u.type?.()===type&&!u.isUnderConstruction?.()));
+    for(const type of [...coreQuotes.keys()])
+      if(!missing.includes(type))coreQuotes.delete(type);
+    const live=[...coreQuotes].filter(([type,q])=>missing.includes(type)&&
+      Number.isFinite(q.cost)&&q.cost>0&&tick-q.tick<=300);
+    const gold=number(()=>Number(me.gold()),0);
+    const price=live.length?Math.min(...live.map(([,q])=>q.cost)):null;
+    coreFunding={tick,missing,gold,quotes:Object.fromEntries(coreQuotes),
+      needed:price,shortfall:price===null?null:Math.max(0,price-gold),
+      status:!missing.length?'core-ready':price===null?'price-unknown':
+        gold>=price?'funded-recheck-worker':'saving-known-worker-price'};
+    return coreFunding;
   }
   // One shared, short-lived spending ledger across economy, ships, missiles
   // and donations. Worker quotes are checked against current gold immediately
@@ -3038,7 +3080,9 @@
     budgetCommitments=budgetCommitments.filter(c=>
       tick-c.tick<=35&&cash>c.startGold-c.cost+1);
     const pending=budgetCommitments.reduce((n,c)=>n+c.cost,0);
-    const needs=economicNeeds(me,ownStructures(me),tiles);
+    const units=ownStructures(me);
+    const needs=economicNeeds(me,units,tiles);
+    const core=coreFundingStatus(me,units,tick);
     // A real, still-required SAM quote outranks discretionary fleet/nukes.
     const samFund=needs.nuclearThreat&&needs.wantedSAM>0&&
       needs.intel.uncovered.length>0&&!needs.samSearchBlocked&&
@@ -3063,6 +3107,15 @@
       ['City','Factory'].includes(purpose)&&
       (needs.cities<3||needs.factories<3)&&
       (needs.saveForSilo||needs.saveForNuke))floor=0;
+    // Do not spend the known price of the first productive building on
+    // ships, nukes or donations. This never blocks actual emergency defense.
+    const productive=purpose==='City'||purpose==='Factory';
+    const urgent=['Defense Post','SAM Launcher'].includes(purpose)||
+      emergency&&purpose==='Warship';
+    // Unknown prices are never invented. Preserve unrelated legal actions
+    // until the worker supplies a real price, then protect that quote.
+    if(core.missing.length&&!productive&&!urgent&&core.needed!==null)
+      floor=Math.max(floor,core.needed);
     if(cash-pending-cost>=floor)return true;
     telemetry('gold_budget_blocked','Gemeinsamer Goldfonds schützt '+purpose,
       {purpose,cost,cash,pending,floor,samFund,emergency});
@@ -3269,6 +3322,22 @@
     for(const [k,expiry] of economicBlocked)if(tick>=expiry)economicBlocked.delete(k);
     for(const [k,expiry] of economicNegative)if(tick>=expiry)economicNegative.delete(k);
     const requirements=economicNeeds(me,units,tiles);
+    const funding=coreFundingStatus(me,units,tick);
+    // A cached price saves worker traffic while underfunded; refresh once
+    // the price is funded or quotes age. Never assert a legal site from it.
+    if(!requirements.immediate&&!requirements.nuclearThreat&&
+      funding.missing.length&&funding.needed!==null&&
+      requirements.gold<funding.needed&&
+      tick-Math.min(...[...coreQuotes.values()].map(q=>q.tick))<130){
+      economicStatus='Spare auf ersten Kernbau: '+Math.floor(requirements.gold).toLocaleString()+
+        '/'+funding.needed.toLocaleString()+' Gold (Worker-Preis, Standort offen)';
+      if(tick-lastCoreFundingReport>=100){
+        lastCoreFundingReport=tick;
+        telemetry('core_funding_wait',economicStatus,{coreFunding:funding,
+          evidence:'price-observed-not-legal-build'});
+      }
+      return false;
+    }
     if(requirements.samSearchBlocked)decisionNote('sam-blockiert',
       'SAM bezahlbar, aber wiederholt kein Bauplatz bestätigt; andere Bauten freigegeben',
       ['Standortsuche wird fortgesetzt; Spielregeln und Platzierung bleiben ungeklärt'],tick);
@@ -3352,7 +3421,9 @@
     slots.sort((a,b)=>score(b.entry,b.site)-score(a.entry,a.site));
     const seen=new Set(), proposals=[],perKind=new Map();
     const probe={queries:0,errors:0,legal:0,unaffordable:0,invalidSite:0,
-      lowestCost:Infinity,portQueries:0,portLegal:0,samQueries:0,
+      lowestCost:Infinity,quoteByType:{},underfundedByType:{},workerNoOfferByType:{},
+      budgetRejected:0,siteRejected:0,priorityRejected:0,
+      lowestCore:Infinity,portQueries:0,portLegal:0,samQueries:0,
       samLegal:0,samUnaffordable:0,samUnsafe:0,samNoWorkerBuild:0,
       samSites:0};
     const work=[];
@@ -3427,7 +3498,18 @@
         // build authorization, and an upgrade quote is not a new-site price.
         const quote=legal.buildableUnits?.find(u=>u.type===entry.type);
         const quoted=Number(quote?.cost);
+        if(!quote)probe.workerNoOfferByType[entry.type]=
+          (probe.workerNoOfferByType[entry.type]||0)+1;
         const funds=number(()=>Number(me.gold()),0);
+        if(['City','Factory'].includes(entry.type)&&!entry.upgrade&&
+          Number.isFinite(quoted)&&quoted>0){
+          const old=probe.quoteByType[entry.type];
+          probe.quoteByType[entry.type]=Math.min(old??Infinity,quoted);
+          probe.lowestCore=Math.min(probe.lowestCore,quoted);
+          const existing=coreQuotes.get(entry.type);
+          if(!existing||quoted<=existing.cost||tick-existing.tick>=90)
+            coreQuotes.set(entry.type,{cost:quoted,tick});
+        }
         const priceBlocked=!game.config().infiniteGold?.()&&Number.isFinite(quoted)&&quoted>funds;
         if(!entry.upgrade&&Number.isFinite(quoted)&&quoted>0){
           if(entry.type==='SAM Launcher'){
@@ -3443,6 +3525,8 @@
           }
         }
         if(priceBlocked){
+          probe.underfundedByType[entry.type]=
+            (probe.underfundedByType[entry.type]||0)+1;
           probe.unaffordable++;
           if(entry.type==='SAM Launcher')probe.samUnaffordable++;
           probe.lowestCost=Math.min(probe.lowestCost,quoted);
@@ -3471,7 +3555,9 @@
           if(item.type==='Port')probe.portLegal++;
           if(item.type==='SAM Launcher')probe.samLegal++;
           const tile=isUpgrade?site.ref:b.canBuild;
-          if(!Number.isInteger(tile) || !ownedTile(tile,me)){probe.invalidSite++;continue;}
+          if(!Number.isInteger(tile) || !ownedTile(tile,me)){
+            probe.invalidSite++;probe.siteRejected++;continue;
+          }
           const key=(isUpgrade?'upgrade':'build')+':'+item.type+':'+tile;
           if((economicBlocked.get(key)??0)>tick)continue;
           const cost=Number(isUpgrade?(b.upgradeCosts?.[0]??b.cost):b.cost);
@@ -3518,9 +3604,9 @@
             !(requirements.portMilestone&&!hardMode()&&!requirements.nuclearThreat&&
               probe.portQueries>0&&probe.portLegal===0&&
               gold>=requirements.savingsTarget) &&
-            gold-cost<requirements.savingsTarget)continue;
+            gold-cost<requirements.savingsTarget){probe.budgetRejected++;continue;}
           const reserve=gold>650000?Math.min(220000,gold*.12):0;
-          if(!infinite&&!essential&&gold-cost<reserve)continue;
+          if(!infinite&&!essential&&gold-cost<reserve){probe.budgetRejected++;continue;}
           let siteValue=siteScore(item.type,tile,fronts,units,item.urgency);
           if(!Number.isFinite(siteValue)){
             if(item.type==='SAM Launcher')probe.samUnsafe++;
@@ -3537,7 +3623,15 @@
       }
       if(proposals.length)break;
     }
-    if(!proposals.length){failedEconomyProbes++;
+    if(!proposals.length){
+      // Waiting for a documented price is not a worker/site failure.
+      const underfundedCore=(probe.quoteByType.City!==undefined||
+        probe.quoteByType.Factory!==undefined)&&
+        probe.legal===0&&probe.errors===0&&
+        probe.unaffordable===probe.queries;
+      if(!underfundedCore)failedEconomyProbes++;
+      else lastCoreFundingReport=tick;
+
       if(requirements.wantedSAM>0&&requirements.intel.uncovered.length&&
         (failedEconomyProbes===1||failedEconomyProbes%4===0))
         telemetry('sam_probe','SAM-Standorte / Budget geprüft',
@@ -3565,14 +3659,26 @@
             fundingEstimate:requirements.portQuotedCost||500000,
             fundingUncertain:requirements.portQuotedCost===0,
             failures:portProbeFailures});
+      const lastPrice=coreFundingStatus(me,units,tick);
+      lastEconomyProbeReport={tick,gold:requirements.gold,
+        queries:probe.queries,workerErrors:probe.errors,legal:probe.legal,
+        coreFunding:lastPrice,quoteByType:probe.quoteByType,
+        underfundedByType:probe.underfundedByType,
+        workerNoOfferByType:probe.workerNoOfferByType,
+        budgetRejected:probe.budgetRejected,siteRejected:probe.siteRejected,
+        invalidSite:probe.invalidSite,priorityRejected:probe.priorityRejected,
+        lowestCost:Number.isFinite(probe.lowestCost)?probe.lowestCost:null};
       const reason=probe.samUnaffordable>0&&requirements.nuclearThreat?
         'Spare auf SAM: '+samQuotedCost.toLocaleString()+' Gold':probe.unaffordable>0&&probe.legal===0?
         'Gold für Bauoption fehlt; Standort noch ungeprüft':probe.invalidSite>0?
         'Bauplatz-Eigentum/Referenz ungültig':probe.legal===0?
         'Keine legalen Bauoptionen im geprüften Gebiet':'Baukandidaten durch Priorität oder Reserve gesperrt';
-      economicStatus=reason;
-      if(failedEconomyProbes===5 || failedEconomyProbes%10===0)
+      economicStatus=underfundedCore&&lastPrice.needed!==null?
+        'Spare auf ersten Kernbau: '+requirements.gold.toLocaleString()+
+        '/'+lastPrice.needed.toLocaleString()+' Gold (Standort noch unbestätigt)':reason;
+      if(underfundedCore || failedEconomyProbes===5 || failedEconomyProbes%10===0)
         telemetry('build_stalled',reason,{attempts:failedEconomyProbes,
+          probe: lastEconomyProbeReport,
           gold:requirements.gold,investment:investmentStatus,priorities:entries.slice(0,4).map(e=>e.type),
           nuclear:{enemySilos:requirements.enemySilos,incomingNukes:requirements.incomingNukes,
             uncovered:requirements.intel.uncovered.length,
@@ -3605,6 +3711,26 @@
     }
     proposals.sort((a,b)=>b.siteValue-a.siteValue);
     const chosen=proposals[0];
+    const withoutPolicy=[...proposals].sort((a,b)=>
+      (b.baseScore-(requirements.policyBiases[b.type]||0))-
+      (a.baseScore-(requirements.policyBiases[a.type]||0)))[0];
+    neuralDecisionEvidence={tick,kind:'economy',
+      model:neuralModelInfo(),headBiasByType:requirements.policyBiases,
+      ruleChoice:withoutPolicy?{type:withoutPolicy.type,
+        score:withoutPolicy.baseScore-(requirements.policyBiases[withoutPolicy.type]||0)}:null,
+      policyChoice:{type:chosen.type,score:chosen.baseScore},
+      actionDelta:chosen.neuralDelta,
+      finalScore:chosen.siteValue,
+      changedChoice:!!withoutPolicy&&withoutPolicy!==chosen,
+      evidence:'ranking-only-worker-legality-preserved'};
+    lastEconomyProbeReport={tick,gold:requirements.gold,
+      queries:probe.queries,workerErrors:probe.errors,legal:probe.legal,
+      quoteByType:probe.quoteByType,underfundedByType:probe.underfundedByType,
+      workerNoOfferByType:probe.workerNoOfferByType,
+      budgetRejected:probe.budgetRejected,siteRejected:probe.siteRejected,
+      priorityRejected:probe.priorityRejected,
+      lowestCost:Number.isFinite(probe.lowestCost)?probe.lowestCost:null,
+      selected:chosen.type,coreFunding:coreFundingStatus(me,units,tick)};
     if(!live(serial))return false;
     const currentMilitary=military(me,strategic.groups);
     if(economicDefensePressure(me,currentMilitary)&&
@@ -3629,7 +3755,8 @@
       }
       telemetry('neural_economy_choice','Gepruefte Bauoption gewaehlt',
         {kind:chosen.kind,type:chosen.type,baseScore:chosen.baseScore,
-          neuralDelta:chosen.neuralDelta,chosenScore:chosen.siteValue});
+          neuralDelta:chosen.neuralDelta,chosenScore:chosen.siteValue,
+          neuralDecision:neuralDecisionEvidence});
       economicStatus='Anfrage: '+chosen.type+(chosen.kind==='upgrade'?' (Upgrade)':'');
       economicLastPlan=entries.slice(0,3).map(x=>x.type).join(' › ');
       return true;
@@ -4914,6 +5041,7 @@
           opponentProfiles:[...opponentProfiles.values()],
           decisions:decisionTimeline.slice(-8),income:incomeStatus,strategicTelemetry,
           attackBlockReport,crisisTrend,neuralEvidence:{...neuralEvidence,model:neuralModelInfo()},
+          neuralDecisionEvidence,coreFunding,economyProbe:lastEconomyProbeReport,
            director:lastDirectorDecision,economyPosture:lastEconomyPosture,
           forecastAudit:lastForecastAudit,
           recentIncomeSamples:incomeAttribution.slice(-4).map(v=>({...v})),
