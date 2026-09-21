@@ -1505,14 +1505,17 @@
   // acknowledged by both before a weaker individual assault is allowed.
   function duoJointOpportunity(me,items,s,item,tick,launch=false){
     const peer=duoTrustedPeer(),id=item?.id,p=peer?.player,info=peer?.state;
+    const observedOn=(p?.outgoingAttacks?.()||[])
+      .filter(a=>!a.retreating&&attackTargets(a.targetID,id))
+      .reduce((n,a)=>n+Math.max(0,number(()=>a.troops,0)),0);
     if(!peer||!actualFriendly(p,me)||info?.allied!==true||
       !duoID(id)||!item?.tiles?.length||friendly(item.opponent,me)||
       !Array.isArray(info.fronts)||!info.fronts.includes(id)||
       !Number.isFinite(info.available)||!Number.isFinite(info.reserve)||
       !Number.isFinite(info.home)||!Number.isFinite(info.incoming)||
-      info.incoming>0||s.incoming>0||!info.ready||
+      info.incoming>0||s.incoming>0||(!info.ready&&observedOn<=0)||
       !Number.isInteger(info.tick)||Math.abs(info.tick-tick)>40||
-      s.ratio<.38||s.activeEnemy||!info.available||
+      s.ratio<.38||s.activeEnemy||
       recentHostilePressure(tick)||
       (crisisTrend&&tick<crisisTrend.expires))return null;
     const observedHome=number(()=>p.troops?.(),NaN);
@@ -1524,7 +1527,9 @@
     const front=frontRiskPlan(items,s,id);
     if(front.danger||front.pressure||front.safeStrike<1000)return null;
     const own=Math.floor(Math.min(s.available*.72,front.safeStrike));
-    const ally=Math.floor(Math.min(info.available*.72,observedHome*.55));
+    const ally=Math.floor(Math.max(
+      Math.min(info.available*.72,observedHome*.55),
+      Math.min(observedOn*.55,observedHome*.75)));
     const enemyHome=number(()=>item.opponent?.troops?.(),NaN);
     if(!Number.isFinite(enemyHome)||enemyHome<0)return null;
     const enemyDeployed=(item.opponent?.outgoingAttacks?.()||[])
@@ -1536,7 +1541,8 @@
       ally<Math.max(1000,enemy*.12)||own+ally<needed)return null;
     if(launch&&(!duoPlan||duoPlan.target!==id||
       !Number.isInteger(duoPlan.strikeTick)||tick<duoPlan.strikeTick||
-      info.target!==id||info.strikeTick!==duoPlan.strikeTick))return null;
+      info.target!==id||
+      (info.strikeTick!==duoPlan.strikeTick&&observedOn<=0)))return null;
     return {target:id,own,ally,needed,enemy,front,
       strikeTick:duoPlan?.strikeTick??null};
   }
@@ -1605,7 +1611,9 @@
       Number.isInteger(duoPlan.strikeTick)&&
       tick-duoPlan.strikeTick<180?duoPlan.strikeTick:null;
     const offered=local?.state?.strikeTick;
-    const strikeTick=!local||!bothReady||!sharedJoint?null:leader?
+    const strikeTick=sharedJoint&&active?.on>0&&held!==null&&
+      !danger?held:
+      !local||!bothReady||!sharedJoint?null:leader?
       (held??tick+45):
       Number.isInteger(offered)&&offered>=tick-15&&offered<=tick+180&&
         local?.state?.target===safeID(shared)?offered:null;
