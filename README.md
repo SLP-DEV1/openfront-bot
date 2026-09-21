@@ -1,14 +1,17 @@
 # OpenFront Solo AggroBot
 
-**Version 1.19.5** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) · Singleplayer, Public und Private · [offene Validierungspunkte](https://github.com/SLP-DEV1/openfront-bot/issues/12)
+**Version 1.19.6** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) · Singleplayer, Public und Private · [offene Validierungspunkte](https://github.com/SLP-DEV1/openfront-bot/issues/12)
 
 Der Bot erkennt neue spielbare Matches, wählt bei manuellem Spawn eine Position und steuert Expansion, Verteidigung, Wirtschaft, Flotte, Handel und Diplomatie. Die trainierte Neural-Policy kann optional *begrenzt* mitentscheiden; es gibt keine localhost-Brain- oder Live-Qwen-Anbindung mehr. **Es gibt keine belegte garantierte Impossible- oder Multiplayer-Siegquote.**
 
 ## Schnellstart / Update
 
+**1.19.6 – Erstes wirtschaftliches Kerngebäude:** Der Bot unterscheidet einen vom Worker bestätigten Preis von einer tatsächlich legalen Baustelle. Bei realer Unterfinanzierung wird der Preis pro City/Factory und der fehlende Betrag gespeichert; unnötige Worker-Abfragen werden bis zur erneuten Finanzierung/Preisprüfung begrenzt. Ein dokumentierter Preis für City/Factory bleibt vor freiwilligen Schiffen, Nukes und Goldspenden geschützt; dringende Verteidigung und SAM-Gefahren haben Vorrang. Baufehler werden nach Preis, Worker-Angebot, Standort und Goldbudget getrennt diagnostiziert. Die Angriffsdiagnose nennt die tatsächlichen Reserveanteile, die Neural-Diagnose die Basis- und Policy-Reihung statt bloß eines Aktions-Deltas. **Diese Änderung erzeugt keine zusätzlichen Gold-Einnahmen, behauptet keinen legalen Standort und garantiert keinen Multiplayer-Sieg.**
+
+
 ## Neural-Live-Version (Impossible Run 3)
 
-Für den **experimentellen Live-Test** steht eine separate Tampermonkey-Datei bereit: [OpenFront_AggroBot_Impossible_Run3.user.js](./OpenFront_AggroBot_Impossible_Run3.user.js). Sie basiert auf AggroBot **1.19.5**, bündelt den [Schema-4-Champion von Impossible Run 3](./docs/training-analysis-20260921/schema4-impossible-world-europe-20260920-run3/champion.json) (1.000 Gewichte) direkt im Userscript und benötigt keinen Brain-Server, Qwen, Trainer oder Modellabruf im Browser. Der normale Bot bleibt unverändert.
+Für den **experimentellen Live-Test** steht eine separate Tampermonkey-Datei bereit: [OpenFront_AggroBot_Impossible_Run3.user.js](./OpenFront_AggroBot_Impossible_Run3.user.js). Sie basiert auf AggroBot **1.19.6**, bündelt den [Schema-4-Champion von Impossible Run 3](./docs/training-analysis-20260921/schema4-impossible-world-europe-20260920-run3/champion.json) (1.000 Gewichte) direkt im Userscript und benötigt keinen Brain-Server, Qwen, Trainer oder Modellabruf im Browser. Der normale Bot bleibt unverändert.
 
 Für den Test das **vollständige** Run-3-Userscript in Tampermonkey installieren, alle anderen AggroBot-Userscripts deaktivieren und OpenFront neu laden. Im Panel müssen **Vollautonom** und **Neurales Netz** aktiv sein; unter „Neurales Modell“ muss „Strategische Policy v4 (24 Signale)“ erscheinen. Der Schalter ohne geladenes Modell reicht nicht. Auto-Start und Unmöglich-Taktik sind optionale Bot-Einstellungen. Bei einer neu installierten Policy v4 wird der Neural-Schalter automatisch aktiviert, sofern nicht bereits eine gespeicherte Einstellung vorliegt.
 
