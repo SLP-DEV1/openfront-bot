@@ -1,10 +1,13 @@
 # OpenFront Solo AggroBot
 
-**Version 1.20.4** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) · Singleplayer, Public und Private · [offene Validierungspunkte](https://github.com/SLP-DEV1/openfront-bot/issues/12)
+**Version 1.20.5** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) · Singleplayer, Public und Private · [offene Validierungspunkte](https://github.com/SLP-DEV1/openfront-bot/issues/12)
 
 Der Bot erkennt neue spielbare Matches, wählt bei manuellem Spawn eine Position und steuert Expansion, Verteidigung, Wirtschaft, Flotte, Handel und Diplomatie. Die trainierte Neural-Policy kann optional *begrenzt* mitentscheiden; es gibt keine localhost-Brain- oder Live-Qwen-Anbindung mehr. **Es gibt keine belegte garantierte Impossible- oder Multiplayer-Siegquote.**
 
 ## Schnellstart / Update
+
+**1.20.5 – Gemeinsame Duo-Offensive:** Die Bots tauschen eigene, begrenzte Angriffsbudgets und tatsächlich erreichbare Grenzgegner aus. Sie wählen einen gemeinsamen Gegner **nur**, wenn beide eine Front zu ihm besitzen, beide die Allianz im echten Spielzustand bestätigen, beide ihre eigene Reserve halten können und die addierten, vorsichtig begrenzten Kontingente gegen dessen sichtbare Truppen reichen. Die niedriger sortierte Spieler-ID setzt einen stabilen Angriffstick; die zweite bestätigt dasselbe Ziel. Inaktive unterschiedliche Solokriegsziele werden zugunsten der gemeinsamen Front freigegeben, nicht aber laufende Angriffe. Die Angriffszulässigkeit wird unmittelbar vor dem Befehl erneut im GameView/Worker überprüft. Beginnt ein Bot zuerst, darf der andere eine bereits **sichtbare** Partnerarmee auf dasselbe Ziel berücksichtigen. Bei eingehenden Angriffen, kürzlichen Verlusten, fehlendem gemeinsamen Grenzgegner, abweichenden Bündnissen oder Relay-Ausfall bleibt die alte autonome Sicherheitslogik aktiv. Es wird **keine pauschale 88-%-Reserve freigegeben**, wenn der Frontprognose-Schutz sie benötigt. Das Panel zeigt getrennte eigene/Partnerbudgets und erforderliche Zielstärke.
+
 
 **1.20.4 – Duo-Bündnisse mit Drittspielern:** Die Bots tauschen bestätigte Fremd-Allianzen aus und schützen Verbündete des Partners vor neuen gemeinsamen Angriffen und Nuklear-Kollateralschäden, ohne eine fremde Allianz als eigene auszugeben. Während der Duo-Verbindung werden unabhängige fremde Auto-Allianzen vermieden; einen bereits verbündeten Drittspieler kann der andere Bot durch einen eigenen legalen Bündnisantrag ebenfalls anfragen. Bestehende fremde Allianzen werden nicht automatisch aufgelöst. [Details](docs/LOCAL_DUO.md).
 
