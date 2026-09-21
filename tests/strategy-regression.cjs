@@ -84,7 +84,7 @@ function boot(benchmarkOptions={}) {
     'setBoats:yes=>opts.boats=yes,setBoatCtor:C=>ctors.boat=C,',
     'setCancelCtor:C=>ctors.cancel=C,setTroopSnapshot:t=>troopSnapshot=t,setCtor:(key,C)=>ctors[key]=C,',
     'setMode:m=>strategic.mode=m,setAllianceCtor:C=>ctors.alliance=C,setHostilePressure:t=>lastHostilePressure=t,',
-    'setNukePending:p=>nukePending=p,setMonitorSession:x=>monitorSession=x,spendBudget,commitGoldSpend,',
+    'setNukePending:p=>nukePending=p,setMonitorSession:x=>monitorSession=x,spendBudget,commitGoldSpend,coreFundingStatus,',
     'targetOpportunityCheck,reportAttackBlocks,earlyCrisis,landingFailure,neuralModelInfo,',
     'setPendingBoat:p=>pendingBoat=p,',
     'setPerf:(combat,border,economy)=>runtime={...runtime,combatMs:combat,borderMs:border,economyMs:economy},',
@@ -982,7 +982,8 @@ function boot(benchmarkOptions={}) {
     x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
       type,canBuild:tile,canUpgrade:false,cost:125000n}))});
     assert.equal(await x.b.economy(x.me,300,0,[]),false);
-    assert.match(x.b.state().economicStatus,/Gold für Bauoption fehlt/);
+    assert.match(x.b.state().economicStatus,/Spare auf ersten Kernbau/);
+    assert.equal(x.b.state().failedEconomyProbes,0);
   });
   await check('issue #5 potential neighbor does not cancel Silo fund', async () => {
     const x=boot();x.setTick(2400);x.setLand(51613);x.setGold(900000);
@@ -2986,6 +2987,71 @@ function boot(benchmarkOptions={}) {
     const proof=x.b.diagnosticSnapshot().neuralEvidence;
     assert(proof.calls>=1,'inference was executed');assert.equal(proof.nonzero,0);
     assert.match(proof.model.fingerprint,/^fnv1a-/);
+  });
+
+  await check('1.19.6 first core price is observed, cached and funded without fabricated build legality',async()=>{
+    const x=boot();x.setGold(55000);
+    let probes=0;
+    x.me.actions=async(tile,types)=>{
+      probes++;
+      return {buildableUnits:(types||[]).map(type=>({
+        type,canBuild:false,canUpgrade:false,cost:125000n}))};
+    };
+    assert.equal(await x.b.economy(x.me,300,0,[]),false);
+    const firstProbes=probes;
+    assert(firstProbes>0);
+    const funding=x.b.coreFundingStatus(x.me);
+    assert.equal(funding.needed,125000);
+    assert.equal(funding.shortfall,70000);
+    assert.equal(funding.status,'saving-known-worker-price');
+    assert.equal(x.b.state().failedEconomyProbes,0);
+    assert.equal(x.b.diagnosticSnapshot().construction.lastProbe.quoteByType.Factory,125000);
+    x.setTick(365);x.setGold(65000);
+    assert.equal(await x.b.economy(x.me,365,0,[]),false);
+    assert.equal(probes,firstProbes,'underfunded quote avoids duplicate worker calls');
+    assert.match(x.b.state().economicStatus,/Standort offen/);
+    x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
+      type,canBuild:type==='Factory'?tile:false,canUpgrade:false,cost:125000n}))});
+    x.setTick(390);x.setGold(125000);
+    assert.equal(await x.b.economy(x.me,390,0,[]),true);
+    assert.equal(x.sent[0].unit,'Factory');
+  });
+  await check('1.19.6 first productive cost cannot be spent by navy or donations',async()=>{
+    const x=boot();x.setGold(110000);
+    x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
+      type,canBuild:false,canUpgrade:false,cost:125000n}))});
+    await x.b.economy(x.me,300,0,[]);
+    x.setGold(145000);
+    assert.equal(x.b.spendBudget(x.me,25000,'Warship'),false);
+    assert.equal(x.b.spendBudget(x.me,25000,'donateGold'),false);
+    assert.equal(x.b.spendBudget(x.me,125000,'Factory'),true);
+    assert.equal(x.b.spendBudget(x.me,50000,'Defense Post'),true,
+      'actual emergency defensive building remains allowed');
+    assert.equal(x.sent.length,0);
+  });
+  await check('1.19.6 reserve breakdown identifies max floor, not just reserve slider',()=>{
+    const x=boot();
+    const groups=[{id:'strong',opponent:x.strong,tiles:[6],front:2}];
+    const s=x.b.military(x.me,groups);
+    assert(s.reserveFloors&&Number.isFinite(s.reserveFloors.borderFloor));
+    assert.equal(s.reserveFloors.winningFloor,s.reserve);
+    assert(s.reserveReason.length>0);
+    assert.equal(s.reserveShare,s.reserve/s.home);
+    x.b.reportAttackBlocks(x.me,groups,s,
+      {readiness:{ready:true,reason:'Normal'}},[],300);
+    assert.equal(x.b.diagnosticSnapshot().attackBlockReport.reserveReason,s.reserveReason);
+  });
+  await check('1.19.6 schema4 decisions expose rule and policy rankings, not action delta alone',async()=>{
+    const x=boot();x.setTick(300);
+    x.b.setNeural({schema:4,arch:'24x24x16-tanh',
+      weights:Array(1000).fill(.04)});
+    assert.equal(await x.b.economy(x.me,300,0,[]),true);
+    const proof=x.b.diagnosticSnapshot().neuralDecisionEvidence;
+    assert(proof&&proof.model.loaded);
+    assert(proof.ruleChoice&&proof.policyChoice);
+    assert.equal(typeof proof.changedChoice,'boolean');
+    assert.equal(typeof proof.headBiasByType.Factory,'number');
+    assert.equal(proof.evidence,'ranking-only-worker-legality-preserved');
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
