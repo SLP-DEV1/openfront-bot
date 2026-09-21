@@ -71,7 +71,7 @@ function boot(benchmarkOptions={}) {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'strategicDirector,economyPosture,observeOpponents,opponentTrend,navalCommitmentRatio,landingThirdPartyRisk,targetHomeRatio,matchContext,rankedDuo,duoFocus,duoBattleCredit,railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,frontPressureForecast,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,offensiveCommitment,globalNavalHomeGuard,observeFronts,qwenStrategyHint,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,samBuildAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
+    'strategicDirector,economyPosture,observeOpponents,opponentTrend,observeHumanProfiles,observeVictoryThreat,coordinateDuo,planOperation,decisionNote,navalCommitmentRatio,landingThirdPartyRisk,targetHomeRatio,matchContext,rankedDuo,duoFocus,duoBattleCredit,railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,frontPressureForecast,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,offensiveCommitment,globalNavalHomeGuard,observeFronts,qwenStrategyHint,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,samBuildAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'setNeural:m=>{neuralModel=neuralValidate(m);opts.neuralEnabled=!!neuralModel;neuralPolicyCache={key:null,output:null};},neuralStrategicSignals,neuralChannel,',
     'getBrainMatchId:()=>brainMatchId,setQwen:q=>{brainState.qwen=q;},',
@@ -85,7 +85,7 @@ function boot(benchmarkOptions={}) {
     'setMode:m=>strategic.mode=m,setAllianceCtor:C=>ctors.alliance=C,setHostilePressure:t=>lastHostilePressure=t,',
     'setNukePending:p=>nukePending=p,',
     'setPerf:(combat,border,economy)=>runtime={...runtime,combatMs:combat,borderMs:border,economyMs:economy},',
-    'state:()=>({economicPending,pendingAttack,attackReceipts,warState,lastBattle,gameEnd,diagnostics,forecastAudits,incomeAttribution,spawnState,spawnCache,spawnJob,economicStatus,failedEconomyProbes,investmentStatus,pendingBoat,pendingWarship,marineStats,portProbeFailures,navalSiteNegative:[...navalSiteNegative],strategic,winStatus,incomeStatus,fleetStatus,strategicTelemetry,defenseStatus,defenseStats,autoTuning,nukeShots,nukeAttempts,nukeUnconfirmed,nukePending,lastHostilePressure,lastProposalTick,diplomacyStatus,diplomacyPending:[...diplomacyPending.values()],retreatRequests:[...retreatRequests.values()]}),opts};'
+    'state:()=>({economicPending,pendingAttack,attackReceipts,warState,lastBattle,gameEnd,diagnostics,forecastAudits,incomeAttribution,spawnState,spawnCache,spawnJob,economicStatus,failedEconomyProbes,investmentStatus,pendingBoat,pendingWarship,marineStats,portProbeFailures,navalSiteNegative:[...navalSiteNegative],strategic,winStatus,opponentProfiles:[...opponentProfiles.values()],operation,duoPlan,victoryThreat,decisionTimeline,incomeStatus,fleetStatus,strategicTelemetry,defenseStatus,defenseStats,autoTuning,nukeShots,nukeAttempts,nukeUnconfirmed,nukePending,lastHostilePressure,lastProposalTick,diplomacyStatus,diplomacyPending:[...diplomacyPending.values()],retreatRequests:[...retreatRequests.values()]}),opts};'
   ].join('\n');
   vm.runInNewContext(source.replace(anchor, expose + '\n' + anchor), context, {timeout:2000});
   win.__test.setup(game, {emit:event=>sent.push(event)}, {attack:Attack, build:Build});
@@ -95,6 +95,70 @@ function boot(benchmarkOptions={}) {
     setOver:v=>gameOver=v,setGold:v=>gold=v,setHome:v=>home=v};
 }
 (async () => {
+  await check('human profiles use observations, per-match confidence and stop on alliance', () => {
+    const x=boot();x.weak.type=()=> 'HUMAN';
+    x.weak.outgoingAttacks=()=>[{troops:25000,targetID:1,retreating:false}];
+    x.b.observeHumanProfiles(x.me,300);
+    let p=x.b.state().opponentProfiles.find(p=>p.id==='weak');
+    assert.equal(p.profile,'Früher Angreifer');
+    assert(p.confidence<.4,'one observation is low confidence');
+    x.b.observeHumanProfiles(x.me,400);
+    x.b.observeHumanProfiles(x.me,500);
+    p=x.b.state().opponentProfiles.find(p=>p.id==='weak');
+    assert(p.confidence>=.45);
+    x.me.isFriendly=y=>y===x.weak;
+    x.b.observeHumanProfiles(x.me,600);
+    assert(!x.b.state().opponentProfiles.some(p=>p.id==='weak'));
+  });
+  await check('victory warning observes opponent land, not merely our progress', () => {
+    const x=boot();x.setEnemyLand(900);
+    const config=x.game.config(),old=config.gameConfig;
+    config.gameConfig=()=>({...old(),gameMode:'FFA'});
+    config.percentageTilesOwnedToWin=()=>80;
+    x.game.numLandTiles=()=>1500;x.game.numTilesWithFallout=()=>0;
+    x.b.victoryPlan(x.me);
+    let alert=x.b.observeVictoryThreat(x.me,300);
+    assert(alert?.urgent,'the 1200-land enemy is 80%');
+    assert.equal(alert.id,'strong');
+    x.strong.numTilesOwned=()=>100;
+    alert=x.b.observeVictoryThreat(x.me,320);
+    assert.equal(alert.urgent,false,'no immediate opponent threshold');
+  });
+  await check('duo plan uses observed partner commits and protects own reserve', () => {
+    const x=boot();
+    const cfg=x.game.config(),old=cfg.gameConfig;
+    cfg.gameConfig=()=>({...old(),gameMode:'Team',rankedType:'2v2'});
+    x.me.team=()=>0;x.weak.team=()=>0;x.strong.team=()=>1;
+    x.me.isOnSameTeam=p=>p===x.weak;
+    x.me.isFriendly=p=>p===x.weak;
+    x.weak.outgoingAttacks=()=>[{targetID:3,troops:17000,retreating:false}];
+    x.weak.incomingAttacks=()=>[];
+    const state=x.b.military(x.me,[]);
+    const plan=x.b.coordinateDuo(x.me,state,300);
+    assert.equal(plan.target,'strong');
+    assert.equal(plan.partnerCommitted,17000);
+    assert.equal(plan.ownReserve,state.reserve);
+    assert.equal(plan.source,'sichtbare Spielzustände (kein Kommunikationskanal)');
+  });
+  await check('bounded operation chooses live attackable opponent and explains cancellation', () => {
+    const x=boot(),groups=[{id:'weak',opponent:x.weak,front:8,tiles:[5]}];
+    const state=x.b.military(x.me,groups);
+    const op=x.b.planOperation(x.me,groups,state,300);
+    assert.equal(op.target,'weak');assert(op.budget>0);
+    assert(op.successLand<op.initialLand);
+    x.me.isFriendly=p=>p===x.weak;
+    x.b.planOperation(x.me,groups,state,401);
+    assert.equal(x.b.state().operation,null);
+    assert(x.b.state().decisionTimeline.some(d=>d.why.includes('Ziel jetzt verbündet')));
+    x.me.isFriendly=()=>false;
+    const next=x.b.planOperation(x.me,groups,state,500);
+    assert(next?.budget>0);
+    next.spent=next.budget;
+    assert.equal(x.b.planOperation(x.me,groups,state,610),null,
+      'spent budget cancels the operation and cools target down');
+    assert(x.b.state().decisionTimeline.some(d=>d.why.includes('Truppenbudget ausgeschöpft')),
+      JSON.stringify(x.b.state().decisionTimeline));
+  });
   await check('trained strategic policy switches land versus naval, zero model retains rules', () => {
     const x=boot();x.setTick(600);x.b.setBoatCtor(class {});
     const s=x.b.military(x.me,[]);

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.18.4
+// @version      1.19.0
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.18.4', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.19.0', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, brainEnabled:false, brainToken:'', fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -396,7 +396,8 @@
   let investmentStatus='Grundaufbau',lastWarReview=-Infinity;
   let defenseStatus='Keine Bedrohung',lastEmergencyRetreat=-Infinity,lastDefenseLog=-Infinity;
   let targetIntelCache=new Map(),frontMemory=new Map(),lastFrontWarning=-Infinity;
-  let opponentHistory=new Map(),lastEconomyPosture='—',lastDirectorDecision=null;
+  let opponentHistory=new Map(),opponentProfiles=new Map(),lastEconomyPosture='—',lastDirectorDecision=null;
+  let operation=null,operationCooldown=new Map(),duoPlan=null,victoryThreat=null,decisionTimeline=[],decisionKeys=new Map();
   let retreatRequests=new Map(),defenseStats={retreatsOrdered:0,retreatsObserved:0,unknown:0,unconfirmed:0};
   // Manual slider values remain saved; fullAuto computes independent live values.
   let autoTuning={aggressive:85,reserve:35,actionsPerMinute:72,maxTargets:16,
@@ -492,6 +493,8 @@
         railMethod:'owned-land-corridor-proxy',
         fullBrowserMatchValidated:false,
         note:'Die Datei ist ein Spielmitschnitt; Sieg und echte Mehrkarten-Benchmarks erfordern vollständige Browser-Matches.'},
+      opponents:[...opponentProfiles.values()].map(v=>({...v})),operation,duoPlan,victoryThreat,
+      decisionTimeline:decisionTimeline.map(v=>({...v})),
       war:{...warState},gameEnd,spawn:{...spawnState,best:spawnCache?{...spawnCache}:null},victory:winStatus,income:incomeStatus,fleet:fleetStatus,marine:{stats:marineStats,pendingBoat,pendingWarship,portProbeFailures},strategicTelemetry,military:troopSnapshot,
       defense:{status:defenseStatus,stats:defenseStats,pendingRetreats:[...retreatRequests.values()]},
       rockets:{confirmed:nukeShots,attempts:nukeAttempts,unconfirmed:nukeUnconfirmed,pending:nukePending},
@@ -727,6 +730,7 @@
     brainMatchId='match-'+Date.now().toString(36)+'-'+Math.floor(Math.random()*0xffffffff).toString(36).padStart(8,'0');
     brainSeq=0;brainLastTick=-Infinity;brainLastSampleTick=-Infinity;brainBusy=false;brainBackoff=0;
     brainState={status:opts.brainEnabled?'Warte auf Match':'Aus',advice:null,receivedTick:-Infinity,lastError:null};
+    opponentProfiles.clear();operation=null;operationCooldown.clear();duoPlan=null;victoryThreat=null;decisionTimeline=[];decisionKeys.clear();
     warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};diagnostics=[];recordSequence=0;recordCounts={};recordsDropped=0;streamErrors=0;lastDiagnosticTick=-Infinity;gameEnd=null;forecastAudits=[];lastForecastAudit=null;incomeAttribution=[];
     investmentStatus='Grundaufbau';lastWarReview=-Infinity;
     defenseStatus='Keine Bedrohung';lastEmergencyRetreat=-Infinity;lastDefenseLog=-Infinity;
@@ -1164,6 +1168,189 @@
       ownTiles:ours,teamTiles:land};
     return winStatus;
   }
+
+  // Short, bounded, per-match explanations. Snapshot export keeps alternatives
+  // even when an old telemetry stream has been truncated.
+  function decisionNote(kind,why,alternatives=[],tick=number(()=>game?.ticks?.(),0)){
+    const key=kind+':'+why,previous=decisionKeys.get(key);
+    if(previous!==undefined&&tick-previous<90)return;
+    decisionKeys.set(key,tick);
+    if(decisionKeys.size>140)for(const [k,v] of decisionKeys)
+      if(tick-v>1100)decisionKeys.delete(k);
+    const row={tick,kind,why,alternatives:alternatives.slice(0,4)};
+    decisionTimeline.push(row);
+    if(decisionTimeline.length>90)decisionTimeline.shift();
+    telemetry('decision_timeline',why,{decision:row});
+  }
+  // Observed behaviour is evidence, not knowledge of a human's intentions.
+  // No guesses from hidden armies, and no cross-match personal profiling.
+  function observeHumanProfiles(me,tick){
+    const current=new Set();
+    for(const p of game.playerViews?.()||[]){
+      const id=safeID(p);
+      if(id===null||id===safeID(me)||!p.isAlive?.()||friendly(p,me)||
+         me.isOnSameTeam?.(p))continue;
+      const human=p.type?.()==='HUMAN' ||
+        (typeof p.clientID?.()==='string'&&p.clientID().length>0);
+      if(!human)continue;
+      current.add(id);
+      const old=opponentProfiles.get(id);
+      if(old&&tick-old.tick<80)continue;
+      const deployed=(p.outgoingAttacks?.()||[]).filter(a=>!a.retreating);
+      const attacks=deployed.filter(a=>number(()=>a.troops,0)>0);
+      const weight=attacks.reduce((n,a)=>n+Math.max(0,number(()=>a.troops,0)),0);
+      const home=Math.max(1,number(()=>p.troops?.(),1));
+      const units=(()=>{try{return p.units?.()||[];}catch(_){return [];}})();
+      const ports=units.filter(u=>u.isActive?.()&&u.type?.()==='Port').length;
+      const ships=units.filter(u=>u.isActive?.()&&
+        ['Warship','Transport Ship'].includes(u.type?.())).length;
+      const past=opponentTrend(p,tick);
+      const samples=Math.min(12,(old?.samples||0)+1);
+      const early=tick<1600;
+      const naval=ships>=2||ports>=2;
+      const aggressive=weight>=Math.max(900,home*.22) ||
+        (past.valid&&past.landChange>.09&&early);
+      const opportunistic=weight>=Math.max(500,home*.12)&&
+        (past.sustained||adversaryWindow(me,p).exposed);
+      const economic=past.valid&&past.growing&&
+        weight<Math.max(500,home*.12);
+      const profile=naval?'Marinefokus':opportunistic?'Gelegenheitsangreifer':
+        aggressive&&early?'Früher Angreifer':
+        economic?'Wirtschaftsaufbauer':'Unbestimmt';
+      // Confidence is deliberately capped without repeated observations.
+      const signal=naval||aggressive||opportunistic||economic;
+      const confidence=signal?Math.min(.90,.20+samples*.09):0;
+      const result={id,name:nameOf(p),profile,confidence,samples,tick,
+        weight,ports,ships,home};
+      opponentProfiles.set(id,result);
+      if(old?.profile!==profile&&confidence>=.38)
+        decisionNote('profil',nameOf(p)+': '+profile+' ('+
+          Math.round(confidence*100)+'% Beobachtungssicherheit)',[],tick);
+    }
+    for(const id of opponentProfiles.keys())
+      if(!current.has(id))opponentProfiles.delete(id);
+  }
+  // A competitor's land is measured against the same visible win denominator
+  // as ours. Team players are grouped once, not counted as separate threats.
+  function observeVictoryThreat(me,tick){
+    const total=number(()=>game.numLandTiles?.(),0)-
+      number(()=>game.numTilesWithFallout?.(),0);
+    const threshold=winStatus.threshold;
+    if(total<=0||!Number.isFinite(threshold)){
+      victoryThreat=null;return null;
+    }
+    const team=winStatus.mode==='Team',ours=me.team?.(),seen=new Set();
+    let leader=null;
+    for(const p of game.playerViews?.()||[]){
+      if(!p?.isAlive?.()||friendly(p,me)||me.isOnSameTeam?.(p))continue;
+      const pTeam=p.team?.(),sameTeam=team&&pTeam!==null&&pTeam!==undefined;
+      const key=sameTeam?'team:'+String(pTeam):'player:'+String(safeID(p));
+      if(seen.has(key))continue;
+      seen.add(key);
+      if(sameTeam&&pTeam===ours)continue;
+      const members=sameTeam?(game.playerViews?.()||[]).filter(q=>
+        q.isAlive?.()&&q.team?.()===pTeam):[p];
+      const land=members.reduce((n,q)=>n+Math.max(0,number(()=>q.numTilesOwned?.(),0)),0);
+      const progress=land/total*100;
+      if(!leader||progress>leader.progress)
+        leader={id:safeID(p),name:sameTeam?'Team '+String(pTeam):nameOf(p),
+          team:sameTeam?pTeam:null,progress,land};
+    }
+    const urgent=!!leader&&leader.progress>=threshold-8;
+    const last=victoryThreat;
+    victoryThreat=leader?{...leader,threshold,urgent,tick}:null;
+    if(urgent&&(!last?.urgent||last.id!==leader.id||tick-last.tick>=180))
+      decisionNote('siegwarnung','Gegnerischer Siegfortschritt: '+
+        leader.name+' '+leader.progress.toFixed(1)+'% / '+threshold+'%',
+        ['Eigene Verteidigung und Angriffszulässigkeit bleiben verbindlich'],tick);
+    return victoryThreat;
+  }
+  // No invented inter-client channel: each bot infers its partner's commitment
+  // from the same observable match state. Missing partner actions mean unknown,
+  // not a promised coordinated attack.
+  function coordinateDuo(me,s,tick){
+    const duo=rankedDuo(me);
+    if(!duo){duoPlan=null;return null;}
+    const partner=duo.partner;
+    const incoming=(partner.incomingAttacks?.()||[])
+      .filter(a=>!a.retreating).reduce((n,a)=>n+Math.max(0,number(()=>a.troops,0)),0);
+    const partnerHome=Math.max(1,number(()=>partner.troops?.(),1));
+    const active=duo.enemies.map(p=>({p,on:duoFocus(me,p)?.on||0}))
+      .sort((a,b)=>b.on-a.on || String(safeID(a.p)).localeCompare(String(safeID(b.p))))[0];
+    const targets=[...duo.enemies].sort((a,b)=>
+      number(()=>b.numTilesOwned(),0)-number(()=>a.numTilesOwned(),0) ||
+      String(safeID(a)).localeCompare(String(safeID(b))));
+    const shared=active?.on>0?active.p:targets[0];
+    const danger=s.incoming>Math.max(1200,s.home*.08);
+    const role=danger?'Heimat verteidigen':
+      incoming>partnerHome*.2?'Partner entlasten':
+      active?.on>0?'Partnerfront unterstützen':
+      s.home>partnerHome*1.25?'Angriff vorbereiten':'Aufbauen / Landung vorbereiten';
+    const plan={partner:duo.partnerID,target:shared?safeID(shared):null,
+      targetName:shared?nameOf(shared):'Kein Gegner',role,
+      partnerCommitted:active?.on||0,partnerIncoming:incoming,
+      partnerHome,needHelp:incoming>partnerHome*.2,
+      ready:!danger&&s.available>=Math.max(1200,s.home*.2),
+      ownReserve:s.reserve,tick,source:'sichtbare Spielzustände (kein Kommunikationskanal)'};
+    if(!duoPlan||duoPlan.target!==plan.target||duoPlan.role!==role)
+      decisionNote('2v2','Gemeinsamer Fokus: '+plan.targetName+' · '+role,
+        ['Partner-Einsatz nur bei beobachteten Angriffen bestätigt'],tick);
+    duoPlan=plan;return plan;
+  }
+  function planOperation(me,items,s,tick){
+    const danger=s.incoming>Math.max(1200,s.home*.10);
+    if(operation){
+      const p=game.playerViews?.().find(x=>safeID(x)===operation.target);
+      const reason=!p?.isAlive?.()?'Ziel ausgeschieden':
+        friendly(p,me)||me.isOnSameTeam?.(p)?'Ziel jetzt verbündet':
+        danger?'Heimat unter Angriff':
+        operation.spent>=operation.budget &&
+          !s.out.some(a=>attackTargets(a.targetID,operation.target))?
+            'Truppenbudget ausgeschöpft':
+        tick-operation.since>1100?'Operationsfrist erreicht':
+        number(()=>p.numTilesOwned?.(),Infinity)<=operation.successLand?
+          'Gebietsziel beobachtet':null;
+      if(reason){
+        if(reason==='Truppenbudget ausgeschöpft')
+          operationCooldown.set(operation.target,tick+160);
+        decisionNote('operation','Operation '+operation.type+' beendet: '+reason,
+          ['Nächste sichere Gelegenheit neu prüfen'],tick);
+        operation=null;
+      }
+    }
+    if(operation||danger||s.available<Math.max(1200,s.home*.16))return operation;
+    const eligible=items.filter(x=>x.id!==null&&x.opponent?.isAlive?.()&&
+      !friendly(x.opponent,me)&&tick>=(operationCooldown.get(x.id)||0)&&
+      targetOpportunity(me,items,s,x));
+    const locked=eligible.find(x=>x.id===warState.id);
+    const ally=eligible.find(x=>duoFocus(me,x.opponent)?.on>0);
+    const alert=eligible.find(x=>victoryThreat?.urgent&&
+      (victoryThreat.team!==null?x.opponent.team?.()===victoryThreat.team:
+        x.id===victoryThreat.id));
+    const chosen=locked||alert||ally||
+      eligible.sort((a,b)=>number(()=>b.opponent.numTilesOwned(),0)-
+        number(()=>a.opponent.numTilesOwned(),0))[0];
+    if(!chosen)return null;
+    const land=number(()=>chosen.opponent.numTilesOwned?.(),0);
+    const type=alert?'Sieg verhindern':ally?'Partner entlasten':
+      pendingBoat?'Brückenkopf sichern':
+      land<=Math.max(250,number(()=>me.numTilesOwned(),0)*.25)?
+        'Gegner ausschalten':'Front sichern';
+    const guard=frontRiskPlan(items,s,chosen.id);
+    const budget=Math.max(0,Math.floor(Math.min(s.available*.72,guard.safeStrike)));
+    if(budget<100)return null;
+    operation={type,target:chosen.id,targetName:nameOf(chosen.opponent),
+      since:tick,until:tick+1100,initialLand:land,
+      successLand:type==='Gegner ausschalten'?0:
+        Math.max(0,Math.floor(land*.90)),
+      budget,spent:0,abort:'Verlust des Ziels, Heimatinvasion oder Frist'};
+    decisionNote('operation',type+' → '+operation.targetName+
+      ' · Budget '+budget+' · Ziel ≤ '+operation.successLand+' Felder',
+      eligible.filter(x=>x.id!==chosen.id).slice(0,3).map(x=>
+        nameOf(x.opponent)+' zurückgestellt: Fokus und Reserveschutz'),tick);
+    return operation;
+  }
+
   function checkIncomeAttribution(me,tick){
     for(const sample of incomeAttribution){
       if(sample.finished||tick-sample.tick<120)continue;
@@ -1486,7 +1673,13 @@
     const forecastFloor=forecastEnabled&&predicted&&predicted.pressured?
       Math.min(home*(context.multiplayer?.88:.91),
         predicted.combined*(context.multiplayer?.52:.60)+incoming*.30):0;
-    const reserve=Math.min(home,Math.ceil(Math.max(defensiveFloor,forecastFloor)));
+    // Profiles only RAISE a border reserve, never relax the safety floor.
+    const observedRaider=hostile.some(x=>{
+      const p=opponentProfiles.get(x.id);
+      return p?.profile==='Früher Angreifer'&&p.confidence>=.45;
+    });
+    const profileFloor=observedRaider?Math.min(home*.86,policyBaseline+home*.06):0;
+    const reserve=Math.min(home,Math.ceil(Math.max(defensiveFloor,forecastFloor,profileFloor)));
     const available=Math.max(0,Math.floor(home-reserve));
     const total=home+committed;
     const activeEnemy=out.filter(a=>a.targetID!==0 && a.targetID!==null).length;
@@ -1959,6 +2152,7 @@
     return items.flatMap(item=>{
       const enemy=item.opponent,key=item.id===null?'neutral':String(item.id);
       if(enemy && !enemy.isAlive?.())return [];
+      if(enemy&&operation?.target===item.id&&operation.spent>=operation.budget)return [];
       if(enemy && coordinatedWar() && (
         (pendingAttack?.id!==null && pendingAttack?.id!==undefined && pendingAttack.id!==item.id) ||
         (isWar() && item.id!==warState.id) || tick<warState.blockedUntil ||
@@ -2031,6 +2225,13 @@
           else if(focus.elsewhere>0)score-=12;
         }
         if(winStatus.urgent)score+=18;
+        const profile=opponentProfiles.get(item.id);
+        if(profile?.confidence>=.45&&profile.profile==='Gelegenheitsangreifer'&&
+          opening.exposed)score+=12;
+        if(operation?.target===item.id)score+=28;
+        if(duoPlan?.target===item.id)score+=duoPlan.partnerCommitted>0?25:10;
+        if(victoryThreat?.urgent && (victoryThreat.team!==null?
+          enemy.team?.()===victoryThreat.team:item.id===victoryThreat.id))score+=38;
         if(me.hasTransitiveTarget?.(enemy.smallID?.()))score+=12;
         if(plan?.id===item.id && tick<plan.until)score+=23;
         if(effectivePlan()==='Blitz')score+=12;
@@ -2274,7 +2475,11 @@
     for(const item of ranked.slice(0,clamp(setting('maxTargets'),4,25))){
       if(!live(serial)||!actionBudget('combat'))return false;
       const tile=await legalTarget(me,item,serial);
-      if(tile===null){rejected.set(item.key,tick);continue;}
+      if(tile===null){rejected.set(item.key,tick);
+        decisionNote('ziel_verworfen','Ziel '+(item.opponent?nameOf(item.opponent):'Neutralland')+
+          ': keine bestätigte legale Angriffsposition',[
+            'Nächster Schritt: andere Grenze oder Marine prüfen'],tick);
+        continue;}
       // Re-read the live relation after the async worker legality probe.
       if(item.id!==null){
         const current=game.playerViews?.().find(p=>safeID(p)===item.id);
@@ -2282,6 +2487,8 @@
           (coordinatedWar()&&isWar()&&warState.id!==item.id)){
           telemetry('attack_allied_skip','Angriff nach Allianz-/Frontwechsel verhindert',
             {target:item.id,friendly:!!current&&friendly(current,me)});
+          decisionNote('ziel_verworfen','Ziel '+item.id+
+            ': Allianz oder Front nach Worker-Abfrage gewechselt',[],tick);
           continue;
         }
       }
@@ -2317,8 +2524,14 @@
           }
         }
         amount=protectedStrike.amount;
+        if(operation?.target===item.id)
+          amount=Math.min(amount,Math.max(0,operation.budget-operation.spent));
       }
-      if(amount<100)continue;
+      if(amount<100){
+        decisionNote('ziel_verworfen','Ziel '+(item.opponent?nameOf(item.opponent):'Neutralland')+
+          ': Truppenbudget oder Heimschutz begrenzt',[],tick);
+        continue;
+      }
       const label=item.opponent?nameOf(item.opponent):'neutrales Land';
       if(send('attack',[item.id,amount],`ANGRIFF → ${label} (${Math.floor(amount/10)} Tr.)`)){
         cooldowns.set(item.key,tick);
@@ -2326,6 +2539,9 @@
         else {
           lastEnemySend=tick;
           plan={id:item.id,until:tick+(hardMode()?1000:300),name:label};
+          if(operation?.target===item.id){operation.spent+=amount;
+            decisionNote('operation','Einsatz '+amount+' / '+operation.budget+
+              ' für '+operation.targetName,[],tick);}
         }
         const before=s.out.filter(a=>attackTargets(a.targetID,item.id)&&!a.retreating);
         pendingAttack={id:item.id,name:label,tick,amount,ownLand:number(()=>me.numTilesOwned()),
@@ -4331,11 +4547,15 @@
       const groups=targetsFromBorder(me,tiles);
       observeFronts(me,groups,tick);
       observeOpponents(me,tick);
+      observeHumanProfiles(me,tick);
+      observeVictoryThreat(me,tick);
       let s=military(me,groups);rememberHostilePressure(s,tick);troopSnapshot=s;
       manageWar(me,groups,s,tick);
       const context=strategy(me,groups,s);
       s=tuneAutonomously(me,groups,s,tick,context);
       troopSnapshot=s;
+      coordinateDuo(me,s,tick);
+      planOperation(me,groups,s,tick);
       brainSend(tick,me,s);
       if(tick-lastDiagnosticTick>=80){lastDiagnosticTick=tick;
         telemetry('snapshot','Spielzustand',{difficulty:game.config().gameConfig().difficulty,
@@ -4346,7 +4566,9 @@
           borders:tiles.length,tuning:{...autoTuning,enabled:!!opts.fullAuto},defense:{status:defenseStatus,incoming:s.incoming,
             committed:s.committed,pendingRetreats:retreatRequests.size},enemies:groups.filter(g=>g.id!==null).map(g=>({name:nameOf(g.opponent),troops:number(()=>g.opponent.troops()),land:number(()=>g.opponent.numTilesOwned())})),
           readiness:context.readiness?.reason,ratio:s.ratio,maxTroops:s.max,growthPotential:s.growthPotential,
-          victory:winStatus,income:incomeStatus,strategicTelemetry,
+          victory:winStatus,victoryThreat,operation,duoPlan,
+          opponentProfiles:[...opponentProfiles.values()],
+          decisions:decisionTimeline.slice(-8),income:incomeStatus,strategicTelemetry,
            director:lastDirectorDecision,economyPosture:lastEconomyPosture,
           forecastAudit:lastForecastAudit,
           recentIncomeSamples:incomeAttribution.slice(-4).map(v=>({...v})),
@@ -4384,6 +4606,8 @@
       }
       lastDirectorDecision=directive;
       if(directive.order[0]==='hold') {
+        decisionNote('warte',directive.reason,[
+          'Nächster Schritt: Reserve regenerieren oder Frontlage ändern'],tick);
         status='AUFBAU · Truppen regenerieren / Verteidigung halten';
         return;
       }
@@ -4395,7 +4619,11 @@
           await naval(me,tick,serial)){consecutiveIdle=0;return;}
       }
       consecutiveIdle++;
-      if(consecutiveIdle>4)status='WARTEN · '+directive.reason;
+      if(consecutiveIdle>4){status='WARTEN · '+directive.reason;
+        decisionNote('warte',directive.reason,[
+          ranked.length?'Ziel verworfen: Worker, Reserve oder Frontlage':'Kein sicherer Angriffskandidat',
+          'Nächster Schritt: Verteidigung / Wirtschaft / Marine prüfen'],tick);
+      }
     } catch(e){errors++;status='Fehler: '+String(e?.message||e).slice(0,105);
       console.warn(PREFIX,e);
       if((opts.stopOnError||opts.safeMode)&&errors>=5){
@@ -4499,6 +4727,13 @@
       <div style="color:#9bd0e4">Handel / 60s: Bahn ${incomeStatus.train===null?'unbekannt':Math.round(incomeStatus.train)} · Schiff ${incomeStatus.trade===null?'unbekannt':Math.round(incomeStatus.trade)} · Marine: ${escapeHTML(fleetStatus)}</div>
       <div style="color:#9bd0e4">Nukes: ${escapeHTML(nukeStatus)} · bestätigt ${nukeShots} / Versuche ${nukeAttempts} / unbestätigt ${nukeUnconfirmed} · SAM-Schutz ${nuclearCache?.assets?.length - nuclearCache?.uncovered?.length||0}/${nuclearCache?.assets?.length||0}</div>
       <div style="color:#9bd0e4">Allianzen: ${escapeHTML(diplomacyStatus)} · Bestätigt: ${diplomacyStats.accepted} angenommen, ${diplomacyStats.rejected} abgelehnt · ${diplomacyPending.size} ausstehend · ${diplomacyStats.offered} angeboten</div>
+      </details>
+      <details data-section="humanplan"${openFor('humanplan')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Gegneranalyse &amp; Operationen</summary>
+      <div>Operation: ${operation?escapeHTML(operation.type+' → '+operation.targetName+' · '+operation.spent+'/'+operation.budget+' Tr. · Abbruch: '+operation.abort):'Keine sichere Operation'}</div>
+      <div>2v2: ${duoPlan?escapeHTML(duoPlan.role+' · Ziel '+duoPlan.targetName+' · Partner-Einsatz '+duoPlan.partnerCommitted+' · Hilfebedarf '+(duoPlan.needHelp?'JA':'nein')):'Kein Ranked-2v2 erkannt'}</div>
+      <div>Gegnerischer Sieg: ${victoryThreat?escapeHTML(victoryThreat.name+' · '+victoryThreat.progress.toFixed(1)+'% / '+victoryThreat.threshold+'%'+(victoryThreat.urgent?' · WARNUNG':'')):'Keine belegbare Schwelle / kein Gegner'}</div>
+      ${[...opponentProfiles.values()].slice(0,8).map(p=>'<div>'+escapeHTML(p.name+' · '+p.profile+' · '+Math.round(p.confidence*100)+'% Beobachtungssicherheit')+'</div>').join('')}
+      <div style="margin-top:5px"><b>Entscheidungs-Timeline</b>${decisionTimeline.slice(-8).reverse().map(d=>'<div style="padding:3px 0;border-top:1px solid #354d66">'+escapeHTML('Tick '+d.tick+' · '+d.why)+(d.alternatives.length?'<br><span style="color:#9bd0e4">'+escapeHTML(d.alternatives.join(' | '))+'</span>':'')+'</div>').join('')}</div>
       </details>
       <details data-section="tuning"${openFor('tuning')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Feintuning</summary>
       <div style="color:#a9efc9">Parameter: ${opts.fullAuto?'AUTONOM '+escapeHTML(autoTuning.mode)+' · '+escapeHTML(autoTuning.reason):'MANUELL'}</div>

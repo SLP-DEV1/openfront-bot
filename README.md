@@ -2,7 +2,44 @@
 
 Autonomer Bot für **Singleplayer, Public und Private** als Tampermonkey-Userscript für [OpenFront](https://openfront.io/).
 
-**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.18.4**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
+**Aktuelle installierbare Datei:** [`OpenFront_Solo_AggroBot.user.js`](./OpenFront_Solo_AggroBot.user.js), Version **1.19.0**. Die veraltete Datei `OpenFront_Solo_AggroBot_1.9.0.js` wurde aus `main` entfernt.
+
+## Gegen menschliche Gegner: beobachtete Operationen (1.19.0)
+
+Die Strategie nutzt ausschließlich Beobachtungen der **aktuellen Partie**:
+früher Angriff, Wirtschaftsaufbau, Gelegenheitsangriffe oder Marinefokus.
+Profile sind Heuristiken mit einer aus Stichproben abgeleiteten
+*Beobachtungssicherheit*, **keine kalibrierte Wahrscheinlichkeit** und keine
+Information über unsichtbare Truppen. Nach Allianz oder Matchwechsel werden
+die Profile entfernt. Bestätigte frühe Angreifer können die eigene
+Frontreserve anheben, niemals absenken.
+
+Der Operationsplaner benennt Ziel, Truppenbudget, beobachtbares
+Erfolgskriterium und Abbruchgrund. Ein Operationsbudget begrenzt eigene
+Angriffsintents zusätzlich zu den bestehenden Sicherheitsprüfungen; es ist
+**keine** Zusage des Spiels über tatsächliche Verluste oder Erfolge. Angriffe
+auf neue Verbündete sind unabhängig davon verboten. Erkannt werden unter
+anderem „Front sichern“, „Gegner ausschalten“ und „Partner entlasten“;
+„Brückenkopf sichern“ nur bei beobachtetem laufendem Marinetransport.
+
+Der 2v2-Planer zeigt den gemeinsamen Zielfokus, beobachtete Partnerverbände,
+dessen Hilfebedarf sowie die eigene Bereitschaft. Beide Instanzen können
+denselben sichtbaren Spielzustand auswerten; es gibt **keinen
+instanzübergreifenden Nachrichtentransport** und keine Behauptung, der
+Partner habe eine bloß berechnete Operation bestätigt. Eigene Reserve,
+Arbeiter-/Worker-Legalität und Diplomatie bleiben je Instanz verbindlich.
+
+Die Sieg-Frühwarnung betrachtet das Land gegnerischer Spieler und Teams
+getrennt von der eigenen Siegfortschrittsanzeige. Nur wenn die offizielle
+Schwelle und der Landnenner bekannt sind, erscheint eine numerische Warnung.
+Sie beeinflusst Kandidatenprioritäten, nicht deren Zulässigkeit.
+
+Das neue Panel „Gegneranalyse & Operationen“ enthält eine begrenzte
+Entscheidungs-Timeline mit verworfenen Alternativen. JSON-Diagnosen
+exportieren die letzten 90 Einträge, Profile und aktuelle Operation.
+Ein **erfolgreicher Regressionstest ist kein Nachweis** für eine höhere
+Siegquote gegen Menschen; dafür sind kontrollierte Multiplayer-Matches
+und gepaarte Engine-Holdouts nötig.
 
 ## AggroBot 2.0 – erster lokaler Brain-Baustein (v1.11.0)
 
