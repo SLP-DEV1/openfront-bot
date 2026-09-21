@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.20.1
+// @version      1.20.2
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.20.1', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.20.2', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -901,11 +901,15 @@
   }
   const duoID=v=>typeof v==='string'&&v.length>=1&&v.length<=128&&
     /^[a-zA-Z0-9_.:@-]+$/.test(v);
+  // The old manually saved PlayerID is intentionally ignored: IDs change
+  // each match. The relay discovers the current one for this room.
   function duoConfigured(){
     const own=safeID(myPlayer());
-    return opts.duoEnabled&&duoID(opts.duoPartnerID)&&
-      /^[a-zA-Z0-9_-]{6,64}$/.test(opts.duoRoom||'')&&
-      duoID(own)&&own!==opts.duoPartnerID;
+    return opts.duoEnabled&&
+      /^[a-zA-Z0-9_-]{6,64}$/.test(opts.duoRoom||'')&&duoID(own);
+  }
+  function duoPartnerID(){
+    return duoTrustedPeer()?.id??null;
   }
   function duoMatchKey(){
     const cfg=game?.config?.().gameConfig?.()||{},loc=window.location||{};
@@ -917,23 +921,25 @@
   }
   function duoTrustedPeer(){
     const me=myPlayer(),peer=duoLocal.peer;
-    if(!duoConfigured()||!peer||Date.now()-duoLocal.lastAt>3500||
-      duoLocal.match!==duoMatchKey()||peer.id!==opts.duoPartnerID||
+    if(!duoConfigured()||!peer||!duoID(peer.id)||
+      peer.id===safeID(me)||Date.now()-duoLocal.lastAt>3500||
+      duoLocal.match!==duoMatchKey()||
       duoLocal.ownID!==safeID(me))return null;
+    // A relay match fingerprint is only a grouping hint; the actual
+    // GameView must also contain both player IDs in THIS match.
     const player=(game?.playerViews?.()||[]).find(p=>
       safeID(p)===peer.id&&p.isPlayer?.());
     return player&&player.isAlive?.()!==false?{player,...peer}:null;
   }
   function friendly(p,me){
-    // Explicit mutual PlayerID configuration is a friendly-fire veto even
-    // before the alliance handshake finishes or if localhost temporarily drops.
+    // Only a verified same-match peer is exempt from attack. A stale
+    // ID from an earlier match cannot protect a random new opponent.
     return actualFriendly(p,me)||
-      (duoConfigured()&&safeID(me)===safeID(myPlayer())&&
-       safeID(p)===opts.duoPartnerID);
+      (safeID(me)===safeID(myPlayer())&&
+       safeID(p)===duoTrustedPeer()?.id);
   }
   function duoState(){
-    const me=myPlayer(),peer=(game?.playerViews?.()||[]).find(p=>
-      safeID(p)===opts.duoPartnerID);
+    const me=myPlayer(),peer=duoTrustedPeer()?.player;
     const state=me?.hasSpawned?.()?military(me,strategic.groups):null;
     const target=duoPlan?.strikeTick?duoPlan.target:
       operation?.target??duoPlan?.target??warState.id;
@@ -955,14 +961,14 @@
   async function duoPublish(){
     if(duoLocal.lastPromise||!opts.enabled||!duoConfigured()||
       !permittedMatch(game)||game?.gameOver?.())return;
-    const ownID=safeID(myPlayer()),partnerID=opts.duoPartnerID,
-      match=duoMatchKey(),room=opts.duoRoom;
+    const ownID=safeID(myPlayer()),match=duoMatchKey(),room=opts.duoRoom;
+    const partnerID=null;
     if(duoLocal.match!==match||duoLocal.partnerID!==partnerID||
       duoLocal.ownID!==ownID){
       duoLocal.peer=null;duoLocal.lastAt=0;duoLocal.match=match;
       duoLocal.partnerID=partnerID;duoLocal.ownID=ownID;
     }
-    const payload={room,ownID,partnerID,match,
+    const payload={room,ownID,partnerID,match,auto:true,
       instance:duoLocal.instance,state:duoState()};
     duoLocal.lastPromise=(async()=>{
       const controller=new AbortController();
@@ -976,10 +982,10 @@
         if(!response.ok)throw Error('HTTP '+response.status);
         const data=await response.json();
         if(!opts.duoEnabled||!game||match!==duoMatchKey()||
-          partnerID!==opts.duoPartnerID)return;
+          room!==opts.duoRoom||ownID!==safeID(myPlayer()))return;
         duoLocal.peer=data.partner||null;
         duoLocal.lastAt=data.partner?Date.now():0;
-        duoLocal.status=data.partner?'Verbunden · '+partnerID:
+        duoLocal.status=data.partner?'Erkannt · '+data.partner.id:
           'Warte auf zweite Browser-Instanz';
         if(data.partner)duoLocal.failures=0;
       }catch(e){
@@ -5446,7 +5452,7 @@
       if(key==='reserve')opts.reserve=clamp(e.target.value,5,65);
       if(key==='actionsPerMinute')opts.actionsPerMinute=clamp(e.target.value,15,120);
       if(key==='maxTargets')opts.maxTargets=clamp(e.target.value,4,25);
-      if(key==='duoPartnerID'||key==='duoRoom'||key==='duoPartnerName'){
+      if(key==='duoRoom'||key==='duoPartnerName'){
         opts[key]=String(e.target.value||'').trim();
         duoLocal.peer=null;duoLocal.lastAt=0;duoLocal.match=null;
         duoLocal.status='Partnerdaten geändert · erneut verbinden';
@@ -5486,14 +5492,14 @@
       <div>${b('duoEnabled','Lokales Duo '+(opts.duoEnabled?'AN':'AUS'))}</div>
       <div style="color:#9bd0e4">Eigene Spieler-ID: <b>${escapeHTML(safeID(myPlayer())??'noch nicht im Spiel')}</b></div>
       <label>Partnername (nur Anzeige)<input type="text" data-option="duoPartnerName" maxlength="80" value="${escapeHTML(opts.duoPartnerName||'')}" placeholder="z. B. KitsukamiBot2" style="box-sizing:border-box;width:100%"></label>
-      <label>Partner-Spieler-ID<input type="text" data-option="duoPartnerID" maxlength="128" value="${escapeHTML(opts.duoPartnerID)}" placeholder="Exakte PlayerID des anderen Browsers" style="box-sizing:border-box;width:100%"></label>
+      <div>Partner-ID (automatisch): ${escapeHTML(duoTrustedPeer()?.id??"Warte auf Partner")}</div>
       <label>Duo-Raumcode (in beiden Browsern gleich)<input type="text" data-option="duoRoom" maxlength="64" value="${escapeHTML(opts.duoRoom)}" placeholder="z. B. KITSU_DUO_01" style="box-sizing:border-box;width:100%"></label>
       <div>Status: ${escapeHTML(duoLocal.status)} · ${duoTrustedPeer()?'gegenseitige IDs bestätigt':'Partner nicht verbunden'}</div>
       <div>Spielname: ${escapeHTML(duoTrustedPeer()?nameOf(duoTrustedPeer().player):'—')}${duoTrustedPeer()&&opts.duoPartnerName&&nameOf(duoTrustedPeer().player)!==opts.duoPartnerName?' · Name weicht von Anzeige ab (ID maßgeblich)':''}</div>
       <div>Partner: Ziel ${escapeHTML(duoTrustedPeer()?.state?.target??'—')} · verfügbar ${Math.round(duoTrustedPeer()?.state?.available||0)} · Reserve ${Math.round(duoTrustedPeer()?.state?.reserve||0)} · Hilfe ${duoTrustedPeer()?.state?.needHelp?'JA':'nein'}</div>
       <div>Gemeinsamer Plan: ${escapeHTML(duoPlan?duoPlan.role+' → '+duoPlan.targetName+(duoPlan.strikeTick!==null?' · Angriff ab Tick '+duoPlan.strikeTick:''):'Gemeinsam starten → Allianz bestätigen → Front aufteilen')}</div>
       <div style="margin-top:4px"><b>Duo-Timeline</b>${decisionTimeline.filter(d=>d.kind==='2v2').slice(-4).reverse().map(d=>'<div style="border-top:1px solid #354d66;padding:2px 0">'+escapeHTML('Tick '+d.tick+' · '+d.why)+'</div>').join('')}</div>
-      <div style="color:#a9efc9">Start_Live_Duo.bat starten · Port 8767 · Bündnis gilt erst nach Bestätigung im Spiel · Relay-Ausfall ⇒ beide spielen autonom weiter.</div>
+      <div style="color:#a9efc9">Start_Live_Duo.bat starten · Port 8767 · nur Raumcode in beiden Browsern gleich · Bündnis gilt erst nach Bestätigung im Spiel · Relay-Ausfall ⇒ beide spielen autonom weiter.</div>
       </details>
       <details data-section="neural"${openFor('neural')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Neurales Modell</summary>
       <div style="color:#9bd0e4">Inferenz: ${escapeHTML(neuralModelInfo().fingerprint||'kein Modell')} · Signale ${neuralEvidence.nonzero}/${neuralEvidence.calls} · Ranking ${neuralEvidence.actionNonzero}/${neuralEvidence.actionCalls}</div>
