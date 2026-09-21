@@ -28,6 +28,16 @@
 - **[Im Code + gezielter Test bestanden]** Jede erfolgreich ausgesendete Bot-Aktion erhält eine pro Match eindeutige `actionId` und eine `decisionId` aus Session und Tick. Angriffe und Bau-/Upgrade-Aufträge führen diese ID in Pending-Status und beobachtete Bestätigung bzw. Nichtbeobachtung weiter. `action` meldet ausdrücklich `effect: unconfirmed`; eine sichtbare Folge ist kein Kausalitätsbeweis. [Implementierung](https://github.com/SLP-DEV1/openfront-bot/commit/6ceced049c7daa61ce4108b9408019a108acd18e), [gezielter Regressionstest](https://github.com/SLP-DEV1/openfront-bot/commit/e522d3f1e2c639acb8184c2c7c46cae6e1baf121), [neues Neural-Bundle](https://github.com/SLP-DEV1/openfront-bot/commit/8f1515c3f3034d573604cc5a437262ff0290db01).
 - **[Im isolierten V8-Nachbau, nicht nativem Node]** 291 vorhandene Strategieregressionen durchlaufen: 272 bestanden, 19 fehlgeschlagen. Davon sind zwei durch die simulierte Laufzeit (`setImmediate`, `../tools/match-report.cjs`) nicht ausführbar; 17 weitere Fälle bleiben offen. Das ist **kein aktueller grüner CI-Nachweis** und keine fachliche Entwarnung; insbesondere SAM-/Silo-/Port-Konkurrenz, Neural-Ranking, README-Erwartung und Duo-Termin noch einzeln mit unverfälschtem Node/Engine-Test klassifizieren.
 - **[Syntax/Parität jeweils separat nachprüfen]** Die reguläre und die Run3-Datei tragen 1.20.10 und Run3 wurde aus demselben Quellskript mit dem unveränderten Schema-4-Champion synchronisiert. GitHub Actions und lokal vollständiger `node tests/bundled-run3-regression.cjs` sind noch nicht nachgewiesen.
+- **[Referenzformel geprüft, integrierter Engine-Test offen]**
+  [`tests/capacity-reference-regression.cjs`](../tests/capacity-reference-regression.cjs)
+  prüft die Formel aus dem zu den Exporten passenden offiziellen
+  [Config.ts-Commit](https://github.com/openfrontio/OpenFrontIO/blob/7c27263390d8f1976566e5c5ad9adf6fcad311b6/src/core/configuration/Config.ts#L1021):
+  fertiggestellte City-Level erhöhen die Kapazität um je 250.000
+  Engine-Truppen bei Humans, Factory/Port und unfertige Cities nicht.
+  Der Russia-Fall mit 13.044 Feldern und einem City-Level ergibt
+  **939.219 Engine-Truppen** nach Rundung. Der isolierte
+  V8-Referenztest bestand; das ist **kein ausgeführtes echtes
+  OpenFront-Engine-Szenario**. [Testcommit](https://github.com/SLP-DEV1/openfront-bot/commit/7a3fddbf5714efc9feb22f0ae302e0949c96bf56).
 - **[Offen]** Der Action-Trace deckt nicht automatisch alle Spenden-/Schiffs-/Nuke-Wirkungsnachweise ab. Auch Quell-/Optionshash, tatsächliche Engine-Szenarien, historische Regressionstriage und zwei vollständige Bot-Clients fehlen weiterhin. **P0 bleibt offen.**
 
 ## Phasenstatus – die zentrale Abarbeitungsansicht
