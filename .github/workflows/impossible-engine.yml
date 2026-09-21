@@ -1,5 +1,12 @@
 name: Impossible Engine Smoke
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'OpenFront_Solo_AggroBot.user.js'
+      - 'tools/benchmark/**'
+      - 'trainer/**'
+      - '.github/workflows/impossible-engine.yml'
   pull_request:
     paths:
       - 'OpenFront_Solo_AggroBot.user.js'
