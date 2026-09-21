@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront AggroBot Local Monitor
 // @namespace    https://openfront.io/
-// @version      1.0.0
+// @version      1.0.1
 // @description  Sends AggroBot diagnostics to a local, read-only match monitor.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
