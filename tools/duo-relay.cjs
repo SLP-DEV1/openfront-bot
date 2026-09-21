@@ -111,7 +111,7 @@ function createServer(){
       res.writeHead(200,{'Content-Type':'application/json',
         'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
         .end(JSON.stringify({ok:true,service:'AggroBot Duo Relay',
-          version:'1.20.6'}));return;
+          version:'1.20.8'}));return;
     }
     const origin=req.headers.origin;
     if(!allowed(origin)){
@@ -166,7 +166,7 @@ function createServer(){
 if(require.main===module){
   const server=createServer();
   server.listen(port,host,()=>console.log(
-    '[AggroBot Duo] v1.20.6 · Nur lokal: http://'+host+':'+server.address().port+
+    '[AggroBot Duo] v1.20.8 · Nur lokal: http://'+host+':'+server.address().port+
     ' · Test: http://'+host+':'+server.address().port+
     '/health · STRG+C stoppt den Relay.'));
 }
