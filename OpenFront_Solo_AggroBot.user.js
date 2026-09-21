@@ -1637,9 +1637,9 @@
       actualFriendly(local.player,me)&&local.state?.allied===true&&
       Array.isArray(local.state?.fronts)&&
       local.state.fronts.includes(duoPlan.target)&&
-      (strategic.groups||[]).some(x=>x.id===duoPlan.target&&
+      (strategic.groups||[]).find(x=>x.id===duoPlan.target&&
         x.tiles?.length&&x.opponent?.isAlive?.()&&
-        !friendly(x.opponent,me));
+        !friendly(x.opponent,me))?.opponent;
     const shared=invasion&&aggressor?.on>0?aggressor.p:
       retained||active?.on>0&&active?.p||
       jointTarget?.item.opponent||
