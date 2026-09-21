@@ -86,7 +86,7 @@ function boot(benchmarkOptions={}) {
     'setMode:m=>strategic.mode=m,setAllianceCtor:C=>ctors.alliance=C,setHostilePressure:t=>lastHostilePressure=t,',
     'setNukePending:p=>nukePending=p,setMonitorSession:x=>monitorSession=x,spendBudget,commitGoldSpend,coreFundingStatus,',
     'targetOpportunityCheck,reportAttackBlocks,earlyCrisis,landingFailure,neuralModelInfo,',
-    'duoConfigured,duoMatchKey,duoTrustedPeer,duoPeerAlly,duoOwnAllies,duoState,duoSpawnCandidate,duoPublish,actualFriendly,friendly,',
+    'duoConfigured,duoMatchKey,duoTrustedPeer,duoPeerAlly,duoOwnAllies,duoJointOpportunity,duoState,duoSpawnCandidate,duoPublish,actualFriendly,friendly,',
     'setDuo:(partnerID,room,peer)=>{opts.duoEnabled=true;opts.duoPartnerID=partnerID;opts.duoRoom=room;duoLocal.ownID=safeID(myPlayer());duoLocal.partnerID=partnerID;duoLocal.match=duoMatchKey();duoLocal.lastAt=Date.now();duoLocal.peer=peer;},',
     'setPendingBoat:p=>pendingBoat=p,',
     'setPerf:(combat,border,economy)=>runtime={...runtime,combatMs:combat,borderMs:border,economyMs:economy},',
@@ -3187,11 +3187,16 @@ function boot(benchmarkOptions={}) {
   });
   await check('1.20.1 leader retains rendezvous tick between decisions',()=>{
     const x=boot();
+    x.weak.troops=()=>90000;
+    x.strong.troops=()=>5000;
     x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{
-      target:'strong',ready:true,needHelp:false,available:40000,
+      target:'strong',fronts:['strong'],tick:300,home:90000,
+      incoming:0,ready:true,needHelp:false,available:40000,
       reserve:12000,allied:true,strikeTick:null}});
     x.weak.isFriendly=()=>true;
-    const state=x.b.military(x.me,[]);
+    const groups=[{id:'strong',opponent:x.strong,tiles:[6],front:5}];
+    x.b.setGroups(groups);
+    const state=x.b.military(x.me,groups);
     const first=x.b.coordinateDuo(x.me,state,300);
     assert.equal(first.strikeTick,345);
     assert.equal(x.b.coordinateDuo(x.me,state,301).strikeTick,345);
@@ -3210,17 +3215,22 @@ function boot(benchmarkOptions={}) {
   });
   await check('1.20.1 follower uses ready partners scheduled tick',()=>{
     const x=boot();
+    x.me.id=()=> 'zzz';
     x.b.setDuo('strong','KITSU_DUO_123',{id:'strong',state:{
-      target:'weak',ready:true,needHelp:false,available:40000,
+      target:'weak',fronts:['weak'],tick:300,home:85000,
+      incoming:0,ready:true,needHelp:false,available:40000,
       reserve:12000,allied:true,strikeTick:345}});
     x.strong.isFriendly=()=>true;
-    const state=x.b.military(x.me,[]);
+    const groups=[{id:'weak',opponent:x.weak,tiles:[5],front:5}];
+    x.b.setGroups(groups);
+    const state=x.b.military(x.me,groups);
     const plan=x.b.coordinateDuo(x.me,state,300);
     assert.equal(plan.target,'weak');
     assert.equal(plan.strikeTick,345);
     assert.equal(x.b.duoState().strikeTick,345);
     x.b.setDuo('strong','KITSU_DUO_123',{id:'strong',state:{
-      target:'weak',ready:false,needHelp:false,available:40000,
+      target:'weak',fronts:['weak'],tick:301,home:85000,
+      incoming:0,ready:false,needHelp:false,available:40000,
       reserve:12000,allied:true,strikeTick:345}});
     assert.equal(x.b.coordinateDuo(x.me,state,301).strikeTick,null);
   });
