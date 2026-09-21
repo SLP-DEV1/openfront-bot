@@ -1901,10 +1901,13 @@
         // while a different independently safe opportunity is available.
         const alternatives=foes.filter(x=>x.id!==warState.id&&
           targetOpportunity(me,items,s,x));
-        if(opts.impossibleExperiment &&
+        // In Public/Private an observed, independently safe alternative
+        // releases a stalled target even without the Impossible experiment.
+        // Never open two fronts while a stack is still fighting or HOME is hit.
+        if((opts.impossibleExperiment||!hardMode()) &&
           !active.some(a=>attackTargets(a.targetID,warState.id))&&
-          tick-lastEnemySend>110&&alternatives.length&&
-          !recentHostilePressure(tick)){
+          tick-lastEnemySend>(hardMode()?110:260)&&alternatives.length&&
+          s.incoming===0&&!recentHostilePressure(tick)){
           blockedTargets.set(warState.id,Math.max(warState.blockedUntil,tick+160));
           telemetry('war_replan','Festgefahrene Front freigegeben',
             {oldTarget:warState.id,alternatives:alternatives.map(x=>x.id)});
