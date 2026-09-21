@@ -1,10 +1,12 @@
 # OpenFront Solo AggroBot
 
-**Version 1.19.0** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) · Singleplayer, Public und Private · [offene Validierungspunkte](https://github.com/SLP-DEV1/openfront-bot/issues/12)
+**Version 1.19.1** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) · Singleplayer, Public und Private · [offene Validierungspunkte](https://github.com/SLP-DEV1/openfront-bot/issues/12)
 
 Der Bot erkennt neue spielbare Matches, wählt bei manuellem Spawn eine Position und steuert Expansion, Verteidigung, Wirtschaft, Flotte, Handel und Diplomatie. Optional können ein lokaler Brain und eine trainierte Neural-Policy *begrenzt* mitentscheiden. **Es gibt keine belegte garantierte Impossible- oder Multiplayer-Siegquote.**
 
 ## Schnellstart / Update
+
+**1.19.1 – Korrekturen aus der Aegean-Diagnose:** SAM-Preise werden auch bei fehlendem Gold aus Worker-Antworten gelesen und angespart. Unbezahlbare Standorte werden nicht als ungültig zwischengespeichert. Bei bezahlbaren, wiederholt abgelehnten SAM-Standorten wird nach 180 Ticks die übrige Wirtschaft freigegeben; die Suche läuft weiter. Akute Bodenangriffe sperren neue Wirtschafts-/Hafenbauten einschließlich Upgrades. Neue Seelandungen pausieren nach jüngsten Gebiets-/Gebäudeverlusten oder bei beobachteten eingehenden Nukes. Sichtbare Kriegsschiffe entlang eines geraden Routenkorridors erfordern örtliche Begleitung; dieser Korridor ist nur eine Näherung an den tatsächlichen Weg. Zielübernahme und mindestens 120 Ticks gehaltener Brückenkopf werden getrennt protokolliert. Hafenbesitz allein erzeugt kein Marineprofil; neue Profile beginnen mit geringer Konfidenz. Details und Prüfgrenzen: [Diagnosekorrekturen 1.19.1](docs/DIAGNOSE_FIXES_1.19.1.md).
 
 1. Repository aktualisieren: `git pull --ff-only` (nur bei sauberem lokalen Arbeitsbaum; eigene nicht versionierte Dateien vorher sichern). Für den normalen Browser-Betrieb sind nur Browser und Tampermonkey nötig.
 2. Den **gesamten Inhalt von [OpenFront_Solo_AggroBot.user.js](./OpenFront_Solo_AggroBot.user.js)** in Tampermonkey installieren bzw. das vorhandene Skript damit aktualisieren. Bei einem privaten Repository funktioniert ein anonymer GitHub-Raw-Autoupdate-Link nicht verlässlich.

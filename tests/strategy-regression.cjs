@@ -71,6 +71,7 @@ function boot(benchmarkOptions={}) {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
+    'sampleTroops,navalHomeRisk,navalRouteRisk,diagnosticSnapshot,learnFinish,',
     'strategicDirector,economyPosture,observeOpponents,opponentTrend,observeHumanProfiles,observeVictoryThreat,coordinateDuo,planOperation,decisionNote,navalCommitmentRatio,landingThirdPartyRisk,targetHomeRatio,matchContext,rankedDuo,duoFocus,duoBattleCredit,railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,frontPressureForecast,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,offensiveCommitment,globalNavalHomeGuard,observeFronts,qwenStrategyHint,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,samBuildAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'setNeural:m=>{neuralModel=neuralValidate(m);opts.neuralEnabled=!!neuralModel;neuralPolicyCache={key:null,output:null};},neuralStrategicSignals,neuralChannel,',
@@ -95,6 +96,153 @@ function boot(benchmarkOptions={}) {
     setOver:v=>gameOver=v,setGold:v=>gold=v,setHome:v=>home=v};
 }
 (async () => {
+  const asset=(type,tile,id)=>({type:()=>type,tile:()=>tile,id:()=>id,
+    isActive:()=>true,level:()=>1});
+  function samScenario(){
+    const x=boot();x.setTick(2400);x.setGold(1100000);x.setLand(28000);
+    x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Medium'});
+    x.me.units=()=>[asset('City',5000,1),asset('Factory',5020,2)];
+    x.game.units=()=>[{...asset('Missile Silo',6,3),owner:()=>x.weak}];
+    x.me.actions=async(tile,types)=>({buildableUnits:types.map(type=>({type,
+      canBuild:type==='SAM Launcher'&&Number(x.me.gold())<1500000?false:tile,
+      canUpgrade:false,cost:type==='SAM Launcher'?1500000n:125000n}))});
+    return x;
+  }
+  await check('1.19.1 SAM denied by budget still funds actual worker price and builds once funded',async()=>{
+    const x=samScenario();
+    assert.equal(await x.b.economy(x.me,2400,0,[]),false);
+    assert.equal(x.sent.length,0,'do not spend the SAM fund on cheaper alternatives');
+    assert.equal(x.b.economicNeeds(x.me,x.me.units(),[]).savingsTarget,1500000);
+    const probe=x.b.state().diagnostics.find(d=>d.kind==='sam_probe');
+    assert.equal(probe.workerNoOfferCause,'insufficient-gold');
+    assert(probe.unaffordable>0);
+    x.setTick(2420);x.setGold(1500000);
+    assert.equal(await x.b.economy(x.me,2420,0,[]),true,'funded sites must not be negatively cached');
+    assert.equal(x.sent[0].unit,'SAM Launcher');
+  });
+  await check('1.19.1 affordable but unavailable SAM does not freeze economy indefinitely',async()=>{
+    const x=samScenario();x.setGold(1500000);
+    x.me.actions=async(tile,types)=>({buildableUnits:types.map(type=>({type,
+      canBuild:type==='SAM Launcher'?false:tile,canUpgrade:false,
+      cost:type==='SAM Launcher'?1500000n:125000n}))});
+    assert.equal(await x.b.economy(x.me,2400,0,[]),false);
+    x.setTick(2620);
+    assert.equal(await x.b.economy(x.me,2620,0,[]),true);
+    assert.notEqual(x.sent[0].unit,'SAM Launcher','unavailable site is never authorized');
+    assert.equal(x.b.economicNeeds(x.me,x.me.units(),[]).samSearchBlocked,true);
+  });
+  await check('1.19.1 missing price never invents a SAM cost or build authorization',async()=>{
+    const x=samScenario();x.me.actions=async()=>({buildableUnits:[]});
+    assert.equal(await x.b.economy(x.me,2400,0,[]),false);
+    assert.equal(x.b.economicNeeds(x.me,x.me.units(),[]).samQuotedCost,0);
+    assert.equal(x.sent.length,0);
+  });
+  await check('1.19.1 incoming land attack excludes harbor and productive builds, then resumes',async()=>{
+    const x=boot();x.setGold(1000000);
+    x.game.isShore=()=>true;
+    const units=[asset('City',5000,1),asset('Factory',5020,2)];x.me.units=()=>units;
+    const state={...x.b.military(x.me,[]),incoming:30000};
+    x.b.setTroopSnapshot(state);
+    const crisis=x.b.economicNeeds(x.me,units,[5000]);
+    assert(crisis.immediate);
+    assert(crisis.list.some(v=>v.type==='Defense Post'));
+    assert(crisis.list.every(v=>['SAM Launcher','Defense Post'].includes(v.type)));
+    x.b.setTroopSnapshot({...state,incoming:0});
+    assert(x.b.economicNeeds(x.me,units,[5000]).list.some(v=>v.type==='Port'));
+  });
+  await check('1.19.1 incoming attack during worker await cancels economic build',async()=>{
+    const x=boot();x.b.setBoats(false);
+    const actions=x.me.actions;
+    x.me.actions=async(...args)=>{
+      x.me.incomingAttacks=()=>[{troops:60000,attackerID:2}];return actions(...args);
+    };
+    assert.equal(await x.b.economy(x.me,300,0,[5000]),false);
+    assert.equal(x.sent.length,0);
+    assert(x.b.state().diagnostics.some(d=>d.kind==='build_crisis_skip'));
+  });
+  await check('1.19.1 naval pause observes asset loss even when total land recovers',async()=>{
+    const x=boot();x.me.units=()=>[asset('City',5000,1),asset('Port',5020,2)];
+    x.b.sampleTroops(300,x.me);x.setTick(350);
+    x.me.units=()=>[asset('City',5000,1)];
+    x.b.setBoatCtor(class {});
+    assert.equal(x.b.navalHomeRisk(x.me,350),'recent-asset-loss');
+    assert.equal(await x.b.naval(x.me,350,0),false);
+    assert.equal(x.sent.length,0);
+    assert.equal(x.b.navalHomeRisk(x.me,601),null,'pause expires after stable recovery');
+  });
+  await check('1.19.1 naval pause observes land loss and fresh incoming nuke',()=>{
+    const x=boot();x.setLand(28000);x.b.sampleTroops(300,x.me);x.setLand(26000);
+    assert.equal(x.b.navalHomeRisk(x.me,310),'recent-territory-loss');
+    x.setLand(28000);x.game.units=()=>[{...asset('Atom Bomb',1,4),
+      owner:()=>x.weak,targetTile:()=>5000}];
+    assert.equal(x.b.navalHomeRisk(x.me,310),'incoming-nuke');
+  });
+  await check('1.19.1 route screen needs a local escort, distant warship does not count',()=>{
+    const x=boot();x.game.width=()=>1000;x.game.height=()=>1000;
+    x.game.x=t=>t%1000;x.game.y=t=>Math.floor(t/1000);
+    const foe={...asset('Warship',100450,4),owner:()=>x.weak};
+    let tile=900900;const escort={...asset('Warship',0,5),tile:()=>tile,owner:()=>x.me};
+    x.game.units=()=>[foe,escort];
+    assert.equal(x.b.navalRouteRisk(x.me,100100,100800),'unescorted-visible-warship');
+    tile=100460;
+    assert.equal(x.b.navalRouteRisk(x.me,100100,100800),null);
+    x.me.isFriendly=p=>p===x.weak;tile=900900;
+    assert.equal(x.b.navalRouteRisk(x.me,100100,100800),null,'allied ships do not block route');
+  });
+  await check('1.19.1 28-percent remote landing cannot slip below global reserve gate',()=>{
+    const x=boot();x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Medium'});
+    x.strong.troops=()=>4000000;
+    const s={home:2032444,reserve:600000,incoming:0};
+    assert(x.b.globalNavalHomeGuard(x.me,x.weak,s,585343,[]).amount<585343);
+  });
+  await check('1.19.1 unresolved landing requires escort at this departure or destination',()=>{
+    const x=boot();x.game.x=t=>t%1000;x.game.y=t=>Math.floor(t/1000);
+    x.b.state().marineStats.transportUnresolved=1;
+    let tile=900900;
+    x.game.units=()=>[{...asset('Warship',0,5),tile:()=>tile,owner:()=>x.me}];
+    assert.equal(x.b.navalRouteRisk(x.me,100100,100800),'no-local-escort-after-unresolved-landing');
+    tile=100150;assert.equal(x.b.navalRouteRisk(x.me,100100,100800),null);
+  });
+  await check('1.19.1 nuke appearing during naval worker await stops dispatch',async()=>{
+    const x=boot();x.b.setBoatCtor(class {});
+    x.me.actions=async()=>{
+      x.game.units=()=>[{...asset('Atom Bomb',1,4),owner:()=>x.weak,targetTile:()=>5000}];
+      return {buildableUnits:[{type:'Transport',canBuild:1,cost:0n}]};
+    };
+    assert.equal(await x.b.naval(x.me,300,0),false);assert.equal(x.sent.length,0);
+  });
+  await check('1.19.1 historical learning victory cannot masquerade as current match result',()=>{
+    const x=boot();x.b.learnFinish('victory');
+    const d=x.b.diagnosticSnapshot();
+    assert.equal(d.learning.lastResult,'victory');
+    assert.equal(d.learning.lastResultScope,'persistent-learning-history');
+    assert.equal(d.learning.currentMatchResult,null);assert.equal(d.gameEnd,null);
+  });
+  await check('1.19.1 beachhead success requires continued ownership and records early loss',()=>{
+    for(const lost of [false,true]){
+      const x=boot();x.b.setBoatCtor(class {});
+      assert(x.b.sendMarineTransport(x.me,5,12000,300,'test','player:weak'));
+      x.game.units=()=>[{...asset('Transport',1,99),owner:()=>x.me,targetTile:()=>5}];
+      x.game.ownerID=()=>2;x.b.inspectMarine(x.me,304);
+      x.game.owner=()=>x.me;x.game.ownerID=()=>1;x.b.inspectMarine(x.me,310);
+      assert.equal(x.b.state().marineStats.transportArrived,1);
+      assert.equal(x.b.state().marineStats.bridgeheadHeld,0);
+      x.b.inspectMarine(x.me,400);assert.equal(x.b.state().marineStats.bridgeheadHeld,0);
+      if(lost){x.game.owner=()=>x.weak;x.game.ownerID=()=>2;}
+      x.b.inspectMarine(x.me,430);
+      assert.equal(x.b.state().marineStats[lost?'bridgeheadLost':'bridgeheadHeld'],1);
+    }
+  });
+  await check('1.19.1 ports alone are not naval focus and changed profile resets confidence',()=>{
+    const x=boot();x.weak.type=()=> 'HUMAN';
+    x.weak.units=()=>[asset('Port',5,1),asset('Port',7,2)];
+    for(let t=300;t<1300;t+=80)x.b.observeHumanProfiles(x.me,t);
+    assert.equal(x.b.state().opponentProfiles[0].profile,'Unbestimmt');
+    x.weak.units=()=>[asset('Transport',5,3)];x.b.observeHumanProfiles(x.me,1400);
+    const p=x.b.state().opponentProfiles[0];
+    assert.equal(p.profile,'Marinefokus');assert.equal(p.transports,1);
+    assert(p.confidence<.4,'old samples cannot confer instant confidence');
+  });
   await check('human profiles use observations, per-match confidence and stop on alliance', () => {
     const x=boot();x.weak.type=()=> 'HUMAN';
     x.weak.outgoingAttacks=()=>[{troops:25000,targetID:1,retreating:false}];
@@ -105,7 +253,7 @@ function boot(benchmarkOptions={}) {
     x.b.observeHumanProfiles(x.me,400);
     x.b.observeHumanProfiles(x.me,500);
     p=x.b.state().opponentProfiles.find(p=>p.id==='weak');
-    assert(p.confidence>=.45);
+    assert(p.confidence>=.4&&p.confidence<.6);
     x.me.isFriendly=y=>y===x.weak;
     x.b.observeHumanProfiles(x.me,600);
     assert(!x.b.state().opponentProfiles.some(p=>p.id==='weak'));
@@ -667,7 +815,7 @@ function boot(benchmarkOptions={}) {
     x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
       type,canBuild:tile,canUpgrade:false,cost:125000n}))});
     assert.equal(await x.b.economy(x.me,300,0,[]),false);
-    assert.match(x.b.state().economicStatus,/Gold für gültige Bauoption fehlt/);
+    assert.match(x.b.state().economicStatus,/Gold für Bauoption fehlt/);
   });
   await check('issue #5 potential neighbor does not cancel Silo fund', async () => {
     const x=boot();x.setTick(2400);x.setLand(51613);x.setGold(900000);
