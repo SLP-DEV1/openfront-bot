@@ -4088,6 +4088,20 @@
       }
     }).catch(e=>{diplomacyStatus='Allianzangebot fehlgeschlagen: '+String(e.message);});
   }
+  function landingFailure(boat,tick,tile,reason){
+    const key=boat.key||String(boat.dest),prior=landingFailures.get(key);
+    const count=prior&&tick-prior.tick<1800?Math.min(5,prior.count+1):1;
+    landingFailures.set(key,{count,tick,tile,reason});
+    if(landingFailures.size>60)for(const [k,v] of landingFailures)
+      if(tick-v.tick>1800)landingFailures.delete(k);
+    const until=tick+Math.min(1200,280+count*180);
+    navalCooldown.set(key,Math.max(navalCooldown.get(key)||0,until));
+    navalSiteNegative.set(tile,Math.max(navalSiteNegative.get(tile)||0,
+      tick+Math.min(1600,750+count*200)));
+    navalBackoffUntil=Math.max(navalBackoffUntil,tick+Math.min(480,120+count*100));
+    telemetry('landing_failure_guard','Landungsziel nach Verlust vorübergehend gesperrt',
+      {key,tile,count,until,reason,evidence:'observed-no-confirmed-arrival'});
+  }
   function inspectMarine(me,tick){
     const units=(()=>{try{return game.units?.()||[];}catch(_){return [];}})();
     const mine=safeID(me),own=type=>units.filter(u=>
@@ -4150,6 +4164,7 @@
           {dest:boat.dest,resolvedDest:landingTile,target:boat.target,shipIds:boat.shipIds});
         landingAudits.push({tile:landingTile,target:boat.target,key:boat.key,tick});
         navalCooldown.set(boat.key,tick+140);
+        landingFailures.delete(boat.key);
         navalSiteNegative.delete(landingTile);
         pendingBoat=null;
       }else if(boat.seen && tick-boat.tick>40 &&
@@ -4159,8 +4174,7 @@
         telemetry('boat_unresolved','Transport nicht mehr sichtbar; kein eigener Zielbesitz',
           {dest:boat.dest,resolvedDest:landingTile,target:boat.target,shipIds:boat.shipIds,
             reason:'ship-disappeared'});
-        navalSiteNegative.set(landingTile,tick+900);
-        navalCooldown.set(boat.key,tick+350);navalBackoffUntil=tick+160;pendingBoat=null;
+        landingFailure(boat,tick,landingTile,'ship-disappeared');pendingBoat=null;
       }else if(boat.seen && tick-boat.tick>650 && !boat.delayed){
         boat.delayed=true;fleetStatus='Transport noch unterwegs / Landung ungeklärt';
         telemetry('boat_delayed',fleetStatus,{dest:boat.dest,resolvedDest:landingTile,
@@ -4174,8 +4188,8 @@
         telemetry(boat.seen?'boat_unresolved':'boat_unconfirmed',fleetStatus,
           {dest:boat.dest,resolvedDest:landingTile,target:boat.target,troops:boat.troops,
             reason:boat.seen?'stalled-no-owned-coast':'ship-not-seen'});
-        navalSiteNegative.set(landingTile,tick+900);
-        navalCooldown.set(boat.key,tick+400);navalBackoffUntil=tick+240;pendingBoat=null;
+        landingFailure(boat,tick,landingTile,
+          boat.seen?'stalled-no-owned-coast':'ship-not-seen');pendingBoat=null;
       }
     }
     if(pendingWarship){
@@ -4583,6 +4597,16 @@
     // without front groups underestimates the reserve near stronger neighbors.
     for(const [tile,until] of navalSiteNegative)if(tick>=until)navalSiteNegative.delete(tile);
     const navyState=military(me,strategic.groups),spare=navyState.available;
+    // Historical transport failures are observations, not proof of why a
+    // ship vanished. Pause repeated attempts, then demand a local escort.
+    const recentFailures=[...landingFailures.values()].filter(v=>tick-v.tick<1200);
+    if(recentFailures.length>=3 &&
+      !(game.units?.()||[]).some(u=>u.type?.()==='Warship'&&u.isActive?.()&&
+        safeID(u.owner?.())===safeID(me))){
+      decisionNote('marine-pause','Wiederholte Landungen ohne Zielbestätigung',
+        ['Kriegsschiff bauen und Route erneut prüfen'],tick);
+      return false;
+    }
     // After an observed failed landing, build an escort via fleetDefense
     // before committing another player transport to a different beach.
     if(marineStats.transportUnresolved>0 &&
@@ -4612,6 +4636,11 @@
     for(const foe of foes.slice(0,6)){
       if(navyState.strongest>=navyState.home*.85)break;
       if((navalCooldown.get('player:'+safeID(foe))||0)>tick)continue;
+      const failures=landingFailures.get('player:'+safeID(foe));
+      if(failures?.count>=2&&tick-failures.tick<1800)
+        decisionNote('marine-pause','Landungsziel '+nameOf(foe)+
+          ': '+failures.count+' unbestätigte Ankünfte',
+          ['Andere Küste oder lokale Eskorte erforderlich'],tick);
       const navyRatio=navalCommitmentRatio(me,foe,tick);
       if(spare<number(()=>foe.troops(),Infinity)*navyRatio ||
         number(()=>me.troops())<number(()=>game.config().maxTroops(me),1)*.47)continue;
