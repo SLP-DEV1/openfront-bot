@@ -3332,6 +3332,52 @@ function boot(benchmarkOptions={}) {
     peer.state.allied=true;x.weak.isFriendly=()=>false;
     assert.equal(available(),null);
   });
+  await check('1.20.5 actual attack dispatch joins a scheduled safe common front',async()=>{
+    const x=boot();x.weak.troops=()=>90000;x.strong.troops=()=>42000;
+    const groups=[{id:'strong',opponent:x.strong,front:8,tiles:[6]}];
+    x.b.setGroups(groups);
+    const peer={id:'weak',state:{tick:300,home:90000,incoming:0,
+      fronts:['strong'],target:'strong',strikeTick:345,allied:true,
+      available:40000,reserve:45000,ready:true,needHelp:false}};
+    x.b.setDuo('weak','KITSU_DUO_123',peer);x.weak.isFriendly=()=>true;
+    let army=x.b.military(x.me,groups);
+    const originalReserve=army.reserve;
+    assert.equal(x.b.targetOpportunityCheck(x.me,groups,army,groups[0]).ok,false,
+      'alone there is insufficient force for the normal target ratio');
+    x.b.coordinateDuo(x.me,army,300);
+    x.setTick(350);peer.state.tick=350;
+    army=x.b.military(x.me,groups);
+    x.b.coordinateDuo(x.me,army,350);
+    assert.equal(army.reserve,originalReserve,'Duo may not silently lower the home reserve');
+    const context=x.b.strategy(x.me,groups,army);
+    const ranked=x.b.rankedTargets(groups,x.me,350,army,context);
+    assert.equal(ranked[0]?.id,'strong');
+    x.b.planOperation(x.me,groups,army,350);
+    assert.equal(await x.b.attack(x.me,350,0,ranked,army),true);
+    assert.equal(x.sent[0].targetID,'strong');
+    assert(x.sent[0].troops<=army.available,
+      'game command must use own independently available troops only');
+    assert(x.me.troops()-x.sent[0].troops>=originalReserve);
+  });
+  await check('1.20.5 second bot may join first already-observed attack',()=>{
+    const x=boot();x.weak.troops=()=>90000;x.strong.troops=()=>42000;
+    const groups=[{id:'strong',opponent:x.strong,front:8,tiles:[6]}];
+    x.b.setGroups(groups);
+    const peer={id:'weak',state:{tick:300,home:90000,incoming:0,
+      fronts:['strong'],target:'strong',strikeTick:345,allied:true,
+      available:40000,reserve:45000,ready:true,needHelp:false}};
+    x.b.setDuo('weak','KITSU_DUO_123',peer);x.weak.isFriendly=()=>true;
+    x.b.coordinateDuo(x.me,x.b.military(x.me,groups),300);
+    x.setTick(350);peer.state.tick=350;
+    const army=x.b.military(x.me,groups);
+    x.b.coordinateDuo(x.me,army,350);
+    x.weak.outgoingAttacks=()=>[
+      {targetID:'strong',troops:46655,retreating:false}];
+    peer.state.ready=false;peer.state.strikeTick=null;
+    peer.state.available=0;peer.state.reserve=90000;
+    assert.equal(x.b.coordinateDuo(x.me,army,350).strikeTick,345);
+    assert(x.b.duoJointOpportunity(x.me,groups,army,groups[0],350,true));
+  });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
 })();
