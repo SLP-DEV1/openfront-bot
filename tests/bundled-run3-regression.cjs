@@ -19,7 +19,7 @@ const expected = original.replace(marker, 'const NEURAL_BUNDLED_MODEL = ' + JSON
   .replace('// @name         OpenFront Solo AggroBot',
     '// @name         OpenFront AggroBot Impossible Run3 Neural')
   .replace('// @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.',
-    '// @description  AggroBot 1.19.6 with bundled Impossible Run3 schema-4 champion (experimental); no external Brain or Qwen.');
+    '// @description  AggroBot 1.20.0 with bundled Impossible Run3 schema-4 champion (experimental); no external Brain or Qwen.');
 assert.equal(deployed, expected, 'Live bundle must match source and reviewed champion');
 execFileSync(process.execPath, ['--check', path.join(root, 'OpenFront_AggroBot_Impossible_Run3.user.js')], {stdio:'pipe'});
 console.log('PASS bundled Impossible Run3: verified model, source parity and JS syntax');
