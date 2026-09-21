@@ -1,4 +1,4 @@
-# AggroBot 1.20.0 – lokaler Duo-Modus (zwei Browser, ein PC)
+# AggroBot 1.20.1 – lokaler Duo-Modus (zwei Browser, ein PC)
 
 **Zweck:** Zwei separat laufende OpenFront-Userscripts können Beobachtungen über denselben
 localhost-Relay austauschen. Jeder Browser kontrolliert **nur den eigenen Spieler**.
@@ -14,7 +14,7 @@ kein Ersatz für Worker-Aktionsprüfung, Eigentumskontrolle oder Heimreserve.
    OpenFront-Lobby beitreten. Entweder zweimal das normale
    `OpenFront_Solo_AggroBot.user.js` oder zweimal
    `OpenFront_AggroBot_Impossible_Run3.user.js` mit eingebettetem Modell.
-3. In **beiden Panels** `🤝 Duo-Modus` öffnen. Die im eigenen Panel gezeigte
+3. In **beiden Panels** `🤝 Duo-Modus` öffnen. Den Partnernamen optional als Anzeigehilfe eintragen; die tatsächliche PlayerID bleibt für die Zuordnung verbindlich. Die im eigenen Panel gezeigte
    **eigene Spieler-ID** in das Feld **Partner-Spieler-ID** des jeweils anderen
    Browsers eintragen. **Nicht den Anzeigenamen** verwenden. Beide tragen
    **denselben** Raumcode ein, z. B. `KITSU_DUO_128` (6–64 Zeichen, Buchstaben,
@@ -39,12 +39,12 @@ kein Ersatz für Worker-Aktionsprüfung, Eigentumskontrolle oder Heimreserve.
   Spiel-Worker-geprüften Antrag. Die Anzeige „Bündnis aktiv“ folgt **nur**
   dem echten GameView/Teamstatus. Wenn Allianzen serverseitig deaktiviert
   oder nicht legal sind, sendet der Bot keine erzwungene Anfrage.
-- **Gemeinsame Operation:** Übertragen werden Ziel-ID, Bereitschaft,
+- **Gemeinsame Operation:** Übertragen werden Ziel-ID, gemeinsamer Angriffstick, Bereitschaft,
   Hilfebedarf, freie Truppen, Heimreserve und Rollenhinweis. Nur nach
   sichtbarer Allianz können solche Hinweise die Priorität eines
   unabhängig **legalen und sicheren** Ziels verändern. Eine angekündigte
   Partnerarmee gilt **nicht** als tatsächlich eingesetzte Truppe; allein
-  sichtbare Angriffe dürfen dazu gerechnet werden. Der Partner kann bei
+  sichtbare Angriffe dürfen dazu gerechnet werden. Das gilt nun auch für eine lokal bestätigte FFA-Allianz. Wenn beide bereit sind, gibt die niedrigere PlayerID einen Angriffstick vor; die zweite übernimmt ihn. Akute Verteidigung und ein bereits aktiver Krieg gehen vor. Soweit das Spiel es erlaubt, können beide sich mit Truppen oder Gold helfen, ohne eigene Heim-/Goldreserven zu verletzen. Der Partner kann bei
   Bedrohung verteidigen, während der andere weiter aufbaut.
 - **Ausfall:** Nach wenigen Sekunden ohne validierte Partnerdaten werden
   keine Relay-Operationshinweise mehr verwendet; beide Bots bleiben autonom.
