@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.20.9
+// @version      1.20.10
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.20.9', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.20.10', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -413,6 +413,9 @@
   const benchmark = ['localhost','127.0.0.1','[::1]'].includes(window.location?.hostname) &&
     window.__OF_BENCHMARK_CONFIG__?.enabled===true ? window.__OF_BENCHMARK_CONFIG__ : null;
   let recordSequence=0,recordCounts={},recordsDropped=0,streamErrors=0;
+  // Stable per-match IDs identify individual emitted actions. An emitted
+  // intent is NOT proof the worker accepted it or that it achieved a result.
+  let actionSequence=0,lastActionId=null;
   let monitorSession='';
   let budgetCommitments=[];
   let attackBlockReport=null,lastAttackBlockReport=-Infinity;
@@ -523,6 +526,8 @@
       defense:{status:defenseStatus,stats:defenseStats,pendingRetreats:[...retreatRequests.values()]},
       rockets:{confirmed:nukeShots,attempts:nukeAttempts,unconfirmed:nukeUnconfirmed,pending:nukePending},
       diplomacy:{status:diplomacyStatus,stats:diplomacyStats,pending:[...diplomacyPending.values()]},records:diagnostics,createdAt:new Date().toISOString()};
+    details.actionTrace={nextSequence:actionSequence+1,lastActionId,
+      semantics:'sent-is-not-confirmed; confirmations are observations'};
     details.recording={total:recordSequence,counts:{...recordCounts},dropped:recordsDropped,
       firstSequence:diagnostics[0]?.seq??null,streamErrors};
     return jsonCopy(details);
@@ -764,6 +769,7 @@
     lastRecoveryReason='';lastBattle=null;pendingAttack=null;targetIntelCache.clear();frontMemory.clear();opponentHistory.clear();lastEconomyPosture='—';lastDirectorDecision=null;neuralPolicyCache={key:null,output:null};lastFrontWarning=-Infinity;
     attackReceipts={confirmed:0,unconfirmed:0,territoryGained:0};blockedTargets.clear();
     attackCommands=[];attackCommandSequence=0;observedAttacks.clear();
+    actionSequence=0;lastActionId=null;
     failedEconomyProbes=0;successfulEconomyTick=-Infinity;warWaitSince=-Infinity;
     coreQuotes.clear();coreFunding=null;lastCoreFundingReport=-Infinity;
     lastEconomyProbeReport=null;neuralDecisionEvidence=null;
@@ -918,14 +924,20 @@
       const beforeIds=kind==='attack'?(myPlayer()?.outgoingAttacks?.()||[]).map(a=>a.id):[];
       const event=new ctors[kind](...args);
       bus.emit(event);actions.push(Date.now());lastEmission=Date.now();totalSent++;
+      const actionId=monitorSession+':a'+(++actionSequence);
+      lastActionId=actionId;
+      const decisionId=monitorSession+':t'+number(()=>game.ticks(),0);
       if(kind==='attack'){
-        const command={commandId:++attackCommandSequence,tick:number(()=>game.ticks()),
+        const command={commandId:++attackCommandSequence,actionId,decisionId,
+          tick:number(()=>game.ticks()),
           target:attackTargetID(args[0]),amount:Number(args[1]),beforeIds,matchedStack:null};
         attackCommands.push(command);
         if(attackCommands.length>80)attackCommands.shift();
         telemetry('attack_command',description,{...command});
       }
-      log(description);telemetry('action',description,{intent:kind});return true;
+      log(description);telemetry('action',description,
+        {intent:kind,actionId,decisionId,emission:'event-bus',
+          effect:'unconfirmed'});return true;
     } catch(e) {totalFailed++;log('Event fehlgeschlagen: '+String(e.message));return false;}
   }
   function valid(x,y) {return x>=0&&y>=0&&x<game.width()&&y<game.height();}
@@ -2275,7 +2287,9 @@
     if(newStack||landChanged){
       attackReceipts.confirmed++;
       telemetry('attack_confirmed','Angriff im Spielzustand erkannt: '+p.name,
-        {target:p.id,troops:p.amount,via:newStack?'active_stack':'territory'});
+        {actionId:p.actionId??null,target:p.id,troops:p.amount,
+          via:newStack?'active_stack':'territory',
+          evidence:'observed-change-not-causal-proof'});
       if(p.id!==null){
         lastBattle={id:p.id,name:p.name,tick:p.tick,
           enemyLand:p.enemyLand,ownLand:p.ownLand,
@@ -2292,7 +2306,8 @@
     if(tick-p.tick<85)return;
     attackReceipts.unconfirmed++;
     telemetry('attack_unconfirmed','Kein Angriff/kein Gebiet nach Intent: '+p.name,
-      {target:p.id,troops:p.amount});
+      {actionId:p.actionId??null,target:p.id,troops:p.amount,
+        evidence:'unobserved-within-window'});
     log('ANGRIFF NICHT BESTÄTIGT: '+p.name+' · Ziel neu prüfen');
     blockedTargets.set(p.id,tick+90);
     if(warState.id===p.id && !out.length){
@@ -3057,7 +3072,7 @@
       if(amount<Math.max(500,enemyHome*1.10)||fresh.home-amount<homeFloor)continue;
       if(send('attack',[id,amount],'KONTROLLIERTER GEGENANGRIFF → '+nameOf(current))){
         const out=fresh.out.filter(x=>attackTargets(x.targetID,id)&&!x.retreating);
-        pendingAttack={id,name:nameOf(current),tick,amount,ownLand:number(()=>me.numTilesOwned()),
+        pendingAttack={actionId:lastActionId,id,name:nameOf(current),tick,amount,ownLand:number(()=>me.numTilesOwned()),
           enemyLand:number(()=>current.numTilesOwned()),beforeIds:out.map(x=>x.id),
           beforeTroops:out.reduce((v,x)=>v+x.troops,0)};
         cooldowns.set(key,tick);lastEnemySend=tick;return true;
@@ -3155,7 +3170,7 @@
               ' für '+operation.targetName,[],tick);}
         }
         const before=s.out.filter(a=>attackTargets(a.targetID,item.id)&&!a.retreating);
-        pendingAttack={id:item.id,name:label,tick,amount,ownLand:number(()=>me.numTilesOwned()),
+        pendingAttack={actionId:lastActionId,id:item.id,name:label,tick,amount,ownLand:number(()=>me.numTilesOwned()),
           enemyLand:item.opponent?number(()=>item.opponent.numTilesOwned()):0,
           beforeIds:before.map(a=>a.id),beforeTroops:before.reduce((v,a)=>v+a.troops,0),
           forecast:item.forecast||null};
@@ -3202,7 +3217,9 @@
     if(buildObserved(economicPending,units)){
       economicStatus='Bestätigt: '+economicPending.type;
       successfulEconomyTick=tick;failedEconomyProbes=0;
-      telemetry('build_confirmed',economicStatus,{type:economicPending.type,kind:economicPending.kind});
+      telemetry('build_confirmed',economicStatus,
+        {actionId:economicPending.actionId??null,type:economicPending.type,
+          kind:economicPending.kind,evidence:'structure-or-level-observed'});
       if(economicPending.type==='Port')telemetry('port_confirmed','Hafen im Spielzustand bestätigt',
         {tile:economicPending.tile,buildKind:economicPending.kind});
       if(['City','Factory','Port'].includes(economicPending.type)){
@@ -3226,7 +3243,8 @@
     failedEconomyProbes++;
     log('BAU nicht bestätigt: '+economicPending.type+' · neuen Standort suchen');
     telemetry('build_unconfirmed','Bauauftrag nicht im Spielzustand bestätigt',
-      {type:economicPending.type,tile:economicPending.tile});
+      {actionId:economicPending.actionId??null,type:economicPending.type,
+        tile:economicPending.tile,evidence:'unobserved-within-window'});
     economicPending=null;return false;
   }
   // Cheap, cached strategic view of visible missiles, silos, structures and SAM coverage.
@@ -4279,7 +4297,8 @@
     if(!spendBudget(me,chosen.cost,chosen.type,false,tiles))return false;
     if(send(chosen.kind,args,`${chosen.kind==='upgrade'?'UPGRADE':'BAU'} ${chosen.type} · ${chosen.cost.toLocaleString()} Gold`)){
       commitGoldSpend(me,chosen.cost,chosen.type);
-      economicPending={...chosen,tick};failedEconomyProbes=0;lastEconomy=tick;lastEconomicAction=tick;
+      economicPending={...chosen,tick,actionId:lastActionId};
+      failedEconomyProbes=0;lastEconomy=tick;lastEconomicAction=tick;
       if(chosen.type==='SAM Launcher')telemetry('sam_intent','SAM-Bau angefordert',
         {tile:chosen.tile,gold:requirements.gold,cost:chosen.cost,
           uncovered:requirements.intel.uncovered.length});
