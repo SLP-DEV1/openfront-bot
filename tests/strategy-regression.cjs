@@ -79,7 +79,7 @@ function boot(benchmarkOptions={}) {
     'setPortBackoff:(fail,tick)=>{portProbeFailures=fail;lastPortRetryTick=tick;},',
     'setWarWait:n=>warWaitSince=n,setEconFails:n=>failedEconomyProbes=n,',
     'setPending:p=>pendingAttack=p,setLastBattle:p=>lastBattle=p,',
-    'setWar:(id,name)=>warState={id,name,since:game.ticks(),blockedUntil:-Infinity},',
+    'setWar:(id,name)=>warState={id,name,since:game.ticks(),blockedUntil:-Infinity},setWarBlockUntil:n=>warState.blockedUntil=n,',
     'setGroups:groups=>strategic.groups=groups,',
     'setBoats:yes=>opts.boats=yes,setBoatCtor:C=>ctors.boat=C,',
     'setCancelCtor:C=>ctors.cancel=C,setTroopSnapshot:t=>troopSnapshot=t,setCtor:(key,C)=>ctors[key]=C,',
@@ -2913,6 +2913,28 @@ function boot(benchmarkOptions={}) {
     assert(report.targets.some(t=>t.target==='weak'&&t.reason==='war-lock'));
     assert.equal(x.sent.length,0,'diagnostic never sends attack');
     assert.equal(x.b.diagnosticSnapshot().attackBlockReport.tick,300);
+  });
+  await check('1.19.5 Public stalled-war replan still requires independently safe alternative',()=>{
+    const x=boot();
+    x.game.config().gameConfig=()=>({gameType:'Public',gameMode:'FFA',difficulty:'Medium'});
+    x.setTick(600);
+    const groups=[{id:'weak',opponent:x.weak,tiles:[5],front:10},
+      {id:'strong',opponent:x.strong,tiles:[6],front:10}];
+    x.b.setGroups(groups);x.b.setWar('strong','strong');
+    x.b.setWarBlockUntil(1000);
+    const s=x.b.military(x.me,groups);
+    assert.equal(x.b.targetOpportunity(x.me,groups,s,groups[0]),true);
+    x.b.manageWar(x.me,groups,s,600);
+    assert.equal(x.b.state().warState.id,null);
+    assert.equal(x.sent.length,0,'release does not emit new attack');
+    assert(x.b.state().diagnostics.some(r=>r.kind==='war_replan'));
+    const y=boot();
+    y.game.config().gameConfig=()=>({gameType:'Public',gameMode:'FFA',difficulty:'Medium'});
+    y.setTick(600);y.b.setGroups(groups);
+    y.b.setWar('strong','strong');y.b.setWarBlockUntil(1000);
+    y.me.incomingAttacks=()=>[{troops:1000,retreating:false}];
+    y.b.manageWar(y.me,groups,y.b.military(y.me,groups),600);
+    assert.equal(y.b.state().warState.id,'strong','incoming threat vetoes replan');
   });
   await check('1.19.5 warns on recent territory plus structure loss',()=>{
     const x=boot();let structures=[
