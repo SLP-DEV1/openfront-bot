@@ -27,7 +27,10 @@
     opts={...defaults,...JSON.parse(localStorage.getItem('of-solo-aggrobot-v1110')||localStorage.getItem('of-solo-aggrobot-v11010')||localStorage.getItem('of-solo-aggrobot-v1109')||localStorage.getItem('of-solo-aggrobot-v1108')||localStorage.getItem('of-solo-aggrobot-v1107')||localStorage.getItem('of-solo-aggrobot-v1106')||localStorage.getItem('of-solo-aggrobot-v1105')||localStorage.getItem('of-solo-aggrobot-v1104')||localStorage.getItem('of-solo-aggrobot-v1103')||localStorage.getItem('of-solo-aggrobot-v1102')||localStorage.getItem('of-solo-aggrobot-v1101')||localStorage.getItem('of-solo-aggrobot-v1100')||localStorage.getItem('of-solo-aggrobot-v199')||localStorage.getItem('of-solo-aggrobot-v198')||localStorage.getItem('of-solo-aggrobot-v197')||localStorage.getItem('of-solo-aggrobot-v196')||localStorage.getItem('of-solo-aggrobot-v195')||localStorage.getItem('of-solo-aggrobot-v194')||localStorage.getItem('of-solo-aggrobot-v193')||localStorage.getItem('of-solo-aggrobot-v192')||localStorage.getItem('of-solo-aggrobot-v191')||localStorage.getItem('of-solo-aggrobot-v190')||localStorage.getItem('of-solo-aggrobot-v181')||localStorage.getItem('of-solo-aggrobot-v18')||localStorage.getItem('of-solo-aggrobot-v17')||'{}')};
     // Only import user-adjustable preferences, never a previously enabled bot.
   }}catch(_){}
-  // Ignore retired Brain/Qwen settings imported from older installations.
+  // Drop retired localhost Brain/Qwen preferences without keeping the old token
+  // in the active options key; browser-only learning and neural settings survive.
+  const retiredBrainSettings=['brainEnabled','brainToken','qwenPolicy']
+    .some(key=>Object.prototype.hasOwnProperty.call(opts,key));
   delete opts.brainEnabled;delete opts.brainToken;delete opts.qwenPolicy;
   opts.enabled = false;                         // Start only after a playable match and EventBus are discovered.
   // One-time v1.10 migration: full autonomy includes marine operation;
@@ -35,6 +38,7 @@
   if(!localStorage.getItem(KEY) && opts.fullAuto)opts.boats=true;
   if(opts.fullAuto)opts.autoStrategy=true;     // Full autonomy includes strategy selection.
   const persist = () => {try {localStorage.setItem(KEY,JSON.stringify(opts));} catch (_) {}};
+  if(retiredBrainSettings)persist();
 
   // Deployment replaces only the literal below; benchmark loads a signed-by-hash
   // local model from its isolated loopback storage. No browser network fetches.
