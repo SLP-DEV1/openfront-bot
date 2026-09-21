@@ -3446,6 +3446,36 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.sent[0].recipient,x.strong);
     assert.equal(x.b.state().diplomacyStatus.includes('Bestätigung'),true);
   });
+  await check('1.20.6 confirmed partner crisis cancels launch before own invasion',()=>{
+    const x=boot();x.weak.troops=()=>90000;x.strong.troops=()=>42000;
+    const groups=[{id:'strong',opponent:x.strong,tiles:[6],front:8}];
+    x.b.setGroups(groups);x.weak.isFriendly=()=>true;
+    const peer={id:'weak',state:{tick:300,home:90000,incoming:0,
+      fronts:['strong'],target:'strong',strikeTick:null,allied:true,
+      available:40000,reserve:45000,ready:true,warning:0,needHelp:false}};
+    x.b.setDuo('weak','KITSU_DUO_123',peer);
+    assert.equal(x.b.coordinateDuo(x.me,x.b.military(x.me,groups),300).strikeTick,345);
+    x.setTick(310);peer.state.tick=310;peer.state.warning=2;
+    const aborted=x.b.coordinateDuo(x.me,x.b.military(x.me,groups),310);
+    assert.equal(aborted.strikeTick,null);
+    assert.equal(aborted.role,'Partner unter Druck unterstützen');
+  });
+  await check('1.20.6 confirmed peer third-party friend receives own real alliance offer',async()=>{
+    const x=boot();x.weak.isFriendly=()=>true;
+    x.me.actions=async()=>({interaction:{canSendAllianceRequest:true}});
+    x.b.setGroups([{id:'strong',opponent:x.strong,front:5,tiles:[6]}]);
+    x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{
+      target:null,warTarget:null,allies:['strong'],allied:true}});
+    x.b.setAllianceCtor(class Alliance {
+      constructor(requestor,recipient){this.requestor=requestor;this.recipient=recipient;}
+    });
+    x.b.diplomacyTickSafe();
+    await Promise.resolve();await Promise.resolve();await Promise.resolve();
+    assert.equal(x.sent.length,1);
+    assert.equal(x.sent[0].recipient,x.strong);
+    assert.equal(x.b.actualFriendly(x.strong,x.me),false,
+      'only the game can confirm the follow-up request');
+  });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
 })();
