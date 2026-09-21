@@ -3431,8 +3431,14 @@
     }
     const coastSites=ports===0&&opts.boats?
       portCoastalAnchors(me,tiles,nowTick,24):[];
+    const tradePeer=duoTrustedPeer()?.player;
+    const peerPorts=tradePeer&&actualFriendly(tradePeer,me)?
+      (tradePeer.units?.()||[]).filter(u=>u.isActive?.()&&
+        u.type?.()==='Port'&&!u.isUnderConstruction?.()).length:0;
+    const duoTradeReady=ports===0&&peerPorts>0;
     const portMilestone=!!(opts.boats&&portEnabled&&ports===0&&!startup&&
       coastSites.length&&portProbeFailures<8);
+    const tradePortMilestone=portMilestone&&duoTradeReady;
     const basic=(cityEnabled&&cities<2)||(factoryEnabled&&factories<2);
     // Never buy decorative defense posts while the first city/factory are still
     // unaffordable. Only a *real* incoming offensive can override the basics.
@@ -3486,9 +3492,10 @@
           (gold<450000?15:0)+(pressure<.60&&factories>0?10:0)+
           (factories<2&&cities>=2?24:0)+(capStalled?pressure>=.98?355:pressure>=.95?295:pressure>=.90?230:135:0)-
           (incomeStatus.observed&&incomeStatus.train===0&&factories>=2?26:0)},
-      {type:'Port',desired:wantedPort,score:portMilestone?430:
+      {type:'Port',desired:wantedPort,score:tradePortMilestone?485:portMilestone?430:
         59+(neural?.portPriority||0)*90+econBoost/2+(posture==='breakout'?115:0)+(ports===0&&wantedPort?12:0)+
-        (incomeStatus.observed&&incomeStatus.trade===0&&ports===0?35:0)+(ports<2&&coastSites.length?22:0)},
+        (incomeStatus.observed&&incomeStatus.trade===0&&ports===0?35:0)+
+        (duoTradeReady?55:0)+(ports<2&&coastSites.length?22:0)},
       {type:'Defense Post',desired:wantedDefense,score:immediate?310+defBoost:threatened?(basic?36:77)+(neural?.defensePriority||0)*90+defBoost+(posture==='defensive'?24:0):20},
       {type:'SAM Launcher',desired:wantedSAM,score:enemyNukes?510+defBoost:threat?465+defBoost:proactiveSAM?295+defBoost:40},
       {type:'Missile Silo',desired:wantedSilo,score:siloCount===0?305:opts.nukes?(late?131:94)+(neural?.nuclearPriority||0)*75+(gold>6000000?13:0):0}
