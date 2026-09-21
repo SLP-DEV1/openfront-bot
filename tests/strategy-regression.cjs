@@ -71,7 +71,7 @@ function boot(benchmarkOptions={}) {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'sampleTroops,navalHomeRisk,navalRouteRisk,diagnosticSnapshot,learnFinish,',
+    'sampleTroops,navalHomeRisk,navalRouteRisk,diagnosticSnapshot,learnFinish,economicDefensePressure,observeAttackOrigins,',
     'strategicDirector,economyPosture,observeOpponents,opponentTrend,observeHumanProfiles,observeVictoryThreat,coordinateDuo,planOperation,decisionNote,navalCommitmentRatio,landingThirdPartyRisk,targetHomeRatio,matchContext,rankedDuo,duoFocus,duoBattleCredit,railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,frontPressureForecast,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,offensiveCommitment,globalNavalHomeGuard,observeFronts,qwenStrategyHint,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,samBuildAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),',
     'setNeural:m=>{neuralModel=neuralValidate(m);opts.neuralEnabled=!!neuralModel;neuralPolicyCache={key:null,output:null};},neuralStrategicSignals,neuralChannel,',
@@ -98,6 +98,119 @@ function boot(benchmarkOptions={}) {
 (async () => {
   const asset=(type,tile,id)=>({type:()=>type,tile:()=>tile,id:()=>id,
     isActive:()=>true,level:()=>1});
+  await check('1.19.2 genuine peace offer under pressure overrides conflict only for incoming offers',()=>{
+    const x=boot();x.b.setWar('strong','strong');
+    const s={...x.b.military(x.me,[]),incoming:26000,inc:[{attackerID:3}]};
+    assert.equal(x.b.diplomacyScore(x.me,x.strong,s,false,true).peace,true);
+    assert.equal(x.b.diplomacyScore(x.me,x.strong,s,true).score,-999);
+    assert.equal(x.b.diplomacyScore(x.me,x.strong,{...s,incoming:0},false,true).score,-999);
+    x.strong.isTraitor=()=>true;
+    assert.equal(x.b.diplomacyScore(x.me,x.strong,s,false,true).reason,'Verräter');
+  });
+  await check('1.19.2 peace reply retains war until alliance confirmation',()=>{
+    const x=boot();x.b.setWar('strong','strong');
+    x.strong.isRequestingAllianceWith=()=>true;
+    x.me.incomingAttacks=()=>[{troops:26000,attackerID:3}];
+    x.b.setAllianceCtor(class Alliance {});
+    x.b.diplomacyTickSafe();
+    assert.equal(x.b.state().diplomacyPending[0].accept,true);
+    assert.equal(x.b.state().warState.id,'strong');
+    x.setTick(310);x.me.isFriendly=p=>p===x.strong;
+    x.b.diplomacyTickSafe();
+    assert.equal(x.b.state().warState.id,null);
+    assert(x.b.state().diagnostics.some(d=>d.kind==='alliance_reply_result'&&d.confirmed&&d.accept));
+  });
+  await check('1.19.2 repeated territory loss allows incoming peace from active war target',()=>{
+    const x=boot();x.b.setWar('strong','strong');x.b.sampleTroops(300,x.me);
+    x.setTick(330);x.setLand(1000);
+    assert.equal(x.b.diplomacyScore(x.me,x.strong,x.b.military(x.me,[]),false,true).peace,true);
+    x.setTick(601);
+    assert.equal(x.b.diplomacyScore(x.me,x.strong,x.b.military(x.me,[]),false,true).score,-999);
+  });
+  await check('1.19.2 peace offer from actual game card works without detected accept constructor',()=>{
+    const x=boot();x.b.setWar('strong','strong');
+    x.me.incomingAttacks=()=>[{troops:26000,attackerID:3}];
+    let accepted=0,rejected=0;
+    const widget={game:x.game,events:[{requestorID:3,focusID:3,createdAt:290,duration:100,
+      buttons:[{}, {action:()=>accepted++}, {action:()=>rejected++}]}]};
+    x.game.playerBySmallID=id=>id===3?x.strong:null;
+    x.doc.querySelector=selector=>selector==='actionable-events'?widget:null;
+    x.b.diplomacyTickSafe();
+    assert.equal(accepted,1);assert.equal(rejected,0);
+    assert.equal(x.b.state().warState.id,'strong','card action alone is no confirmation');
+  });
+  await check('1.19.2 12-percent attack from peer releases port funds for defense',()=>{
+    const x=boot();x.setHome(1097074);x.setGold(76600);x.setLand(25566);
+    x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Medium'});
+    x.game.isShore=()=>true;
+    x.me.units=()=>[asset('City',5000,1),asset('Factory',5020,2)];
+    x.b.setTroopSnapshot({...x.b.military(x.me,[]),incoming:134360,strongest:1200000});
+    const needs=x.b.economicNeeds(x.me,x.me.units(),[5000]);
+    assert(needs.immediate);assert.equal(needs.savingsTarget,0);
+    assert(needs.list.some(v=>v.type==='Defense Post'));
+    assert(needs.list.every(v=>['Defense Post','SAM Launcher'].includes(v.type)));
+    x.me.units=()=>[asset('Factory',5020,2)];
+    assert(x.b.economicNeeds(x.me,x.me.units(),[5000]).list.some(v=>v.type==='Defense Post'),
+      'loss of first city must not suppress emergency defense');
+  });
+  await check('1.19.2 sustained modest attacks trigger defense; tiny, ended and stale attacks do not',()=>{
+    const x=boot(),s={incoming:9000,strongest:0};
+    x.me.incomingAttacks=()=>[{troops:9000,attackerID:2}];
+    assert.equal(x.b.economicDefensePressure(x.me,s,300),false);
+    for(const t of [300,320,340])x.b.sampleTroops(t,x.me);
+    assert.equal(x.b.economicDefensePressure(x.me,s,340),true);
+    assert.equal(x.b.economicDefensePressure(x.me,{...s,incoming:0},340),false);
+    assert.equal(x.b.economicDefensePressure(x.me,{incoming:4000,strongest:900000},340),false);
+    assert.equal(x.b.economicDefensePressure(x.me,s,420),false);
+  });
+  await check('1.19.2 moderate peer attack buys affordable defense despite incomplete startup',async()=>{
+    const x=boot();x.setGold(76600);x.b.setBoats(false);
+    x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Medium'});
+    x.me.incomingAttacks=()=>[{troops:11000,attackerID:3}];
+    x.b.setGroups([{id:'strong',opponent:x.strong}]);
+    x.b.setTroopSnapshot(x.b.military(x.me,x.b.state().strategic.groups));
+    x.me.actions=async(tile,types)=>({buildableUnits:types.map(type=>({type,
+      canBuild:type==='Defense Post'?tile:false,canUpgrade:false,cost:50000n}))});
+    assert.equal(await x.b.economy(x.me,300,0,[5000]),true,JSON.stringify(x.b.state().diagnostics));
+    assert.equal(x.sent.length,1);assert.equal(x.sent[0].unit,'Defense Post');
+  });
+  await check('1.19.2 moderate pressure arising during worker query prevents economic spend',async()=>{
+    const x=boot();x.b.setBoats(false);x.b.setGroups([{id:'strong',opponent:x.strong}]);
+    const actions=x.me.actions;
+    x.me.actions=async(...args)=>{
+      x.me.incomingAttacks=()=>[{troops:11000,attackerID:3}];return actions(...args);
+    };
+    assert.equal(await x.b.economy(x.me,300,0,[5000]),false);
+    assert.equal(x.sent.length,0);
+    assert(x.b.state().diagnostics.some(d=>d.kind==='build_crisis_skip'));
+  });
+  await check('1.19.2 central attack journal correlates new stack and leaves adopted attack unattributed',()=>{
+    const x=boot();x.out.push({id:'old',targetID:2,troops:7000});
+    assert(x.b.send('attack',['weak',10000],'Test attack'));
+    x.out.push({id:'new',targetID:2,troops:9000});
+    x.b.observeAttackOrigins(x.me,310);x.b.observeAttackOrigins(x.me,315);
+    const origins=x.b.state().diagnostics.filter(d=>d.kind==='attack_origin');
+    assert.equal(origins.length,2);
+    assert.equal(origins.find(d=>d.attackId==='old').source,'unattributed');
+    assert.equal(origins.find(d=>d.attackId==='new').source,'correlated-bot-command');
+    assert.equal(x.b.diagnosticSnapshot().attackCommands.length,1);
+    x.b.reset();assert.equal(x.b.diagnosticSnapshot().attackCommands.length,0);
+    assert.equal(x.b.diagnosticSnapshot().attackOrigins.length,0);
+  });
+  await check('1.19.2 ambiguous or late stacks are never attributed to a bot command',()=>{
+    const x=boot();assert(x.b.send('attack',['weak',10000],'Test attack'));
+    x.out.push({id:'a',targetID:2,troops:9000},{id:'b',targetID:2,troops:9000});
+    x.b.observeAttackOrigins(x.me,310);
+    assert(x.b.diagnosticSnapshot().attackOrigins.every(d=>d.source==='unattributed'));
+    x.out.splice(0);x.out.push({id:'late',targetID:2,troops:9000});
+    x.b.observeAttackOrigins(x.me,421);
+    assert.equal(x.b.diagnosticSnapshot().attackOrigins[0].source,'unattributed');
+  });
+  await check('1.19.2 blocked attack emits no command record',()=>{
+    const x=boot();x.b.opts.enabled=false;
+    assert.equal(x.b.send('attack',['weak',10000],'Blocked'),false);
+    assert.equal(x.b.diagnosticSnapshot().attackCommands.length,0);
+  });
   function samScenario(){
     const x=boot();x.setTick(2400);x.setGold(1100000);x.setLand(28000);
     x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Medium'});
