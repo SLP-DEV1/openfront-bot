@@ -352,7 +352,7 @@
   let budgetCommitments=[];
   const jsonCopy=value=>JSON.parse(JSON.stringify(value,(_,v)=>typeof v==='bigint'?v.toString():v));
   function telemetry(kind,message,extra={}) {
-    if(!opts.enabled || !permittedMatch(game))return;
+    if((!opts.enabled&&kind!=='game_over') || !permittedMatch(game))return;
     let m=myPlayer(),tick=number(()=>game.ticks(),0);
     // Freeze each historical snapshot; otherwise shared mutable metrics can
     // make every old record appear to contain the latest values.
@@ -4647,11 +4647,11 @@
       paint();return;
     }
     if(game?.gameOver?.()){
-      if(opts.enabled){
+      if(opts.enabled||gameEnd?.teamOutcomePending){
         gameEnd=gameOutcome(game,myPlayer());
         learnFinish(gameEnd.outcome);
         telemetry('game_over','Partie beendet · Bot automatisch gestoppt',{gameEnd});
-        opts.enabled=false;generation++;persist();
+        if(opts.enabled){opts.enabled=false;generation++;persist();}
       }
       status='Partie beendet · Bot AUS';paint();return;
     }
