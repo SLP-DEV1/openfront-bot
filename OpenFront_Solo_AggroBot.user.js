@@ -1753,7 +1753,10 @@
     const latest=troopSamples[troopSamples.length-1];
     const prior=[...troopSamples].reverse().find(v=>
       tick-v.tick>=100&&tick-v.tick<=360);
-    if(!latest||!prior)return crisisTrend;
+    if(!latest||!prior){
+      if(crisisTrend&&tick>=crisisTrend.expires)crisisTrend=null;
+      return crisisTrend;
+    }
     const lostLand=Math.max(0,prior.tiles-latest.tiles);
     const lostAssets=prior.assets.filter(id=>!latest.assets.includes(id)).length;
     const material=lostLand>=Math.max(180,prior.tiles*.045)||lostAssets>=2||
