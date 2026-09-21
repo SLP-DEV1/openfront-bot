@@ -57,8 +57,9 @@ jobs:
             --engine ../OpenFrontIO \
             --engineCommit bb8af015b515b3b717bd4d901074c5f4c16641cb \
             --generations 1 --population 2 --parallel 2 --trainSeeds 1 --evalSeeds 2 \
-            --maps World --nations 1 --ticks 4500 --qwen false \
+            --maps World --nations 1 --ticks 4500 \
             --out benchmark-results/neural-ci
+          node -e "const fs=require('fs'),path=require('path'),root='benchmark-results/neural-ci',plan=require('./'+root+'/plan.json'),report=require('./'+root+'/generation-1.json'),rows=[...report.evaluation.incumbent.rows,...report.evaluation.candidate.rows];if(!rows.length||!rows.some(r=>r.validSample)||rows.some(r=>r.botSHA256!==plan.botSHA256||require('./'+path.join(root,r.dir,'match.json')).benchmarkMeta.botSHA256!==plan.botSHA256))process.exit(1)"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
