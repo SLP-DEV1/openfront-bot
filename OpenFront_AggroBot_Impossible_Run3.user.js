@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         OpenFront AggroBot Impossible Run3 Neural
 // @namespace    https://openfront.io/
-// @version      1.20.10
-// @description  AggroBot 1.20.10 with bundled Impossible Run3 schema-4 champion (experimental); no external Brain or Qwen.
+// @version      1.20.11
+// @description  AggroBot 1.20.11 with bundled Impossible Run3 schema-4 champion (experimental); no external Brain or Qwen.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
 // @run-at       document-start
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.20.10', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.20.11', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -1806,8 +1806,15 @@
     if(previous&&tick>previous.tick&&tick-previous.tick>=80){
       const rate=(v)=>Number.isFinite(cur[v])&&Number.isFinite(previous[v])?
         Math.max(0,(cur[v]-previous[v])/(tick-previous.tick)*600):null;
-      incomeStatus={train:rate('train'),trade:rate('trade'),
-        gold:Math.max(0,(cur.gold-previous.gold)/(tick-previous.tick)*600),
+      // Gold-stock movement includes purchases, donations and conquest:
+      // it is a signed NET change, not gross income (negative != zero).
+      const netGold=(cur.gold-previous.gold)/(tick-previous.tick)*600;
+      const train=rate('train'),trade=rate('trade');
+      incomeStatus={train,trade,gold:netGold,netGold,
+        otherNetAfterTradeTrain:
+          train!==null&&trade!==null?netGold-train-trade:null,
+        // Residual includes spending and other receipts; NEVER assign it
+        // to one building or label it as additional earned gold.
         observed:true};
       goldSamples.shift();
     }
@@ -3561,13 +3568,13 @@
         // Provisional saving begins only after a productive core exists;
         // otherwise early harbor hoarding delays essential income buildings.
         cities>=2&&factories>=2&&!hardMode()?500000:0):0;
-    const savingsTarget=immediate?0:capStalled&&!enemyNukes?0:samFund>0?samFund:portFund>0?portFund:
+    const savingsTarget=immediate?0:samFund>0?samFund:capStalled&&!enemyNukes?0:portFund>0?portFund:
       portMilestone||(threat&&intel.uncovered.length>0&&wantedSAM>0)?0:
       saveForSilo?1150000:saveForNuke?firstRocketFund:0;
     investmentStatus=immediate?'Verteidigung vor Investitionen':startup?'Erste Stadt/Fabrik':
-      capStalled&&!enemyNukes?'Truppenlimit: Stadt/City-Upgrade oder Landgewinn priorisiert':
       samFund>0&&gold<samFund?'SAM-Schutz '+Math.round(samFund).toLocaleString()+' Gold':
       threat&&intel.uncovered.length>0&&wantedSAM>0?'SAM-Schutz vor Raketenfonds':
+      capStalled&&!enemyNukes?'Truppenlimit: Stadt/City-Upgrade oder Landgewinn priorisiert':
       portFund>0&&gold<portFund?'Hafen-Fonds '+Math.round(portFund).toLocaleString()+' Gold':
       portMilestone?'Hafen vor Silo':basic?'Zwei Städte und zwei Fabriken':
       saveForSilo?'Silo-Fonds 1,15 Mio.':saveForNuke?'Raketen-Fonds '+firstRocketFund.toLocaleString():'Wirtschaft & Offensive';
@@ -3618,7 +3625,8 @@
     // A real, still-required SAM quote outranks discretionary fleet/nukes.
     const samFund=needs.nuclearThreat&&needs.wantedSAM>0&&
       needs.intel.uncovered.length>0&&!needs.samSearchBlocked&&
-      needs.savingsTarget===needs.samQuotedCost?needs.samQuotedCost:0;
+      Number.isFinite(needs.samQuotedCost)&&needs.samQuotedCost>0&&
+      tick-samQuotedTick<=300?needs.samQuotedCost:0;
     let floor=needs.savingsTarget;
     if(purpose==='Warship')floor=samFund;
     if(purpose==='SAM Launcher'||purpose==='Port'&&needs.portMilestone&&
@@ -3635,7 +3643,7 @@
       ['City','Factory'].includes(purpose))floor=0;
     // After repeated unsuccessful builds, release ONLY speculative silo/nuke
     // savings for a productive core. Never consume the observed SAM quote.
-    if(needs.capStalled&&purpose==='City'&&!needs.incomingNukes)floor=0;
+    if(needs.capStalled&&purpose==='City'&&!needs.incomingNukes&&!samFund)floor=0;
     if(!samFund&&!needs.nuclearThreat&&failedEconomyProbes>=5&&
       ['City','Factory'].includes(purpose)&&
       (needs.cities<3||needs.factories<3)&&
@@ -4062,8 +4070,7 @@
             if(priceBlocked)samAffordableFailureSince=null;
             else if(Number.isInteger(quote.canBuild))samAffordableFailureSince=null;
             else if(samAffordableFailureSince===null)samAffordableFailureSince=tick;
-            if(requirements.nuclearThreat&&!requirements.samSearchBlocked&&
-              (!requirements.capStalled||requirements.incomingNukes))
+            if(requirements.nuclearThreat&&!requirements.samSearchBlocked)
               requirements.savingsTarget=quoted;
           }
           if(entry.type==='Port'&&requirements.portMilestone){
@@ -4261,10 +4268,13 @@
     proposals.sort((a,b)=>b.siteValue-a.siteValue);
     // Near the troop cap, prioritize a worker-confirmed City or City upgrade,
     // not a Factory; the legal site, cost and invasion vetoes still apply.
-    const capCity=requirements.capStalled&&!requirements.incomingNukes?
+    const urgentSAMChoice=requirements.nuclearThreat&&
+      requirements.wantedSAM>0&&requirements.intel.uncovered.length>0?
+      proposals.find(x=>x.type==='SAM Launcher'):null;
+    const capCity=requirements.capStalled&&!requirements.incomingNukes&&!urgentSAMChoice?
       proposals.find(x=>x.type==='City'&&x.kind==='upgrade')||
       proposals.find(x=>x.type==='City'):null;
-    const chosen=capCity||proposals[0];
+    const chosen=urgentSAMChoice||capCity||proposals[0];
     const withoutPolicy=[...proposals].sort((a,b)=>
       (b.baseScore-(requirements.policyBiases[b.type]||0))-
       (a.baseScore-(requirements.policyBiases[a.type]||0)))[0];
@@ -5208,11 +5218,15 @@
         }
       }catch(_){tradeStats.skipped++;}
     }
+    // An intended target is not yet a proven trade adversary.
+    // Embargo costs our own port income too; require observed fighting.
     const hostile=players.filter(p=>{
-      const id=safeID(p);if(friendly(p,me)||me.hasEmbargoAgainst?.(p))return false;
-      return id===warState.id||id===plan?.id||id===operation?.target||
-        (me.outgoingAttacks?.()||[]).some(a=>!a.retreating&&attackTargets(a.targetID,p))||
-        (me.incomingAttacks?.()||[]).some(a=>!a.retreating&&attackTargetID(a.attackerID)===id);
+      const id=safeID(p);
+      if(friendly(p,me)||me.hasEmbargoAgainst?.(p))return false;
+      return (me.outgoingAttacks?.()||[]).some(a=>
+        !a.retreating&&attackTargets(a.targetID,p))||
+        (me.incomingAttacks?.()||[]).some(a=>
+          !a.retreating&&attackTargetID(a.attackerID)===id);
     });
     if(hostile.length){
       const p=hostile.sort((a,b)=>number(()=>b.troops?.(),0)-number(()=>a.troops?.(),0))[0],
@@ -5230,9 +5244,10 @@
     for(const id of [...botEmbargoes]){
       const p=players.find(x=>safeID(x)===id);
       if(!p){botEmbargoes.delete(id);continue;}
-      const active=id===warState.id||id===plan?.id||id===operation?.target||
-        (me.outgoingAttacks?.()||[]).some(a=>!a.retreating&&attackTargets(a.targetID,p))||
-        (me.incomingAttacks?.()||[]).some(a=>!a.retreating&&attackTargetID(a.attackerID)===id);
+      const active=(me.outgoingAttacks?.()||[]).some(a=>
+        !a.retreating&&attackTargets(a.targetID,p))||
+        (me.incomingAttacks?.()||[]).some(a=>
+          !a.retreating&&attackTargetID(a.attackerID)===id);
       if(active||!me.hasEmbargoAgainst?.(p))continue;
       const tile=tradeAnchor(p);if(!Number.isInteger(tile))continue;
       lastTradeTick=tick;try{
@@ -5833,6 +5848,16 @@
       if(emergencyRetreat(me,tick,immediateState))return;
       const tiles=await borders(me,tick);
       if(!live(serial))return;
+      // Refuse a slow worker result from an older decision window.
+      const observedTick=number(()=>game?.ticks?.(),-1);
+      if(observedTick<tick||observedTick-tick>40||
+        safeID(myPlayer())!==safeID(me)){
+        telemetry('decision_snapshot_expired',
+          'Worker-Ergebnis veraltet; neue Entscheidungsrunde abwarten',
+          {requestedTick:tick,observedTick,player:safeID(me),
+            currentPlayer:safeID(myPlayer())});
+        return;
+      }
       const groups=targetsFromBorder(me,tiles);
       observeFronts(me,groups,tick);
       observeOpponents(me,tick);
