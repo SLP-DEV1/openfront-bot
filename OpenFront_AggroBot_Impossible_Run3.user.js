@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         OpenFront AggroBot Impossible Run3 Neural
 // @namespace    https://openfront.io/
-// @version      1.20.5
-// @description  AggroBot 1.20.5 with bundled Impossible Run3 schema-4 champion (experimental); no external Brain or Qwen.
+// @version      1.20.6
+// @description  AggroBot 1.20.6 with bundled Impossible Run3 schema-4 champion (experimental); no external Brain or Qwen.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
 // @run-at       document-start
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.20.5', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.20.6', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -688,11 +688,24 @@
     try{nextBus.on(C,winnerHandler);winnerBus=nextBus;winnerCtor=C;return true;}
     catch(_){winnerHandler=null;return false;}
   }
+  function allianceOfferPath(){
+    if(typeof ctors.alliance==='function')return 'intent';
+    // Official OpenFront PlayerPanel.handleAllianceClick emits the real
+    // SendAllianceRequestIntentEvent through its own Transport EventBus.
+    // Never synthesize an unknown/minified intent constructor.
+    const panel=document.querySelector('player-panel');
+    return panel?.g===game&&panel?.eventBus===bus&&
+      typeof panel.handleAllianceClick==='function'?
+      'player-panel':null;
+  }
   function intentHealth() {
-    const missing=INTENT_KINDS.filter(kind=>typeof ctors[kind]!=='function');
+    const alliancePath=allianceOfferPath();
+    const missing=INTENT_KINDS.filter(kind=>
+      typeof ctors[kind]!=='function'&&
+      !(kind==='alliance'&&alliancePath==='player-panel'));
     return {found:INTENT_KINDS.length-missing.length,total:INTENT_KINDS.length,
       missing,critical:missing.filter(kind=>CORE_INTENTS.includes(kind)),
-      eventBus:!!bus};
+      eventBus:!!bus,alliancePath:alliancePath||'unavailable'};
   }
   // Report only when detection changes or the user explicitly starts.
   function reportIntents(force=false) {
@@ -854,7 +867,9 @@
     const changed=mode!==autoTuning.mode || ['aggressive','reserve','actionsPerMinute','maxTargets']
       .some(k=>autoTuning[k]!==v[k]);
     if(!changed)return s;
-    if(!emergency && tick-autoTuning.tick<45)return s;
+    if(!emergency && tick-autoTuning.tick<45 &&
+      !(mode==='ASSAULT'&&duoPlan?.strikeStatus==='locked-launch-window'&&
+        s.incoming===0&&!recentHostilePressure(tick)))return s;
     autoTuning={...v,mode,reason,tick};
     if(mode!=='DEFEND'||tick-lastDefenseLog>=75){
       telemetry('auto_tuning','Autonome Parameter: '+mode,{...v,reason});
@@ -965,6 +980,17 @@
       (safeID(me)===safeID(myPlayer())&&
        (safeID(p)===duoTrustedPeer()?.id||duoPeerAlly(p)));
   }
+  // 0 = clear, 1 = early warning, 2 = observed invasion/loss.
+  // Use engine troop units throughout; only UI display divides by ten.
+  function duoWarningLevel(s,tick=number(()=>game?.ticks?.(),0)){
+    if(!s||!s.home)return 0;
+    if(s.incoming>=Math.max(1200,s.home*.10)||
+      (crisisTrend&&tick<crisisTrend.expires&&
+        (crisisTrend.lostLand>0||crisisTrend.lostAssets>0)))return 2;
+    if(s.incoming>=Math.max(500,s.home*.025)||
+      s.strongest>=s.home*.90||recentHostilePressure(tick))return 1;
+    return 0;
+  }
   function duoState(){
     const me=myPlayer(),peer=duoTrustedPeer()?.player;
     const state=me?.hasSpawned?.()?military(me,strategic.groups):null;
@@ -975,6 +1001,7 @@
       spawn:Number.isSafeInteger(spawn)?spawn:null,
       candidate:Number.isSafeInteger(candidate)?candidate:null,
       target:duoID(target)?target:null,
+      warTarget:duoID(warState.id)?warState.id:null,
       strikeTick:Number.isInteger(duoPlan?.strikeTick)?duoPlan.strikeTick:null,
       ready:!!(state&&state.incoming===0&&
         !recentHostilePressure(number(()=>game?.ticks?.(),0))&&
@@ -982,6 +1009,7 @@
         state.ratio>=.38&&!state.activeEnemy&&
         state.available>=Math.max(1200,state.home*.09)),
       needHelp:!!(state&&state.incoming>Math.max(1200,state.home*.1)),
+      warning:duoWarningLevel(state),
       allied:!!(peer&&actualFriendly(peer,me)),
       allies:duoOwnAllies(me),
       fronts:(strategic.groups||[]).filter(x=>x.id!==null&&
@@ -1587,14 +1615,35 @@
         b.item.tiles.length-a.item.tiles.length||
         String(a.item.id).localeCompare(String(b.item.id)));
     const danger=s.incoming>Math.max(1200,s.home*.08);
-    const partnerNeeds=incoming>partnerHome*.2||!!local?.state?.needHelp;
+    const partnerWarning=Math.max(duoWarningLevel(
+      {home:partnerHome,incoming,strongest:0},tick),
+      local?.state?.warning||0);
+    const partnerNeeds=incoming>Math.max(1200,partnerHome*.10)||
+      local?.state?.warning===2;
+    const invasion=danger||partnerNeeds||
+      (crisisTrend&&tick<crisisTrend.expires&&
+        (crisisTrend.lostLand>0||crisisTrend.lostAssets>0));
     // The lower PlayerID chooses the scheduled focus. A follower uses
     // that announcement only when paired with a valid strike tick.
     const follower=local&&String(safeID(me))>String(local.id);
     const jointTarget=common.find(x=>x.item.id===safeID(announced))||
       common[0];
-    const shared=partnerNeeds&&aggressor?.on>0?aggressor.p:
-      active?.on>0?active.p:
+    // A verified rendezvous remains the priority across harmless ECONOMY/
+    // TECH/RECOVER posture changes. Real invasion, lost alliance, lost
+    // common border or expired launch releases it without forcing an attack.
+    const retained=duoPlan?.strikeTick!==null&&
+      Number.isInteger(duoPlan?.strikeTick)&&
+      tick<=duoPlan.strikeTick+110&&!invasion&&local&&
+      actualFriendly(local.player,me)&&local.state?.allied===true&&
+      Array.isArray(local.state?.fronts)&&
+      local.state.fronts.includes(duoPlan.target)&&
+      (strategic.groups||[]).find(x=>x.id===duoPlan.target&&
+        x.tiles?.length&&x.opponent?.isAlive?.()&&
+        !friendly(x.opponent,me))?.opponent;
+    const shared=invasion&&aggressor?.on>0?aggressor.p:
+      retained||
+      (partnerWarning>0&&aggressor?.on>0?aggressor.p:null)||
+      (active?.on>0?active.p:null)||
       jointTarget?.item.opponent||
       (follower&&Number.isInteger(local?.state?.strikeTick)?announced:null)||
       targets[0];
@@ -1609,26 +1658,30 @@
     // only while both are ready. Neither skips the game's action checks.
     const held=duoPlan?.target===safeID(shared)&&
       Number.isInteger(duoPlan.strikeTick)&&
-      tick-duoPlan.strikeTick<180?duoPlan.strikeTick:null;
+      tick<=duoPlan.strikeTick+110?duoPlan.strikeTick:null;
     const offered=local?.state?.strikeTick;
-    const strikeTick=sharedJoint&&active?.on>0&&held!==null&&
-      !danger?held:
-      !local||!bothReady||!sharedJoint?null:leader?
+    const strikeTick=retained&&held!==null&&!invasion?
+      held:
+      !local||!bothReady||!sharedJoint||invasion?null:leader?
       (held??tick+45):
       Number.isInteger(offered)&&offered>=tick-15&&offered<=tick+180&&
         local?.state?.target===safeID(shared)?offered:null;
     const role=danger?'Heimat verteidigen':
-      partnerNeeds?'Partner entlasten':
-      active?.on>0?'Partnerfront unterstützen':
+      partnerNeeds?'Partner unter Druck unterstützen':
       strikeTick!==null?(tick<strikeTick?'Gemeinsamen Angriff vorbereiten':
         leader?'Gemeinsamen Angriff anführen':'Gemeinsamen Angriff unterstützen'):
+      partnerWarning>0?'Partnerfrühwarnung · Reserve schützen':
+      active?.on>0?'Partnerfront unterstützen':
       bothReady?'Auf Partner-Zeitpunkt warten':
       s.home>partnerHome*1.25?'Angriff vorbereiten':'Aufbauen / Landung vorbereiten';
     const plan={partner:duo.partnerID,target:shared?safeID(shared):null,
       targetName:shared?nameOf(shared):'Kein Gegner',role,
       partnerCommitted:active?.on||0,partnerIncoming:incoming,
-      partnerHome,needHelp:partnerNeeds,
+      partnerHome,needHelp:partnerNeeds,partnerWarning,
       partnerReady:!!local?.state?.ready,strikeTick,
+      strikeStatus:strikeTick===null?'none':
+        !sharedJoint?'locked-awaiting-safe-budget':
+        tick<strikeTick?'locked-preparing':'locked-launch-window',
       joint:sharedJoint?{own:sharedJoint.own,ally:sharedJoint.ally,
         needed:sharedJoint.needed}:null,
       ready:bothReady,ownReserve:s.reserve,tick,source:local?
@@ -2533,8 +2586,10 @@
     const rebuilding=(s.ratio<(late?.17:.25) && (s.strongest>s.home*.52 || s.incoming>s.home*.12)) ||
       (losing&&(!late||s.incoming>s.home*.10)) || (s.incoming>s.home*.40);
     const readiness=warReadiness(me,items,s,tick);
+    const jointReady=enemies.filter(x=>
+      !!duoJointOpportunity(me,items,s,x,tick,true));
     const weak=enemies.filter(x=>
-      !!duoJointOpportunity(me,items,s,x,tick,true)||
+      jointReady.some(y=>y.id===x.id)||
       (hardMode()?targetOpportunity(me,items,s,x):
         s.available>number(()=>x.opponent.troops(),Infinity)*(late?1.17:1.5)));
     const fullLate=late&&s.ratio>.78&&!s.incoming&&enemies.length>0;
@@ -2551,6 +2606,11 @@
     else if(danger&&s.strongest>s.home*1.08 && !weak.length &&
       !(fullLate&&nuclearReady)){
       wanted='DEFEND';reason='Überlegener Nachbar: keine neue Kriegsfront';
+    }
+    else if(jointReady.length&&!seriousAttack&&!coolingDown&&
+      !s.incoming&&readiness.ready){
+      wanted='ASSAULT';
+      reason='Bestätigte gemeinsame Duo-Front, getrennte Reserven gesichert';
     }
     else if(late && weak.length && s.ratio>.30 && !seriousAttack && readiness.ready){
       wanted='ASSAULT';reason='Late Game: günstige Offensivchance';
@@ -2578,7 +2638,10 @@
       reason='Manuelle Strategie: '+opts.plan;
     }
     if(wanted!==strategic.mode){
-      const emergency=wanted==='RECOVER'||(wanted==='DEFEND'&&s.incoming>0);
+      const emergency=wanted==='RECOVER'||(wanted==='DEFEND'&&s.incoming>0)||
+        (wanted==='ASSAULT'&&jointReady.length>0&&
+          duoPlan?.strikeStatus==='locked-launch-window'&&
+          s.incoming===0&&!coolingDown);
       if(emergency||tick-strategic.since>=65){
         strategic.mode=wanted;strategic.since=tick;strategic.reason=reason;
         log('STRATEGIE → '+wanted+' · '+reason);
@@ -4544,6 +4607,36 @@
       console.warn(PREFIX,'Diplomatie:',e);
       telemetry('alliance_error',diplomacyStatus);paint();}
   }
+  // All outgoing requests (including Duo offers) use a verified engine
+  // action first. A trusted official PlayerPanel fallback can emit the
+  // event if production minification hides its constructor in bus.listeners.
+  function sendAllianceOffer(me,p,label,force=false){
+    if(!opts.enabled||!opts.diplomacy||!opts.offerAlliances||
+      !connected()||game.config().disableAlliances?.()===true||
+      !p?.isAlive?.()||p.isTraitor?.()||
+      (friendly(p,me)&&!((duoTrustedPeer()?.id===safeID(p)||
+        duoPeerAlly(p))&&!actualFriendly(p,me)))||
+      safeID(me)!==safeID(myPlayer()))return false;
+    const path=allianceOfferPath();
+    if(path==='intent')return send('alliance',[me,p],label,force);
+    if(path!=='player-panel')return false;
+    const panel=document.querySelector('player-panel');
+    if(panel?.g!==game||panel?.eventBus!==bus||
+      typeof panel.handleAllianceClick!=='function')return false;
+    try{
+      panel.handleAllianceClick({stopPropagation(){}},me,p);
+      actions.push(Date.now());lastEmission=Date.now();totalSent++;
+      log(label+' (offizieller Spielerpanel-Intent)');
+      telemetry('alliance_offer_ui_fallback',label,
+        {recipient:safeID(p),path:'player-panel'});
+      return true;
+    }catch(e){
+      totalFailed++;
+      telemetry('alliance_offer_ui_error',
+        'Spielerpanel-Intent: '+String(e?.message||e).slice(0,90));
+      return false;
+    }
+  }
   function diplomacyTickSafe() {
     if(!opts.enabled)return;
     if(!opts.diplomacy){diplomacyStatus='Diplomatie im Menü AUS';return;}
@@ -4610,7 +4703,7 @@
             'Duo-Partner-ID bestätigt',previous?.tries||1);
           return;
         }
-      }else if(ctors.alliance&&!me.isRequestingAllianceWith?.(partner)&&
+      }else if(allianceOfferPath()&&!me.isRequestingAllianceWith?.(partner)&&
         !diplomacyHandled.has(id)&&tick-lastProposalTick>=55){
         const anchor=(strategic.groups.find(g=>g.id===id)?.tiles||[])[0]??
           partner.state?.spawnTile;
@@ -4624,7 +4717,7 @@
               actualFriendly(partner,me)||partner.isTraitor?.()||
               safeID(game.owner(anchor))!==id||
               !a?.interaction?.canSendAllianceRequest)return;
-            if(send('alliance',[me,partner],
+            if(sendAllianceOffer(me,partner,
               'DUO ALLIANZ ANGEFRAGT: '+nameOf(partner),true)){
               diplomacyStatus='Duo-Bündnis angefragt · Bestätigung ausstehend';
               diplomacyHandled.set(id,tick+85);diplomacyStats.offered++;
@@ -4668,73 +4761,80 @@
       return;
     }
     if(renewAlliances(me,tick))return;
-    // Do not initiate different unrelated external alliances independently.
-    // Follow a confirmed third-party ally of the partner if OUR own worker
-    // permits it; a relay report never grants an alliance by itself.
+    // A Duo can actively form NEW outside alliances: lower PlayerID makes
+    // the initial offer and the follower later proposes the same alliance
+    // only after the first is genuinely confirmed by OpenFront.
     const paired=duoTrustedPeer();
-    if(paired){
-      if(!actualFriendly(paired.player,me)||!opts.offerAlliances||
-        !ctors.alliance||!actionBudget()||tick-lastProposalTick<55)return;
-      const targets=players.filter(p=>duoPeerAlly(p)&&
-        !actualFriendly(p,me)&&!p.isTraitor?.()&&
-        safeID(p)!==warState.id&&safeID(p)!==plan?.id&&
-        !diplomacyHandled.has(safeID(p))&&
-        !(me.outgoingAttacks?.()||[]).some(a=>
-          !a.retreating&&attackTargets(a.targetID,p))&&
-        !(me.incomingAttacks?.()||[]).some(a=>
-          !a.retreating&&attackTargetID(a.attackerID)===safeID(p)));
-      const target=targets[0];
-      if(!target)return;
-      const id=safeID(target),anchor=target.state?.spawnTile;
-      if(!Number.isInteger(anchor)||safeID(game.owner(anchor))!==id)return;
-      const serial=generation;lastProposalTick=tick;
-      Promise.resolve(me.actions(anchor,null)).then(a=>{
-        if(!live(serial)||!duoPeerAlly(target)||!opts.diplomacy||
-          !opts.offerAlliances||game.config().disableAlliances?.()===true||
-          actualFriendly(target,me)||target.isTraitor?.()||
-          safeID(target)===warState.id||
-          (me.outgoingAttacks?.()||[]).some(x=>
-            !x.retreating&&attackTargets(x.targetID,target))||
-          (me.incomingAttacks?.()||[]).some(x=>
-            !x.retreating&&attackTargetID(x.attackerID)===id)||
-          safeID(game.owner(anchor))!==id||
-          !a?.interaction?.canSendAllianceRequest)return;
-        if(send('alliance',[me,target],
-          'DUO · PARTNERBÜNDNIS ANFRAGEN: '+nameOf(target),true)){
-          diplomacyHandled.set(id,tick+200);diplomacyStats.offered++;
-          diplomacyStatus='Duo-Partnerbündnis angefragt: '+nameOf(target);
-        }
-      }).catch(e=>{duoLocal.status='Partnerbündnis: '+
-        String(e?.message||e).slice(0,55);});
+    if(!opts.offerAlliances||!allianceOfferPath()||!actionBudget()){
+      if(!allianceOfferPath()&&opts.offerAlliances)
+        diplomacyStatus='Eigene Angebote: Allianz-Intent / Spielerpanel noch nicht verfügbar';
       return;
     }
-    if(!opts.offerAlliances || !ctors.alliance || !actionBudget() ||
-      tick-lastProposalTick<450)return;
-    const s=military(me,strategic.groups);
-    const candidates=strategic.groups.filter(g=>g.id!==null&&g.opponent &&
-      !diplomacyHandled.has(g.id)&&!diplomacyPending.has(g.id)&&
-      (warState.id===null||g.id!==warState.id)&&
-      (!['ASSAULT','EXPAND'].includes(strategic.mode) ||
-        number(()=>g.opponent.troops(),0)>=number(()=>me.troops(),1)*.85)&&
-      !me.isRequestingAllianceWith?.(g.opponent))
-      .map(g=>({g,...diplomacyScore(me,g.opponent,s,true)}))
-      .filter(x=>x.score>=72).sort((a,b)=>b.score-a.score);
-    if(!candidates.length)return;
-    const chosen=candidates[0];
-    const target=chosen.g.opponent,serial=generation,anchor=chosen.g.tiles?.[0];
-    if(!Number.isInteger(anchor))return;
+    if(paired&&!actualFriendly(paired.player,me))return;
+    if(tick-lastProposalTick<(paired?90:450))return;
+    const peerWar=paired?.state?.warTarget,peerTarget=paired?.state?.target;
+    const safeOffer=(p)=>p&&p.isAlive?.()&&!actualFriendly(p,me)&&
+      safeID(p)!==paired?.id&&
+      !p.isTraitor?.()&&!diplomacyHandled.has(safeID(p))&&
+      !diplomacyPending.has(safeID(p))&&
+      safeID(p)!==warState.id&&safeID(p)!==plan?.id&&
+      safeID(p)!==peerWar&&safeID(p)!==peerTarget&&
+      !me.isRequestingAllianceWith?.(p)&&
+      !(me.outgoingAttacks?.()||[]).some(a=>!a.retreating&&
+        attackTargets(a.targetID,p))&&
+      !(me.incomingAttacks?.()||[]).some(a=>!a.retreating&&
+        attackTargetID(a.attackerID)===safeID(p))&&
+      !(paired?.player.outgoingAttacks?.()||[]).some(a=>!a.retreating&&
+        attackTargets(a.targetID,p));
+    const inherited=paired?players.filter(p=>
+      duoPeerAlly(p)&&safeOffer(p)):[],follow=inherited[0]||null;
+    // Without an inherited third-party friend, only the leader starts a
+    // new offer: two independent browsers must not recruit enemies of
+    // their respective partner by accident.
+    const leader=!paired||String(safeID(me))<String(paired.id);
+    if(paired&&!follow&&!leader)return;
+    const army=military(me,strategic.groups);
+    const candidates=strategic.groups.filter(g=>g.id!==null&&
+      g.opponent&&g.tiles?.length&&safeOffer(g.opponent)&&
+      (!['ASSAULT','EXPAND'].includes(strategic.mode)||
+        number(()=>g.opponent.troops(),0)>=number(()=>me.troops(),1)*.85))
+      .map(g=>({g,...diplomacyScore(me,g.opponent,army,true)}))
+      .filter(x=>x.score>=72)
+      .sort((a,b)=>b.score-a.score||
+        String(a.g.id).localeCompare(String(b.g.id)));
+    const chosen=follow?null:candidates[0];
+    if(!follow&&!chosen)return;
+    const target=follow||chosen.g.opponent,id=safeID(target);
+    const anchor=(strategic.groups.find(g=>g.id===id)?.tiles||[])[0]??
+      target.state?.spawnTile;
+    if(!Number.isInteger(anchor)||safeID(game.owner(anchor))!==id)return;
+    const serial=generation,peerID=paired?.id??null;
     lastProposalTick=tick;
     Promise.resolve(me.actions(anchor,null)).then(a=>{
-      if(!live(serial)||game.inSpawnPhase?.()||!opts.diplomacy||!opts.offerAlliances)return;
-      if(!a?.interaction?.canSendAllianceRequest||safeID(game.owner(anchor))!==safeID(target) ||
-        me.isRequestingAllianceWith?.(target)||friendly(target,me))return;
-      if(send('alliance',[me,target],
-        'ALLIANZ ANGEBOTEN: '+nameOf(target)+' · Wert '+Math.round(chosen.score))) {
-        diplomacyHandled.set(safeID(target),tick+1050);diplomacyStats.offered++;
-        diplomacyStatus='Bündnis angeboten: '+nameOf(target);
-        telemetry('alliance_offer_sent',diplomacyStatus,{requestor:safeID(target)});
+      const connectedPair=duoTrustedPeer();
+      if(!live(serial)||game.inSpawnPhase?.()||!opts.diplomacy||
+        !opts.offerAlliances||game.config().disableAlliances?.()===true||
+        !a?.interaction?.canSendAllianceRequest||
+        safeID(game.owner(anchor))!==id||!safeOffer(target)||
+        (peerID!==null&&(!connectedPair||connectedPair.id!==peerID||
+          !actualFriendly(connectedPair.player,me)))||
+        (follow&&!duoPeerAlly(target))||
+        (!follow&&connectedPair&&
+          String(safeID(me))>=String(connectedPair.id)))return;
+      const label=follow?'DUO · PARTNERBÜNDNIS ANFRAGEN: ':
+        paired?'DUO · GEMEINSAMES BÜNDNIS ANFRAGEN: ':
+          'ALLIANZ ANGEBOTEN: ';
+      if(sendAllianceOffer(me,target,label+nameOf(target),!!paired)){
+        diplomacyHandled.set(id,tick+(paired?220:1050));
+        diplomacyStats.offered++;
+        diplomacyStatus='Bündnis angeboten: '+nameOf(target)+
+          ' · Bestätigung durch Spiel ausstehend';
+        telemetry('alliance_offer_sent',diplomacyStatus,
+          {requestor:id,path:allianceOfferPath(),
+            duo:!!paired,inherited:!!follow});
       }
-    }).catch(e=>{diplomacyStatus='Allianzangebot fehlgeschlagen: '+String(e.message);});
+    }).catch(e=>{diplomacyStatus='Allianzangebot fehlgeschlagen: '+
+      String(e?.message||e).slice(0,90);});
   }
   function landingFailure(boat,tick,tile,reason){
     const key=boat.key||String(boat.dest),prior=landingFailures.get(key);
@@ -4991,15 +5091,16 @@
       const inbound=(partner.incomingAttacks?.()||[]).filter(a=>!a.retreating)
         .reduce((n,a)=>n+Math.max(0,number(()=>a.troops,0)),0);
       const partnerHome=Math.max(1,number(()=>partner.troops(),1));
-      const ownDanger=s.incoming>Math.max(1200,s.home*.08);
+      const ownDanger=duoWarningLevel(s,tick)>0;
       // Donating from two symmetric bots must not form a back-and-forth
       // loop. Only donate on observed pressure and concrete troop shortage.
-      const shortage=Math.max(0,inbound*1.55-partnerHome);
+      const shortage=Math.max(0,inbound*1.55-partnerHome,
+        inbound>partnerHome*.08?inbound*.15:0);
       const floor=Math.max(s.reserve,s.incoming*1.5,s.strongest*.60,s.home*.35);
       const safe=Math.max(0,Math.floor(s.home-floor));
       const amount=Math.floor(Math.min(shortage,s.available*.22,
         s.home*.10,safe));
-      if(!ownDanger&&inbound>partnerHome*.20&&amount>=1000&&
+      if(!ownDanger&&inbound>partnerHome*.08&&amount>=1000&&
         ctors.donateTroops&&(!me.canDonateTroops||me.canDonateTroops(partner))&&
         send('donateTroops',[partner,amount],
           'DUO · TEAMHILFE → '+nameOf(partner))){
@@ -5476,9 +5577,11 @@
     // EventBus listeners may register after initial discovery. Retry at a
     // bounded interval while a core intent is missing; never emit probe events.
     if(bus && (intentHealth().critical.length ||
+      (opts.enabled&&opts.diplomacy&&opts.offerAlliances&&!ctors.alliance)||
       (opts.enabled&&opts.autoSpawn&&game.inSpawnPhase?.()&&!ctors.spawn))){
       const probeTick=number(()=>game.ticks(),-1);
-      const interval=game.inSpawnPhase?.()?6:120;
+      const interval=game.inSpawnPhase?.()?6:
+        opts.enabled&&opts.diplomacy&&opts.offerAlliances&&!ctors.alliance?80:120;
       if(probeTick>=0 && probeTick-lastIntentProbe>=interval){
         lastIntentProbe=probeTick;ctors=recognize(bus);bindWinnerCapture(bus,ctors);reportIntents();
       }
@@ -5717,7 +5820,8 @@
       <div>Duo-Fremdbündnisse (Angriffsschutz): ${escapeHTML((duoTrustedPeer()?.state?.allies||[]).map(id=>nameOf((game?.playerViews?.()||[]).find(p=>safeID(p)===id)||{id:()=>id})).join(', ')||'—')}</div>
       <div>Partner: Ziel ${escapeHTML(duoTrustedPeer()?.state?.target??'—')} · verfügbar ${Math.round(duoTrustedPeer()?.state?.available||0)} · Reserve ${Math.round(duoTrustedPeer()?.state?.reserve||0)} · Hilfe ${duoTrustedPeer()?.state?.needHelp?'JA':'nein'}</div>
       <div>Gemeinsamer Plan: ${escapeHTML(duoPlan?duoPlan.role+' → '+duoPlan.targetName+(duoPlan.strikeTick!==null?' · Angriff ab Tick '+duoPlan.strikeTick:''):'Gemeinsam starten → Allianz bestätigen → Front aufteilen')}</div>
-      <div>Duo-Angriffsbudget: ${duoPlan?.joint?escapeHTML(Math.round(duoPlan.joint.own)+' eigene + '+Math.round(duoPlan.joint.ally)+' Partner-Truppen · nötig '+Math.round(duoPlan.joint.needed)):'Noch keine gemeinsam sichere Front'}</div>
+      <div>Duo-Angriffsbudget: ${duoPlan?.joint?escapeHTML(Math.round(duoPlan.joint.own/10)+' eigene + '+Math.round(duoPlan.joint.ally/10)+' Partner-Truppen · nötig '+Math.round(duoPlan.joint.needed/10)):'Noch keine gemeinsam sichere Front'}</div>
+      <div>Angriffsbindung: ${escapeHTML(duoPlan?.strikeStatus||'keine')} · Partnerwarnung ${duoPlan?.partnerWarning||0}/2 · Truppenanzeige = Engine-Wert / 10</div>
       <div style="margin-top:4px"><b>Duo-Timeline</b>${decisionTimeline.filter(d=>d.kind==='2v2').slice(-4).reverse().map(d=>'<div style="border-top:1px solid #354d66;padding:2px 0">'+escapeHTML('Tick '+d.tick+' · '+d.why)+'</div>').join('')}</div>
       <div style="color:#a9efc9">Start_Live_Duo.bat starten · Port 8767 · nur Raumcode in beiden Browsern gleich · Bündnis gilt erst nach Bestätigung im Spiel · Relay-Ausfall ⇒ beide spielen autonom weiter.</div>
       </details>
