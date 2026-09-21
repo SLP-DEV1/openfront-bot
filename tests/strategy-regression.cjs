@@ -3541,6 +3541,68 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.b.teamSupport(x.me,300,capped),false);
     assert.equal(x.sent.length,0);
   });
+  await check('1.20.8 recognizes official embargo intent shape',()=>{
+    const x=boot();
+    class Embargo{constructor(target,action){this.target=target;this.action=action;}}
+    const fakeBus={listeners:new Map([[Embargo,[]]])};
+    const found=x.b.recognize(fakeBus);
+    assert.equal(found.embargo,Embargo);
+  });
+  await check('1.20.8 trade opens a genuine ally and never needs a fake route intent',async()=>{
+    const x=boot();class Embargo{constructor(target,action){this.target=target;this.action=action;}}
+    x.b.setCtor('embargo',Embargo);
+    x.me.isFriendly=p=>p===x.weak;
+    x.me.hasEmbargoAgainst=p=>p===x.weak;
+    x.me.actions=async()=>({interaction:{canEmbargo:false}});
+    assert.equal(await x.b.tradePolicy(x.me,300),true);
+    assert.equal(x.sent.length,1);
+    assert.equal(x.sent[0].target,x.weak);
+    assert.equal(x.sent[0].action,'stop');
+    assert.match(x.b.state().tradeStatus,/geöffnet/);
+  });
+  await check('1.20.8 trade embargoes only an active enemy and later restores bot embargo',async()=>{
+    const x=boot();class Embargo{constructor(target,action){this.target=target;this.action=action;}}
+    x.b.setCtor('embargo',Embargo);
+    let embargoed=false;
+    x.me.hasEmbargoAgainst=p=>p===x.strong&&embargoed;
+    x.me.actions=async()=>({interaction:{canEmbargo:!embargoed}});
+    x.b.setWar('strong','strong');
+    assert.equal(await x.b.tradePolicy(x.me,300),true);
+    assert.equal(x.sent[0].action,'start');embargoed=true;
+    x.b.setWar(null,'—');x.setTick(500);
+    assert.equal(await x.b.tradePolicy(x.me,500),true);
+    assert.equal(x.sent[1].action,'stop');
+    assert.equal(x.sent[1].target,x.strong);
+  });
+  await check('1.20.8 critical Duo partner can receive recovery troops with own reserve intact',()=>{
+    const x=boot();x.setHome(180000);x.weak.troops=()=>60000;x.weak.isFriendly=()=>true;
+    x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{
+      warning:2,allied:true,target:null,fronts:[],incoming:0,
+      ready:false,needHelp:true,available:0,reserve:50000}});
+    x.me.canDonateTroops=()=>true;
+    x.b.setCtor('donateTroops',class Donate{
+      constructor(partner,amount){this.partner=partner;this.amount=amount;}
+    });
+    const army=x.b.military(x.me,[]);
+    const reserve=army.reserve;
+    assert.equal(x.b.teamSupport(x.me,300,army),true);
+    assert.equal(x.sent[0].partner,x.weak);
+    assert(x.sent[0].amount>=1000);
+    assert(x.me.troops()-x.sent[0].amount>=reserve);
+  });
+  await check('1.20.8 own warning blocks Duo troop donation',()=>{
+    const x=boot();x.setHome(180000);x.weak.troops=()=>40000;x.weak.isFriendly=()=>true;
+    x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{
+      warning:2,allied:true,target:null,fronts:[],incoming:0,
+      ready:false,needHelp:true,available:0,reserve:30000}});
+    x.me.canDonateTroops=()=>true;
+    x.b.setCtor('donateTroops',class Donate{
+      constructor(partner,amount){this.partner=partner;this.amount=amount;}
+    });
+    x.strong.troops=()=>200000;
+    assert.equal(x.b.teamSupport(x.me,300,x.b.military(x.me,[])),false);
+    assert.equal(x.sent.length,0);
+  });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
 })();
