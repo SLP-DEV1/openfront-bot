@@ -3742,7 +3742,12 @@
       item.siteValue+=item.neuralDelta;
     }
     proposals.sort((a,b)=>b.siteValue-a.siteValue);
-    const chosen=proposals[0];
+    // When our army is capped, a confirmed affordable Factory must not lose
+    // again to a speculative first-harbor milestone or a discretionary SAM.
+    // The worker, site, budget and current-invasion checks above still apply.
+    const capFactory=requirements.capStalled&&!requirements.incomingNukes?
+      proposals.find(x=>x.type==='Factory'):null;
+    const chosen=capFactory||proposals[0];
     const withoutPolicy=[...proposals].sort((a,b)=>
       (b.baseScore-(requirements.policyBiases[b.type]||0))-
       (a.baseScore-(requirements.policyBiases[a.type]||0)))[0];
