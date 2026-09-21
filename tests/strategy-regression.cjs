@@ -3053,6 +3053,70 @@ function boot(benchmarkOptions={}) {
     assert.equal(typeof proof.headBiasByType.Factory,'number');
     assert.equal(proof.evidence,'ranking-only-worker-legality-preserved');
   });
+
+  await check('1.19.8 capped army buys Factory even with legal coastal Port',async()=>{
+    const x=boot();x.setTick(2400);x.setLand(4400);x.setGold(1700000);x.setHome(99000);
+    x.game.isShore=()=>true;
+    const units=['City','City','Factory','Factory'].map((type,i)=>asset(type,5000+i*25,i+1));
+    x.me.units=()=>units;
+    x.b.setTroopSnapshot(x.b.military(x.me,[]));
+    const need=x.b.economicNeeds(x.me,units,[5000]);
+    assert.equal(need.capStalled,true);
+    assert.equal(need.savingsTarget,0,'speculative port/silo savings cannot block capacity');
+    x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
+      type,canBuild:tile,canUpgrade:false,
+      cost:BigInt(type==='Factory'?1000000:type==='Port'?500000:1500000)
+    }))});
+    assert.equal(await x.b.economy(x.me,2400,0,[5000]),true);
+    assert.equal(x.sent[0].unit,'Factory',JSON.stringify(x.b.diagnosticSnapshot().construction));
+  });
+  await check('1.19.8 cap relief does not override active land invasion',()=>{
+    const x=boot();x.setHome(99000);x.setLand(4400);
+    const units=['City','City','Factory','Factory'].map((type,i)=>asset(type,5000+i*25,i+1));
+    x.me.units=()=>units;
+    x.b.setTroopSnapshot({...x.b.military(x.me,[]),incoming:27000});
+    const need=x.b.economicNeeds(x.me,units,[5000]);
+    assert.equal(need.immediate,true);
+    assert.equal(need.capStalled,false);
+    assert(need.list.every(v=>['Defense Post','SAM Launcher'].includes(v.type)));
+  });
+  await check('1.19.8 controlled counterattack sends viable force against exposed attacker',async()=>{
+    const x=boot();x.game.playerBySmallID=id=>id===2?x.weak:x.strong;
+    x.me.incomingAttacks=()=>[{id:'attack-15k',attackerID:2,troops:15000,retreating:false}];
+    const groups=[{id:'weak',opponent:x.weak,front:10,tiles:[5]}];
+    const before=x.b.military(x.me,groups);
+    assert.equal(await x.b.defense(x.me,300,0,groups,before),true);
+    assert.equal(x.sent[0].targetID,'weak');
+    assert(x.sent[0].troops>=22000,'dispatch must beat observed enemy home');
+    assert(x.me.troops()-x.sent[0].troops>=Math.max(before.reserve,15000*1.35));
+  });
+  await check('1.19.8 hopeless invasion does not send an unsafe counterattack',async()=>{
+    const x=boot();x.setHome(24000);x.game.playerBySmallID=id=>id===2?x.weak:x.strong;
+    x.me.incomingAttacks=()=>[{id:'attack-18k',attackerID:2,troops:18000,retreating:false}];
+    const groups=[{id:'weak',opponent:x.weak,front:10,tiles:[5]}];
+    assert.equal(await x.b.defense(x.me,300,0,groups,x.b.military(x.me,groups)),false);
+    assert.equal(x.sent.length,0);
+  });
+  await check('1.19.8 danger-aware reserve holds through recent pressure then relaxes',()=>{
+    const x=boot();x.setHome(90000);x.strong.troops=()=>450000;
+    const g=[{id:'strong',opponent:x.strong,front:12,tiles:[6]}];
+    x.b.setHostilePressure(280);
+    const under=x.b.military(x.me,g);
+    x.setTick(600);
+    const calm=x.b.military(x.me,g);
+    assert(under.reserve>calm.reserve,{under:under.reserve,calm:calm.reserve});
+    assert(under.reserve<=under.home*.85+1);
+    assert(calm.reserve<=calm.home*.63+1);
+  });
+  await check('1.19.8 schema4 supplies nonzero action ranking only for legal builds',async()=>{
+    const x=boot();x.setTick(300);
+    x.b.setNeural({schema:4,arch:'24x24x16-tanh',weights:Array(1000).fill(.04)});
+    assert.equal(await x.b.economy(x.me,300,0,[]),true);
+    const ev=x.b.diagnosticSnapshot().neuralEvidence;
+    assert(ev.actionCalls>0,JSON.stringify(ev));
+    assert(ev.actionNonzero>0,JSON.stringify(ev));
+    assert.equal(x.sent[0].unit,'Factory');
+  });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
 })();
