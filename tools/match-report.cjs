@@ -28,7 +28,10 @@ function summarize(data,file='<input>'){
     finished:!!end&&['victory','defeat'].includes(outcome),
     termination:data.run?.termination??null,
     harness:meta.harness??null,engineCommit:meta.engineCommit??null,
-    botSHA256:meta.botSHA256??null,profile:meta.profile??null,
+    botSHA256:meta.botSHA256??null,policySHA256:meta.policySHA256??null,
+    profile:meta.profile??null,settings:meta.settings??null,
+    scriptedHumans:meta.scriptedHumans??null,
+    opponentProfile:meta.opponentProfile??null,
     seedSource:meta.seedSource??null,gameConfig:meta.gameConfig??null,maxTicks:meta.maxTicks??null,
     recordingComplete:data.recording?.complete??(data.recording?data.recording.dropped===0:null),
     recordedEvents:data.recording?.total??rec.length,
@@ -55,9 +58,11 @@ function summarize(data,file='<input>'){
 function comparisonKey(row){
   // Missing engine/config identity cannot establish a controlled comparison.
   if(!row.finished||row.seed===null||!row.seedSource||!row.harness||!row.engineCommit||
-    !row.gameConfig||!row.botSHA256||!row.profile||!row.maxTicks)return null;
+    !row.gameConfig||!row.botSHA256||!row.profile||!row.maxTicks||
+    row.scriptedHumans===null||!row.opponentProfile||!row.settings)return null;
   const ordered=Object.fromEntries(Object.entries(row.gameConfig).sort(([a],[b])=>a.localeCompare(b)));
-  return JSON.stringify([row.harness,row.engineCommit,row.seed,row.seedSource,ordered,row.maxTicks]);
+  return JSON.stringify([row.harness,row.engineCommit,row.seed,row.seedSource,
+    ordered,row.maxTicks,row.scriptedHumans,row.opponentProfile,row.settings]);
 }
 function compare(rows){
   const groups=new Map();
@@ -65,9 +70,11 @@ function compare(rows){
     const key=comparisonKey(row);if(!key)continue;
     if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row);
   }
-  return [...groups].filter(([,items])=>new Set(items.map(x=>x.botSHA256+':'+x.profile)).size>=2)
+  return [...groups].filter(([,items])=>new Set(items.map(x=>x.botSHA256+':'+(x.policySHA256??'null')+':'+x.profile)).size>=2)
     .map(([key,items])=>({key:JSON.parse(key),matches:items.map(r=>({
-      bot:r.bot,botSHA256:r.botSHA256,profile:r.profile,outcome:r.outcome,land:r.finalLand,
+      bot:r.bot,botSHA256:r.botSHA256,policySHA256:r.policySHA256,
+      profile:r.profile,scriptedHumans:r.scriptedHumans,
+      opponentProfile:r.opponentProfile,outcome:r.outcome,land:r.finalLand,
       endTick:r.endTick,attackConfirmed:r.attackConfirmed,portConfirmed:r.portConfirmed,
       warshipsConfirmed:r.warshipsConfirmed,landingsObserved:r.landingsObserved}))}));
 }
