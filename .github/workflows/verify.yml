@@ -26,16 +26,6 @@ jobs:
         run: |
           node --check tools/duo-relay.cjs
           node tests/duo-relay-regression.cjs
-      - name: Capture strategy regression log for Duo validation
-        continue-on-error: true
-        run: node tests/strategy-regression.cjs > strategy-regression.log 2>&1
-      - name: Upload strategy regression log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: duo-strategy-regression-log
-          path: strategy-regression.log
-          retention-days: 1
       - name: Test bot strategy
         run: node tests/strategy-regression.cjs
 
