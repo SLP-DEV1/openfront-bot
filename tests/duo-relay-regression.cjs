@@ -38,7 +38,8 @@ const mk=(ownID,partnerID,instance,match='v1|Public|World|Large|FFA|123|_')=>({
   assert.equal(relay.exchange({...autoA,ownID:'third',
     instance:'browser-C'},20004).status,409);
   assert.equal(relay.exchange({...autoA,ownID:'cloned',
-    instance:'browser-A'},20005).status,409);
+    instance:'browser-A'},20005).body.partner.id,'two');
+  assert.equal(relay.exchange(autoB,20005).body.partner.id,'cloned');
   assert.equal(relay.exchange({...autoA,ownID:'one',
     match:'v2|different'},20006).body.partner,null);
   relay.rooms.clear();
