@@ -21,9 +21,9 @@ assert.equal(state.actionId,'a2');
 assert.equal(state.decisionId,'d2');
 assert.equal(state.effect,'unconfirmed');
 assert.equal(state.budget,budget);
-const stale=evidencePanelState({}, {},{requestedTick:80},200,[],budget);
+const stale=evidencePanelState({}, {},{requestedTick:80},500,[],budget);
 assert.equal(stale.workerStale,true);
-assert.equal(stale.workerAge,120);
+assert.equal(stale.workerAge,420);
 assert.equal(stale.budget,null,'stale budget must be labelled unknown');
 assert.equal(stale.effect,'unconfirmed',
   'absence of receipt must not be interpreted as successful effect');
