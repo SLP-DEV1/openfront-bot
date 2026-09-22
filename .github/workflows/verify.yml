@@ -92,6 +92,7 @@ jobs:
           node tests/v3-map-breakdown-regression.cjs
       - name: Test P6 paired model-promotion evidence gate
         run: |
+          node tests/workflow-trigger-regression.cjs
           node --check trainer/promotion-gate-v5.cjs
           node tests/promotion-gate-v5-regression.cjs
           node --check trainer/candidate-policy-v5.cjs

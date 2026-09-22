@@ -4,7 +4,9 @@ on:
     paths:
       - '.github/workflows/impossible-paired.yml'
       - 'tools/benchmark/**'
+      - 'trainer/**'
       - 'OpenFront_Solo_AggroBot.user.js'
+      - 'OpenFront_AggroBot_Impossible_Run3.user.js'
   workflow_dispatch:
 
 jobs:

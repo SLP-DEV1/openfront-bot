@@ -79,15 +79,21 @@ node trainer/promotion-gate-v5.cjs .\holdout-evidence.json
 Die JSON-Datei enthält `protocol` und `rows`. Im `protocol` stehen
 `engineCommit` (40 Hex-Zeichen), je Arm `botSHA256` und
 `policySHA256` (je 64 Hex-Zeichen), `modes`, mindestens zwei `maps`,
-mindestens zwei `opponents`, eindeutige `seeds` und
-`minPairsPerCell` (mindestens 2). Jeder `rows`-Eintrag ist **eine
+mindestens zwei `opponents`, `minPairsPerCell` (mindestens 2) und
+`scenarios`. Statt eines Seed-Kreuzprodukts enthält `scenarios` für jede
+vorregistrierte Partie einen Block aus global eindeutiger
+`scenarioId`, global eindeutigem echten Engine-`matchSeed`, `mode`, `map` und
+`opponent`. Jeder `rows`-Eintrag ist **eine
 Partie eines Arms in einem Szenario**, nicht eine Spielerperspektive:
-`arm,matchId,mode,map,opponent,seed,engineCommit,botSHA256,policySHA256,
+`arm,matchId,scenarioId,matchSeed,mode,map,opponent,engineCommit,botSHA256,policySHA256,
 exitCode,verified,confirmed,recording,outcome,termination,endLand,endTick`.
 `recording` benötigt `complete:true,dropped:0,streamErrors:0`.
 
-Für jedes Kombination aus Modus/Karte/Gegner/Seed muss je ein echter
-Match-Bericht für Kandidat, Regelbasis und Run3 existieren. Ein fehlender,
+Für jeden Szenario-Block muss je ein echter Match-Bericht für Kandidat,
+Regelbasis und Run3 mit demselben `matchSeed` existieren. Derselbe echte Seed
+darf nicht in einem zweiten Szenario-Block erneut verwendet werden. Jede
+Modus-/Karten-/Gegner-Zelle benötigt mindestens `minPairsPerCell` solcher
+global eindeutigen Blöcke. Ein fehlender,
 duplizierter, fremder, abgebrochener oder zensierter Bericht verhindert die
 Freigabe. Nur bestätigte Endzustände `victory`/`defeat` zählen;
 `tick-limit` und `unknown` sind weder Sieg noch Niederlage. Der
