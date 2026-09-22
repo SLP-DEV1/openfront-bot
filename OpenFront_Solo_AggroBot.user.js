@@ -19,7 +19,7 @@
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
     autoStrategy:true, diplomacy:true, offerAlliances:true, nukes:true, antiNuke:true, lateOffense:true,
-    impossibleMode:true,impossibleExperiment:false,neuralEnabled:false,
+    impossibleMode:true,impossibleExperiment:false,neuralEnabled:false,evidenceMode:false,
     duoEnabled:false,duoPartnerID:'',duoPartnerName:'',duoRoom:''};
   let opts;
   try { opts = {...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; }
@@ -389,7 +389,7 @@
   let forecastAudits=[],lastForecastAudit=null,incomeAttribution=[];
   let failedEconomyProbes=0,successfulEconomyTick=-Infinity,warWaitSince=-Infinity;
   let coreQuotes=new Map(),lastCoreFundingReport=-Infinity,coreFunding=null;
-  let lastEconomyProbeReport=null,neuralDecisionEvidence=null;
+  let lastEconomyProbeReport=null,neuralDecisionEvidence=null,economyBudgetEvidence=null;
   let investmentStatus='Grundaufbau',lastWarReview=-Infinity;
   let defenseStatus='Keine Bedrohung',lastEmergencyRetreat=-Infinity,lastDefenseLog=-Infinity;
   let targetIntelCache=new Map(),frontMemory=new Map(),lastFrontWarning=-Infinity;
@@ -687,6 +687,7 @@
         note:'Die Datei ist ein Spielmitschnitt; Sieg und echte Mehrkarten-Benchmarks erfordern vollständige Browser-Matches.'},
       opponents:[...opponentProfiles.values()].map(v=>({...v})),
       decisionFrame:lastDecisionFrame,planning:planningState,
+      economyBudgetEvidence,
       investmentAssessments,operation,duoPlan,victoryThreat,
       localDuo:{status:duoLocal.status,peer:duoLocal.peer,partnerID:opts.duoPartnerID,
         ownID:safeID(myPlayer()),connected:!!duoTrustedPeer(),match:duoLocal.match,
@@ -1048,7 +1049,7 @@
     diagnosticV2.lastDuoAt=null;
     failedEconomyProbes=0;successfulEconomyTick=-Infinity;warWaitSince=-Infinity;
     coreQuotes.clear();coreFunding=null;lastCoreFundingReport=-Infinity;
-    lastEconomyProbeReport=null;neuralDecisionEvidence=null;
+    lastEconomyProbeReport=null;neuralDecisionEvidence=null;economyBudgetEvidence=null;
     lastEconomicAction=-Infinity;lastNeutralSend=-Infinity;lastEnemySend=-Infinity;lastHostilePressure=-Infinity;consecutiveIdle=0;
     economicPending=null;economicBlocked.clear();economicNegative.clear();economicStatus='Bauplanung bereit';economicLastPlan='—';
     samQuotedCost=0;portQuotedCost=0;samQuotedTick=-Infinity;portQuotedTick=-Infinity;
@@ -4658,6 +4659,17 @@
     for(const [k,expiry] of economicNegative)if(tick>=expiry)economicNegative.delete(k);
     const requirements=economicNeeds(me,units,tiles);
     const funding=coreFundingStatus(me,units,tick);
+    // Read-only snapshot from the actual economy planner, never recomputed in paint().
+    economyBudgetEvidence={tick,gold:requirements.gold,
+      capUse:troopSnapshot.max>0?troopSnapshot.home/troopSnapshot.max:null,
+      cityWanted:requirements.capStalled||requirements.list.some(x=>x.type==='City'),
+      cityCount:requirements.cities,capStalled:requirements.capStalled,
+      wantedSAM:requirements.wantedSAM,nuclearThreat:requirements.nuclearThreat,
+      samQuote:tick-samQuotedTick<=300&&samQuotedCost>0?samQuotedCost:null,
+      portMilestone:requirements.portMilestone,
+      portQuote:tick-portQuotedTick<=210&&portQuotedCost>0?portQuotedCost:null,
+      goldFloor:requirements.savingsTarget,coreQuote:funding.needed,
+      semantics:'shared savings target; individual build exceptions still apply'};
     // A cached price saves worker traffic while underfunded; refresh once
     // the price is funded or quotes age. Never assert a legal site from it.
     if(!requirements.immediate&&!requirements.nuclearThreat&&
@@ -6990,6 +7002,7 @@
             botEmbargoes:[...botEmbargoes],assessments:tradeAssessments},strategicTelemetry,
           attackBlockReport,crisisTrend,neuralEvidence:{...neuralEvidence,model:neuralModelInfo()},
           neuralDecisionEvidence,coreFunding,economyProbe:lastEconomyProbeReport,
+          economyBudgetEvidence,
            director:lastDirectorDecision,economyPosture:lastEconomyPosture,
           forecastAudit:lastForecastAudit,
           recentIncomeSamples:incomeAttribution.slice(-4).map(v=>({...v})),
@@ -7099,7 +7112,7 @@
         opts.fullAuto=!opts.fullAuto;
         if(opts.fullAuto){opts.autoStrategy=true;autoTuning.tick=-Infinity;}
       }else if(key==='autoStrategy'&&opts.fullAuto){opts.fullAuto=false;opts.autoStrategy=false;}
-      else if(['economy','boats','autoSpawn','defense','stopOnError','upgrades','safeMode','autoStrategy','diplomacy','offerAlliances','nukes','antiNuke','lateOffense','impossibleMode','impossibleExperiment','learningEnabled','neuralEnabled','duoEnabled'].includes(key)){
+      else if(['economy','boats','autoSpawn','defense','stopOnError','upgrades','safeMode','autoStrategy','diplomacy','offerAlliances','nukes','antiNuke','lateOffense','impossibleMode','impossibleExperiment','learningEnabled','neuralEnabled','duoEnabled','evidenceMode'].includes(key)){
         opts[key]=!opts[key];
         if(key==='duoEnabled'){
           duoLocal.peer=null;duoLocal.lastAt=0;duoLocal.match=null;
@@ -7124,6 +7137,20 @@
       persist();lastPaint=0;paint();
     });
     document.body.appendChild(panel);
+  }
+  // Presentation-only readout. No planner or intent consumes this state.
+  function evidencePanelState(plan,s,frame,currentTick,ledger,budget){
+    const age=frame&&Number.isFinite(currentTick)&&Number.isFinite(frame.requestedTick)?
+      Math.max(0,currentTick-frame.requestedTick):null;
+    const latest=ledger?.at(-1)||null;
+    const budgetAge=budget&&Number.isFinite(currentTick)&&Number.isFinite(budget.tick)?
+      Math.max(0,currentTick-budget.tick):null;
+    return {alternative:plan?.rejected??null,reserveReason:s?.reserveReason??'unbekannt',
+      reserveFloors:s?.reserveFloors??null,workerAge:age,
+      workerStale:age===null||age>20,
+      actionId:latest?.actionId??null,decisionId:latest?.decisionId??null,
+      effect:latest?.effect??'unconfirmed',
+      budget:budgetAge!==null&&budgetAge<=300?budget:null,budgetAge};
   }
   function paint() {
     if(!document.body)return;if(!panel)mount();
@@ -7199,6 +7226,28 @@
       <label>Zielprüfungen: ${setting('maxTargets')}${opts.fullAuto?' (Auto)':''}<input type="range" data-option="maxTargets" min="4" max="25" value="${setting('maxTargets')}" ${opts.fullAuto?'disabled':''} style="display:block;width:100%"></label>
       </details>
       <details data-section="diagnostics"${openFor('diagnostics')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Diagnose &amp; Protokoll</summary>
+      <div>${b('evidenceMode',opts.evidenceMode?'🔎 Evidence AN':'🔎 Evidence AUS')}</div>
+      ${opts.evidenceMode?(()=>{
+        const e=evidencePanelState(planningState,troopSnapshot,lastDecisionFrame,
+          number(()=>game?.ticks?.(),-1),actionLedger,economyBudgetEvidence);
+        const a=e.alternative;
+        return `<div style="color:#a9efc9">Verworfene Alternative: ${escapeHTML(a?a.id+' · Nutzen '+a.utility+' · '+a.reason:'noch keine Rangliste')}</div>
+          <div style="color:#9bd0e4">Reservegrund: ${escapeHTML(e.reserveReason)} · Worker-Alter: ${e.workerAge===null?'unbekannt':e.workerAge+' Ticks'}${e.workerStale?' (veraltet/unklar)':''}</div>
+          <div style="color:#9bd0e4">Letzte Aktion: ${escapeHTML(e.actionId??'—')} · Entscheidung: ${escapeHTML(e.decisionId??'—')} · Wirkung: ${escapeHTML(e.effect)} (nicht aus Intent ableiten)</div>
+          <div style="color:#9bd0e4;font-size:10px">Nur Rangfolge und Beobachtung; keine zusätzliche Aktionsfreigabe.</div>`;
+      })():''}
+      ${(()=>{const e=evidencePanelState(planningState,troopSnapshot,lastDecisionFrame,
+        number(()=>game?.ticks?.(),-1),actionLedger,economyBudgetEvidence),q=e.budget;
+        return '<div style="color:#9bd0e4">Budget-Zeile: '+(q?
+          escapeHTML('Cap '+(q.capUse===null?'?':(q.capUse*100).toFixed(0)+'%')+
+            ' · City-Wunsch '+(q.cityWanted?'JA':'nein')+' ('+q.cityCount+')'+
+            ' · SAM '+(q.wantedSAM||0)+(q.nuclearThreat?' (Bedrohung)':'')+
+            ' · Hafen-Meilenstein '+(q.portMilestone?'JA':'nein')+
+            ' · Gold-Floor '+q.goldFloor+' (Basis, bauabhängig)'+
+            ' · SAM-Quote '+(q.samQuote??'?')+' · Port-Quote '+(q.portQuote??'?')):
+            'noch kein frischer Wirtschaftssnapshot')+'</div>';
+      })()}
+      
       <div style="color:#9bd0e4">Bau: ${escapeHTML(economicStatus)} · Sparziel: ${escapeHTML(investmentStatus)} · Prioritäten: ${escapeHTML(economicLastPlan)}</div>
       <div style="color:#9bd0e4">Tempo: Front ${runtime.borderMs}ms · Kampf ${runtime.combatMs}ms · Bau ${runtime.economyMs}ms · Worker-Checks ${runtime.attackProbes}/${runtime.buildProbes}</div>
       <div style="color:${intentHealth().critical.length?'#ff8181':intentHealth().missing.length?'#ffd480':'#a9efc9'}">Intents: ${intentHealth().eventBus?intentHealth().found+'/'+intentHealth().total:'EventBus ausstehend'} · ${intentHealth().missing.length?'Fehlen: '+escapeHTML(intentHealth().missing.join(', ')):'alle erkannt'}${intentHealth().critical.length?' · KERNFUNKTION EINGESCHRÄNKT':''}</div>
