@@ -37,6 +37,15 @@ Workflow-Durchlauf ist erst nach GitHub-Resultat belegt.
 - Snapshot wird in der periodischen Diagnose erfasst und beim Match-Reset gelöscht. Solo und deterministisches Run3-Bundle werden zusammen aktualisiert.
 - Regression zu Freeze, Rohwerten, 20-Tick-Grenze, Spielerwechsel sowie bestehendem Guard; vollständige P1- und Live-Duo-Abnahme weiterhin separat.
 
+## Aktualisierung nach PR #77, #79 und #80 — 22.09.2026
+
+- **P0 / #68:** `#79` ist mit erfolgreich abgeschlossenen `Verify AggroBot`, `Impossible Engine Smoke` und `Impossible Paired Evaluation` gemergt; #80 ergänzt den erfolgreichen nativen SAM-90%-Regressionstest. Der verifizierte CI-Stand gilt für die jeweiligen PR-Commits; keine Behauptung eines separaten Live-Zwei-Browser-Duo-Matches.
+- **P1 / #69:** `#77` ist nach Rebase und erfolgreichen drei CI-Gates gemergt: gefrorener Diagnose-Frame und ein einzelner 20-Tick-Worker-Stale-Guard. Dieser Folgeschritt markiert zusätzlich `requestedTick`, `tick` (tatsächliche Beobachtung) und `borderAgeTicks`, und exportiert den Frame in der Diagnosedatei. **Kein** vollständiger P1-Abschluss oder Nachweis der 50-ms-P95-Zielgröße.
+- **P2 / #70:** SAM-Fonds, City-Cap und erstes Port-Fenster sind durch #79/#80 regressionsgeschützt. Die wirtschaftliche Grenznutzen-/Bauzeit-Evaluation ist weiter offen.
+- **P3–P5 / #71–#73:** Teilfixe für Frontabklingen, Worker-Emission, Duo-Planablauf und Readiness sind vorhanden. Echte Zwei-Client-FFA-/2v2-, Gelände-, Marine- und Wirkungs-Nachweise fehlen.
+- **P6 / #74:** Experiment-Manifest, Schema-4-Baseline und gepaarte CI-Auswertung sind vorhanden; keine vollständige Gegnerliga, keine reproduzierbare menschliche Replay-Rekonstruktion oder Promotion auf unabhängiger Holdout-Liga.
+- **Master #75:** 0/7 *Gesamtphasen* vollständig abgenommen. Dieses Update überschreibt die historischen Abschnitte unterhalb nicht; dort genannte ältere fehlgeschlagene Tests beschreiben nur deren damaligen Commit.
+
 ## Status-Legende und Abnahmeregel
 
 - **Im Code vorhanden:** Ein bereits implementierter Baustein; **nicht** dass die Phase abgeschlossen ist.
