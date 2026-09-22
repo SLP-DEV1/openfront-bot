@@ -10,24 +10,61 @@ const token=crypto.randomBytes(32).toString('hex');
 const root=path.resolve(__dirname,'../benchmark-results');
 fs.mkdirSync(root,{recursive:true});
 const sessions=new Map();
+const maxSessions=48,idleMs=30*60*1000;
 const startedAt=new Date().toISOString();
+// Disk is authoritative after an in-memory session is retired. Never reuse a
+// session ID in a fresh directory or reset its last accepted sequence.
+function existingSession(id){
+  const suffix=crypto.createHash('sha256').update(id).digest('hex').slice(0,16);
+  const matches=fs.readdirSync(root).filter(name=>name.endsWith('-'+suffix+'-live-monitor'));
+  for(const name of matches){
+    const dir=path.join(root,name),file=path.join(dir,'status.json');
+    if(!fs.existsSync(file))continue;
+    const saved=JSON.parse(fs.readFileSync(file,'utf8'));
+    if(saved.session!==id)continue; // check the full ID, not only its hash
+    if(!Number.isSafeInteger(saved.lastSeq)||saved.lastSeq<0)
+      throw Error('invalid persisted session sequence');
+    return {id,dir,lastSeq:saved.lastSeq,lastTick:saved.lastTick,
+      count:saved.count,gaps:saved.gaps,counts:saved.counts,
+      startedAt:saved.startedAt,completed:!!saved.completed,
+      lastSeen:Date.parse(saved.updatedAt)||0};
+  }
+  return null;
+}
 function sessionState(id){
   let state=sessions.get(id);
-  if(state)return state;
-  if(sessions.size>=48)throw Error('session limit reached');
-  const stamp=new Date().toISOString().replace(/[:.]/g,'-');
-  const suffix=crypto.createHash('sha256').update(id).digest('hex').slice(0,16);
-  const dir=path.join(root,stamp+'-'+suffix+'-live-monitor');
-  fs.mkdirSync(dir,{recursive:false});
-  state={id,dir,lastSeq:0,lastTick:-1,count:0,gaps:0,counts:{},
-    startedAt:new Date().toISOString()};
+  if(state){state.lastSeen=Date.now();return state;}
+  if(sessions.size>=maxSessions){
+    // Only completed games or long-idle sessions may leave memory. Active
+    // clients keep their slot and disk files are never removed.
+    const eligible=[...sessions.values()].filter(s=>
+      s.completed||Date.now()-s.lastSeen>=idleMs)
+      .sort((a,b)=>Number(b.completed)-Number(a.completed)||
+        a.lastSeen-b.lastSeen);
+    if(!eligible.length){
+      const error=Error('session capacity temporarily exhausted');
+      error.statusCode=503;throw error;
+    }
+    sessions.delete(eligible[0].id);
+  }
+  state=existingSession(id);
+  if(!state){
+    const stamp=new Date().toISOString().replace(/[:.]/g,'-');
+    const suffix=crypto.createHash('sha256').update(id).digest('hex').slice(0,16);
+    const dir=path.join(root,stamp+'-'+suffix+'-live-monitor');
+    fs.mkdirSync(dir,{recursive:false});
+    state={id,dir,lastSeq:0,lastTick:-1,count:0,gaps:0,counts:{},
+      startedAt:new Date().toISOString(),completed:false};
+  }
+  state.lastSeen=Date.now();
   sessions.set(id,state);
-  console.log('Diagnoseordner: '+dir);
+  console.log('Diagnoseordner: '+state.dir);
   return state;
 }
 function status(state){return {session:state.id,startedAt:state.startedAt,
   updatedAt:new Date().toISOString(),lastSeq:state.lastSeq,
-  lastTick:state.lastTick,count:state.count,gaps:state.gaps,counts:state.counts};}
+  lastTick:state.lastTick,count:state.count,gaps:state.gaps,
+  counts:state.counts,completed:state.completed};}
 function send(res,code,body){
   res.writeHead(code,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});
   res.end(JSON.stringify(body));
@@ -66,6 +103,7 @@ const server=http.createServer(async(req,res)=>{
       for(const r of fresh){
         state.lastSeq=r.seq;state.lastTick=r.tick;state.count++;
         state.counts[r.kind]=(state.counts[r.kind]||0)+1;
+        if(r.kind==='game_over')state.completed=true;
       }
       fs.writeFileSync(path.join(state.dir,'status.json'),
         JSON.stringify(status(state),null,2)+'\n');
@@ -74,7 +112,7 @@ const server=http.createServer(async(req,res)=>{
     }
     send(res,200,{accepted:fresh.length,lastSeq:state.lastSeq,
       session,runDir:state.dir});
-  }catch(error){send(res,400,{error:String(error.message||error)});}
+  }catch(error){send(res,error.statusCode||400,{error:String(error.message||error)});}
 });
 server.listen(port,host,()=>{
   console.log('AggroBot-Monitor: http://'+host+':'+port+'/health');
