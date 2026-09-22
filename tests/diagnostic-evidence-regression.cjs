@@ -31,6 +31,8 @@ const sandbox={
  duoTrustedPeer:()=>({id:'ally'}),duoLocal:{peer:{state:{}}},
  diagnosticHelpId:null,diagnosticHelpSince:null,diagnosticHelpDeadline:null,
  diagnosticLastHelpAck:null,diagnosticHelpExpired:false,
+ donationCapture:{polls:0,readable:0,candidates:0,matched:0,
+    lastProbeTick:-Infinity,lastReceiptTick:null,lastProblem:null},
  diagnosticAid:{requestId:'h1',partnerId:'ally',actionId:'a1',tick:99,
    partnerHomeAtEmission:8000,amount:1500},
  diagnosticDonationSeen:new Map(),actionLedger:[{actionId:'a1',
@@ -52,6 +54,8 @@ assert.equal(events.filter(x=>x.kind==='duo_help_support_observed').length,1);
 assert.equal(events.find(x=>x.kind==='duo_help_support_observed').actualTroops,'1400');
 assert.equal(sandbox.actionLedger[0].actualTroopOutflow,'1400');
 assert.equal(sandbox.actionLedger[0].effect,'delivered-to-recipient');
+assert.equal(sandbox.donationCapture.matched,1);
+assert.equal(sandbox.donationCapture.candidates,1);
 functions.diagnosticDonationUpdates();
 assert.equal(events.filter(x=>x.kind==='duo_help_support_observed').length,1,
   'polling same update twice must not duplicate a receipt');
@@ -68,6 +72,9 @@ sandbox.game.updatesSinceLastTick=()=>({26:[{donationType:'troops',
 functions.diagnosticDonationUpdates();
 assert.equal(events.filter(x=>x.kind==='duo_help_support_observed').length,2,
   'unrelated donation cannot confirm Duo help');
+sandbox.game.updatesSinceLastTick=()=>null;
+functions.diagnosticDonationUpdates();
+assert.equal(sandbox.donationCapture.lastProblem,'no-gameview-updates-this-poll');
 sandbox.diagnosticHelpId='h3';sandbox.diagnosticHelpSince=90;
 sandbox.diagnosticHelpDeadline=110;
 functions.diagnosticCloseHelp('deadline',110);
