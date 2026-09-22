@@ -19,6 +19,10 @@ for(const [name,script] of [['Solo',source],['Run3',run3]]){
   assert.match(script,/\['snapshots\.jsonl',jsonl\(snapshot\)\]/,name+' snapshot stream');
   assert.match(script,/\['duo\.jsonl',jsonl\(duo\)\]/,name+' duo stream');
   assert.match(script,/diagnosticZip\(files\)/,name+' single ZIP');
+  for(const event of ['duo_help_request','duo_help_received','duo_help_ack_seen','duo_plan_state','build_quote'])
+    assert(script.includes("telemetry('"+event+"'"),name+' '+event+' event');
+  assert.match(script,/actualTroopOutflow:'unknown'/,name+' outflow is unknown');
+  assert.match(script,/actualGoldCost:'unknown'/,name+' cost is unknown without receipt');
   assert.match(script,/void exportDiagnosticPackage\(true\)/,name+' automatic end export');
 }
 console.log('PASS diagnostic v2 journal, identity, duo transitions and Run3 parity markers');
