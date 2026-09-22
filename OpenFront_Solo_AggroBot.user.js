@@ -4442,8 +4442,7 @@ function predict(model,input){
     // Team-match dZK7: five Cities but one Factory during a long peacetime
     // income stall. Restore the second Factory before speculative SAM saving
     // if no missile is actually incoming and current homeland is safe.
-    const factoryRecovery=factoryEnabled&&factories<2&&cities>=3&&
-      troopSnapshot.incoming===0&&enemyNukes===0;
+
     // Never buy decorative defense posts while the first city/factory are still
     // unaffordable. Only a *real* incoming offensive can override the basics.
     const immediate=economicDefensePressure(me,troopSnapshot,nowTick);
@@ -4457,6 +4456,8 @@ function predict(model,input){
         Math.max(2,(cities+factories)*2));
     const intel=nuclearIntel(me,units);
     const enemySilos=intel.enemySilos.length,enemyNukes=intel.incomingNukes.length;
+    const factoryRecovery=factoryEnabled&&factories<2&&cities>=3&&
+      troopSnapshot.incoming===0&&enemyNukes===0;
     const late=lateGame(me),siloCount=count('Missile Silo');
     // Begin anti-nuclear coverage before the late game, especially when a
     // nearby opponent has a silo; keep the first City/Factory affordable.
