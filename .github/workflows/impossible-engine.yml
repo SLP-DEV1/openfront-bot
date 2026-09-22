@@ -4,12 +4,14 @@ on:
     branches: [main]
     paths:
       - 'OpenFront_Solo_AggroBot.user.js'
+      - 'OpenFront_AggroBot_Impossible_Run3.user.js'
       - 'tools/benchmark/**'
       - 'trainer/**'
       - '.github/workflows/impossible-engine.yml'
   pull_request:
     paths:
       - 'OpenFront_Solo_AggroBot.user.js'
+      - 'OpenFront_AggroBot_Impossible_Run3.user.js'
       - 'tools/benchmark/**'
       - 'trainer/**'
       - '.github/workflows/impossible-engine.yml'
@@ -46,6 +48,16 @@ jobs:
             --bots 0 --nations 1 --seed impossible-ci-001 --ticks 2200 \
             --profile autonomous --policy zero-policy.json --out benchmark-results/impossible-ci
           node -e "const m=require('./benchmark-results/impossible-ci/match.json'); const p=require('./trainer/action-policy.cjs');if(m.benchmarkMeta.policySHA256!==require('crypto').createHash('sha256').update(JSON.stringify(p.zero())).digest('hex')||!m.trajectory?.samples?.length||!m.trajectory.summary)process.exit(1)"
+      - name: Run delivered Run3 bundle on pinned engine
+        run: |
+          node tools/benchmark/engine-match.mjs \
+            --engine ../OpenFrontIO \
+            --engineCommit bb8af015b515b3b717bd4d901074c5f4c16641cb \
+            --bot OpenFront_AggroBot_Impossible_Run3.user.js \
+            --map World --size Compact --difficulty Impossible \
+            --bots 0 --nations 1 --seed run3-ci-001 --ticks 2200 \
+            --profile autonomous --out benchmark-results/run3-ci
+          node -e "const fs=require('fs'),crypto=require('crypto'),m=require('./benchmark-results/run3-ci/match.json'),expected=crypto.createHash('sha256').update(fs.readFileSync('OpenFront_AggroBot_Impossible_Run3.user.js')).digest('hex');if(m.benchmarkMeta.botSHA256!==expected||!m.trajectory?.samples?.length||!m.trajectory.summary)process.exit(1)"
       - name: Run scripted-human Public FFA smoke
         run: |
           node tools/benchmark/engine-match.mjs \
@@ -71,6 +83,7 @@ jobs:
           name: impossible-engine-smoke
           path: |
             benchmark-results/impossible-ci
+            benchmark-results/run3-ci
             benchmark-results/multiplayer-ci
             benchmark-results/neural-ci
           if-no-files-found: ignore
