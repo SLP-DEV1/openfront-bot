@@ -74,7 +74,7 @@ matching event is present in `GameView.updatesSinceLastTick()`, the
 diagnostic emits `donation_observed` and
 `duo_help_support_observed`, with request/action IDs when safely matched;
 the donor's action ledger can then record actual troop outflow. Such
-updates are transient: browser polling may miss one. If missing,
+updates are transient: the diagnostic samples the latest GameView update every 90 ms in an active match (as well as each planner cycle), but browser throttling or a brief update can still cause a miss. If missing,
 `duo_help_action_unconfirmed` retains `supportObserved: unknown`
 and does **not** infer a failed donation from changing home troops.
 `duo_help_expired` is a timeout, elimination or match-end without
