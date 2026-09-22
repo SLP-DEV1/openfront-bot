@@ -1947,16 +1947,42 @@
       const resample=!old||tick-old.tick>=90;
       const previous=old&&resample?{tick:old.tick,troops:old.troops,land:old.land}:
         old?.previous||null;
+      // Retain only actual, time-stamped observations: no guessed opponent
+      // movement, no cross-match names, and a fixed per-opponent memory bound.
+      const samples=(old?.samples||[]).filter(x=>tick>=x.tick&&tick-x.tick<=450);
+      if(!samples.length||tick-samples[samples.length-1].tick>=80)
+        samples.push({tick,troops,land});
       opponentHistory.set(id,{tick:resample?tick:old.tick,
         troops:resample?troops:old.troops,
         land:resample?land:old.land,previous,exposedSince:since,
-        observedTick:tick});
+        observedTick:tick,samples:samples.slice(-7)});
     }
     for(const [id,v] of opponentHistory)
       if(tick-v.observedTick>360)opponentHistory.delete(id);
     if(opponentHistory.size>64)
       for(const [id] of [...opponentHistory].sort((a,b)=>a[1].observedTick-b[1].observedTick)
         .slice(0,opponentHistory.size-64))opponentHistory.delete(id);
+  }
+  function opponentWindows(enemy,tick=number(()=>game.ticks(),0)){
+    const record=opponentHistory.get(safeID(enemy));
+    const empty=()=>Object.freeze({90:null,180:null,360:null});
+    if(!record||tick<record.observedTick||tick-record.observedTick>120)
+      return empty();
+    const nowTroops=Math.max(0,number(()=>enemy.troops(),0));
+    const nowLand=Math.max(0,number(()=>enemy.numTilesOwned(),0));
+    const windows={};
+    for(const span of [90,180,360]){
+      // At least the requested history, at most one sampling interval older.
+      // Missing observations remain null rather than fabricated trends.
+      const sample=(record.samples||[]).slice().reverse().find(x=>
+        tick-x.tick>=span&&tick-x.tick<=span+90);
+      windows[span]=sample?Object.freeze({
+        observedTicks:tick-sample.tick,
+        troopsChange:(nowTroops-sample.troops)/Math.max(1,sample.troops),
+        landChange:(nowLand-sample.land)/Math.max(1,sample.land)
+      }):null;
+    }
+    return Object.freeze(windows);
   }
   function opponentTrend(enemy,tick=number(()=>game.ticks(),0)){
     const v=opponentHistory.get(safeID(enemy)),previous=v?.previous;
@@ -5981,7 +6007,8 @@
         id:g.id,front:g.tiles?.length||0,
         troops:number(()=>g.opponent.troops(),0),
         land:number(()=>g.opponent.numTilesOwned(),0),
-        friendly:friendly(g.opponent,me)
+        friendly:friendly(g.opponent,me),
+        history:opponentWindows(g.opponent,tick)
       }));
     return Object.freeze({
       tick,requestedTick,borderAgeTicks:Math.max(0,tick-requestedTick),
