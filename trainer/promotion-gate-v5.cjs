@@ -9,34 +9,52 @@ const fail=reason=>({valid:false,eligible:false,reason});
 const uniqueStrings=(xs)=>Array.isArray(xs)&&xs.length>0&&
   xs.every(x=>typeof x==='string'&&x.length>0&&x.length<=128)&&
   new Set(xs).size===xs.length;
-const key=(mode,map,opponent,seed)=>JSON.stringify([mode,map,opponent,seed]);
+const scenarioKey=scenarioId=>scenarioId;
 function evaluate({protocol,rows}={}){
   if(!protocol||!Array.isArray(rows))return fail('missing-protocol-or-rows');
-  const {engineCommit,modes,maps,opponents,seeds,arms,minPairsPerCell}=protocol;
+  const {engineCommit,modes,maps,opponents,scenarios,arms,minPairsPerCell}=protocol;
   if(!HEX40.test(engineCommit||'')||!uniqueStrings(modes)||
      !modes.every(m=>['1v1','official-2v2','ffa-duo'].includes(m))||
      !uniqueStrings(maps)||maps.length<2||
-     !uniqueStrings(opponents)||opponents.length<2||!uniqueStrings(seeds)||
+     !uniqueStrings(opponents)||opponents.length<2||!Array.isArray(scenarios)||
+     scenarios.length===0||
      !Number.isSafeInteger(minPairsPerCell)||minPairsPerCell<2||
-     seeds.length<minPairsPerCell||!arms||
+     !arms||
      Object.keys(arms).sort().join('|')!==[...ARMS].sort().join('|')||
      ARMS.some(a=>!HEX64.test(arms[a]?.botSHA256||'')||
        !HEX64.test(arms[a]?.policySHA256||'')))
     return fail('invalid-preregistered-protocol');
-  const planned=new Map();
+  const scenarioIds=new Set(),matchSeeds=new Set(),cellCounts=new Map();
+  for(const scenario of scenarios){
+    if(!scenario||typeof scenario.scenarioId!=='string'||
+       !scenario.scenarioId.trim()||scenario.scenarioId.length>128||
+       typeof scenario.matchSeed!=='string'||!scenario.matchSeed.trim()||
+       scenario.matchSeed.length>128||!modes.includes(scenario.mode)||
+       !maps.includes(scenario.map)||!opponents.includes(scenario.opponent)||
+       scenarioIds.has(scenario.scenarioId)||matchSeeds.has(scenario.matchSeed))
+      return fail('invalid-or-reused-scenario-block');
+    scenarioIds.add(scenario.scenarioId);
+    matchSeeds.add(scenario.matchSeed);
+    const cell=JSON.stringify([scenario.mode,scenario.map,scenario.opponent]);
+    cellCounts.set(cell,(cellCounts.get(cell)||0)+1);
+  }
   for(const mode of modes)for(const map of maps)for(const opponent of opponents)
-    for(const seed of seeds){
-      const k=key(mode,map,opponent,seed);
-      planned.set(k,new Map());
-    }
+    if((cellCounts.get(JSON.stringify([mode,map,opponent]))||0)<minPairsPerCell)
+      return fail('undersized-holdout-cell');
+  const planned=new Map();
+  for(const scenario of scenarios)
+    planned.set(scenarioKey(scenario.scenarioId),{scenario,arms:new Map()});
   if(rows.length!==planned.size*ARMS.length)return fail('missing-or-extra-match');
   const matchIds=new Set();
   for(const r of rows){
     if(!r||!ARMS.includes(r.arm)||!own(arms,r.arm))
       return fail('unexpected-arm');
-    const k=key(r.mode,r.map,r.opponent,r.seed);
-    const group=planned.get(k);
-    if(!group)return fail('unplanned-scenario');
+    const block=planned.get(scenarioKey(r.scenarioId));
+    if(!block)return fail('unplanned-scenario');
+    const {scenario,arms:group}=block;
+    if(r.mode!==scenario.mode||r.map!==scenario.map||
+       r.opponent!==scenario.opponent||r.matchSeed!==scenario.matchSeed)
+      return fail('scenario-block-mismatch');
     if(group.has(r.arm))return fail('duplicate-scenario-arm');
     if(typeof r.matchId!=='string'||!r.matchId.trim()||matchIds.has(r.matchId))
       return fail('missing-or-duplicate-match-id');
@@ -58,7 +76,7 @@ function evaluate({protocol,rows}={}){
       return fail('censored-or-invalid-result');
     group.set(r.arm,r);
   }
-  if([...planned.values()].some(g=>g.size!==ARMS.length))
+  if([...planned.values()].some(block=>block.arms.size!==ARMS.length))
     return fail('missing-paired-arm');
   const comparisons={};
   for(const baseline of ARMS.slice(1)){
@@ -66,16 +84,18 @@ function evaluate({protocol,rows}={}){
     const cells=[];
     for(const mode of modes)for(const map of maps)for(const opponent of opponents){
       let bw=0,cw=0,bl=0,cl=0;
-      for(const seed of seeds){
-        const g=planned.get(key(mode,map,opponent,seed));
+      const blocks=[...planned.values()].filter(({scenario})=>
+        scenario.mode===mode&&scenario.map===map&&scenario.opponent===opponent);
+      for(const {arms:g} of blocks){
         const a=g.get(baseline),b=g.get('candidate');
         bw+=Number(a.outcome==='victory');cw+=Number(b.outcome==='victory');
         bl+=a.endLand;cl+=b.endLand;
       }
+      const n=blocks.length;
       baselineWins+=bw;candidateWins+=cw;baselineLand+=bl;candidateLand+=cl;
-      cells.push({mode,map,opponent,n:seeds.length,baselineWins:bw,
-        candidateWins:cw,baselineMeanLand:bl/seeds.length,
-        candidateMeanLand:cl/seeds.length,
+      cells.push({mode,map,opponent,n,baselineWins:bw,
+        candidateWins:cw,baselineMeanLand:bl/n,
+        candidateMeanLand:cl/n,
         passes:cw>=bw&&cl>=bl*.95});
     }
     comparisons[baseline]={n:planned.size,baselineWins,candidateWins,

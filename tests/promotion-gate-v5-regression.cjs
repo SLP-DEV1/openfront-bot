@@ -3,9 +3,16 @@ const assert=require('node:assert/strict');
 const {evaluate}=require('../trainer/promotion-gate-v5.cjs');
 const clone=x=>JSON.parse(JSON.stringify(x));
 const sha=n=>String(n).repeat(64);
+const scenarios=[];
+for(const map of ['World','Europe'])for(const opponent of ['balanced','cautious'])
+for(let pair=1;pair<=2;pair++)scenarios.push({
+  scenarioId:`1v1-${map}-${opponent}-${pair}`,
+  mode:'1v1',map,opponent,
+  matchSeed:`holdout-${map}-${opponent}-${pair}`
+});
 const protocol={engineCommit:'a'.repeat(40),modes:['1v1'],
   maps:['World','Europe'],opponents:['balanced','cautious'],
-  seeds:['holdout-1','holdout-2'],minPairsPerCell:2,
+  scenarios,minPairsPerCell:2,
   arms:{
     candidate:{botSHA256:sha('b'),policySHA256:sha('c')},
     'rule-basis':{botSHA256:sha('d'),policySHA256:sha('e')},
@@ -13,15 +20,14 @@ const protocol={engineCommit:'a'.repeat(40),modes:['1v1'],
   }};
 const rows=[];
 let index=0;
-for(const mode of protocol.modes)for(const map of protocol.maps)
-for(const opponent of protocol.opponents)for(const seed of protocol.seeds)
+for(const scenario of protocol.scenarios)
 for(const arm of Object.keys(protocol.arms)){
   const candidate=arm==='candidate';
-  rows.push({arm,matchId:'holdout-'+(++index),mode,map,opponent,seed,
+  rows.push({arm,matchId:'holdout-'+(++index),...scenario,
     engineCommit:protocol.engineCommit,...protocol.arms[arm],
     exitCode:0,verified:true,confirmed:true,
     recording:{complete:true,dropped:0,streamErrors:0},
-    outcome:candidate&&seed==='holdout-1'?'victory':'defeat',
+    outcome:candidate&&scenario.matchSeed.endsWith('-1')?'victory':'defeat',
     termination:'game-over',endLand:candidate?1200:1000,endTick:3500});
 }
 const run=(nextRows=rows,nextProtocol=protocol)=>
@@ -58,7 +64,9 @@ reject(x=>x[0].outcome='unknown','censored-or-invalid-result');
 reject(x=>x[0].termination='tick-limit','censored-or-invalid-result');
 reject(x=>x[0].endLand=null,'censored-or-invalid-result');
 reject(x=>x[0].endTick=-1,'censored-or-invalid-result');
-reject(x=>x[0].seed='unplanned','unplanned-scenario');
+reject(x=>x[0].scenarioId='unplanned','unplanned-scenario');
+reject(x=>x[0].matchSeed='different-seed','scenario-block-mismatch');
+reject(x=>x[0].map='Europe','scenario-block-mismatch');
 reject(x=>x[0].arm='unplanned','unexpected-arm');
 const noWins=clone(rows);
 for(const row of noWins)if(row.arm==='candidate')row.outcome='defeat';
@@ -71,8 +79,16 @@ for(const row of collapse)if(row.arm==='candidate'&&row.map==='Europe'){
 assert.equal(run(collapse).eligible,false,'map-level loss/land regression blocks promotion');
 assert.equal(run(rows,{...protocol,minPairsPerCell:3}).eligible,false,
   'undersized per-cell holdout cannot be promoted');
-assert.equal(run(rows,{...protocol,seeds:['holdout-1','holdout-1']}).valid,false,
-  'duplicate seeds cannot inflate coverage');
+const reusedSeed=clone(protocol);
+reusedSeed.scenarios[1].matchSeed=reusedSeed.scenarios[0].matchSeed;
+assert.equal(run(rows,reusedSeed).reason,'invalid-or-reused-scenario-block',
+  'the same engine seed cannot inflate coverage across scenario blocks');
+const duplicateScenario=clone(protocol);
+duplicateScenario.scenarios[1].scenarioId=duplicateScenario.scenarios[0].scenarioId;
+assert.equal(run(rows,duplicateScenario).reason,'invalid-or-reused-scenario-block',
+  'scenario IDs must be globally unique');
+assert.equal(run(rows,{...protocol,scenarios:undefined}).valid,false,
+  'legacy seed cross-products fail closed because independence is unproven');
 assert.equal(run(rows,{...protocol,maps:['World']}).valid,false,
   'single-map protocol is not a rotated holdout');
 assert.equal(run(rows,{...protocol,opponents:['balanced']}).valid,false,

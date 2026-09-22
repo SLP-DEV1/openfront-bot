@@ -5,13 +5,38 @@
 
 ## Implementierungsstand 1.21.0 (P0–P6)
 
-Das umfangreiche P0–P6-Codepaket ist in 1.21.0 integriert, aber die
-Roadmap-Issues #68–#74 bleiben bis zur Erfüllung ihrer implementierbaren
-Aufgaben und belegten Abnahmebedingungen offen. Insbesondere sind Ligaausführung,
+### Abschlussprüfung der implementierbaren Roadmap-Aufgaben (22.09.2026)
+
+Die in [ROADMAP_IMPLEMENTATION_P0_P6_1.21.0.md](ROADMAP_IMPLEMENTATION_P0_P6_1.21.0.md)
+zugeordneten Codeaufgaben P0–P6 sind implementiert. Der aktuelle native
+Verify-Satz bestand lokal vollständig, darunter **308/308** Strategie-
+Regressionen, deterministische Quell-/Run3-/Modell-Hashes, Duo-Relay,
+Benchmark-/Liga-Identitäten, Replay-Sichtzustand, Candidate-v5 und der
+fail-closed Promotion-Gate.
+
+Zwei nach der Integration gemeldete konkrete Restlücken sind im
+Abschlusspaket behoben:
+
+- Der Paired-Impossible-Workflow wird auch bei `trainer/**`- und direkten
+  Run3-Änderungen eingeplant; ein Regressionstest hält die fachlich relevanten
+  Trigger zusammen.
+- Der P6-Promotion-Gate akzeptiert kein über Karten oder Gegner
+  wiederverwendetes Seed mehr. Vorregistrierte `scenarioId`/`matchSeed`-Blöcke
+  sind global eindeutig; nur die drei Vergleichsarme innerhalb desselben
+  Blocks teilen exakt denselben Engine-Seed.
+
+Damit sind die implementierbaren Aufgaben administrativ schließbar, sobald
+dieses Abschlusspaket in `main` integriert und dessen CI erfolgreich ist.
+Nicht durchgeführt bleiben Langzeit-, echte Zwei-Browser-, Liga- sowie
+120-/600-Tick-Wirkungstests. Sie gelten ausdrücklich **nicht** als bestanden;
+aus dem Roadmap-Abschluss folgt keine neue Siegquote, Modell-Promotion,
+P95-Laufzeitzusage oder kausale Wirkungsbehauptung.
+
+Das umfangreiche P0–P6-Codepaket ist in 1.21.0 integriert. Ligaausführung,
 Replay-Rekonstruktion aus tatsächlichen sichtbaren Zuständen, trainierte
-Kandidaten-Policy und kontrollierte Promotion nicht durch einen Ligaplan,
-einen Import-Validator oder ein inaktives Modell erledigt. Die genaue Zuordnung und die bewusst nicht erzeugten
-Nachweise stehen im
+Kandidaten-Policy und kontrollierte Promotion wurden dabei bewusst nicht als
+erfolgreich ausgeführte Versuche behauptet. Die genaue Zuordnung und die
+bewusst nicht erzeugten Nachweise stehen im
 [P0–P6-Implementierungsprotokoll](ROADMAP_IMPLEMENTATION_P0_P6_1.21.0.md).
 Gemäß der aktualisierten Abschlussregel in #75 wurden auf Nutzerwunsch
 **keine Langzeit-, Zwei-Client-, Liga- oder Wirkungstests** ausgeführt. Daher
