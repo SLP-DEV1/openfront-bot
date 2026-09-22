@@ -3937,7 +3937,10 @@ function boot(benchmarkOptions={}) {
     assert.equal(emitted[1].actionId,'test-session:a2');
     assert.equal(commands[0].actionId,emitted[0].actionId);
     assert.equal(commands[1].actionId,emitted[1].actionId);
-    assert.equal(emitted[0].effect,'unconfirmed');
+    assert.equal(emitted[0].effect,'unknown');
+    assert.equal(snapshot.actionTrace.ledger.length,2);
+    assert.equal(snapshot.actionTrace.ledger[0].observed,'unknown');
+    assert.equal(snapshot.actionTrace.ledger[0].effect,'unknown');
     assert.equal(snapshot.actionTrace.lastActionId,emitted[1].actionId);
     const pending={actionId:emitted[0].actionId,id:'strong',name:'strong',
       tick:300,amount:1500,ownLand:1200,enemyLand:1200,
@@ -3949,6 +3952,9 @@ function boot(benchmarkOptions={}) {
       r.kind==='attack_confirmed');
     assert.equal(confirmed.actionId,emitted[0].actionId);
     assert.equal(confirmed.evidence,'observed-change-not-causal-proof');
+    const observed=x.b.diagnosticSnapshot().actionTrace.ledger[0];
+    assert.equal(observed.observed,'attack_confirmed');
+    assert.equal(observed.effect,'unknown');
   });
   await check('1.20.11 net gold change preserves spending separately from trade and train',()=>{
     const x=boot();let train=0,trade=0;
