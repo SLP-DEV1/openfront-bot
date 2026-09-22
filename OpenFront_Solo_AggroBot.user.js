@@ -1042,6 +1042,14 @@
       warTarget:duoID(warState.id)?warState.id:null,
       strikeTick:Number.isInteger(duoPlan?.strikeTick)?duoPlan.strikeTick:null,
       planId:duoPlan?.planId??null,expiresTick:duoPlan?.expiresTick??null,
+      ackPlanId:duoPlan?.planId&&duoPlan.ready&&peer&&
+        state&&state.incoming===0&&
+        state.available>=(duoPlan.joint?.own??Infinity)&&
+        !recentHostilePressure(number(()=>game?.ticks?.(),0))&&
+        actualFriendly(peer,me)&&duoPlan.partner===safeID(peer)&&
+        Number.isInteger(duoPlan.expiresTick)&&
+        number(()=>game.ticks(),Infinity)<=duoPlan.expiresTick?
+          duoPlan.planId:null,
       ready:!!(state&&state.incoming===0&&
         !recentHostilePressure(number(()=>game?.ticks?.(),0))&&
         !(crisisTrend&&number(()=>game?.ticks?.(),0)<crisisTrend.expires)&&
@@ -1610,7 +1618,9 @@
       !Number.isInteger(duoPlan.strikeTick)||tick<duoPlan.strikeTick||
       tick>(Number.isInteger(duoPlan.expiresTick)?duoPlan.expiresTick:duoPlan.strikeTick+110)||
       (Number.isInteger(info.expiresTick)&&tick>info.expiresTick&&observedOn<=0)||
-      (info.planId&&duoPlan.planId&&info.planId!==duoPlan.planId&&observedOn<=0)||
+      // Both full bots agree to the same live plan before launching.
+      !duoPlan.planId||info.ackPlanId!==duoPlan.planId||
+      info.planId!==duoPlan.planId||
       info.target!==id||
       (info.strikeTick!==duoPlan.strikeTick&&observedOn<=0)))return null;
     return {target:id,own,ally,needed,enemy,front,
@@ -1759,6 +1769,8 @@
       partnerHome,needHelp:partnerNeeds,partnerWarning,
       partnerReady:!!local?.state?.ready,separatedFronts,
       teamDecision,strikeTick,
+      partnerAck:!!(local?.state?.ackPlanId&&strikeTick!==null&&
+        local.state.ackPlanId===String(safeID(shared)).slice(0,96)+':'+String(strikeTick)),
       planId:strikeTick===null||!shared?null:
         String(safeID(shared)).slice(0,96)+':'+String(strikeTick),
       expiresTick:strikeTick===null?null:strikeTick+110,
@@ -5082,6 +5094,23 @@
     telemetry('landing_failure_guard','Landungsziel nach Verlust vorübergehend gesperrt',
       {key,tile,count,until,reason,evidence:'observed-no-confirmed-arrival'});
   }
+  // Prefer the visible, engine-produced grid MotionPlan for an active ship.
+  // This path and ticksPerStep come from the official GameView (not BFS).
+  // This projects movement only; retreat, interception and re-path can change it.
+  function observedTransportETA(ship,tick=number(()=>game?.ticks?.(),0)){
+    const id=ship?.id?.();
+    const plan=Number.isInteger(id)?game?.motionPlans?.()?.get(id):null;
+    if(!plan||!Number.isInteger(plan.startTick)||
+      !Number.isInteger(plan.ticksPerStep)||plan.ticksPerStep<1||
+      !plan.path?.length)return null;
+    const arrivalTick=plan.startTick+
+      (plan.path.length-1)*plan.ticksPerStep;
+    return {source:'official-visible-motion-plan',
+      etaTicksEstimate:Math.max(0,arrivalTick-tick),
+      arrivalTick,steps:plan.path.length-1,
+      ticksPerMove:plan.ticksPerStep,planId:plan.planId,
+      etaExact:false};
+  }
   function inspectMarine(me,tick){
     const units=(()=>{try{return game.units?.()||[];}catch(_){return [];}})();
     const mine=safeID(me),own=type=>units.filter(u=>
@@ -5117,6 +5146,8 @@
           boat.lastShipTile=position;boat.lastProgressTick=tick;
         }
         const id=observed.id?.();
+        const observedETA=observedTransportETA(observed,tick);
+        if(observedETA)boat.eta=observedETA;
         const resolved=observed.targetTile?.();
         if(Number.isInteger(resolved))boat.resolvedDest=resolved;
         if(!boat.shipIds.includes(id))boat.shipIds.push(id);
@@ -5125,7 +5156,8 @@
           fleetStatus='Transport im Spiel sichtbar';
           telemetry('boat_confirmed','Transport im Spielzustand beobachtet',
             {dest:boat.dest,resolvedDest:boat.resolvedDest??null,
-              target:boat.target,ship:id,troops:boat.troops});
+              target:boat.target,ship:id,troops:boat.troops,
+              eta:boat.eta??null});
           if(boat.playerID&&coordinatedWar()&&warState.id===null){
             const target=game.playerViews?.().find(p=>safeID(p)===boat.playerID);
             if(target?.isAlive?.()&&!friendly(target,me)){
@@ -5644,8 +5676,10 @@
       Math.hypot(game.x(a)-game.x(b),game.y(a)-game.y(b))<115;
     return observations.some(v=>near(v.tile,source)||near(v.tile,dest));
   }
-  // Bounded water-only shortest-route probe; destination itself is land.
-  // ETA range is a heuristic, not official movement speed or engine pathfinding.
+  // Bounded water-only route probe; destination itself is land.
+  // TransportShipExecution at official pinned bb8af015 has ticksPerMove=1.
+  // A movement step costs one engine tick; actual WaterPathFinder may follow
+  // a different or delayed path, so this cannot promise arrival at one tick.
   function navalRouteEstimate(source,dest,maxVisited=1800){
     if(!Number.isInteger(source)||!Number.isInteger(dest)||
       !game?.isWater?.(source))return null;
@@ -5662,8 +5696,9 @@
           while(cursor!==null){path.push(cursor);cursor=previous.get(cursor);}
           path.reverse();
           const waterSteps=path.length-1;
-          return {waterSteps,etaTicksRange:[waterSteps,waterSteps*6],
-            etaMethod:'uncalibrated-water-steps-proxy',path};
+          return {waterSteps,etaTicksEstimate:waterSteps+1,
+            ticksPerMove:1,etaExact:false,
+            etaMethod:'official-transport-one-tick-per-move-bfs-route-approximation',path};
         }
         const next=[];const n=game.neighbors4(tile,next);
         for(const neighbor of next.slice(0,n))if(!previous.has(neighbor)&&
@@ -5846,7 +5881,8 @@
         if(routeEstimate)
           telemetry('marine_eta_proxy','Wasserroute als Näherung berechnet',
             {target:safeID(current),dest,waterSteps:routeEstimate.waterSteps,
-              etaTicksRange:routeEstimate.etaTicksRange,
+              etaTicksEstimate:routeEstimate.etaTicksEstimate,
+              etaExact:false,ticksPerMove:routeEstimate.ticksPerMove,
               etaMethod:routeEstimate.etaMethod});
         if(routeRisk||navalHomeRisk(me,number(()=>game.ticks(),tick))){
           decisionNote('marine-pause','Landung nach Sicherheitsprüfung zurückgestellt',
@@ -6352,6 +6388,9 @@
         const allowed={aggressive:[40,100],reserve:[5,65],actionsPerMinute:[15,120],maxTargets:[4,25]};
         for(const [key,value] of Object.entries(settings)){
           if(key==='fullAuto'&&typeof value==='boolean')continue;
+          if(key==='duoEnabled'&&typeof value==='boolean')continue;
+          if(key==='duoRoom'&&typeof value==='string'&&
+            /^[a-zA-Z0-9_-]{6,64}$/.test(value))continue;
           if(!allowed[key]||typeof value!=='number'||!Number.isFinite(value)||value<allowed[key][0]||value>allowed[key][1])
             throw new Error('Invalid benchmark setting: '+key);
         }
@@ -6362,7 +6401,8 @@
       },
       stop:()=>{telemetry('benchmark_stop','Lokaler Testlauf gestoppt');opts.enabled=false;autoStartGame=game;generation++;},
       // Engine harness awaits every cycle; ordinary browser timers stay unchanged.
-      pump:async()=>{await step();await economyStep();await diplomacyTick();await nukeStep();}
+      pump:async()=>{await step();await economyStep();await diplomacyTick();
+        await nukeStep();if(opts.duoEnabled)await duoPublish();}
     });
   }
   console.info(PREFIX,'v'+VERSION,'ready; Singleplayer/Public/Private, auto-start after match discovery');
