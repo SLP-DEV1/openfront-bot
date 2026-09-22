@@ -2299,6 +2299,9 @@
         immediateState=tuneAutonomously(me,strategic.groups,immediateState,tick,
           {wanted:'DEFEND',rebuilding:true});
       // Save committed troops BEFORE any asynchronous worker border request.
+      // Step the posture machine once per tick BEFORE the retreat pass so
+      // even the early-exit path sees the current defense state.
+      updateDefensePosture(me,immediateState,tick);
       if(emergencyRetreat(me,tick,immediateState))return;
       const tiles=await borders(me,tick);
       if(!live(serial))return;
@@ -2353,6 +2356,11 @@
           factories:ownStructures(me).filter(u=>u.type?.()==='Factory').length,
           borders:tiles.length,tuning:{...autoTuning,enabled:!!opts.fullAuto},defense:{status:defenseStatus,incoming:s.incoming,
             committed:s.committed,pendingRetreats:retreatRequests.size},enemies:groups.filter(g=>g.id!==null).map(g=>({name:nameOf(g.opponent),troops:number(()=>g.opponent.troops()),land:number(()=>g.opponent.numTilesOwned())})),
+          posture:{state:defensePostureState.state,
+            signals:defensePostureState.signals,
+            reason:defensePostureState.reason,
+            entered:defensePostureState.entered,
+            stableSince:defensePostureState.stableSince},
           readiness:context.readiness?.reason,ratio:s.ratio,maxTroops:s.max,growthPotential:s.growthPotential,
           victory:winStatus,victoryThreat,operation,duoPlan,
           opponentProfiles:[...opponentProfiles.values()],

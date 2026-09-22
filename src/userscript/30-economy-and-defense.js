@@ -2,6 +2,8 @@
     const units=ownStructures(me);
     if(!units.some(u=>u.type?.()==='City')||
        !units.some(u=>u.type?.()==='Factory'))return 'bootstrap';
+    if(defensePostureState.state==='CRITICAL'||
+       defensePostureState.state==='RECOVERING')return 'defensive';
     if(s.incoming>Math.max(1200,s.home*.10)||recentHostilePressure(tick))
       return 'defensive';
     const noNeutral=strategic.groups.every(g=>g.id!==null||g.fallout);
@@ -17,8 +19,9 @@
     const land=ranked.filter(x=>x.id===null);
     const enemy=ranked.filter(x=>x.id!==null);
     const threatened=s.incoming>0 || recentHostilePressure(tick,260) ||
-      s.strongest>=s.home*.85;
-    const recovering=context.wanted==='RECOVER'||context.wanted==='DEFEND';
+      s.strongest>=s.home*.85 || defensePostureState.state!=='NORMAL';
+    const recovering=context.wanted==='RECOVER'||context.wanted==='DEFEND'||
+      defensePostureState.state==='RECOVERING';
     const canSail=opts.boats&&!!ctors.boat&&!pendingBoat&&!pendingAttack&&
       s.available>=1300&&s.activeEnemy===0&&!threatened&&
       tick>=navalBackoffUntil&&tick-lastBoat>=100;
@@ -94,6 +97,28 @@
   // OpenFront counters incoming attacks against the same opponent 1:1;
   // leaving troops at home usually preserves the Defense Post bonus.
   // Retreating a player attack costs 25% and returns after ~20 game ticks.
+  /* __DEFENSE_POSTURE__ */
+  // V6 Phase 2 (S3): feed the inlined posture state machine once per tick.
+  // The machine itself is canonical (src/runtime/defense-posture.cjs);
+  // this wrapper only maps live game evidence onto its input signals.
+  function updateDefensePosture(me,s,tick){
+    if(tick<=postureLastTick)return defensePostureState;
+    postureLastTick=tick;
+    const samples=troopSamples.filter(x=>tick-x.tick<=110);
+    const prev=samples[0];
+    const land=number(()=>me.numTilesOwned(),0);
+    const evidence={incoming:s.incoming,home:s.home,strongest:s.strongest,
+      landLoss:prev&&prev.tiles>0?Math.max(0,(prev.tiles-land)/prev.tiles):0,
+      crisis:!!(crisisTrend&&tick<crisisTrend.expires&&
+        (crisisTrend.lostLand>0||crisisTrend.lostAssets>0)),
+      pressure:recentHostilePressure(tick)};
+    const next=postureStep(defensePostureState,evidence,tick);
+    if(next.changed)
+      telemetry('defense_posture_'+next.state.toLowerCase(),next.reason,
+        {posture:next,evidence});
+    defensePostureState=next;
+    return defensePostureState;
+  }
   function defenseAssessment(me,s,tick) {
     const hostile=s.inc.filter(a=>{
       try {const p=game.playerBySmallID?.(a.attackerID);
@@ -138,7 +163,8 @@
     if(!threat.incoming){defenseStatus='Keine eingehenden Angriffe';return false;}
     defenseStatus='Eingehend '+Math.floor(threat.incoming/10)+' · Heim '+
       Math.floor(s.home/10)+' · '+Math.round(threat.ratio*100)+'%';
-    if(!opts.defense||!threat.severe)return false;
+    if(!opts.defense||!threat.severe&&defensePostureState.state!=='CRITICAL')
+      return false;
     if(!ctors.cancel){
       defenseStatus+=' · Rückzug-Event nicht gefunden';
       if(tick-lastDefenseLog>=100){lastDefenseLog=tick;
@@ -165,7 +191,7 @@
       telemetry('defense_retreat_ordered','Angriff wegen akuter Bedrohung zurückgerufen',
         {attackID:a.id,target:a.targetID,troops:a.troops,recoverable,
           incoming:threat.incoming,home:s.home,critical:threat.critical});
-      if(issued>=(threat.critical?3:1)||retreatRequests.size>=5)break;
+      if(issued>=(threat.critical||defensePostureState.state==='CRITICAL'?3:1)||retreatRequests.size>=5)break;
     }
     if(issued){lastEmergencyRetreat=tick;defenseStatus+=' · '+issued+' Rückzug/Rückzüge angefordert';}
     return issued>0;
@@ -175,7 +201,8 @@
     const threat=defenseAssessment(me,s,tick);
     // Do not forbid every counterattack merely because the invasion is serious.
     // A counteroffensive is allowed only if the home defense remains funded.
-    if(threat.critical&&s.home<threat.incoming*1.35)return false;
+    if((threat.critical||defensePostureState.state==='CRITICAL')&&
+       s.home<threat.incoming*1.35)return false;
     // Keep the home force against active stacks; a large incoming percentage
     // alone is not a reason to skip a safe raid on the attacker's weak home.
     if(s.activeEnemy||s.home<threat.incoming*1.35)return false;

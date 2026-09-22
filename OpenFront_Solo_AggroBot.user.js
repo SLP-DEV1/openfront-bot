@@ -449,6 +449,12 @@ function predict(model,input){
   let lastEconomyProbeReport=null,neuralDecisionEvidence=null,economyBudgetEvidence=null,shadowDecisionEvidence=null;
   let investmentStatus='Grundaufbau',lastWarReview=-Infinity;
   let defenseStatus='Keine Bedrohung',lastEmergencyRetreat=-Infinity,lastDefenseLog=-Infinity;
+  // V6 Phase 2 (S3): defense posture state machine, stepped once per game
+  // tick by updateDefensePosture (30-economy-and-defense.js). The posture
+  // core itself is inlined verbatim from src/runtime/defense-posture.cjs.
+  let defensePostureState={state:'NORMAL',entered:0,stableSince:null,
+    reason:'Keine aktive Bedrohung',signals:[],critical:false,
+    threatened:false,ratio:0},postureLastTick=-Infinity;
   let targetIntelCache=new Map(),frontMemory=new Map(),lastFrontWarning=-Infinity;
   let opponentHistory=new Map(),opponentProfiles=new Map(),lastEconomyPosture='—',lastDirectorDecision=null;
   let planningState={tick:-Infinity,candidates:[],selected:null,rejected:null,
@@ -1104,6 +1110,9 @@ function predict(model,input){
     buildCursor=0;spawnCache=null;spawnJob=null;spawnRetryAt=0;spawnAlternatives=[];spawnState={scanned:0,phase:'idle',lastSent:null,attempts:0,blocked:null,deadline:null};cooldowns.clear();rejected.clear();
     plan=null;lastSelection='';lastEmission=0;borderOffset=0;lastBorderRefresh=0;
     totalSent=0;totalFailed=0;actions=[];errors=0;troopSamples=[];
+    defensePostureState={state:'NORMAL',entered:0,stableSince:null,
+      reason:'Keine aktive Bedrohung',signals:[],critical:false,
+      threatened:false,ratio:0};postureLastTick=-Infinity;
     lastDecisionFrame=null;lastRecoveryReason='';lastBattle=null;pendingAttack=null;targetIntelCache.clear();frontMemory.clear();opponentHistory.clear();lastEconomyPosture='—';lastDirectorDecision=null;planningState={tick:-Infinity,candidates:[],selected:null,rejected:null,durationMs:0,budgetMs:50,truncated:false};investmentAssessments=[];neuralPolicyCache={key:null,output:null};lastFrontWarning=-Infinity;
     attackReceipts={confirmed:0,unconfirmed:0,territoryGained:0};blockedTargets.clear();
     attackCommands=[];attackCommandSequence=0;observedAttacks.clear();
@@ -3807,6 +3816,8 @@ function predict(model,input){
     const units=ownStructures(me);
     if(!units.some(u=>u.type?.()==='City')||
        !units.some(u=>u.type?.()==='Factory'))return 'bootstrap';
+    if(defensePostureState.state==='CRITICAL'||
+       defensePostureState.state==='RECOVERING')return 'defensive';
     if(s.incoming>Math.max(1200,s.home*.10)||recentHostilePressure(tick))
       return 'defensive';
     const noNeutral=strategic.groups.every(g=>g.id!==null||g.fallout);
@@ -3822,8 +3833,9 @@ function predict(model,input){
     const land=ranked.filter(x=>x.id===null);
     const enemy=ranked.filter(x=>x.id!==null);
     const threatened=s.incoming>0 || recentHostilePressure(tick,260) ||
-      s.strongest>=s.home*.85;
-    const recovering=context.wanted==='RECOVER'||context.wanted==='DEFEND';
+      s.strongest>=s.home*.85 || defensePostureState.state!=='NORMAL';
+    const recovering=context.wanted==='RECOVER'||context.wanted==='DEFEND'||
+      defensePostureState.state==='RECOVERING';
     const canSail=opts.boats&&!!ctors.boat&&!pendingBoat&&!pendingAttack&&
       s.available>=1300&&s.activeEnemy===0&&!threatened&&
       tick>=navalBackoffUntil&&tick-lastBoat>=100;
@@ -3899,6 +3911,119 @@ function predict(model,input){
   // OpenFront counters incoming attacks against the same opponent 1:1;
   // leaving troops at home usually preserves the Defense Post bonus.
   // Retreating a player attack costs 25% and returns after ~20 game ticks.
+  const DEFENSE_POSTURES=['NORMAL','THREATENED','CRITICAL','RECOVERING'];
+  const POSTURE_CONSTANTS={
+    // Absolute mega-attack scale. Deliberately NOT the sole CRITICAL
+    // entry/exit condition (signal S3 below needs corroboration).
+    MEGA_ATTACK:1e6,
+    // Sustained stabilization required before leaving CRITICAL.
+    CRITICAL_EXIT_TICKS:60,
+    // Minimum vigilance after a crisis; hard cap before NORMAL is allowed.
+    RECOVER_MIN_TICKS:120,
+    RECOVER_MAX_TICKS:900};
+  // sig: {incoming, home, strongest, landLoss, crisis, pressure}
+  //   incoming  hostile incoming troops (unfiltered attack updates)
+  //   home      home troops
+  //   strongest strongest hostile army (observed or remembered)
+  //   landLoss  fraction of tiles lost in the recent window (0..1)
+  //   crisis    observed land/asset loss trend still active (boolean)
+  //   pressure  hostile pressure observed within the recent window (boolean)
+  // Unknown recall and ETA are NOT inputs: in-flight troops stay where the
+  // engine reports them; nothing is credited until observed at home.
+  function postureSignals(sig){
+    const home=Math.max(1,Number(sig.home)||0);
+    const inc=Math.max(0,Number(sig.incoming)||0);
+    const strongest=Math.max(0,Number(sig.strongest)||0);
+    const landLoss=Math.min(1,Math.max(0,Number(sig.landLoss)||0));
+    const ratio=inc/home;
+    const signals=[];
+    if(inc>0&&ratio>=.80)signals.push('S1-ratio-overwhelm');
+    if(ratio>=.40&&landLoss>=.075)signals.push('S2-relative-loss');
+    if(inc>=POSTURE_CONSTANTS.MEGA_ATTACK&&(landLoss>0||ratio>=.12||
+      strongest>home))signals.push('S3-mega-attack');
+    if(sig.crisis&&inc>0&&strongest>home*.8)signals.push('S4-crisis-pressure');
+    return {ratio,landLoss,signals,
+      critical:signals.length>0,
+      threatened:inc>0&&(ratio>=.23||landLoss>=.035||(sig.pressure&&ratio>=.15))};
+  }
+  // prev: {state, entered, stableSince} ; tick: current game tick.
+  // Escalation is immediate (binding); de-escalation requires sustained
+  // stabilization so a single calm tick cannot clear a live crisis.
+  function postureStep(prev,sig,tick){
+    const from=DEFENSE_POSTURES.includes(prev?.state)?prev.state:'NORMAL';
+    const entered=Number.isFinite(prev?.entered)?prev.entered:-Infinity;
+    let stableSince=prev?.stableSince??null;
+    const {ratio,signals,critical,threatened}=postureSignals(sig);
+    const inc=Math.max(0,Number(sig.incoming)||0);
+    const stabilized=inc===0||(ratio<.35&&(sig.landLoss||0)<.01);
+    let state=from,reason='';
+    if(state==='CRITICAL'){
+      if(critical){
+        stableSince=null;reason='Kritische Signale aktiv: '+signals.join('+');
+      } else if(stabilized){
+        stableSince=stableSince==null?tick:stableSince;
+        if(tick-stableSince>=POSTURE_CONSTANTS.CRITICAL_EXIT_TICKS){
+          state='RECOVERING';reason='Stabilisierung ≥'+
+            POSTURE_CONSTANTS.CRITICAL_EXIT_TICKS+' Ticks bestätigt';
+        } else reason='Stabilisierung läuft ('+
+          (tick-stableSince)+'/'+POSTURE_CONSTANTS.CRITICAL_EXIT_TICKS+' Ticks)';
+      } else stableSince=null;
+    } else if(state==='RECOVERING'){
+      if(critical){
+        state='CRITICAL';reason='Neues kritisches Signal in Erholung: '+
+          signals.join('+');
+      } else if(threatened){
+        reason='Erholung mit anhaltendem Druck – Vigilanz halten';
+      } else if(inc===0&&ratio<.10&&!sig.crisis&&(sig.landLoss||0)===0&&
+        tick-entered>=POSTURE_CONSTANTS.RECOVER_MIN_TICKS){
+        state='NORMAL';reason='Erholung abgeschlossen, Lage ruhig';
+      } else if(tick-entered>=POSTURE_CONSTANTS.RECOVER_MAX_TICKS){
+        state='NORMAL';reason='Erholungszeitlimit erreicht ('+
+          POSTURE_CONSTANTS.RECOVER_MAX_TICKS+' Ticks)';
+      } else reason='Wiederaufbau nach Krise – Reserve halten';
+    } else if(state==='THREATENED'){
+      if(critical){
+        state='CRITICAL';reason=' Eskalation: '+signals.join('+');
+      } else if(inc===0||(ratio<.10&&(sig.landLoss||0)===0)){
+        state='NORMAL';reason='Druck abgeklungen';
+      } else reason='Bedrohung aktiv – offensive Handlungen zurückhalten';
+    } else {
+      if(critical){
+        state='CRITICAL';reason='Kritische Signale: '+signals.join('+');
+      } else if(threatened){
+        state='THREATENED';reason='Eingehender Druck '+Math.round(ratio*100)+
+          '% der Heimtruppen';
+      } else reason='Keine aktive Bedrohung';
+    }
+    // State-entry clock: RECOVERING starts a fresh recovery clock when
+    // entered from CRITICAL; CRITICAL/THREATENED restart on (re)entry.
+    const nextEntered=(state!==from)?tick:entered;
+    return {state,entered:nextEntered,stableSince:
+      state==='CRITICAL'?stableSince:null,
+      signals,critical,threatened,ratio,
+      changed:state!==from,from,reason};
+  }
+  // V6 Phase 2 (S3): feed the inlined posture state machine once per tick.
+  // The machine itself is canonical (src/runtime/defense-posture.cjs);
+  // this wrapper only maps live game evidence onto its input signals.
+  function updateDefensePosture(me,s,tick){
+    if(tick<=postureLastTick)return defensePostureState;
+    postureLastTick=tick;
+    const samples=troopSamples.filter(x=>tick-x.tick<=110);
+    const prev=samples[0];
+    const land=number(()=>me.numTilesOwned(),0);
+    const evidence={incoming:s.incoming,home:s.home,strongest:s.strongest,
+      landLoss:prev&&prev.tiles>0?Math.max(0,(prev.tiles-land)/prev.tiles):0,
+      crisis:!!(crisisTrend&&tick<crisisTrend.expires&&
+        (crisisTrend.lostLand>0||crisisTrend.lostAssets>0)),
+      pressure:recentHostilePressure(tick)};
+    const next=postureStep(defensePostureState,evidence,tick);
+    if(next.changed)
+      telemetry('defense_posture_'+next.state.toLowerCase(),next.reason,
+        {posture:next,evidence});
+    defensePostureState=next;
+    return defensePostureState;
+  }
   function defenseAssessment(me,s,tick) {
     const hostile=s.inc.filter(a=>{
       try {const p=game.playerBySmallID?.(a.attackerID);
@@ -3943,7 +4068,8 @@ function predict(model,input){
     if(!threat.incoming){defenseStatus='Keine eingehenden Angriffe';return false;}
     defenseStatus='Eingehend '+Math.floor(threat.incoming/10)+' · Heim '+
       Math.floor(s.home/10)+' · '+Math.round(threat.ratio*100)+'%';
-    if(!opts.defense||!threat.severe)return false;
+    if(!opts.defense||!threat.severe&&defensePostureState.state!=='CRITICAL')
+      return false;
     if(!ctors.cancel){
       defenseStatus+=' · Rückzug-Event nicht gefunden';
       if(tick-lastDefenseLog>=100){lastDefenseLog=tick;
@@ -3970,7 +4096,7 @@ function predict(model,input){
       telemetry('defense_retreat_ordered','Angriff wegen akuter Bedrohung zurückgerufen',
         {attackID:a.id,target:a.targetID,troops:a.troops,recoverable,
           incoming:threat.incoming,home:s.home,critical:threat.critical});
-      if(issued>=(threat.critical?3:1)||retreatRequests.size>=5)break;
+      if(issued>=(threat.critical||defensePostureState.state==='CRITICAL'?3:1)||retreatRequests.size>=5)break;
     }
     if(issued){lastEmergencyRetreat=tick;defenseStatus+=' · '+issued+' Rückzug/Rückzüge angefordert';}
     return issued>0;
@@ -3980,7 +4106,8 @@ function predict(model,input){
     const threat=defenseAssessment(me,s,tick);
     // Do not forbid every counterattack merely because the invasion is serious.
     // A counteroffensive is allowed only if the home defense remains funded.
-    if(threat.critical&&s.home<threat.incoming*1.35)return false;
+    if((threat.critical||defensePostureState.state==='CRITICAL')&&
+       s.home<threat.incoming*1.35)return false;
     // Keep the home force against active stacks; a large incoming percentage
     // alone is not a reason to skip a safe raid on the attacker's weak home.
     if(s.activeEnemy||s.home<threat.incoming*1.35)return false;
@@ -7137,6 +7264,9 @@ function predict(model,input){
         immediateState=tuneAutonomously(me,strategic.groups,immediateState,tick,
           {wanted:'DEFEND',rebuilding:true});
       // Save committed troops BEFORE any asynchronous worker border request.
+      // Step the posture machine once per tick BEFORE the retreat pass so
+      // even the early-exit path sees the current defense state.
+      updateDefensePosture(me,immediateState,tick);
       if(emergencyRetreat(me,tick,immediateState))return;
       const tiles=await borders(me,tick);
       if(!live(serial))return;
@@ -7191,6 +7321,11 @@ function predict(model,input){
           factories:ownStructures(me).filter(u=>u.type?.()==='Factory').length,
           borders:tiles.length,tuning:{...autoTuning,enabled:!!opts.fullAuto},defense:{status:defenseStatus,incoming:s.incoming,
             committed:s.committed,pendingRetreats:retreatRequests.size},enemies:groups.filter(g=>g.id!==null).map(g=>({name:nameOf(g.opponent),troops:number(()=>g.opponent.troops()),land:number(()=>g.opponent.numTilesOwned())})),
+          posture:{state:defensePostureState.state,
+            signals:defensePostureState.signals,
+            reason:defensePostureState.reason,
+            entered:defensePostureState.entered,
+            stableSince:defensePostureState.stableSince},
           readiness:context.readiness?.reason,ratio:s.ratio,maxTroops:s.max,growthPotential:s.growthPotential,
           victory:winStatus,victoryThreat,operation,duoPlan,
           opponentProfiles:[...opponentProfiles.values()],
@@ -7404,7 +7539,7 @@ function predict(model,input){
       <div style="color:#a9efc9">Hauptfront: ${escapeHTML(warState.name)} · Krieg ${isWar()?'aktiv':'frei'} · ${escapeHTML(lastRecoveryReason||'bereit')}</div>
       <div>${b('plan','Manuell: '+opts.plan)}<br>${b('buildStyle','Manueller Baufokus: '+opts.buildStyle)}</div>
       <div style="color:#a9efc9">KI-Strategie: ${escapeHTML(strategic.mode)} · ${escapeHTML(strategic.reason)} · Bau: ${escapeHTML(effectiveBuildStyle())}</div>
-      <div style="color:#9bd0e4">Verteidigung: ${escapeHTML(defenseStatus)} · Rückzüge ${defenseStats.retreatsOrdered}/${defenseStats.retreatsObserved} beobachtet · unklar ${defenseStats.unknown} · unbestätigt ${defenseStats.unconfirmed}</div>
+      <div style="color:#9bd0e4">Verteidigung: ${escapeHTML(defenseStatus)} · Postur ${defensePostureState.state} · ${escapeHTML(defensePostureState.reason||'—')} · Rückzüge ${defenseStats.retreatsOrdered}/${defenseStats.retreatsObserved} beobachtet · unklar ${defenseStats.unknown} · unbestätigt ${defenseStats.unconfirmed}</div>
       <div style="color:#9bd0e4">Spielmodus: ${escapeHTML(winStatus.mode)} · Siegfortschritt: ${winStatus.progress===null?'unbekannt':(winStatus.progress*100).toFixed(1)+'%'} · Siegschwelle: ${winStatus.threshold===null?'unbekannt':winStatus.threshold+'%'} · Zeit: ${winStatus.remaining===null?'ohne Timer':Math.round(winStatus.remaining)+'s'} · Doomsday: ${winStatus.doomsday?'JA':'NEIN'}</div>
       <div style="color:#9bd0e4">Handel / 60s: Bahn ${incomeStatus.train===null?'unbekannt':Math.round(incomeStatus.train)} · Schiff ${incomeStatus.trade===null?'unbekannt':Math.round(incomeStatus.trade)} · ${escapeHTML(tradeStatus)} · geöffnet ${tradeStats.opened} / Embargos ${tradeStats.embargoed}</div>
       <div style="color:#9bd0e4">Marine: ${escapeHTML(fleetStatus)}</div>

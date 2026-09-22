@@ -37,6 +37,7 @@ assert.equal(SEMANTICS,'gameview-hostile-only-v1');
    put('tools/build-run3-bundle.cjs','tools/build-run3-bundle.cjs');
    put('trainer/candidate-policy-v5.cjs','trainer/candidate-policy-v5.cjs');
    put('src/runtime/panel-state.cjs','src/runtime/panel-state.cjs');
+   put('src/runtime/defense-posture.cjs','src/runtime/defense-posture.cjs');
    fs.cpSync(path.join(root,'src/userscript'),path.join(temp,'src/userscript'),
      {recursive:true});
    put('OpenFront_Solo_AggroBot.user.js','OpenFront_Solo_AggroBot.user.js');

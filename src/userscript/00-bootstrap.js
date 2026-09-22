@@ -449,6 +449,12 @@ function predict(model,input){
   let lastEconomyProbeReport=null,neuralDecisionEvidence=null,economyBudgetEvidence=null,shadowDecisionEvidence=null;
   let investmentStatus='Grundaufbau',lastWarReview=-Infinity;
   let defenseStatus='Keine Bedrohung',lastEmergencyRetreat=-Infinity,lastDefenseLog=-Infinity;
+  // V6 Phase 2 (S3): defense posture state machine, stepped once per game
+  // tick by updateDefensePosture (30-economy-and-defense.js). The posture
+  // core itself is inlined verbatim from src/runtime/defense-posture.cjs.
+  let defensePostureState={state:'NORMAL',entered:0,stableSince:null,
+    reason:'Keine aktive Bedrohung',signals:[],critical:false,
+    threatened:false,ratio:0},postureLastTick=-Infinity;
   let targetIntelCache=new Map(),frontMemory=new Map(),lastFrontWarning=-Infinity;
   let opponentHistory=new Map(),opponentProfiles=new Map(),lastEconomyPosture='—',lastDirectorDecision=null;
   let planningState={tick:-Infinity,candidates:[],selected:null,rejected:null,
@@ -1104,6 +1110,9 @@ function predict(model,input){
     buildCursor=0;spawnCache=null;spawnJob=null;spawnRetryAt=0;spawnAlternatives=[];spawnState={scanned:0,phase:'idle',lastSent:null,attempts:0,blocked:null,deadline:null};cooldowns.clear();rejected.clear();
     plan=null;lastSelection='';lastEmission=0;borderOffset=0;lastBorderRefresh=0;
     totalSent=0;totalFailed=0;actions=[];errors=0;troopSamples=[];
+    defensePostureState={state:'NORMAL',entered:0,stableSince:null,
+      reason:'Keine aktive Bedrohung',signals:[],critical:false,
+      threatened:false,ratio:0};postureLastTick=-Infinity;
     lastDecisionFrame=null;lastRecoveryReason='';lastBattle=null;pendingAttack=null;targetIntelCache.clear();frontMemory.clear();opponentHistory.clear();lastEconomyPosture='—';lastDirectorDecision=null;planningState={tick:-Infinity,candidates:[],selected:null,rejected:null,durationMs:0,budgetMs:50,truncated:false};investmentAssessments=[];neuralPolicyCache={key:null,output:null};lastFrontWarning=-Infinity;
     attackReceipts={confirmed:0,unconfirmed:0,territoryGained:0};blockedTargets.clear();
     attackCommands=[];attackCommandSequence=0;observedAttacks.clear();

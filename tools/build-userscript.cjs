@@ -13,17 +13,28 @@ function assemble(){
  const nl=String.fromCharCode(10);
  let source=files.map(name=>fs.readFileSync(
    path.join(root,'src/userscript',name),'utf8')).join('');
- const panel=fs.readFileSync(path.join(root,'src/runtime/panel-state.cjs'),'utf8');
+ // autocrlf checkouts expand text files to CRLF; CI uses LF. Normalize the
+ // runtime files for marker extraction and re-emit the selector in the
+ // source's own line ending so the artifact stays byte-identical per tree.
+ const eol=source.includes('\r\n')?'\r\n':'\n';
+ const runtimes={
+   'panel-state.cjs':fs.readFileSync(
+     path.join(root,'src/runtime/panel-state.cjs'),'utf8').replace(/\r\n/g,nl),
+   'defense-posture.cjs':fs.readFileSync(
+     path.join(root,'src/runtime/defense-posture.cjs'),'utf8').replace(/\r\n/g,nl)
+ };
  const segments=[
-   ['/* __DUO_STATUS_VIEW__ */','// DUO-STATUS-BEGIN','// DUO-STATUS-END'],
-   ['/* __EVIDENCE_PANEL_STATE__ */','// EVIDENCE-STATE-BEGIN','// EVIDENCE-STATE-END']
+   ['panel-state.cjs','/* __DUO_STATUS_VIEW__ */','// DUO-STATUS-BEGIN','// DUO-STATUS-END'],
+   ['panel-state.cjs','/* __EVIDENCE_PANEL_STATE__ */','// EVIDENCE-STATE-BEGIN','// EVIDENCE-STATE-END'],
+   ['defense-posture.cjs','/* __DEFENSE_POSTURE__ */','// DEFENSE-POSTURE-BEGIN','// DEFENSE-POSTURE-END']
  ];
- for(const [marker,start,end] of segments){
-   const placeholder='  '+marker+nl,open=start+nl;
-   if(panel.split(open).length!==2||source.split(placeholder).length!==2)
+ for(const [file,marker,start,end] of segments){
+   const runtime=runtimes[file],placeholder='  '+marker+eol,open=start+nl;
+   if(runtime.split(open).length!==2||source.split(placeholder).length!==2)
      throw Error('Duplicate or missing canonical selector: '+marker);
-   const selector=panel.split(open)[1].split(end)[0];
-   if(!selector.includes('function '))throw Error('Missing panel function: '+marker);
+   const selector=runtime.split(open)[1].split(end)[0].replace(/\n/g,eol);
+   if(!selector.includes('function '))
+     throw Error('Missing runtime selector function: '+marker);
    source=source.replace(placeholder,selector);
  }
  return source;

@@ -24,7 +24,7 @@ console.log('PASS hostile player classification for Team and FFA metrics');
 
 // Execute the actual engine-match sampleVisible function with a fixture GameView.
 // This catches a future regression where the harness stops using the shared helper.
-const engineMatch=fs.readFileSync(path.join(__dirname,'../tools/benchmark/engine-match.mjs'),'utf8');
+const engineMatch=fs.readFileSync(path.join(__dirname,'../tools/benchmark/engine-match.mjs'),'utf8').replace(/\r\n/g,'\n');
 const start=engineMatch.indexOf('function sampleVisible(turn,me){');
 const end=engineMatch.indexOf('\ntry{\n  for(let turn=',start);
 assert(start>=0&&end>start,'engine-match sampleVisible code path must be identifiable');
@@ -64,7 +64,7 @@ console.log('PASS actual engine-match Team and FFA enemy sampling path');
 
 // Both official-engine harnesses must use the very same sampling implementation.
 const multibot=fs.readFileSync(path.join(__dirname,
-  '../tools/benchmark/engine-multibot.mjs'),'utf8');
+  '../tools/benchmark/engine-multibot.mjs'),'utf8').replace(/\r\n/g,'\n');
 assert(multibot.includes('visibleTrajectory.sampleVisible(visibleSamples,turn,me,view.playerViews?.())'));
 assert(engineMatch.includes('visibleTrajectory.sampleVisible(visibleSamples,turn,me,view.playerViews?.())'));
 assert.equal(visibleTrajectory.trajectory([teamSample]).summary.finalEnemyLand,18);

@@ -71,6 +71,7 @@ jobs:
           node tools/build-userscript.cjs --check
           node tests/modular-build-regression.cjs
           node tests/duo-status-regression.cjs
+          node tests/runtime-defense-posture.cjs
           node tests/shadow-v5-regression.cjs
           node tests/replay-cli-regression.cjs
           node --check trainer/shadow-deploy.mjs
