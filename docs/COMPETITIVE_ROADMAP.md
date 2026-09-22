@@ -3,10 +3,14 @@
 > **Master-Issue:** [#75 – Gesamtübersicht](https://github.com/SLP-DEV1/openfront-bot/issues/75) · **[Vollständiger eingereichter Entwicklungsplan](COMPETITIVE_PLAN_2026-09-22.md)** (neun Abschnitte einschließlich Befunde, Architektur, P0–P6, Messverfahren und Quellen).  
 > **Erstellt:** 22.09.2026. Ursprüngliche Analyse: Commit `10e81ee` / 1.20.8; beim Anlegen des Trackers war das GitHub-Hauptskript laut README **1.20.9**; zwischenzeitlich wurde **1.20.10** mit Action-Trace erstellt. **Keine neue Gesamt-Testausführung** für 1.20.9 wurde für diese Plananlage durchgeführt.
 
-## Implementierungsabschluss 1.21.0 (P0–P6)
+## Implementierungsstand 1.21.0 (P0–P6)
 
-Die implementierbaren Roadmap-Aufgaben P0–P6 sind im Paket 1.21.0
-zusammengeführt. Die genaue Zuordnung und die bewusst nicht erzeugten
+Das umfangreiche P0–P6-Codepaket ist in 1.21.0 integriert, aber die
+Roadmap-Issues #68–#74 bleiben bis zur Erfüllung ihrer implementierbaren
+Aufgaben und belegten Abnahmebedingungen offen. Insbesondere sind Ligaausführung,
+Replay-Rekonstruktion aus tatsächlichen sichtbaren Zuständen, trainierte
+Kandidaten-Policy und kontrollierte Promotion nicht durch einen Ligaplan,
+einen Import-Validator oder ein inaktives Modell erledigt. Die genaue Zuordnung und die bewusst nicht erzeugten
 Nachweise stehen im
 [P0–P6-Implementierungsprotokoll](ROADMAP_IMPLEMENTATION_P0_P6_1.21.0.md).
 Gemäß der aktualisierten Abschlussregel in #75 wurden auf Nutzerwunsch

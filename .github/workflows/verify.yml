@@ -71,6 +71,10 @@ jobs:
           node tests/benchmark-regression.cjs
           node --check tools/benchmark/impossible-matrix.mjs
           node tools/benchmark/impossible-matrix.mjs --dryRun true > /dev/null
+      - name: Test league plan provenance identities
+        run: |
+          node --check tools/benchmark/league-plan.mjs
+          node tests/league-plan-regression.cjs
       - name: Test visible browser backend
         run: |
           node --check tools/benchmark/serve-browser.mjs

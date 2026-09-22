@@ -27,7 +27,8 @@ export function createLeaguePlan({botCommit,engineCommit,seeds=['league-01'],
   for(const mode of modes){
     if(!['1v1','official-2v2','ffa-duo'].includes(mode))throw Error('Unsupported mode '+mode);
     for(const map of maps)for(const seed of seeds)for(const opponent of opponents){
-      const key=[mode,map,seed,candidate,opponent].join('|');
+      const key=JSON.stringify([botCommit.toLowerCase(),engineCommit.toLowerCase(),
+        mode,map,String(seed),candidate,opponent]);
       const participantCount=mode==='1v1'?2:mode==='official-2v2'?4:3;
       matches.push({matchId:'league-'+digest(key).slice(0,16),mode,map,seed:String(seed),
         candidate,opponent,participantClients:Array.from({length:participantCount},
