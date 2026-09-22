@@ -142,4 +142,16 @@ const {aggregateRecordings}=require('../tools/benchmark/multibot-recording.cjs')
     assert.match(bad.stderr,/fixed FFA\/full-bot/);
   }finally{fs.rmSync(dir,{recursive:true,force:true});}
 }
+// Full-bot snapshot export must not put report itself into its diagnostics.
+{
+ const fs=require('node:fs'),path=require('node:path');
+ const source=fs.readFileSync(path.join(__dirname,'../tools/benchmark/engine-multibot.mjs'),'utf8');
+ assert(source.includes('diagnostics:{...data}'),
+   'full-bot diagnostics must snapshot before report.fullBots is assigned');
+ const first={recording:{total:1}},second={recording:{total:2}};
+ const reports=[first,second];
+ first.fullBots=reports.map(data=>({diagnostics:{...data}}));
+ assert.doesNotThrow(()=>JSON.stringify(first),
+   'full-bot result must remain serializable without a circular primary report');
+}
 console.log('PASS benchmark report isolation, censored results, lifetime counters and CLI validation');
