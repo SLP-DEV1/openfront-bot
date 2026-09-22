@@ -45,19 +45,7 @@
     document.body.appendChild(panel);
   }
   // Presentation-only readout. No planner or intent consumes this state.
-  function evidencePanelState(plan,s,frame,currentTick,ledger,budget){
-    const age=frame&&Number.isFinite(currentTick)&&Number.isFinite(frame.requestedTick)?
-      Math.max(0,currentTick-frame.requestedTick):null;
-    const latest=ledger?.at(-1)||null;
-    const budgetAge=budget&&Number.isFinite(currentTick)&&Number.isFinite(budget.tick)?
-      Math.max(0,currentTick-budget.tick):null;
-    return {alternative:plan?.rejected??null,reserveReason:s?.reserveReason??'unbekannt',
-      reserveFloors:s?.reserveFloors??null,workerAge:age,
-      workerStale:age===null||age>20,
-      actionId:latest?.actionId??null,decisionId:latest?.decisionId??null,
-      effect:latest?.effect??'unconfirmed',
-      budget:budgetAge!==null&&budgetAge<=300?budget:null,budgetAge};
-  }
+  /* __EVIDENCE_PANEL_STATE__ */
   function paint() {
     if(!document.body)return;if(!panel)mount();
     if(!panel||Date.now()-lastPaint<900)return;
