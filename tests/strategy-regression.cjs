@@ -3494,6 +3494,9 @@ function boot(benchmarkOptions={}) {
     peer.state.available=0;peer.state.reserve=90000;
     assert.equal(x.b.coordinateDuo(x.me,army,350).strikeTick,345);
     assert(x.b.duoJointOpportunity(x.me,groups,army,groups[0],350,true));
+    x.setTick(410);
+    assert.equal(x.b.coordinateDuo(x.me,army,410).strikeTick,null,
+      'an observed attack cannot retain a plan from a stale relay tick');
   });
   await check('issue #76 expired or mismatched Duo strike cannot launch',()=>{
     const x=boot();x.weak.troops=()=>90000;x.strong.troops=()=>42000;

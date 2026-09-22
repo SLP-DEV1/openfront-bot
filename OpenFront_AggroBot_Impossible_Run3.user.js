@@ -1674,6 +1674,7 @@
     const retained=duoPlan?.strikeTick!==null&&
       Number.isInteger(duoPlan?.strikeTick)&&
       tick<=duoPlan.strikeTick+110&&!invasion&&local&&
+      Number.isInteger(local.state?.tick)&&Math.abs(local.state.tick-tick)<=40&&
       (local.state?.ready===true||
         (local.player?.outgoingAttacks?.()||[]).some(a=>
           !a.retreating&&attackTargets(a.targetID,duoPlan.target)))&&
