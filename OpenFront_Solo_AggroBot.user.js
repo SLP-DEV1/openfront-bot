@@ -430,7 +430,7 @@ function predict(model,input){
     tradeBusy=false,tradeStats={opened:0,embargoed:0,skipped:0},
     botEmbargoes=new Set(),tradeAssessments=[];
   let pendingBoat=null,pendingWarship=null,navalCooldown=new Map(),navalBackoffUntil=-Infinity,portProbeFailures=0,lastPortRetryTick=-Infinity,navalSiteNegative=new Map();
-  let landingAudits=[];
+  let landingAudits=[],unobservedLandings=[];
   let marineStats={transportSent:0,transportConfirmed:0,transportArrived:0,bridgeheadHeld:0,
     bridgeheadHeld120:0,bridgeheadHeld600:0,bridgeheadLost:0,
     transportUnconfirmed:0,transportUnresolved:0,warshipSent:0,
@@ -759,7 +759,8 @@ function predict(model,input){
         phase:duoStatusView(opts.duoEnabled,duoTrustedPeer(),duoPlan,
           number(()=>game?.ticks?.(),-1),duoLocal)},
       decisionTimeline:decisionTimeline.map(v=>({...v})),
-      war:{...warState},gameEnd,spawn:{...spawnState,best:spawnCache?{...spawnCache}:null},victory:winStatus,income:incomeStatus,fleet:fleetStatus,marine:{stats:marineStats,pendingBoat,pendingWarship,landingAudits:landingAudits.map(a=>({...a})),portProbeFailures},strategicTelemetry,military:troopSnapshot,
+      war:{...warState},gameEnd,spawn:{...spawnState,best:spawnCache?{...spawnCache}:null},victory:winStatus,income:incomeStatus,fleet:fleetStatus,marine:{stats:marineStats,pendingBoat,pendingWarship,landingAudits:landingAudits.map(a=>({...a})),
+        unobservedLandings:unobservedLandings.map(a=>({...a})),portProbeFailures},strategicTelemetry,military:troopSnapshot,
       defense:{status:defenseStatus,stats:defenseStats,pendingRetreats:[...retreatRequests.values()]},
       rockets:{confirmed:nukeShots,attempts:nukeAttempts,unconfirmed:nukeUnconfirmed,pending:nukePending},
       diplomacy:{status:diplomacyStatus,stats:diplomacyStats,pending:[...diplomacyPending.values()]},records:diagnostics,createdAt:new Date().toISOString()};
@@ -1127,7 +1128,7 @@ function predict(model,input){
     lastEconomicAction=-Infinity;lastNeutralSend=-Infinity;lastEnemySend=-Infinity;lastHostilePressure=-Infinity;consecutiveIdle=0;
     economicPending=null;economicBlocked.clear();economicNegative.clear();economicStatus='Bauplanung bereit';economicLastPlan='—';
     samQuotedCost=0;portQuotedCost=0;samQuotedTick=-Infinity;portQuotedTick=-Infinity;
-    samAffordableFailureSince=null;landingAudits=[];
+    samAffordableFailureSince=null;landingAudits=[];unobservedLandings=[];
     economyBusy=false;borderInflight=null;legalNegative.clear();runtime={borderMs:0,combatMs:0,economyMs:0,attackProbes:0,buildProbes:0};
     strategic={mode:'EXPAND',reason:'Startphase',buildStyle:'Ausgewogen',since:-Infinity,groups:[]};
     diplomacyHandled.clear();diplomacyPending.clear();diplomacyMissingLogged.clear();lastDiplomaticEmit=0;
@@ -6019,10 +6020,39 @@ function predict(model,input){
       ticksPerMove:plan.ticksPerStep,planId:plan.planId,
       etaExact:false};
   }
+  function reviewUnobservedLandings(me,tick){
+    unobservedLandings=unobservedLandings.filter(a=>{
+      // A missing ship may have left GameView visibility; only territory
+      // observed at its actual destination can confirm a beachhead.
+      if(ownedTile(a.tile,me)){
+        marineStats.transportArrived++;
+        telemetry('boat_arrived_late','Landungsziel nach Sichtverlust übernommen',{
+          actionId:a.actionId,shipIds:a.shipIds,target:a.target,
+          dest:a.dest,resolvedDest:a.tile,
+          disappearTick:a.disappearTick,eta:a.eta,
+          evidence:'destination-ownership-after-transport-not-causal'});
+        landingAudits.push({actionId:a.actionId,shipIds:[...a.shipIds],
+          eta:a.eta,tile:a.tile,target:a.target,key:a.key,tick,
+          checkpoints:[]});
+        landingFailures.delete(a.key);return false;
+      }
+      if(tick<a.deadline)return true;
+      marineStats.transportUnresolved++;
+      telemetry('boat_unresolved','Bis zum ETA-Beobachtungsende kein eigener Zielbesitz',{
+        actionId:a.actionId,shipIds:a.shipIds,target:a.target,
+        dest:a.dest,resolvedDest:a.tile,disappearTick:a.disappearTick,
+        eta:a.eta,deadlineTick:a.deadline,
+        reason:'no-owned-coast-after-observation-window',
+        status:'unresolved-not-proven-destroyed'});
+      landingFailure(a,tick,a.tile,'no-owned-coast-after-observation-window');
+      return false;
+    });
+  }
   function inspectMarine(me,tick){
     const units=(()=>{try{return game.units?.()||[];}catch(_){return [];}})();
     const mine=safeID(me),own=type=>units.filter(u=>
       u.type?.()===type&&safeID(u.owner?.())===mine&&u.isActive?.());
+    reviewUnobservedLandings(me,tick);
     landingAudits=landingAudits.filter(a=>{
       const held=ownedTile(a.tile,me),age=tick-a.tick;
       a.checkpoints=Array.isArray(a.checkpoints)?a.checkpoints:[];
@@ -6107,13 +6137,44 @@ function predict(model,input){
         pendingBoat=null;
       }else if(boat.seen && tick-boat.tick>40 &&
         !ships.some(u=>boat.shipIds.includes(u.id?.()))){
-        marineStats.transportUnresolved++;
-        fleetStatus='Transport verschwunden – Landung nicht bestätigt';
-        telemetry('boat_unresolved','Transport nicht mehr sichtbar; kein eigener Zielbesitz',
-          {actionId:boat.actionId??null,dest:boat.dest,resolvedDest:landingTile,
-            target:boat.target,shipIds:boat.shipIds,eta:boat.eta??null,
-            reason:'ship-disappeared',status:'unresolved-not-proven-destroyed'});
-        landingFailure(boat,tick,landingTile,'ship-disappeared');pendingBoat=null;
+        // Do not penalize a beach before the engine motion plan's arrival.
+        // A transport disappearing from the local view is not a loss receipt.
+        const expected=Number.isSafeInteger(boat.eta?.arrivalTick)?
+          boat.eta.arrivalTick:null;
+        const deadline=Math.min(tick+3600,
+          Math.max(tick+120,(expected??tick+160)+100));
+        const watch={actionId:boat.actionId??null,key:boat.key,
+          playerID:boat.playerID??null,dest:boat.dest,tile:landingTile,
+          target:boat.target,shipIds:[...boat.shipIds],
+          disappearTick:tick,eta:boat.eta??null,deadline};
+        unobservedLandings.push(watch);
+        if(unobservedLandings.length>20){
+          const oldest=unobservedLandings.shift();
+          telemetry('boat_watch_overflow','Alte offene Landungsbeobachtung verdrängt',{
+            actionId:oldest.actionId,reason:'bounded-memory',
+            outcome:'unknown-not-proven-failed'});
+        }
+        // Defer the same destination, but allow independent safe targets.
+        navalCooldown.set(boat.key,Math.max(navalCooldown.get(boat.key)||0,
+          Math.min(deadline,tick+800)));
+        fleetStatus='Transport außerhalb Sichtweite; Ziel bis ETA prüfen';
+        telemetry('boat_visibility_lost',fleetStatus,{
+          actionId:boat.actionId??null,dest:boat.dest,
+          resolvedDest:landingTile,target:boat.target,
+          shipIds:boat.shipIds,eta:boat.eta??null,
+          deadlineTick:deadline,status:'watching-not-failed'});
+        const active=(me.outgoingAttacks?.()||[]).some(a=>
+          !a.retreating&&attackTargets(a.targetID,boat.playerID));
+        if(boat.playerID&&warState.id===boat.playerID&&!active&&
+          !pendingAttack){
+          telemetry('naval_war_lock_release',
+            'Nicht mehr sichtbare Landung hält keinen inaktiven Landkrieg fest',{
+              oldTarget:warState.id,actionId:boat.actionId??null,
+              reason:'ship-visibility-lost-no-own-active-stack'});
+          warState={id:null,name:'—',since:tick,blockedUntil:-Infinity};
+          plan=null;
+        }
+        pendingBoat=null;
       }else if(boat.seen && tick-boat.tick>650 && !boat.delayed){
         boat.delayed=true;fleetStatus='Transport noch unterwegs / Landung ungeklärt';
         telemetry('boat_delayed',fleetStatus,{
