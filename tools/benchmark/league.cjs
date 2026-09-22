@@ -15,16 +15,24 @@ const values={engine:null,engineCommit:common.ENGINE_COMMIT,
   seeds:'league-001,league-002,league-003',
   profiles:'autonomous,balanced,cautious,expansion',
   opponents:'balanced,cautious,expansion,autonomous',ticks:'18000',
-  map:'World',size:'Compact',difficulty:'Impossible',execute:false};
+  map:'World',size:'Compact',difficulty:'Impossible',execute:false,smoke:false};
 const args=process.argv.slice(2);
 for(let i=0;i<args.length;i++){
   const key=args[i].replace(/^--/,'');
   if(!args[i].startsWith('--')||(!Object.hasOwn(values,key)&&key!=='scripted'))
     throw Error('Unknown league option: '+args[i]);
   if(key==='execute'){values.execute=true;continue;}
+  if(key==='smoke'){values.smoke=true;continue;}
   if(key==='scripted'){values.fullBots=false;continue;}
   if(!args[i+1]||args[i+1].startsWith('--'))throw Error('Missing '+key);
   values[key]=args[++i];
+}
+if(values.smoke){
+  if(args.some(x=>['--seeds','--profiles','--opponents','--ticks','--gameMode','--participants','--map','--size','--difficulty','--scripted'].includes(x)))
+    throw Error('--smoke has fixed FFA/full-bot match conditions; remove conflicting options');
+  values.seeds='league-smoke-001,league-smoke-002';
+  values.profiles='autonomous';values.opponents='balanced';values.ticks='700';
+  values.gameMode='FFA';values.participants='2';values.fullBots=true;
 }
 const list=(str,label,allowed=null)=>str.split(',').map(s=>s.trim())
   .filter(Boolean).map(s=>{
@@ -62,7 +70,7 @@ for(const seed of seeds)for(const profile of profiles)for(const opponent of oppo
 fs.mkdirSync(out,{recursive:true});
 const outputFile=path.join(out,'league.json');
 if(fs.existsSync(outputFile))throw Error('League report already exists: '+outputFile);
-const report={schema:2,kind:values.fullBots?
+const report={schema:2,smoke:values.smoke,kind:values.fullBots?
   'full-bot-same-engine-league':'legacy-scripted-opponent-league',
  limitations:'No games have been run unless explicitly --execute; live browsers and localhost Duo relay not simulated',
  engineCommit:engineHash,botSHA256:botHash,opponentBotSHA256:opponentHash,
@@ -103,18 +111,33 @@ for(const match of matches){
    '--out',dir,'--seed',match.seed,...argv,
    '--ticks',String(ticks),'--map',values.map,
    '--size',values.size,'--difficulty',values.difficulty];
- const result=spawnSync(process.execPath,argv,{encoding:'utf8',timeout:7200000,
+ const result=spawnSync(process.execPath,argv,{encoding:'utf8',timeout:values.smoke?180000:7200000,
    maxBuffer:4*1024*1024});
  const file=path.join(dir,'match.json');
  const game=fs.existsSync(file)?JSON.parse(fs.readFileSync(file,'utf8')):null;
- match.status=result.status===0&&!result.error&&game?'recorded':'failed';
+ const expectedFull=values.fullBots?participants:0;
+ const hashesValid=!values.fullBots||game?.fullBots?.length===expectedFull&&
+   game.fullBots.every((p,i)=>p.botSHA256===(i<participants/2?botHash:opponentHash));
+ const originValid=game?.benchmarkMeta?.engineCommit===engineHash&&
+   game?.benchmarkMeta?.seed===match.seed&&
+   game?.benchmarkMeta?.maxTicks===ticks&&
+   game?.benchmarkMeta?.gameConfig?.gameMode===
+     (values.gameMode==='FFA'?'Free For All':'Team')||
+   game?.benchmarkMeta?.engineCommit===engineHash&&
+   game?.benchmarkMeta?.seed===match.seed&&game?.benchmarkMeta?.maxTicks===ticks&&
+   game?.benchmarkMeta?.gameConfig?.gameMode===values.gameMode;
+ match.status=result.status===0&&!result.error&&game&&hashesValid&&originValid&&
+   game.recording?.complete===true?'recorded':'failed';
  match.outcome=game?.gameEnd?.outcome??'unknown';
  match.fullBots=game?.fullBots?.map(m=>({clientID:m.clientID,
    botSHA256:m.botSHA256,profile:m.profile,teamIndex:m.teamIndex,
    outcome:m.outcome,land:m.land,alive:m.alive}))??null;
  match.termination=game?.run?.termination??'unknown';
  match.tick=game?.run?.tick??null;
- match.error=result.error?.message??(result.status===0?null:
+ match.error=!originValid&&game?'game provenance mismatch':
+   !hashesValid&&game?'participant bundle hash mismatch':
+   game?.recording?.complete!==true?'recording incomplete':
+   result.error?.message??(result.status===0?null:
    (result.stderr||'Benchmark subprocess failed').slice(-2000));
  save();
  if(match.status==='failed'){process.exitCode=1;break;}
