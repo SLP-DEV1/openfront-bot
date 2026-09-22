@@ -4439,6 +4439,11 @@ function predict(model,input){
       coastSites.length&&portProbeFailures<8);
     const tradePortMilestone=portMilestone&&duoTradeReady;
     const basic=(cityEnabled&&cities<2)||(factoryEnabled&&factories<2);
+    // Team-match dZK7: five Cities but one Factory during a long peacetime
+    // income stall. Restore the second Factory before speculative SAM saving
+    // if no missile is actually incoming and current homeland is safe.
+    const factoryRecovery=factoryEnabled&&factories<2&&cities>=3&&
+      troopSnapshot.incoming===0&&enemyNukes===0;
     // Never buy decorative defense posts while the first city/factory are still
     // unaffordable. Only a *real* incoming offensive can override the basics.
     const immediate=economicDefensePressure(me,troopSnapshot,nowTick);
@@ -4493,6 +4498,7 @@ function predict(model,input){
           (pressure>.80&&!immediate?30:0)+(cities===0?115:hardMode()&&cities<2?80:0)+
           (capStalled?pressure>=.98?355:pressure>=.95?295:pressure>=.90?230:135:0)},
       {type:'Factory',desired:wantedFactory,score:91+
+        (factoryRecovery?400:0)+
         (coreRecovery&&factories===0?520:0)+(productiveStall&&factories<3?110:0)+(neural?.factoryPriority||0)*90+econBoost+(posture==='bootstrap'?20:0)+
           (factories===0?100:hardMode()&&factories<2?85:0)+
           (gold<450000?15:0)+(pressure<.60&&factories>0?10:0)+
@@ -4563,7 +4569,7 @@ function predict(model,input){
       'SAM Launcher':0,
       'Missile Silo':(neural?.nuclearPriority||0)*75};
     return {list:value,policyBiases,threatened,gold,cities,factories,mine,pressure,nuclearThreat:threat,incomingNukes:enemyNukes,intel,
-      startup,coreRecovery,basic,emergency,immediate,capStalled,firstPortWindow,savingsTarget,saveForSilo,saveForNuke,siloCount,
+      startup,coreRecovery,factoryRecovery,basic,emergency,immediate,capStalled,firstPortWindow,savingsTarget,saveForSilo,saveForNuke,siloCount,
       enemySilos,proactiveSAM,wantedDefense,wantedSAM,portMilestone,coastSites:coastSites.length,portProbeFailures,
       samQuotedCost,portQuotedCost,posture,samSearchBlocked};
   }
@@ -4607,7 +4613,8 @@ function predict(model,input){
       tick-samQuotedTick<=300?needs.samQuotedCost:0;
     let floor=needs.savingsTarget;
     if(purpose==='Warship')floor=samFund;
-    if(needs.coreRecovery&&['City','Factory'].includes(purpose)){
+    if((needs.coreRecovery&&['City','Factory'].includes(purpose))||
+      (needs.factoryRecovery&&purpose==='Factory'&&!needs.immediate)){
       // Only when no current troop invasion exists; final worker legality,
       // real quote and shared pending-gold checks still apply below.
       floor=0;
@@ -4858,6 +4865,7 @@ function predict(model,input){
       portQuote:tick-portQuotedTick<=210&&portQuotedCost>0?portQuotedCost:null,
       goldFloor:requirements.savingsTarget,coreQuote:funding.needed,
       coreRecovery:requirements.coreRecovery,
+      factoryRecovery:requirements.factoryRecovery,
       semantics:'shared savings target; individual build exceptions still apply'};
     // A cached price saves worker traffic while underfunded; refresh once
     // the price is funded or quotes age. Never assert a legal site from it.
@@ -6967,6 +6975,20 @@ function predict(model,input){
         const ship=legal?.buildableUnits?.find(x=>x.type==='Transport'&&Number.isInteger(x.canBuild));
         if(!ship || (goldAmount(me)<Number(ship.cost)&&!game.config().infiniteGold?.()))continue;
         const route=navalRouteAssessment(me,ship.canBuild,dest,tick),routeRisk=route.risk;
+        const hasWarship=(game.units?.()||[]).some(u=>
+          u.type?.()==='Warship'&&u.isActive?.()&&
+          safeID(u.owner?.())===safeID(me));
+        // Team-match dZK7: very long, unescorted paths disappeared hundreds
+        // of ticks before arrival. Reject such an expensive blind launch;
+        // do not assert that the previous ships were destroyed.
+        if(route.etaTicks>650&&!hasWarship){
+          telemetry('naval_long_route_rejected',
+            'Lange Seeroute ohne eigenes Kriegsschiff nicht gestartet',{
+              target:safeID(current),dest,etaTicks:route.etaTicks,
+              escorts:0,reason:'long-unescorted-route',
+              evidence:'route-proxy-not-loss-proof'});
+          continue;
+        }
         if(route.etaTicks!==null)telemetry('marine_eta_proxy',
           'Wasserroute als Näherung berechnet',{target:safeID(current),dest,
             etaTicksEstimate:route.etaTicks,etaExact:false,etaMethod:route.method});
