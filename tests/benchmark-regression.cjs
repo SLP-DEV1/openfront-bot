@@ -39,6 +39,15 @@ for(const outcome of ['incomplete','unknown']){
   assert.equal(compare([summarize(base),summarize(changed)]).length,0);
 }
 assert.equal(summarize(base).attackConfirmed,32,'lifetime counters survive ring truncation');
+assert.equal(summarize(base).recordingComplete,false,
+  'explicit complete cannot override 100 dropped records');
+assert.equal(summarize({...base,recording:{complete:true,dropped:0,streamErrors:0}}).recordingComplete,true);
+assert.equal(summarize({...base,recording:{complete:true,dropped:0,streamErrors:1}}).recordingComplete,false);
+assert.equal(summarize({...base,recording:{complete:true}}).recordingComplete,null,
+  'missing drop counter is not verified completeness');
+assert.equal(summarize({...base,recording:{dropped:0}}).recordingComplete,null,
+  'zero drops without completion confirmation is unknown');
+assert.equal(summarize({...base,recording:undefined}).recordingComplete,null);
 assert.equal(summarize({...base,gameEnd:null,finalState:{land:55},run:{tick:100}}).finalLand,55);
 assert.throws(()=>parse(['--engine','/tmp/engine','--ticks','NaN']),/Invalid ticks/);
 assert.throws(()=>parse(['--engine','/tmp/engine','--seed','../oops']),/Seed/);
