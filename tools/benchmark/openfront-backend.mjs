@@ -42,21 +42,27 @@ export async function startBackend({engine,dir,timeoutMs=120000,
       detached:process.platform!=='win32',stdio:['ignore',fd,fd],windowsHide:true});
   }finally{fs.closeSync(fd);}
   let terminated=false,exitError=null;
+  const stopped=new Promise(resolve=>child.once('close',resolve));
   child.once('error',e=>{exitError=e;});
   child.once('exit',(code,signal)=>{
     if(!terminated)exitError=Error('Official OpenFront backend exited: '+code+'/'+signal+
       '. See '+output);
   });
   const stop=()=>{
-    if(terminated)return;terminated=true;
-    if(child.pid&&process.platform==='win32')
-      spawnSync('taskkill',['/PID',String(child.pid),'/T','/F'],
+    if(terminated)return stopped;terminated=true;
+    if(child.pid&&process.platform==='win32'){
+      // Direct test/helper processes terminate cleanly through Node. Keep
+      // taskkill as the tree fallback for the real cmd/npm backend launcher.
+      try{child.kill('SIGTERM');}catch(_){}
+      if(child.exitCode===null)spawnSync('taskkill',['/PID',String(child.pid),'/T','/F'],
         {stdio:'ignore',timeout:10000,windowsHide:true});
+    }
     else if(child.pid){
       try{process.kill(-child.pid,'SIGTERM');}catch(_){
         try{child.kill('SIGTERM');}catch(_){}
       }
     }
+    return stopped;
   };
   log('Starting official OpenFront backend (3000, 3001, 3002). Log: '+output);
   const started=Date.now();
@@ -75,5 +81,5 @@ export async function startBackend({engine,dir,timeoutMs=120000,
     const ready=await openPorts(ports);
     throw Error('Official OpenFront backend did not become ready. Missing ports: '+
       ports.filter(p=>!ready.includes(p)).join(', ')+'. See '+output);
-  }catch(e){stop();throw e;}
+  }catch(e){await stop();throw e;}
 }
