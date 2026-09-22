@@ -7224,6 +7224,12 @@
   });
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',paint,{once:true});
   const interval=setInterval(step,400);
+  // DonateEvent exists only in the current GameView update. Sample frequently
+  // instead of relying exclusively on the 400 ms planner cycle (which can
+  // skip a donation update). Background-tab throttling can still miss one.
+  const donationInterval=setInterval(()=>{
+    if(opts.enabled&&game&&permittedMatch(game))diagnosticDonationUpdates();
+  },90);
   const economyInterval=setInterval(economyStep,750);
   const diplomacyInterval=setInterval(diplomacyTick,950);
   const tradeInterval=setInterval(()=>{tradeTick().catch(e=>{
@@ -7233,7 +7239,7 @@
   const duoInterval=setInterval(()=>{duoPublish().catch(e=>{
     duoLocal.status='Relay-Fehler: '+String(e?.message||e).slice(0,55);
   });},950);
-  window.addEventListener('beforeunload',()=>{clearInterval(interval);clearInterval(economyInterval);clearInterval(diplomacyInterval);clearInterval(tradeInterval);clearInterval(nukeInterval);clearInterval(duoInterval);});
+  window.addEventListener('beforeunload',()=>{clearInterval(interval);clearInterval(economyInterval);clearInterval(diplomacyInterval);clearInterval(tradeInterval);clearInterval(nukeInterval);clearInterval(duoInterval);clearInterval(donationInterval);});
   if(benchmark){
     window.__OF_BENCHMARK__=Object.freeze({
       snapshot:diagnosticSnapshot,
