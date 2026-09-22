@@ -65,6 +65,11 @@ jobs:
           node tests/autostart-regression.cjs
       - name: Test hybrid learning
         run: node tests/learning-regression.cjs
+      - name: Check Scenario Pack and read-only Evidence Mode
+        run: |
+          node --check tools/benchmark/scenario-pack.cjs
+          node tests/scenario-pack-regression.cjs > /dev/null
+          node tests/evidence-panel-regression.cjs
       - name: Check benchmark tools
         run: |
           node --check tools/benchmark/engine-match.mjs
