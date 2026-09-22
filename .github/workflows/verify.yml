@@ -65,6 +65,16 @@ jobs:
           node tests/autostart-regression.cjs
       - name: Test hybrid learning
         run: node tests/learning-regression.cjs
+      - name: Verify canonical source build and directly importable runtime modules
+        run: |
+          node --check tools/build-userscript.cjs
+          node tools/build-userscript.cjs --check
+          node tests/modular-build-regression.cjs
+          node tests/duo-status-regression.cjs
+          node tests/shadow-v5-regression.cjs
+          node tests/replay-cli-regression.cjs
+          node --check trainer/shadow-deploy.mjs
+          node --check tools/benchmark/replay-cli.cjs
       - name: Check Scenario Pack and read-only Evidence Mode
         run: |
           node --check tools/benchmark/scenario-pack.cjs
