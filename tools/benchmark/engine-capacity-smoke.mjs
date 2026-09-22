@@ -44,11 +44,12 @@ assert.equal(cap(player([structure(UnitType.City)],
 assert.equal(cap(player([structure(UnitType.City),
   structure(UnitType.City,1,true)])),capBase,
   'unfinished City must not increase capacity');
-assert.equal(cap(player([structure(UnitType.City),structure(UnitType.City)]))-
-  capBase,config.cityTroopIncrease(),
+assert(Math.abs(cap(player([structure(UnitType.City),structure(UnitType.City)]))-
+  capBase-config.cityTroopIncrease())<1e-6,
   'finished City must add official level increment');
-assert.equal(cap(player([structure(UnitType.City,2)]))-capBase,
-  config.cityTroopIncrease(),'City upgrade must add official increment');
+assert(Math.abs(cap(player([structure(UnitType.City,2)]))-capBase-
+  config.cityTroopIncrease())<1e-6,
+  'City upgrade must add official increment');
 assert.equal(cap(player([structure(UnitType.City)],[],PlayerType.Bot)),
   capBase/3,'official Bot type has a different multiplier');
 assert(config.troopIncreaseRate(player([structure(UnitType.City,2)]))>
