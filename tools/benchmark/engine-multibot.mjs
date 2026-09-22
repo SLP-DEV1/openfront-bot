@@ -7,6 +7,7 @@ import {pathToFileURL} from 'node:url';
 import common from './common.cjs';
 const localRequire=createRequire(import.meta.url);
 const relay=localRequire('../duo-relay.cjs');
+const {aggregateRecordings}=localRequire('./multibot-recording.cjs');
 import policyModel from '../../trainer/policy.cjs';
 import actionModel from '../../trainer/action-policy.cjs';
 import strategicModel from '../../trainer/strategic-policy.cjs';
@@ -255,9 +256,10 @@ try{
   }
 }catch(error){failure=error.stack;termination='error';process.exitCode=1;}
 finally{
-  const report=bot.snapshot(),me=view.myPlayer();
-  report.fullBots=instances.map(m=>{
-    const me=m.view.myPlayer(),data=m.bot.snapshot();
+  const reports=instances.map(m=>m.bot.snapshot());
+  const report=reports[0],me=view.myPlayer();
+  report.fullBots=instances.map((m,i)=>{
+    const me=m.view.myPlayer(),data=reports[i];
     const winner=observedWinner?.winner;
     const winnerIds=Array.isArray(winner)?winner.slice(winner[0]==='player'?1:2):[];
     const outcome=winner?winnerIds.includes(m.clientID)?'victory':'defeat':
@@ -271,7 +273,8 @@ finally{
   report.benchmarkMeta={...report.benchmarkMeta,...meta,gameMap:config.gameMap,gameMapSize:config.gameMapSize,gameMode:config.gameMode};
   report.run={termination,tick:finalTick,spawned:instances[0].spawned,emitted,failure,recordCount:recordsCount,
     scriptedStats};
-  report.recording={...report.recording,streamFile:'events.jsonl',streamCount:recordsCount,complete:recordsCount===report.recording.total&&report.recording.streamErrors===0};
+  report.recording={...report.recording,
+    ...aggregateRecordings(reports,recordsCount),streamFile:'events.jsonl'};
   if(me?.isAlive?.()===false&&instances[0].spawned)
     report.gameEnd={outcome:'defeat',source:'engine-elimination',
       tick:finalTick,land:me?.numTilesOwned()??0};
