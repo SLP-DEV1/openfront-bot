@@ -19,7 +19,7 @@ const values={engine:null,engineCommit:common.ENGINE_COMMIT,
 const args=process.argv.slice(2);
 for(let i=0;i<args.length;i++){
   const key=args[i].replace(/^--/,'');
-  if(!args[i].startsWith('--')||!Object.hasOwn(values,key))
+  if(!args[i].startsWith('--')||(!Object.hasOwn(values,key)&&key!=='scripted'))
     throw Error('Unknown league option: '+args[i]);
   if(key==='execute'){values.execute=true;continue;}
   if(key==='scripted'){values.fullBots=false;continue;}
