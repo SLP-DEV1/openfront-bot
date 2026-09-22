@@ -235,7 +235,10 @@ function setup(opts2) {
   for (const [label, info] of Object.entries(wanted)) {
     const dest = path.join(modelsDir, `${label}.json`);
     if (!fs.existsSync(dest)) writeJsonWx(dest, info.model);
-    else requireSha(digest(fs.readFileSync(dest, 'utf8')), info.sha, `models-source ${label}`);
+    else {
+      const loaded = policyV4.validate(JSON.parse(fs.readFileSync(dest, 'utf8')));
+      requireSha(digest(JSON.stringify(loaded)), info.sha, `models-source ${label}`);
+    }
   }
   const campaignFile = path.join(OUT, 'campaign.json');
   const campaign = {
