@@ -1315,8 +1315,8 @@
   }
   function diagnosticCloseHelp(reason,tick){
     if(!diagnosticHelpId)return;
-    const event=reason==='deadline'?'duo_help_expired':
-      reason==='player-elimination'?'duo_help_expired':'duo_help_resolved';
+    const event=['deadline','player-elimination','match-end'].includes(reason)?
+      'duo_help_expired':'duo_help_resolved';
     telemetry(event,'Duo-Hilferuf geschlossen',{
       requestId:diagnosticHelpId,partnerId:duoLocal.peer?.id??null,
       requestTick:diagnosticHelpSince,deadlineTick:diagnosticHelpDeadline,
@@ -2337,6 +2337,19 @@
         (strikeTick!==null?' · Tick '+strikeTick:''),
         [local?'Relay-Ziel ist nur Priorität; eigene Sicherheitsprüfung bleibt verbindlich':
           'Partner-Einsatz nur bei beobachteten Angriffen bestätigt'],tick);
+    if(duoPlan?.planId&&(duoPlan.planId!==plan.planId||
+      (duoPlan.partnerAck&&!plan.partnerAck))){
+      telemetry('duo_plan_abort','Bisheriger Duo-Plan nicht mehr bestätigt',{
+        planId:duoPlan.planId,target:duoPlan.target,
+        previousStrikeTick:duoPlan.strikeTick,
+        observedPartnerAck:duoPlan.partnerAck,
+        reason:invasion?'own-or-partner-threat':
+          !local?'relay-or-alliance-unavailable':
+          !sharedJoint?'common-front-not-safe':
+          duoPlan.partnerAck&&!plan.partnerAck?'partner-ack-lost':
+          'target-or-strike-replanned',
+        status:'plan-released-no-execution-claim'});
+    }
     if(!duoPlan||duoPlan.planId!==plan.planId||
       duoPlan.strikeStatus!==plan.strikeStatus||
       duoPlan.role!==plan.role||
