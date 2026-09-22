@@ -1815,11 +1815,15 @@
               evidence:'observed-not-causal-proof'});
         }
       }
-      const stall=!reason&&opts.impossibleExperiment&&
-        tick-(operation.lastProgressTick??operation.since)>440&&
+      // Release a genuinely idle operation after a bounded default timeout.
+      // The experiment may replan sooner, but neither mode abandons an
+      // observed active war or an endangered home merely to change targets.
+      const stallAfter=opts.impossibleExperiment?440:900;
+      const stall=!reason&&
+        tick-(operation.lastProgressTick??operation.since)>stallAfter&&
         !s.out.some(a=>!a.retreating&&
           attackTargets(a.targetID,operation.target))&&
-        !pendingAttack&&s.incoming===0;
+        !s.activeEnemy&&!pendingAttack&&s.incoming===0;
       if(reason||stall){
         const finishedReason=reason||(stall?'Operation ohne beobachteten Fortschritt':null);
         if(stall||reason==='Truppenbudget ausgeschöpft')
@@ -1849,7 +1853,10 @@
         x.id===victoryThreat.id));
     const chosen=locked||alert||shared||ally||
       eligible.sort((a,b)=>number(()=>b.opponent.numTilesOwned(),0)-
-        number(()=>a.opponent.numTilesOwned(),0))[0];
+        number(()=>a.opponent.numTilesOwned(),0)).slice(0,8).find(x=>{
+          const guard=frontRiskPlan(items,s,x.id);
+          return Math.min(s.available*.72,guard.safeStrike)>=100;
+        });
     if(!chosen)return null;
     const land=number(()=>chosen.opponent.numTilesOwned?.(),0);
     const type=alert?'Sieg verhindern':ally?'Partner entlasten':
@@ -1864,7 +1871,7 @@
       successLand:type==='Gegner ausschalten'?0:
         Math.max(0,Math.floor(land*.90)),
       budget,spent:0,lastObservedLand:land,lastProgressTick:tick,
-      abort:'Verlust des Ziels, Heimatinvasion oder Frist; experimentell auch Stillstand'};
+      abort:'Verlust des Ziels, Heimatinvasion, Frist oder beobachteter Stillstand'};
     decisionNote('operation',type+' → '+operation.targetName+
       ' · Budget '+budget+' · Ziel ≤ '+operation.successLand+' Felder',
       eligible.filter(x=>x.id!==chosen.id).slice(0,3).map(x=>
@@ -3532,13 +3539,20 @@
     if(item.type==='Defense Post'&&requirements.immediate)return 35;
     if(item.type==='City')return (requirements.pressure>.70?28:0)+
       (requirements.capStalled?35:0);
-    if(item.type==='Factory'&&income?.train>0)
-      return Math.min(24,income.train/Math.max(1,cost)*18);
+    if(item.type==='Factory'&&income?.train>0){
+      // Total observed train income is not the marginal return of ONE new
+      // Factory. Use only a conservative per-completed-unit proxy.
+      const completed=units.filter(u=>u.type?.()==='Factory'&&
+        !u.isUnderConstruction?.()).length;
+      return completed>0?
+        Math.min(24,(income.train/completed)/Math.max(1,cost)*18):0;
+    }
     if(item.type==='Port'){
       const completed=units.filter(u=>u.type?.()==='Port'&&!u.isUnderConstruction?.()).length;
       if(completed===0)return requirements.portMilestone?35:12;
       if(income?.trade===0)return -70;
-      if(income?.trade>0)return Math.min(28,income.trade/Math.max(1,cost)*14);
+      if(income?.trade>0)return Math.min(28,
+        (income.trade/completed)/Math.max(1,cost)*14);
     }
     return 0;
   }
