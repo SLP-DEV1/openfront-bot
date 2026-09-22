@@ -17,6 +17,9 @@ for(const [label,script] of [['Solo',source],['Run3',run3]]){
   assert.match(script,/actualGoldCost:'unknown'/);
   assert.match(script,/actionId:boat\.actionId\?\?null/);
   assert.match(script,/evidence:'gameview-donate-event'/);
+  assert.match(script,/const donationInterval=setInterval\(/);
+  assert.match(script,/\},90\);/);
+  assert.match(script,/clearInterval\(donationInterval\)/);
 }
 const from=source.indexOf('  function diagnosticArrival(');
 const to=source.indexOf('  function duoState(){',from);
