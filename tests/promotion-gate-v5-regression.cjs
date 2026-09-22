@@ -70,5 +70,9 @@ assert.equal(run(rows,{...protocol,minPairsPerCell:3}).eligible,false,
   'undersized per-cell holdout cannot be promoted');
 assert.equal(run(rows,{...protocol,seeds:['holdout-1','holdout-1']}).valid,false,
   'duplicate seeds cannot inflate coverage');
+assert.equal(run(rows,{...protocol,maps:['World']}).valid,false,
+  'single-map protocol is not a rotated holdout');
+assert.equal(run(rows,{...protocol,opponents:['balanced']}).valid,false,
+  'single-opponent protocol is not a mixed holdout');
 assert.equal(evaluate().eligible,false,'missing data fails closed');
 console.log('PASS P6 paired promotion: complete verified matches, provenance, rotation and fail-closed gates');
