@@ -6,6 +6,7 @@ const p=require('../trainer/policy.cjs');
 const action=require('../trainer/action-policy.cjs');
 const strategic=require('../trainer/strategic-policy.cjs');
 const strategicV4=require('../trainer/strategic-policy-v4.cjs');
+const candidateV5=require('../trainer/candidate-policy-v5.cjs');
 const {parallelMap}=require('../trainer/parallel.cjs');
 const {reward}=require('../trainer/reward.cjs');
 const defeat=reward({validSample:true,confirmed:true,outcome:'defeat',land:30000,endTick:14000,ticks:18000});
@@ -229,6 +230,22 @@ try{
   assert.equal(deployed4.modelSHA256,strategicV4.sha(trained4));
   assert.equal(deployed4.modelEnabledByDefault,true);
   assert(fs.readFileSync(deployedV4,'utf8').includes('const NEURAL_BUNDLED_MODEL = {"schema":4'));
+  // The dormant v5 candidate is valid for evaluation, not for userscript bundling.
+  // Unknown/missing schemas must never fall back to the v1 validator.
+  for(const [name,input,error] of [
+    ['candidate-v5',candidateV5.zero(),/Schema 5.*evaluation-only.*cannot be bundled yet/],
+    ['unknown-v99',{schema:99},/Unsupported model schema: 99/],
+    ['missing-schema',{},/Unsupported model schema: undefined/]
+  ]){
+    const rejectedOut=path.join(temp,name+'.user.js');
+    fs.writeFileSync(model,JSON.stringify(input));
+    const rejected=spawnSync(process.execPath,
+      ['trainer/deploy.mjs','--model',model,'--out',rejectedOut],
+      {cwd:root,encoding:'utf8'});
+    assert.notEqual(rejected.status,0,name+' must be rejected');
+    assert.match(rejected.stderr,error,name+' must have a precise error');
+    assert(!fs.existsSync(rejectedOut),name+' must not leave an output file');
+  }
 }finally{fs.rmSync(temp,{recursive:true,force:true});}
 (async()=>{
   let active=0,peak=0;
