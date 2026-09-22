@@ -2330,6 +2330,17 @@ function boot(benchmarkOptions={}) {
       'Aktiver Konflikt', 'unrelated player is not the active target');
   });
 
+  await check('third-party pressure excludes own attacks for both player ID formats',()=>{
+    for(const attackerID of [1,'me']){
+      const x=boot();
+      x.weak.incomingAttacks=()=>[{attackerID,troops:30000,retreating:false}];
+      const window=x.b.adversaryWindow(x.me,x.weak);
+      assert.equal(window.incomingOthers,0,String(attackerID));
+      assert.equal(window.exposed,false,String(attackerID));
+      x.weak.incomingAttacks=()=>[{attackerID:'strong',troops:30000,retreating:false}];
+      assert.equal(x.b.adversaryWindow(x.me,x.weak).incomingOthers,30000);
+    }
+  });
   await check('v1.10.7 identifies third-party human troop commitments by small ID', () => {
     const x=boot();x.weak.type=()=> 'HUMAN';
     x.weak.outgoingAttacks=()=>[
@@ -3834,6 +3845,53 @@ function boot(benchmarkOptions={}) {
     assert.equal(await x.b.tradePolicy(x.me,700),true);
     assert.equal(x.sent[1].action,'stop');
     assert.equal(x.sent[1].target,x.strong);
+  });
+  await check('trade rechecks alliance and observed conflict after worker wait',async()=>{
+    for(const change of ['alliance','ended','reset','player']){
+      const x=boot();
+      x.b.setCtor('embargo',class Embargo{});
+      x.out.push({targetID:'strong',troops:1200,retreating:false});
+      x.me.hasEmbargoAgainst=()=>false;
+      x.me.actions=async()=>{
+        if(change==='alliance')x.me.isFriendly=p=>p===x.strong;
+        if(change==='ended')x.out.length=0;
+        if(change==='reset')x.b.reset();
+        if(change==='player')x.game.myPlayer=()=>x.weak;
+        return {interaction:{canEmbargo:true}};
+      };
+      assert.equal(await x.b.tradePolicy(x.me,300),false,change);
+      assert.equal(x.sent.length,0,change);
+    }
+  });
+  await check('trade does not reopen a bot embargo when fighting resumes during wait',async()=>{
+    const x=boot();x.b.setCtor('embargo',class Embargo{});
+    let embargoed=false;
+    x.me.hasEmbargoAgainst=p=>p===x.strong&&embargoed;
+    x.me.actions=async()=>({interaction:{canEmbargo:true}});
+    x.out.push({targetID:'strong',troops:1200,retreating:false});
+    assert.equal(await x.b.tradePolicy(x.me,300),true);
+    embargoed=true;x.out.length=0;x.setTick(500);x.b.setLastEmission(0);
+    x.me.actions=async()=>{
+      x.out.push({targetID:'strong',troops:1200,retreating:false});
+      return {};
+    };
+    assert.equal(await x.b.tradePolicy(x.me,500),false);
+    assert.equal(x.sent.length,1);
+  });
+  await check('trade panel respects pause, replay, game-over, budget and burst limits',()=>{
+    for(const state of ['paused','replay','over','budget','burst','allowed']){
+      const x=boot();let calls=0;
+      const panel={g:x.game,eventBus:x.b.eventBus(),
+        handleEmbargoClick:()=>calls++,handleStopEmbargoClick:()=>calls++};
+      x.doc.querySelector=s=>s==='player-panel'?panel:null;
+      if(state==='paused')x.b.opts.enabled=false;
+      if(state==='replay')x.game.config().isReplay=()=>true;
+      if(state==='over')x.setOver(true);
+      if(state==='budget')x.b.setBudget(1000);
+      if(state==='burst')x.b.setLastEmission(1789848000000);
+      assert.equal(x.b.sendTradeToggle(x.me,x.strong,'stop','test'),state==='allowed',state);
+      assert.equal(calls,state==='allowed'?1:0,state);
+    }
   });
   await check('1.20.8 critical Duo partner can receive recovery troops with own reserve intact',()=>{
     const x=boot();x.setHome(180000);x.weak.troops=()=>60000;x.weak.isFriendly=()=>true;
