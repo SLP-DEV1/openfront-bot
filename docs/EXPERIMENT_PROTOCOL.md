@@ -64,3 +64,42 @@ Enginepartie, Gegnerliga, mehrere echte Replay-GameViews, neue gepaarte
 Holdouts und Modell-Promotion. Der Manifest-Generator löst diese Aufgaben
 nicht von selbst. Fortschritt: [Roadmap](COMPETITIVE_ROADMAP.md),
 [P6-Issue #74](https://github.com/SLP-DEV1/openfront-bot/issues/74).
+
+
+## P6: gepaarter Holdout-Gate für ein Kandidatenmodell
+
+`trainer/promotion-gate-v5.cjs` prüft einen **vorab festgelegten**
+Vergleich gegen **beide** unveränderten Arme `rule-basis` und
+`run3-schema4`. Aufruf nach dem Erzeugen echter separater Partien:
+
+```powershell
+node trainer/promotion-gate-v5.cjs .\holdout-evidence.json
+```
+
+Die JSON-Datei enthält `protocol` und `rows`. Im `protocol` stehen
+`engineCommit` (40 Hex-Zeichen), je Arm `botSHA256` und
+`policySHA256` (je 64 Hex-Zeichen), `modes`, mindestens zwei `maps`,
+mindestens zwei `opponents`, eindeutige `seeds` und
+`minPairsPerCell` (mindestens 2). Jeder `rows`-Eintrag ist **eine
+Partie eines Arms in einem Szenario**, nicht eine Spielerperspektive:
+`arm,matchId,mode,map,opponent,seed,engineCommit,botSHA256,policySHA256,
+exitCode,verified,confirmed,recording,outcome,termination,endLand,endTick`.
+`recording` benötigt `complete:true,dropped:0,streamErrors:0`.
+
+Für jedes Kombination aus Modus/Karte/Gegner/Seed muss je ein echter
+Match-Bericht für Kandidat, Regelbasis und Run3 existieren. Ein fehlender,
+duplizierter, fremder, abgebrochener oder zensierter Bericht verhindert die
+Freigabe. Nur bestätigte Endzustände `victory`/`defeat` zählen;
+`tick-limit` und `unknown` sind weder Sieg noch Niederlage. Der
+Kandidat darf je Szenariogruppe nicht weniger Siege aufweisen und nicht
+unter 95 % des mittleren gehaltenen Endgebiets der jeweiligen Vergleichsbasis
+fallen; insgesamt braucht er gegenüber **jedem** Basisarm mindestens einen
+zusätzlichen beobachteten Sieg und mindestens dessen mittleres Endgebiet.
+
+**Abgrenzung:** Diese Prüfung validiert die *übergebenen strukturierten
+Nachweise*, nicht unabhängig die rohen Engine-Dateien oder die
+Vorabregistrierung. `eligible:true` ist eine Empfehlung zur
+**manuellen Prüfung**, keine automatische Deployment-Freigabe, kein Beleg
+für Spielstärke ohne reale unabhängige Holdouts und keine Änderung der
+aktiven Run3-Policy. Der CI-Test verwendet synthetische Fiktionen, um
+Fehlerpfade zu prüfen, und veröffentlicht keine neuen Spielergebnisse.
