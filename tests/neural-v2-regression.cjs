@@ -8,7 +8,7 @@ const root=path.resolve(__dirname,'..');
 const trainer=fs.readFileSync(path.join(root,'trainer/train.mjs'),'utf8');
 assert.match(trainer,/import evaluation from '\.\/evaluation-v2\.cjs'/);
 assert.match(trainer,/import scoring from '\.\/reward\.cjs'/);
-assert.match(trainer,/endTick:elapsed,ticks,trajectory:state\?\.trajectory,report:state/);
+assert.match(trainer,/endTick:elapsed,ticks:gt,trajectory:state\?\.trajectory,report:state/);
 assert.match(trainer,/promotionGate:'evaluation-v2'/);
 assert.equal(VERSION,'strategic-held-land-v2');
 

@@ -86,6 +86,9 @@ jobs:
           node --check tools/benchmark/engine-multibot.mjs
           node tests/enemy-metrics-regression.cjs
           node tests/winner-outcome-regression.cjs
+          node --check tools/benchmark/collapse-regression.cjs
+          node --check tools/benchmark/analyse-17-hard-regressionen.cjs
+          node tests/collapse-regression.test.cjs
           node --check tools/benchmark/league.cjs
           node --check tools/benchmark/serve-browser.mjs
           node --check tools/benchmark/suite.mjs
@@ -111,6 +114,17 @@ jobs:
         run: |
           node --check tools/benchmark/v3-map-breakdown.mjs
           node tests/v3-map-breakdown-regression.cjs
+      - name: Check Neural V4 early campaign
+        run: |
+          node --check tools/benchmark/v4-early-campaign.mjs
+          node tools/benchmark/v4-early-campaign.mjs setup --dryRun true > /dev/null
+          node tests/v4-early-campaign-regression.cjs
+      - name: Check Neural V5 curriculum campaign
+        run: |
+          node --check tools/benchmark/v5-curriculum-campaign.mjs
+          node tools/benchmark/v5-curriculum-campaign.mjs setup --dryRun true > /dev/null
+          node trainer/train.mjs --engineCommit bb8af015b515b3b717bd4d901074c5f4c16641cb --schema 4 --difficulty Impossible,Hard --maps World,Europe --nations 1,4 --generations 10 --population 6 --trainSeeds 3 --evalSeeds 2 --ticks 7200 --ticksSchedule 7200,7200,7200,7200,7200,18000,18000,18000,18000,18000 --dryRun true > /dev/null
+          node tests/v5-curriculum-regression.cjs
       - name: Test P6 paired model-promotion evidence gate
         run: |
           node tests/workflow-trigger-regression.cjs

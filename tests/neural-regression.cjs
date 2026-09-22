@@ -163,20 +163,36 @@ assert.equal(dry.policySchema,3);
 const dryV4=JSON.parse(exec(['trainer/train.mjs','--dryRun','true','--schema','4',
   '--maps','World','--nations','1']));
 assert.equal(dryV4.policySchema,4);
-assert.equal(dry.difficulty,'Impossible');
+assert.deepEqual(dry.difficulties,['Impossible']);
 for(const difficulty of ['Medium','Hard','Impossible']){
   const plan=JSON.parse(exec(['trainer/train.mjs','--dryRun','true',
     '--difficulty',difficulty,'--maps','World','--nations','1']));
-  assert.equal(plan.difficulty,difficulty);
+  assert.deepEqual(plan.difficulties,[difficulty]);
 }
 const germanCase=JSON.parse(exec(['trainer/train.mjs','--dryRun','true',
   '--difficulty','hard']));
-assert.equal(germanCase.difficulty,'Hard');
+assert.deepEqual(germanCase.difficulties,['Hard']);
+// Multi-difficulty: equal-weighted control grid, order-preserving,
+// duplicates rejected (V5 curriculum campaign).
+const multiDifficulty=JSON.parse(exec(['trainer/train.mjs','--dryRun','true',
+  '--difficulty','Impossible,Hard','--maps','World,Europe','--nations','1,4']));
+assert.deepEqual(multiDifficulty.difficulties,['Impossible','Hard']);
+assert.notEqual(spawnSync(process.execPath,
+  ['trainer/train.mjs','--dryRun','true','--difficulty','Hard,hard'],
+  {cwd:root,encoding:'utf8'}).status,0);
 const invalidDifficulty=spawnSync(process.execPath,
   ['trainer/train.mjs','--dryRun','true','--difficulty','Easy'],
   {cwd:root,encoding:'utf8'});
 assert.notEqual(invalidDifficulty.status,0);
 assert.match(invalidDifficulty.stderr,/Invalid --difficulty/);
+// Per-generation tick schedule (two-stage curriculum, V5).
+const scheduled=JSON.parse(exec(['trainer/train.mjs','--dryRun','true',
+  '--generations','2','--population','2','--trainSeeds','1','--evalSeeds','2',
+  '--nations','1','--maps','World','--ticksSchedule','7200,18000']));
+assert.deepEqual(scheduled.ticksSchedule,[7200,18000]);
+assert.notEqual(spawnSync(process.execPath,
+  ['trainer/train.mjs','--dryRun','true','--generations','2','--ticksSchedule','7200'],
+  {cwd:root,encoding:'utf8'}).status,0,'ticksSchedule must span every generation');
 const batch=fs.readFileSync(path.join(root,'Train_Strategic_Neural.bat'),'utf8');
 assert.match(batch,/choice \/C 123/);
 assert.match(batch,/--difficulty %DIFFICULTY%/);
