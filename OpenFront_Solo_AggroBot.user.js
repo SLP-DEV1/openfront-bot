@@ -5748,7 +5748,8 @@
       if(!held){
         marineStats.bridgeheadLost++;
         telemetry('bridgehead_lost','Landungsziel vor Abschluss der Wirkungsbeobachtung verloren',
-          {tile:a.tile,target:a.target,observedTicks:age,
+          {actionId:a.actionId??null,shipIds:a.shipIds??[],
+            tile:a.tile,target:a.target,observedTicks:age,
             checkpoints:a.checkpoints,evidence:'destination-ownership-not-causal'});
         navalCooldown.set(a.key,tick+350);navalSiteNegative.set(a.tile,tick+900);
         return false;
@@ -5758,7 +5759,8 @@
         marineStats['bridgeheadHeld'+horizon]++;
         if(horizon===120)marineStats.bridgeheadHeld++;
         telemetry('bridgehead_held_'+horizon,'Landungsziel am '+horizon+'-Tick-Horizont gehalten',
-          {tile:a.tile,target:a.target,observedTicks:age,horizon,
+          {actionId:a.actionId??null,shipIds:a.shipIds??[],
+            tile:a.tile,target:a.target,observedTicks:age,horizon,
             evidence:'destination-ownership-not-causal'});
       }
       return age<600;
@@ -5810,8 +5812,13 @@
         marineStats.transportArrived++;
         fleetStatus='Landung / Gebiet am Ziel bestätigt';
         telemetry('boat_arrived','Transportziel nach bestätigtem Schiff übernommen',
-          {actionId:boat.actionId??null,dest:boat.dest,resolvedDest:landingTile,target:boat.target,shipIds:boat.shipIds});
-        landingAudits.push({tile:landingTile,target:boat.target,key:boat.key,tick,
+          {actionId:boat.actionId??null,dest:boat.dest,resolvedDest:landingTile,
+            target:boat.target,shipIds:boat.shipIds,
+            eta:boat.eta??null,status:'coast-owned-after-ship-observation',
+            evidence:'ship-plus-destination-ownership-not-causal'});
+        landingAudits.push({actionId:boat.actionId??null,
+          shipIds:[...boat.shipIds],eta:boat.eta??null,
+          tile:landingTile,target:boat.target,key:boat.key,tick,
           checkpoints:[]});
         navalCooldown.set(boat.key,tick+140);
         landingFailures.delete(boat.key);
@@ -5822,13 +5829,17 @@
         marineStats.transportUnresolved++;
         fleetStatus='Transport verschwunden – Landung nicht bestätigt';
         telemetry('boat_unresolved','Transport nicht mehr sichtbar; kein eigener Zielbesitz',
-          {dest:boat.dest,resolvedDest:landingTile,target:boat.target,shipIds:boat.shipIds,
-            reason:'ship-disappeared'});
+          {actionId:boat.actionId??null,dest:boat.dest,resolvedDest:landingTile,
+            target:boat.target,shipIds:boat.shipIds,eta:boat.eta??null,
+            reason:'ship-disappeared',status:'unresolved-not-proven-destroyed'});
         landingFailure(boat,tick,landingTile,'ship-disappeared');pendingBoat=null;
       }else if(boat.seen && tick-boat.tick>650 && !boat.delayed){
         boat.delayed=true;fleetStatus='Transport noch unterwegs / Landung ungeklärt';
-        telemetry('boat_delayed',fleetStatus,{dest:boat.dest,resolvedDest:landingTile,
-          shipIds:boat.shipIds,lastProgressTick:boat.lastProgressTick});
+        telemetry('boat_delayed',fleetStatus,{
+          actionId:boat.actionId??null,dest:boat.dest,resolvedDest:landingTile,
+          shipIds:boat.shipIds,eta:boat.eta??null,
+          lastProgressTick:boat.lastProgressTick,
+          status:'in-transit-arrival-unknown'});
       }else if(tick-boat.tick>(boat.seen?1350:90) &&
         (!boat.seen||tick-boat.lastProgressTick>260)){
         if(boat.seen)marineStats.transportUnresolved++;
@@ -5836,8 +5847,11 @@
         fleetStatus=boat.seen?'Transport lange ohne Landungsbestätigung':
           'Transport nach Intent nicht im Spiel beobachtet';
         telemetry(boat.seen?'boat_unresolved':'boat_unconfirmed',fleetStatus,
-          {dest:boat.dest,resolvedDest:landingTile,target:boat.target,troops:boat.troops,
-            reason:boat.seen?'stalled-no-owned-coast':'ship-not-seen'});
+          {actionId:boat.actionId??null,dest:boat.dest,
+            resolvedDest:landingTile,target:boat.target,
+            shipIds:boat.shipIds,eta:boat.eta??null,troops:boat.troops,
+            reason:boat.seen?'stalled-no-owned-coast':'ship-not-seen',
+            status:'unresolved-not-proven-lost'});
         landingFailure(boat,tick,landingTile,
           boat.seen?'stalled-no-owned-coast':'ship-not-seen');pendingBoat=null;
       }
@@ -6871,6 +6885,22 @@
         telemetry('snapshot','Spielzustand',{difficulty:game.config().gameConfig().difficulty,
           gameType:game.config().gameConfig().gameType,matchContext:matchContext(me),
           decisionFrame:lastDecisionFrame,
+          defenseEvidence:{
+            incomingAttacks:(me.incomingAttacks?.()||[]).filter(a=>!a.retreating)
+              .map(a=>({
+                attackerId:attackTargetID(a.attackerID)??null,
+                troops:number(()=>a.troops,null),
+                ...diagnosticArrival([a])})).slice(0,40),
+            incomingTotal:s.incoming,home:s.home,reserve:s.reserve,
+            available:s.available,committed:s.committed,
+            outgoingRecallCandidates:(me.outgoingAttacks?.()||[])
+              .filter(a=>!a.retreating).map(a=>({
+                stackId:a.id,targetId:attackTargetID(a.targetID),
+                troops:number(()=>a.troops,null)})).slice(0,40),
+            warningLevel:duoWarningLevel(s,tick),
+            helpRequestId:diagnosticHelpId,
+            estimatedSupportDeficit:Math.max(0,Math.ceil(s.incoming*1.3-s.home)),
+            evidence:'gameview-state-not-predicted-survival'},
           investment:investmentStatus,
           cities:ownStructures(me).filter(u=>u.type?.()==='City').length,
           factories:ownStructures(me).filter(u=>u.type?.()==='Factory').length,
@@ -6888,6 +6918,15 @@
           forecastAudit:lastForecastAudit,
           recentIncomeSamples:incomeAttribution.slice(-4).map(v=>({...v})),
           fleet:fleetStatus,
+          economicEvidence:{
+            gold:goldAmount(me),trainGold:incomeStatus.train??null,
+            tradeGold:incomeStatus.trade??null,
+            pending:economicPending?{actionId:economicPending.actionId??null,
+              type:economicPending.type,kind:economicPending.kind,
+              tile:economicPending.tile,quotedCost:economicPending.cost,
+              status:'requested-not-confirmed'}:null,
+            lastWorkerProbe:lastEconomyProbeReport,
+            unknownActualSpend:true},
           marine:{stats:{...marineStats},pendingBoat:pendingBoat?{...pendingBoat}:null,
             pendingWarship:pendingWarship?{...pendingWarship}:null,
             ports:ownStructures(me).filter(u=>u.type?.()==='Port').length,
