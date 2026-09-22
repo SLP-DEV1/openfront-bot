@@ -4392,10 +4392,7 @@ function predict(model,input){
     // After losing the last productive buildings, do not keep the former
     // Warship/Port/SAM savings target ahead of a legal, affordable core.
     // An observed incoming nuke or currently active invasion keeps priority.
-    const coreRecovery=startup&&mine>0&&
-      troopSnapshot.incoming===0&&
-      !(crisisTrend&&nowTick<crisisTrend.expires&&
-        (crisisTrend.lostLand>0||crisisTrend.lostAssets>0));
+    const coreRecovery=startup&&mine>0&&troopSnapshot.incoming===0;
     // Eight failed coast scans used to disable first-port planning forever.
     // Retry after a bounded pause: territory and legal build sites can change.
     if(portProbeFailures>=8 && Number.isFinite(lastPortRetryTick) &&
@@ -4480,7 +4477,9 @@ function predict(model,input){
       {type:'SAM Launcher',desired:wantedSAM,score:enemyNukes?510+defBoost:threat?465+defBoost:proactiveSAM?295+defBoost:40},
       {type:'Missile Silo',desired:wantedSilo,score:siloCount===0?305:opts.nukes?(late?131:94)+(neural?.nuclearPriority||0)*75+(gold>6000000?13:0):0}
     ];
-    const crisisAllowed=type=>!immediate||['Defense Post','SAM Launcher'].includes(type);
+    const crisisAllowed=type=>!immediate||
+      ['Defense Post','SAM Launcher'].includes(type)||
+      coreRecovery&&!enemyNukes&&['City','Factory'].includes(type);
     const value=list.filter(x=>crisisAllowed(x.type)&&x.desired>count(x.type)).map(x=>({...x,count:count(x.type),
       urgency:x.score+Math.min(50,35*(x.desired-count(x.type))/x.desired)}));
     // Upgrades become useful when expansion is tight or troop cap is near.
@@ -4871,7 +4870,12 @@ function predict(model,input){
     const coastal=opts.boats&&entries.some(e=>e.type==='Port'&&!e.upgrade)?
       portCoastalAnchors(me,tiles,tick,72):[];
     if(!anchors.length && !coastal.length){
-      economicStatus='Kein eigenes Bauland gefunden';return false;
+      economicStatus='Kein eigenes Bauland gefunden';
+      if(requirements.coreRecovery)telemetry('core_recovery_block',economicStatus,{
+        missing:funding.missing,gold:requirements.gold,
+        cause:'no-owned-anchor-not-gold',
+        evidence:'candidate-search-no-worker-build-receipt'});
+      return false;
     }
     const meID=safeID(me),all=game.playerViews?.()||[];
     const fronts=[];
