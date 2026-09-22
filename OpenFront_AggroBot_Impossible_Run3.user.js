@@ -501,11 +501,13 @@ function predict(model,input){
   let diagnosticAid=null,diagnosticLastCommitmentSeen=null;
   let diagnosticHelpClosing=null;
   let diagnosticDonationSeen=new Map();
+  let donationCapture={polls:0,readable:0,candidates:0,matched:0,
+    lastProbeTick:-Infinity,lastReceiptTick:null,lastProblem:null};
   let diagnosticDecisionSequence=0;
   // Diagnostic v2: preserve critical events independently of the 1400-record UI ring.
   // Session storage is tab-scoped and never shares another bot's player identity.
   const diagnosticV2={schemaVersion:2,critical:[],dropped:0,lastDuoStatus:null,
-    lastDuoPeer:null,lastDuoAt:null};
+    lastDuoPeer:null,lastDuoAt:null,lastVerifiedPartnerId:null};
   const DIAGNOSTIC_CRITICAL_LIMIT=1200;
   function diagnosticCritical(record){
     const frozen=jsonCopy(record);
@@ -611,7 +613,8 @@ function predict(model,input){
     });
   }
   let budgetCommitments=[];
-  let attackBlockReport=null,lastAttackBlockReport=-Infinity;
+  let attackBlockReport=null,lastAttackBlockReport=-Infinity,
+    lastOffenseDroughtReport=-Infinity;
   let crisisTrend=null,lastCrisisReport=-Infinity;
   let landingFailures=new Map();
   let neuralEvidence={calls:0,nonzero:0,actionCalls:0,actionNonzero:0,last:null};
@@ -747,7 +750,9 @@ function predict(model,input){
       decisionFrame:lastDecisionFrame,planning:planningState,
       economyBudgetEvidence,shadowDecisionEvidence,
       investmentAssessments,operation,duoPlan,victoryThreat,
-      localDuo:{status:duoLocal.status,peer:duoLocal.peer,partnerID:opts.duoPartnerID,
+      localDuo:{status:duoLocal.status,peer:duoLocal.peer,
+        partnerID:opts.duoPartnerID,resolvedPartnerID:
+          duoTrustedPeer()?.id??diagnosticV2.lastVerifiedPartnerId??null,
         ownID:safeID(myPlayer()),connected:!!duoTrustedPeer(),match:duoLocal.match,
         failures:duoLocal.failures,relayDrops:duoLocal.relayDrops,
         relayTimeouts:duoLocal.relayTimeouts,ackTimeouts:duoLocal.ackTimeouts,
@@ -763,9 +768,13 @@ function predict(model,input){
       semantics:'sent-is-not-confirmed; confirmations are observations; effect unknown'};
     details.diagnosticV2={schemaVersion:2,matchId:String(game?.gameID?.()??'unknown'),
       playerId:safeID(myPlayer()),playerName:nameOf(myPlayer()),
-      partnerId:duoTrustedPeer()?.id??null,duoRoom:opts.duoRoom||null,
+      partnerId:duoTrustedPeer()?.id??diagnosticV2.lastVerifiedPartnerId??null,
+      partnerIdEvidence:duoTrustedPeer()?'verified-current-peer':
+        diagnosticV2.lastVerifiedPartnerId?'last-verified-this-match':'unknown',
+      duoRoom:opts.duoRoom||null,
       personalEliminationTick:gameEnd?.personalEliminated?gameEnd.tick:null,
       matchEndTick:game?.gameOver?.()?number(()=>game.ticks(),null):null,
+      donationCapture:{...donationCapture},
       critical:diagnosticV2.critical,dropped:diagnosticV2.dropped,
       journal:{persisted:diagnosticStore.persisted,queued:diagnosticStore.queue.length,
         lost:diagnosticStore.lost,error:diagnosticStore.error},
@@ -1084,6 +1093,7 @@ function predict(model,input){
     monitorSession=resumed?prior.session:'match-'+Date.now().toString(36)+'-'+
       Math.floor(Math.random()*0xffffffff).toString(36).padStart(8,'0');
     budgetCommitments=[];attackBlockReport=null;lastAttackBlockReport=-Infinity;
+    lastOffenseDroughtReport=-Infinity;
     crisisTrend=null;lastCrisisReport=-Infinity;landingFailures.clear();
     neuralEvidence={calls:0,nonzero:0,actionCalls:0,actionNonzero:0,last:null};
     autoStartGame=null;
@@ -1105,8 +1115,11 @@ function predict(model,input){
     diagnosticAid=null;diagnosticLastCommitmentSeen=null;
     diagnosticHelpClosing=null;diagnosticDecisionSequence=0;
     diagnosticDonationSeen.clear();
+    donationCapture={polls:0,readable:0,candidates:0,matched:0,
+      lastProbeTick:-Infinity,lastReceiptTick:null,lastProblem:null};
     diagnosticV2.critical=[];diagnosticV2.dropped=0;
     diagnosticV2.lastDuoStatus=null;diagnosticV2.lastDuoPeer=null;
+    diagnosticV2.lastVerifiedPartnerId=null;
     diagnosticV2.lastDuoAt=null;
     failedEconomyProbes=0;successfulEconomyTick=-Infinity;warWaitSince=-Infinity;
     coreQuotes.clear();coreFunding=null;lastCoreFundingReport=-Infinity;
@@ -1436,41 +1449,64 @@ function predict(model,input){
   function diagnosticDonationUpdates(){
     const tick=number(()=>game?.ticks?.(),-1);
     if(tick<0)return;
-    let updates;try{updates=game?.updatesSinceLastTick?.();}catch(_){return;}
-    if(!updates)return;
+    donationCapture.polls++;
+    let updates;try{updates=game?.updatesSinceLastTick?.();}
+    catch(_){donationCapture.lastProblem='gameview-read-error';return;}
+    if(!updates){
+      donationCapture.lastProblem='no-gameview-updates-this-poll';return;
+    }
+    donationCapture.readable++;
     const events=Object.values(updates).flat().filter(u=>
-      u&&u.donationType&&['troops','gold'].includes(u.donationType)&&
-      typeof u.senderId==='string'&&typeof u.recipientId==='string'&&
+      u&&['troops','gold'].includes(u.donationType)&&
+      ['string','number'].includes(typeof u.senderId)&&
+      ['string','number'].includes(typeof u.recipientId)&&
       (typeof u.amount==='bigint'||typeof u.amount==='number'));
+    donationCapture.candidates+=events.length;
+    if((diagnosticAid||diagnosticHelpId)&&
+      tick-donationCapture.lastProbeTick>=160){
+      donationCapture.lastProbeTick=tick;
+      telemetry('duo_donation_capture_probe','Spendenbelege im Browser geprüft',{
+        polls:donationCapture.polls,readable:donationCapture.readable,
+        candidateEvents:donationCapture.candidates,
+        matchedEvents:donationCapture.matched,
+        lastReceiptTick:donationCapture.lastReceiptTick,
+        updateChannels:Object.entries(updates)
+          .filter(([,rows])=>Array.isArray(rows))
+          .map(([channel,rows])=>({channel,count:rows.length})).slice(0,32),
+        warning:'no-receipt-is-not-proof-of-no-donation'});
+    }
     for(let i=0;i<events.length;i++){
       const ev=events[i];
-      const key=tick+':'+i+':'+ev.senderId+':'+ev.recipientId+
+      const senderId=String(ev.senderId),recipientId=String(ev.recipientId);
+      const key=tick+':'+i+':'+senderId+':'+recipientId+
         ':'+String(ev.amount)+':'+ev.donationType;
       if(diagnosticDonationSeen.has(key))continue;
       diagnosticDonationSeen.set(key,tick);
       const me=safeID(myPlayer());
-      if(me!==ev.senderId&&me!==ev.recipientId)continue;
+      if(me!==senderId&&me!==recipientId)continue;
+      donationCapture.matched++;donationCapture.lastReceiptTick=tick;
+      donationCapture.lastProblem=null;
       const amount=String(ev.amount);
       const aid=diagnosticAid;
       const sent=ev.donationType==='troops'&&aid&&
-        ev.senderId===me&&ev.recipientId===aid.partnerId&&
+        senderId===me&&recipientId===aid.partnerId&&
         tick>=aid.tick&&tick-aid.tick<=110&&!aid.observedTick;
       const received=ev.donationType==='troops'&&diagnosticHelpId&&
-        ev.recipientId===me&&ev.senderId===duoTrustedPeer()?.id;
+        recipientId===me&&senderId===duoTrustedPeer()?.id;
       const requestId=sent?aid.requestId:
         received?diagnosticHelpId:null;
       const actionId=sent?aid.actionId:
         received&&duoLocal.peer?.state?.aidForRequestId===diagnosticHelpId?
           duoLocal.peer.state.aidActionId??null:null;
       telemetry('donation_observed','Engine-Spendenereignis beobachtet',{
-        actionId,requestId,senderId:ev.senderId,
-        recipientId:ev.recipientId,donationType:ev.donationType,
+        actionId,requestId,senderId,
+        recipientId,donationType:ev.donationType,
         actualAmount:amount,evidence:'gameview-donate-event'});
       if(requestId){
         telemetry('duo_help_support_observed',
           'Duo-Truppenspende durch Engine bestätigt',{
-            actionId,requestId,senderId:ev.senderId,
-            recipientId:ev.recipientId,actualTroops:amount,
+            actionId,requestId,senderId,
+            recipientId,actualTroops:amount,
             status:'support-observed',evidence:'gameview-donate-event'});
         if(sent){
           aid.observedTick=tick;aid.observedTroops=amount;
@@ -1492,6 +1528,14 @@ function predict(model,input){
     const candidate=spawnCache?.tile??null,spawn=me?.state?.spawnTile;
     const tick=number(()=>game?.ticks?.(),0);
     const help=!!(state&&state.incoming>Math.max(1200,state.home*.1));
+    const trend=armyTrend(tick);
+    const earlyCrisis=!!(state&&(
+      state.incoming>=Math.max(500,state.home*.025)||
+      state.strongest>=state.home*.9||
+      (trend?.ticks>=60&&trend.tiles<-
+        Math.max(100,number(()=>me.numTilesOwned(),0)*.03))||
+      (crisisTrend&&tick<crisisTrend.expires&&
+        (crisisTrend.lostLand>0||crisisTrend.lostAssets>0))));
     if(diagnosticHelpId&&tick>=diagnosticHelpDeadline)
       diagnosticCloseHelp('deadline',tick);
     if(help&&!diagnosticHelpId){
@@ -1537,6 +1581,9 @@ function predict(model,input){
         state.ratio>=.38&&!state.activeEnemy&&
         state.available>=Math.max(1200,state.home*.09)),
       needHelp:!!(state&&state.incoming>Math.max(1200,state.home*.1)),
+      earlyCrisis,land:number(()=>me?.numTilesOwned?.(),0),
+      cities:(me?.units?.()||[]).filter(u=>u.isActive?.()&&u.type?.()==='City').length,
+      factories:(me?.units?.()||[]).filter(u=>u.isActive?.()&&u.type?.()==='Factory').length,
       helpRequestId:diagnosticHelpId,helpSinceTick:diagnosticHelpSince,
       helpDeadlineTick:diagnosticHelpDeadline,
       helpShortfall:diagnosticHelpId&&state?
@@ -2287,6 +2334,7 @@ function predict(model,input){
     const connectedPeer=duoTrustedPeer();
     const local=connectedPeer&&actualFriendly(connectedPeer.player,me)?
       connectedPeer:null;
+    if(local?.id)diagnosticV2.lastVerifiedPartnerId=local.id;
     if(!duo&&local){
       const enemies=(game.playerViews?.()||[]).filter(p=>p?.isPlayer?.()&&
         p.isAlive?.()&&!friendly(p,me));
@@ -2331,8 +2379,8 @@ function predict(model,input){
     const partnerWarning=Math.max(duoWarningLevel(
       {home:partnerHome,incoming,strongest:0},tick),
       local?.state?.warning||0);
-    const partnerNeeds=incoming>Math.max(1200,partnerHome*.10)||
-      local?.state?.warning===2;
+    const partnerNeeds=incoming>Math.max(1200,partnerHome*.035)||
+      local?.state?.earlyCrisis===true||local?.state?.warning===2;
     const invasion=danger||partnerNeeds||
       (crisisTrend&&tick<crisisTrend.expires&&
         (crisisTrend.lostLand>0||crisisTrend.lostAssets>0));
@@ -2421,6 +2469,8 @@ function predict(model,input){
       targetName:shared?nameOf(shared):'Kein Gegner',role,
       partnerCommitted:active?.on||0,partnerIncoming:incoming,
       partnerHome,needHelp:partnerNeeds,partnerWarning,
+      partnerEarlyCrisis:local?.state?.earlyCrisis===true,
+      partnerLand:local?.state?.land??null,
       partnerReady:!!local?.state?.ready,separatedFronts,
       teamDecision,strikeTick,
       partnerAck:!!(planId&&local?.state?.ackPlanId===planId),
@@ -3720,12 +3770,28 @@ function predict(model,input){
         enemyHome:number(()=>x.opponent?.troops?.(),null)};
     });
     const counts={};for(const row of rows)counts[row.reason]=(counts[row.reason]||0)+1;
-    attackBlockReport={tick,ranked:ranked.length,home:s.home,
+    attackBlockReport={tick,ranked:ranked.length,
+      lastEnemyAttackTick:Number.isFinite(lastEnemySend)?lastEnemySend:null,
+      lastNeutralAttackTick:Number.isFinite(lastNeutralSend)?lastNeutralSend:null,
+      lastAttackAgeTicks:tick-Math.max(lastEnemySend,lastNeutralSend),home:s.home,
       available:s.available,reserve:s.reserve,incoming:s.incoming,
       reserveShare:s.reserveShare??null,
       reserveReason:s.reserveReason??null,
       reserveFloors:s.reserveFloors??null,
       committed:s.committed,readiness:readiness.reason,counts,targets:rows.slice(0,8)};
+    if(rows.length&&tick-Math.max(lastEnemySend,lastNeutralSend)>=240&&
+      tick-lastOffenseDroughtReport>=180){
+      lastOffenseDroughtReport=tick;
+      telemetry('offense_drought','Keine neuen Angriffs-Intents trotz sichtbarer Front',{
+        ...attackBlockReport,rankedTargets:ranked.slice(0,5).map(x=>({
+          id:x.id,amount:x.amount,score:x.score,
+          forecast:x.forecast??null})),
+        blockers:counts,activeOutgoing:s.activeEnemy,
+        pendingAttack:pendingAttack?.id??null,
+        warLock:warState.id??null,warWaitSince,
+        safety:'observation-only-no-attack-permission',
+        interpretation:'ranked-target-does-not-imply-safe-legal-send'});
+    }
     if(!ranked.some(x=>x.id!==null)&&rows.length){
       telemetry('attack_block_report','Kein Landkriegsziel freigegeben',
         {attackBlockReport});
@@ -4349,8 +4415,12 @@ function predict(model,input){
     const wantedFactory=factoryEnabled?(hardMode()?Math.min(11,Math.max(2,2+Math.floor(mine/900))):Math.min(8,Math.max(1,1+Math.floor(mine/1350)))):0;
     const wantedPort=!portEnabled?0:opts.boats?Math.min(5,Math.max(1,Math.floor(mine/1050)+1)):
       (factories>=1 && mine>600?Math.min(2,Math.floor(mine/2700)+1):0);
-    const startup=(cityEnabled&&cities<1)||(factoryEnabled&&factories<1);
     const nowTick=number(()=>game.ticks(),0);
+    const startup=(cityEnabled&&cities<1)||(factoryEnabled&&factories<1);
+    // After losing the last productive buildings, do not keep the former
+    // Warship/Port/SAM savings target ahead of a legal, affordable core.
+    // An observed incoming nuke or currently active invasion keeps priority.
+    const coreRecovery=startup&&mine>0&&troopSnapshot.incoming===0;
     // Eight failed coast scans used to disable first-port planning forever.
     // Retry after a bounded pause: territory and legal build sites can change.
     if(portProbeFailures>=8 && Number.isFinite(lastPortRetryTick) &&
@@ -4417,10 +4487,12 @@ function predict(model,input){
       ((cityEnabled&&cities<3)||(factoryEnabled&&factories<3));
     const neural=neuralStrategicSignals(me,troopSnapshot,nowTick);
     const list=[
-      {type:'City',desired:capacityCityDesired,score:92+(productiveStall&&cities<3?110:0)+(neural?.cityPriority||0)*90+econBoost/2+(posture==='recruit'?38:0)+Math.max(0,pressure-.35)*75+
+      {type:'City',desired:capacityCityDesired,score:92+
+        (coreRecovery&&cities===0?530:0)+(productiveStall&&cities<3?110:0)+(neural?.cityPriority||0)*90+econBoost/2+(posture==='recruit'?38:0)+Math.max(0,pressure-.35)*75+
           (pressure>.80&&!immediate?30:0)+(cities===0?115:hardMode()&&cities<2?80:0)+
           (capStalled?pressure>=.98?355:pressure>=.95?295:pressure>=.90?230:135:0)},
-      {type:'Factory',desired:wantedFactory,score:91+(productiveStall&&factories<3?110:0)+(neural?.factoryPriority||0)*90+econBoost+(posture==='bootstrap'?20:0)+
+      {type:'Factory',desired:wantedFactory,score:91+
+        (coreRecovery&&factories===0?520:0)+(productiveStall&&factories<3?110:0)+(neural?.factoryPriority||0)*90+econBoost+(posture==='bootstrap'?20:0)+
           (factories===0?100:hardMode()&&factories<2?85:0)+
           (gold<450000?15:0)+(pressure<.60&&factories>0?10:0)+
           (factories<2&&cities>=2?24:0)-
@@ -4433,7 +4505,9 @@ function predict(model,input){
       {type:'SAM Launcher',desired:wantedSAM,score:enemyNukes?510+defBoost:threat?465+defBoost:proactiveSAM?295+defBoost:40},
       {type:'Missile Silo',desired:wantedSilo,score:siloCount===0?305:opts.nukes?(late?131:94)+(neural?.nuclearPriority||0)*75+(gold>6000000?13:0):0}
     ];
-    const crisisAllowed=type=>!immediate||['Defense Post','SAM Launcher'].includes(type);
+    const crisisAllowed=type=>!immediate||
+      ['Defense Post','SAM Launcher'].includes(type)||
+      coreRecovery&&!enemyNukes&&['City','Factory'].includes(type);
     const value=list.filter(x=>crisisAllowed(x.type)&&x.desired>count(x.type)).map(x=>({...x,count:count(x.type),
       urgency:x.score+Math.min(50,35*(x.desired-count(x.type))/x.desired)}));
     // Upgrades become useful when expansion is tight or troop cap is near.
@@ -4470,7 +4544,7 @@ function predict(model,input){
         // otherwise early harbor hoarding delays essential income buildings.
         cities>=2&&factories>=2&&!hardMode()?500000:0):0;
     const firstPortWindow=portMilestone&&(!capStalled||pressure<.95);
-    const savingsTarget=immediate?0:samFund>0?samFund:
+    const savingsTarget=immediate||coreRecovery?0:samFund>0?samFund:
       capStalled&&!firstPortWindow&&!enemyNukes?0:portFund>0?portFund:
       portMilestone||(threat&&intel.uncovered.length>0&&wantedSAM>0)?0:
       saveForSilo?1150000:saveForNuke?firstRocketFund:0;
@@ -4488,7 +4562,7 @@ function predict(model,input){
       'SAM Launcher':0,
       'Missile Silo':(neural?.nuclearPriority||0)*75};
     return {list:value,policyBiases,threatened,gold,cities,factories,mine,pressure,nuclearThreat:threat,incomingNukes:enemyNukes,intel,
-      startup,basic,emergency,immediate,capStalled,firstPortWindow,savingsTarget,saveForSilo,saveForNuke,siloCount,
+      startup,coreRecovery,basic,emergency,immediate,capStalled,firstPortWindow,savingsTarget,saveForSilo,saveForNuke,siloCount,
       enemySilos,proactiveSAM,wantedDefense,wantedSAM,portMilestone,coastSites:coastSites.length,portProbeFailures,
       samQuotedCost,portQuotedCost,posture,samSearchBlocked};
   }
@@ -4532,6 +4606,11 @@ function predict(model,input){
       tick-samQuotedTick<=300?needs.samQuotedCost:0;
     let floor=needs.savingsTarget;
     if(purpose==='Warship')floor=samFund;
+    if(needs.coreRecovery&&['City','Factory'].includes(purpose)){
+      // Only when no current troop invasion exists; final worker legality,
+      // real quote and shared pending-gold checks still apply below.
+      floor=0;
+    }
     if(purpose==='SAM Launcher'||purpose==='Port'&&needs.portMilestone&&
       needs.savingsTarget===needs.portQuotedCost||
       purpose==='Missile Silo'&&needs.saveForSilo||
@@ -4777,6 +4856,7 @@ function predict(model,input){
       portMilestone:requirements.portMilestone,
       portQuote:tick-portQuotedTick<=210&&portQuotedCost>0?portQuotedCost:null,
       goldFloor:requirements.savingsTarget,coreQuote:funding.needed,
+      coreRecovery:requirements.coreRecovery,
       semantics:'shared savings target; individual build exceptions still apply'};
     // A cached price saves worker traffic while underfunded; refresh once
     // the price is funded or quotes age. Never assert a legal site from it.
@@ -4805,7 +4885,8 @@ function predict(model,input){
     }
     // Do not waste worker queries or count failed builds while deliberately
     // accumulating funds for the first silo / first atomic strike.
-    if(requirements.savingsTarget>0 && !requirements.immediate && !requirements.nuclearThreat &&
+    if(requirements.savingsTarget>0 && !requirements.coreRecovery &&
+      !requirements.immediate && !requirements.nuclearThreat &&
       !requirements.portMilestone && !game.config().infiniteGold?.() &&
       requirements.gold<requirements.savingsTarget){
       economicStatus='Spare: '+investmentStatus+' ('+Math.floor(requirements.gold).toLocaleString()+
@@ -4817,7 +4898,12 @@ function predict(model,input){
     const coastal=opts.boats&&entries.some(e=>e.type==='Port'&&!e.upgrade)?
       portCoastalAnchors(me,tiles,tick,72):[];
     if(!anchors.length && !coastal.length){
-      economicStatus='Kein eigenes Bauland gefunden';return false;
+      economicStatus='Kein eigenes Bauland gefunden';
+      if(requirements.coreRecovery)telemetry('core_recovery_block',economicStatus,{
+        missing:funding.missing,gold:requirements.gold,
+        cause:'no-owned-anchor-not-gold',
+        evidence:'candidate-search-no-worker-build-receipt'});
+      return false;
     }
     const meID=safeID(me),all=game.playerViews?.()||[];
     const fronts=[];
@@ -6338,7 +6424,8 @@ function predict(model,input){
   function teamSupport(me,tick,s){
     const peer=duoTrustedPeer();
     const local=peer&&actualFriendly(peer.player,me)?peer:null;
-    const warning=local?.state?.warning||0;
+    const warning=Math.max(local?.state?.warning||0,
+      local?.state?.earlyCrisis?1:0);
     const donationCooldown=local?(warning>=2?90:warning>=1?160:240):300;
     if((winStatus.mode!=='Team'&&!local)||tick-lastDonation<donationCooldown||
       !actionBudget())return false;
@@ -6357,8 +6444,10 @@ function predict(model,input){
       const ownDanger=duoWarningLevel(s,tick)>0;
       // Donating from two symmetric bots must not form a back-and-forth
       // loop. Only donate on observed pressure and concrete troop shortage.
-      const critical=warning>=2||inbound>partnerHome*.25;
-      const recoveryNeed=warning>=2&&inbound===0&&s.home>partnerHome*1.35?
+      const critical=warning>=2||inbound>partnerHome*.12;
+      const recoveryNeed=warning>=1&&inbound===0&&s.home>partnerHome*1.35&&
+        number(()=>partner.numTilesOwned(),0)<
+          number(()=>me.numTilesOwned(),0)*.65?
         Math.min(partnerHome*.20,s.home*.07):0;
       const shortage=Math.max(0,inbound*1.55-partnerHome,
         inbound>partnerHome*.06?inbound*.18:0,recoveryNeed);
@@ -6367,7 +6456,7 @@ function predict(model,input){
       const safe=Math.max(0,Math.floor(s.home-floor));
       const amount=Math.floor(Math.min(shortage,
         s.available*(critical?.32:.22),s.home*(critical?.14:.10),safe));
-      if(!ownDanger&&(inbound>partnerHome*.06||recoveryNeed>=1000)&&
+      if(!ownDanger&&(inbound>partnerHome*.025||recoveryNeed>=1000)&&
         amount>=1000&&
         ctors.donateTroops&&(!me.canDonateTroops||me.canDonateTroops(partner))&&
         send('donateTroops',[partner,amount],
