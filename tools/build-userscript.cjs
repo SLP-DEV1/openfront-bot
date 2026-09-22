@@ -2,7 +2,7 @@
 'use strict';
 // Canonical source is split at top-level function boundaries, and joined
 // without separators: generated .user.js MUST be byte-identical.
-const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
+const fs=require('node:fs'),path=require('node:path');
 const {spawnSync}=require('node:child_process');
 const root=path.resolve(__dirname,'..');
 const files=['00-bootstrap.js','10-duo-and-diagnostics.js',
@@ -32,7 +32,9 @@ function main(args=process.argv.slice(2)){
  const mode=args[0]||'--check';
  if(!['--check','--write'].includes(mode)||args.length>1)
    throw Error('Usage: node tools/build-userscript.cjs [--check|--write]');
- const generated=assemble(),existing=fs.readFileSync(output,'utf8');
+ const generated=assemble();
+ // --write must be able to reconstruct an artifact absent from a clean checkout.
+ const existing=fs.existsSync(output)?fs.readFileSync(output,'utf8'):null;
  if(!generated.startsWith('// ==UserScript==')||
     generated.split('const NEURAL_BUNDLED_MODEL = null;').length!==2)
     throw Error('Invalid assembled userscript header or model marker');
@@ -48,12 +50,16 @@ function main(args=process.argv.slice(2)){
    return;
  }
  // Verify syntax without replacing the existing output on failure.
- const tmp=path.join(os.tmpdir(),'aggrobot-userscript-'+process.pid+'.user.js');
+ const tmp=path.join(root,'.aggrobot-userscript-'+process.pid+'-'+Date.now()+'.user.js');
  try{
    fs.writeFileSync(tmp,generated,{flag:'wx'});
    const check=spawnSync(process.execPath,['--check',tmp],{encoding:'utf8'});
    if(check.status!==0)throw Error('Generated userscript syntax failed: '+check.stderr);
-   if(existing!==generated)fs.writeFileSync(output,generated);
+   if(existing!==generated){
+     // Same-directory rename avoids exposing a partially written artifact.
+     // A syntax or source-parity error leaves an existing output untouched.
+     fs.renameSync(tmp,output);
+   }
    console.log('USERSCRIPT_BUILD '+JSON.stringify({parts:files.length,
      bytes:generated.length,action:existing===generated?'unchanged':'written'}));
  }finally{if(fs.existsSync(tmp))fs.unlinkSync(tmp);}
