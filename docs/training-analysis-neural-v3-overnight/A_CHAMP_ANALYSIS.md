@@ -94,8 +94,8 @@ Export exactly the same seeded records for A-champ, stageC, Run3, each
 Hard/Impossible, using the local results; publish compact 24-match
 World and Europe statistics, then 12-match World-1/World-4/Europe-1/
 Europe-4 statistics; a paired per-seed comparison; and outcome/terminal
-enemy-land/build/attack evidence. Keep raw logs local. See the linked
-export issue for fields and verification gates.
+enemy-land/build/attack evidence. Keep raw logs local. See [issue #98](https://github.com/SLP-DEV1/openfront-bot/issues/98) for
+fields and verification gates.
 
 Do not retune the promotion criteria on this holdout or replace
 the Run3 live userscript based on this descriptive analysis.
