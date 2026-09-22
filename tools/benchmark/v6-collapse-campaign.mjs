@@ -690,8 +690,9 @@ function runCollapseJob(job, opts2) {
     '--model', path.join(OUT, 'models-source', `${job.model}.json`),
     '--referenceModel', path.join(OUT, 'models-source', `${job.referenceModel}.json`),
     '--out', outDir, '--parallel', String(opts2.parallel)];
+  // The tool requires a fresh (non-existent) output directory and creates
+  // it itself — so only clean, never pre-create.
   rmrf(outDir);
-  fs.mkdirSync(outDir, {recursive: true});
   const logFd = fs.openSync(path.join(OUT, `collapse-${job.label}.log`), 'a');
   // 34 matches (17 cells x 2 models) at 18000 ticks; 30 min is a
   // generous hang net, not a target.

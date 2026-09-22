@@ -599,4 +599,27 @@ const base = (suffix) => Array.from({length: N},
   }
 }
 
+// ---------------------------------------------------------------------------
+// runCollapseJob output-directory contract (engine-free).
+// ---------------------------------------------------------------------------
+// collapse-regression.cjs requires --out to NOT exist (it creates it itself
+// and throws "Output already exists" otherwise). The driver therefore must
+// clean the job dir but never pre-create it — pre-creating made the collapse
+// phase crash before spawning the tool.
+{
+  const driverSrc = fs.readFileSync(DRIVER, 'utf8');
+  const start = driverSrc.indexOf('function runCollapseJob(');
+  assert.ok(start >= 0, 'runCollapseJob must exist in the driver');
+  // The body ends at the first column-0 close after the start (inner
+  // braces are indented). Tolerate CRLF line endings.
+  const closeMatch = driverSrc.slice(start).search(/\n\}\r?\n/);
+  assert.ok(closeMatch >= 0, 'runCollapseJob body must be locatable');
+  const end = start + closeMatch;
+  const body = driverSrc.slice(start, end);
+  assert.match(body, /rmrf\(outDir\)/,
+    'runCollapseJob must clean the stale job dir before running');
+  assert.doesNotMatch(body, /mkdirSync/,
+    'runCollapseJob must never pre-create the job dir — the tool requires it fresh');
+}
+
 console.log('v6-collapse-campaign-regression: all checks passed');
