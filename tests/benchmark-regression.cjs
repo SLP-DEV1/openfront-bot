@@ -77,4 +77,22 @@ assert.throws(()=>parse(['--engine','/tmp/engine','--profile','nope']),/Unknown 
       'cannot overwrite existing provenance report');
   } finally {fs.rmSync(temp,{recursive:true,force:true});}
 }
+const {aggregateRecordings}=require('../tools/benchmark/multibot-recording.cjs');
+{
+  const reports=[{recording:{total:2,streamErrors:0}},
+    {recording:{total:3,streamErrors:0}}];
+  assert.deepEqual(aggregateRecordings(reports,5),
+    {total:5,streamCount:5,streamErrors:0,complete:true},
+    'all full bots contribute to one complete JSONL stream');
+  assert.equal(aggregateRecordings(reports,2).complete,false,
+    'first-client count alone is not the multi-client total');
+  assert.equal(aggregateRecordings(reports,4).complete,false,
+    'missing records must remain incomplete');
+  assert.equal(aggregateRecordings([{recording:{total:2,streamErrors:1}},
+    reports[1]],5).complete,false,'stream failures stay visible');
+  assert.equal(aggregateRecordings([{recording:{total:2}},reports[1]],5).complete,
+    false,'unknown stream-error counter cannot establish completeness');
+  assert.equal(aggregateRecordings([reports[0]],2).complete,false,
+    'this aggregator must not accept single-bot metrics as multi-bot proof');
+}
 console.log('PASS benchmark report isolation, censored results, lifetime counters and CLI validation');
