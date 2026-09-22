@@ -69,8 +69,10 @@ combined into one replay or evaluated as a Ranked 2v2 outcome.
 | Observed troop donation events | 51 (38 incoming, 13 outgoing) | 5 (0 incoming, 5 outgoing) |
 | Event journal | 3416/3416, complete | 1893/1893, complete |
 
-Both were Public Team games on Giant World Map at Medium difficulty, one bot
-per browser, `duoEnabled=false`, empty `duo.jsonl`, and both exports ended
+Both were Public Team games at Medium difficulty, one bot
+per browser. `dZK7W1CkfP` used Las Vegas Strip and `drYuPivuTv`
+used Giant World Map; neither may be treated as a same-map controlled
+comparison. Both had `duoEnabled=false`, empty `duo.jsonl`, and both exports ended
 with **own player eliminated / team outcome unknown**. A configured
 `duoRoom` string is not proof that Duo was active. Both reports show embedded,
 enabled schema-4 policy, 1000 weights, fingerprint
