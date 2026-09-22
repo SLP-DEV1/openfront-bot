@@ -77,6 +77,10 @@ Workflow-Durchlauf ist erst nach GitHub-Resultat belegt.
 - Nach Merge von [PR #86](https://github.com/SLP-DEV1/openfront-bot/pull/86) wurden in [PR #88](https://github.com/SLP-DEV1/openfront-bot/pull/88) fokussierte Tests für getrennte Duo-Budgets, einen verbundenen Wasser-Umweg samt konservativem Fallback sowie den Liga-Dry-Run mit Engine-Pin, Bot-Hash und unbekannten Resultaten ergänzt.
 - **[Verify AggroBot grün](https://github.com/SLP-DEV1/openfront-bot/actions/runs/35672891052)**, Merge [fe119db](https://github.com/SLP-DEV1/openfront-bot/commit/fe119db78f51dafb36f619d7c5acdf20fa2b2a2a). Dies sind isolierte Regressionen; Langzeit-, vollständige Zwei-Client-, Liga- und Wirkungstests stehen weiterhin aus. P4, P5 und P6 bleiben als Gesamtphasen offen.
 
+## Geänderte Schließregel: Implementierung vor lokalen Langzeittests (22.09.2026)
+
+Auf Nutzerwunsch sind lokale Langzeit-, vollständige Zwei-Client-, Liga- und Wirkungstests **keine alleinigen Schließblocker** mehr. Vorhandene CI-/Regressionsergebnisse bleiben dokumentiert; fehlende Tests werden als *nicht durchgeführt* und nicht als erfolgreich gewertet. Ein Phasen-Issue wird geschlossen, sobald seine **relevanten umsetzbaren Entwicklungsaufgaben** erledigt und offene Risiken/ausgelassene Nachweise im Abschluss benannt sind. Die ältere vollständige Phasenabnahme/Siegquotenbewertung bleibt von dieser administrativen Schließung getrennt. Aktuell stehen insbesondere noch Codearbeiten an P1–P3 sowie P4–P6 in [PR #89](https://github.com/SLP-DEV1/openfront-bot/pull/89) aus; dessen aktueller Stand ist nicht konfliktfrei. Deshalb wird kein ungelöstes Roadmap-Issue allein durch das Weglassen lokaler Tests geschlossen.
+
 ## Status-Legende und Abnahmeregel
 
 - **Im Code vorhanden:** Ein bereits implementierter Baustein; **nicht** dass die Phase abgeschlossen ist.
