@@ -75,7 +75,7 @@ async function main(){
     assert.equal(persisted.lastSeq,2);
     assert.equal(persisted.completed,true);
     assert.equal(fs.readFileSync(path.join(old.runDir,'events.jsonl'),'utf8')
-      .trim().split('\\n').length,2);
+      .trim().split('\n').length,2);
     const active=JSON.parse(fs.readFileSync(
       path.join(first.runDir,'status.json'),'utf8'));
     assert.equal(active.lastSeq,3);
