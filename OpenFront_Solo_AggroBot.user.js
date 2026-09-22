@@ -435,6 +435,32 @@
   // intent is NOT proof the worker accepted it or that it achieved a result.
   let actionSequence=0,lastActionId=null;
   let monitorSession='';
+  // Diagnostic v2: preserve critical events independently of the 1400-record UI ring.
+  // Session storage is tab-scoped and never shares another bot's player identity.
+  const diagnosticV2={schemaVersion:2,critical:[],dropped:0,lastDuoStatus:null,
+    lastDuoPeer:null,lastDuoAt:null};
+  const DIAGNOSTIC_CRITICAL_LIMIT=1200;
+  function diagnosticCritical(record){
+    const frozen=jsonCopy(record);
+    diagnosticV2.critical.push(frozen);
+    if(diagnosticV2.critical.length>DIAGNOSTIC_CRITICAL_LIMIT){
+      diagnosticV2.critical.shift();diagnosticV2.dropped++;
+    }
+    try{sessionStorage.setItem('aggrobot-diagnostic-v2',JSON.stringify({
+      session:monitorSession,matchId:String(game?.gameID?.()??'unknown'),
+      playerId:safeID(myPlayer()),critical:diagnosticV2.critical,
+      dropped:diagnosticV2.dropped}));}catch(_){}
+  }
+  function diagnosticDuoTransition(status,peer,reason){
+    const id=peer?.id??null;
+    if(diagnosticV2.lastDuoStatus===status&&diagnosticV2.lastDuoPeer===id)return;
+    diagnosticV2.lastDuoStatus=status;diagnosticV2.lastDuoPeer=id;
+    diagnosticV2.lastDuoAt=new Date().toISOString();
+    telemetry('duo_transition','Duo-Statuswechsel',{
+      duoStatus:status,peerId:id,reason:reason??null,
+      ownId:safeID(myPlayer()),matchId:String(game?.gameID?.()??'unknown'),
+      duoRoom:opts.duoRoom||null});
+  }
   let budgetCommitments=[];
   let attackBlockReport=null,lastAttackBlockReport=-Infinity;
   let crisisTrend=null,lastCrisisReport=-Infinity;
@@ -465,6 +491,8 @@
     record.time=new Date().toISOString();record.tick=tick;
     record.kind=kind;record.message=message;
     diagnostics.push(record);
+    if(/^(game_over|duo_transition|duo_plan|duo_help|attack_confirmed|attack_unconfirmed|build_confirmed|build_unconfirmed|transport_arrived|transport_unconfirmed|action)$/.test(kind))
+      diagnosticCritical(record);
     recordCounts[kind]=(recordCounts[kind]||0)+1;
     if(benchmark && typeof benchmark.onRecord==='function'){
       try{benchmark.onRecord(jsonCopy(record));}catch(_){streamErrors++;}
@@ -548,6 +576,14 @@
       diplomacy:{status:diplomacyStatus,stats:diplomacyStats,pending:[...diplomacyPending.values()]},records:diagnostics,createdAt:new Date().toISOString()};
     details.actionTrace={nextSequence:actionSequence+1,lastActionId,
       semantics:'sent-is-not-confirmed; confirmations are observations'};
+    details.diagnosticV2={schemaVersion:2,matchId:String(game?.gameID?.()??'unknown'),
+      playerId:safeID(myPlayer()),playerName:nameOf(myPlayer()),
+      partnerId:duoTrustedPeer()?.id??null,duoRoom:opts.duoRoom||null,
+      personalEliminationTick:gameEnd?.personalEliminated?gameEnd.tick:null,
+      matchEndTick:game?.gameOver?.()?number(()=>game.ticks(),null):null,
+      critical:diagnosticV2.critical,dropped:diagnosticV2.dropped,
+      lastDuoTransitionAt:diagnosticV2.lastDuoAt,
+      evidence:'event-bus emission is not confirmed effect'};
     details.recording={total:recordSequence,counts:{...recordCounts},dropped:recordsDropped,
       firstSequence:diagnostics[0]?.seq??null,streamErrors};
     return jsonCopy(details);
@@ -1114,6 +1150,8 @@
           data.reason==='different-match'?
           'Raumcode gleich, aber Match-Kennung unterscheidet sich':
           'Warte auf zweite Browser-Instanz';
+        diagnosticDuoTransition(duoLocal.status,data.partner,
+          data.reason??null);
         if(data.partner)duoLocal.failures=0;
       }catch(e){
         duoLocal.failures++;duoLocal.peer=null;duoLocal.lastAt=0;
@@ -1121,6 +1159,7 @@
           'Browser-Timeout (8s) – lokalen Netzwerkzugriff fuer openfront.io pruefen':
           'Relay-Fehler: '+String(e?.message||e).slice(0,65);
         duoLocal.status=reason;
+        diagnosticDuoTransition(duoLocal.status,null,reason);
         if(duoLocal.failures===1||duoLocal.failures%10===0)
           console.warn(PREFIX,'Duo-Verbindung:',reason,
             'Match:',match,'Raum:',room);
