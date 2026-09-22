@@ -18,6 +18,7 @@
       portMilestone:requirements.portMilestone,
       portQuote:tick-portQuotedTick<=210&&portQuotedCost>0?portQuotedCost:null,
       goldFloor:requirements.savingsTarget,coreQuote:funding.needed,
+      coreRecovery:requirements.coreRecovery,
       semantics:'shared savings target; individual build exceptions still apply'};
     // A cached price saves worker traffic while underfunded; refresh once
     // the price is funded or quotes age. Never assert a legal site from it.
@@ -46,7 +47,8 @@
     }
     // Do not waste worker queries or count failed builds while deliberately
     // accumulating funds for the first silo / first atomic strike.
-    if(requirements.savingsTarget>0 && !requirements.immediate && !requirements.nuclearThreat &&
+    if(requirements.savingsTarget>0 && !requirements.coreRecovery &&
+      !requirements.immediate && !requirements.nuclearThreat &&
       !requirements.portMilestone && !game.config().infiniteGold?.() &&
       requirements.gold<requirements.savingsTarget){
       economicStatus='Spare: '+investmentStatus+' ('+Math.floor(requirements.gold).toLocaleString()+
@@ -58,7 +60,12 @@
     const coastal=opts.boats&&entries.some(e=>e.type==='Port'&&!e.upgrade)?
       portCoastalAnchors(me,tiles,tick,72):[];
     if(!anchors.length && !coastal.length){
-      economicStatus='Kein eigenes Bauland gefunden';return false;
+      economicStatus='Kein eigenes Bauland gefunden';
+      if(requirements.coreRecovery)telemetry('core_recovery_block',economicStatus,{
+        missing:funding.missing,gold:requirements.gold,
+        cause:'no-owned-anchor-not-gold',
+        evidence:'candidate-search-no-worker-build-receipt'});
+      return false;
     }
     const meID=safeID(me),all=game.playerViews?.()||[];
     const fronts=[];
@@ -1579,7 +1586,8 @@
   function teamSupport(me,tick,s){
     const peer=duoTrustedPeer();
     const local=peer&&actualFriendly(peer.player,me)?peer:null;
-    const warning=local?.state?.warning||0;
+    const warning=Math.max(local?.state?.warning||0,
+      local?.state?.earlyCrisis?1:0);
     const donationCooldown=local?(warning>=2?90:warning>=1?160:240):300;
     if((winStatus.mode!=='Team'&&!local)||tick-lastDonation<donationCooldown||
       !actionBudget())return false;
@@ -1598,8 +1606,10 @@
       const ownDanger=duoWarningLevel(s,tick)>0;
       // Donating from two symmetric bots must not form a back-and-forth
       // loop. Only donate on observed pressure and concrete troop shortage.
-      const critical=warning>=2||inbound>partnerHome*.25;
-      const recoveryNeed=warning>=2&&inbound===0&&s.home>partnerHome*1.35?
+      const critical=warning>=2||inbound>partnerHome*.12;
+      const recoveryNeed=warning>=1&&inbound===0&&s.home>partnerHome*1.35&&
+        number(()=>partner.numTilesOwned(),0)<
+          number(()=>me.numTilesOwned(),0)*(warning>=2?.85:.65)?
         Math.min(partnerHome*.20,s.home*.07):0;
       const shortage=Math.max(0,inbound*1.55-partnerHome,
         inbound>partnerHome*.06?inbound*.18:0,recoveryNeed);
@@ -1608,7 +1618,7 @@
       const safe=Math.max(0,Math.floor(s.home-floor));
       const amount=Math.floor(Math.min(shortage,
         s.available*(critical?.32:.22),s.home*(critical?.14:.10),safe));
-      if(!ownDanger&&(inbound>partnerHome*.06||recoveryNeed>=1000)&&
+      if(!ownDanger&&(inbound>partnerHome*.025||recoveryNeed>=1000)&&
         amount>=1000&&
         ctors.donateTroops&&(!me.canDonateTroops||me.canDonateTroops(partner))&&
         send('donateTroops',[partner,amount],
