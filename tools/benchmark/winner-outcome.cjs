@@ -12,7 +12,7 @@ function winnerOutcome(winner,player){
   if(winner[0]==='team'){
     const team=player.team?.();
     const id=typeof team==='string'?team:
-      (team?.id?.()??team?.id??null);
+      (typeof team?.id==='function'?team.id():team?.id??null);
     if(id==null)return 'unknown';
     return String(id)===winner[1]?'victory':'defeat';
   }
