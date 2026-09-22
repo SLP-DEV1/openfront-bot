@@ -73,7 +73,7 @@ function boot(benchmarkOptions={}) {
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
     'sampleTroops,navalHomeRisk,navalRouteRisk,navalRouteEstimate,diagnosticSnapshot,learnFinish,economicDefensePressure,observeAttackOrigins,',
-    'strategicDirector,economyPosture,observeOpponents,opponentTrend,observeHumanProfiles,observeVictoryThreat,coordinateDuo,planOperation,decisionNote,navalCommitmentRatio,landingThirdPartyRisk,targetHomeRatio,matchContext,rankedDuo,duoFocus,duoBattleCredit,railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,frontPressureForecast,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,offensiveCommitment,globalNavalHomeGuard,observeFronts,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,samBuildAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,tradePolicy,tradeIntentPath,sendTradeToggle,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,allianceOfferPath,sendAllianceOffer,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
+    'strategicDirector,economyPosture,observeOpponents,opponentTrend,opponentWindows,observeHumanProfiles,observeVictoryThreat,coordinateDuo,planOperation,decisionNote,navalCommitmentRatio,landingThirdPartyRisk,targetHomeRatio,matchContext,rankedDuo,duoFocus,duoBattleCredit,railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,frontPressureForecast,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,offensiveCommitment,globalNavalHomeGuard,observeFronts,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,samBuildAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,tradePolicy,tradeIntentPath,sendTradeToggle,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,allianceOfferPath,sendAllianceOffer,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),setLastEmission:n=>lastEmission=n,',
     'setNeural:m=>{neuralModel=neuralValidate(m);opts.neuralEnabled=!!neuralModel;neuralPolicyCache={key:null,output:null};},neuralStrategicSignals,neuralChannel,',
     'setPortBackoff:(fail,tick)=>{portProbeFailures=fail;lastPortRetryTick=tick;},',
@@ -716,6 +716,31 @@ function boot(benchmarkOptions={}) {
     x.setTick(391);x.b.observeOpponents(x.me,391);
     assert.equal(x.b.navalCommitmentRatio(x.me,x.weak,391),1.9);
     assert.equal(x.b.targetHomeRatio(x.weak,false),1.85);
+  });
+  await check('P1 bounded observed opponent windows never invent missing history',()=>{
+    const x=boot();let troops=20000,land=1000;
+    x.weak.troops=()=>troops;x.weak.numTilesOwned=()=>land;
+    for(const [tick,t,l] of [[300,20000,1000],[390,18000,960],
+      [480,16000,900],[570,13000,840],[660,10000,800]]){
+      x.setTick(tick);troops=t;land=l;
+      x.b.observeOpponents(x.me,tick);
+    }
+    const w=x.b.opponentWindows(x.weak,660);
+    assert.equal(w[90].observedTicks,90);
+    assert.equal(w[180].observedTicks,180);
+    assert.equal(w[360].observedTicks,360);
+    assert.equal(w[90].troopsChange,(10000-13000)/13000);
+    assert.equal(w[180].landChange,(800-900)/900);
+    assert.equal(w[360].troopsChange,-.5);
+    assert(Object.isFrozen(w));assert(Object.isFrozen(w[180]));
+    const frame=x.b.decisionFrame(x.me,[{id:'weak',opponent:x.weak,
+      tiles:[5,6]}],x.b.military(x.me,[]),660);
+    assert.equal(frame.opponents[0].history[360].observedTicks,360);
+    assert(Object.isFrozen(frame.opponents[0].history));
+    assert.equal(x.b.opponentWindows(x.weak,781)[360],null,
+      'expired observations must never masquerade as live');
+    assert.equal(x.b.opponentWindows(x.strong,660)[360],null,
+      'new opponents must not inherit another identity history');
   });
   await check('naval landing rejects an adjacent stronger third-party player', () => {
     const x=boot();
