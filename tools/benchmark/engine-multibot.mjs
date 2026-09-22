@@ -176,7 +176,7 @@ class Clock extends Date{constructor(...args){super(...(args.length?args:[now]))
 for(const m of instances){
  const win={location:{hostname:'localhost'},addEventListener(){},
  __OF_BENCHMARK_CONFIG__:{enabled:true,onRecord(record){
-  fs.writeSync(recordsFile,JSON.stringify({clientID:m.clientID,...record})+'\\n');
+  fs.writeSync(recordsFile,JSON.stringify({clientID:m.clientID,...record})+'\n');
   m.recordsCount++;recordsCount++;
  }}};
  const math=Object.create(Math);
@@ -187,7 +187,7 @@ for(const m of instances){
   document:{readyState:'loading',body:null,addEventListener(){},
    querySelector:tag=>tag==='control-panel'?{game:m.view,eventBus:m.bus}:null},
   performance:{now:()=>now},console:{info(){},warn:(...args)=>fs.appendFileSync(
-    path.join(dir,'warnings.log'),m.clientID+': '+args.join(' ')+'\\n')},
+    path.join(dir,'warnings.log'),m.clientID+': '+args.join(' ')+'\n')},
   setInterval:()=>0,clearInterval(){},
   setTimeout:(fn,ms=0)=>{m.timers.push({id:++m.timerID,due:now+ms,fn});
     return m.timerID;},
