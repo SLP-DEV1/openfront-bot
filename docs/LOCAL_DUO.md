@@ -1,4 +1,4 @@
-# AggroBot 1.20.11 – lokaler Duo-Modus (zwei Browser, ein PC)
+# AggroBot 1.21.0 – lokaler Duo-Modus (zwei Browser, ein PC)
 
 **Zweck:** Zwei separat laufende OpenFront-Userscripts können Beobachtungen über denselben
 localhost-Relay austauschen. Jeder Browser kontrolliert **nur den eigenen Spieler**.
@@ -32,11 +32,11 @@ kein Ersatz für Worker-Aktionsprüfung, Eigentumskontrolle oder Heimreserve.
 
 1. Beide Userscripts und den Repository-Ordner aktualisieren. Den **alten**
    Duo-Relay mit STRG+C beenden und `Start_Live_Duo.bat` neu starten.
-   Das Fenster muss `v1.20.11` zeigen; ein altes Relay wird nicht automatisch
+   Das Fenster muss `v1.21.0` zeigen; ein altes Relay wird nicht automatisch
    durch die neue Browser-Version ersetzt.
 2. In **beiden** Browsern `http://127.0.0.1:8767/health` direkt in der
    Adresszeile öffnen. Erwartet wird eine JSON-Antwort mit
-   `"ok":true` und `"version":"1.20.11"`. Dieser direkte Aufruf
+   `"ok":true` und `"version":"1.21.0"`. Dieser direkte Aufruf
    prüft nur den lokalen Server, **nicht** die Freigabe für OpenFront.
 3. Bei Chrome/Edge für `https://openfront.io` die Website-Berechtigung
    für **Apps auf dem Gerät / Loopback-Netzwerk** erlauben; eine eventuell
