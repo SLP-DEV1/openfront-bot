@@ -31,7 +31,7 @@ const unknown=evidencePanelState(null,null,null,-1,null,null);
 assert.equal(unknown.workerAge,null);
 assert.equal(unknown.budget,null);
 assert.match(source,/evidenceMode:false/);
-assert(source.includes("'duoEnabled','evidenceMode'].includes(key)"),
+assert(source.includes("'duoEnabled','evidenceMode','shadowRankEnabled'].includes(key)"),
   'Evidence toggle must be read-only and persist through the existing handler');
 assert(source.includes("b('evidenceMode',opts.evidenceMode?"));
 assert(source.includes("economyBudgetEvidence={tick,gold:requirements.gold,"),

@@ -1,0 +1,40 @@
+name: Full-Bot FFA League Smoke
+on:
+  pull_request:
+    paths:
+      - 'OpenFront_Solo_AggroBot.user.js'
+      - 'OpenFront_AggroBot_Impossible_Run3.user.js'
+      - 'tools/benchmark/**'
+      - 'tests/benchmark-regression.cjs'
+      - '.github/workflows/league-smoke.yml'
+  workflow_dispatch:
+
+jobs:
+  full-bot-ffa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install exact official OpenFront engine
+        run: |
+          git clone --depth 1 https://github.com/openfrontio/OpenFrontIO.git ../OpenFrontIO
+          git -C ../OpenFrontIO fetch --depth 1 origin bb8af015b515b3b717bd4d901074c5f4c16641cb
+          git -C ../OpenFrontIO checkout --detach bb8af015b515b3b717bd4d901074c5f4c16641cb
+          cd ../OpenFrontIO
+          npm ci --ignore-scripts
+      - name: Execute two pinned complete-bot FFA fixtures
+        run: |
+          node tools/benchmark/league.cjs --smoke --execute \
+            --engine ../OpenFrontIO \
+            --engineCommit bb8af015b515b3b717bd4d901074c5f4c16641cb \
+            --out benchmark-results/league-smoke
+          node -e "const r=require('./benchmark-results/league-smoke/league.json');if(r.matches.length!==2||!r.matches.every(x=>x.status==='recorded')||!r.smoke)process.exit(1);console.log(JSON.stringify({engine:r.engineCommit,bot:r.botSHA256,matches:r.matches.map(x=>({id:x.id,status:x.status,tick:x.tick}))}))"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: league-smoke-results
+          path: benchmark-results/league-smoke
+          if-no-files-found: ignore

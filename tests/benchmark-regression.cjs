@@ -109,4 +109,49 @@ const {aggregateRecordings}=require('../tools/benchmark/multibot-recording.cjs')
   assert.equal(aggregateRecordings([reports[0]],2).complete,false,
     'this aggregator must not accept single-bot metrics as multi-bot proof');
 }
+// Two explicit fixed full-bot FFA smoke matches, still dry-run by default.
+{
+  const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+  const {execFileSync,spawnSync}=require('node:child_process');
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'aggro-league-smoke-'));
+  try{
+    const engine=path.join(dir,'engine'),out=path.join(dir,'smoke');
+    fs.mkdirSync(engine);
+    const git=(...args)=>execFileSync('git',['-C',engine,...args],
+      {encoding:'utf8'}).trim();
+    git('init','-q');
+    git('-c','user.name=Smoke','-c','user.email=smoke@example.invalid',
+      'commit','--allow-empty','-qm','pinned test engine');
+    const sha=git('rev-parse','HEAD');
+    const cli=path.join(__dirname,'../tools/benchmark/league.cjs');
+    const r=spawnSync(process.execPath,[cli,'--smoke','--engine',engine,
+      '--engineCommit',sha,'--out',out],{encoding:'utf8'});
+    assert.equal(r.status,0,r.stderr||r.stdout);
+    const plan=JSON.parse(fs.readFileSync(path.join(out,'league.json'),'utf8'));
+    assert.equal(plan.smoke,true);
+    assert.equal(plan.kind,'full-bot-same-engine-league');
+    assert.equal(plan.gameMode,'FFA');
+    assert.equal(plan.engineCommit,sha);
+    assert.equal(plan.matches.length,2);
+    assert(plan.matches.every(m=>m.status==='not-run'&&m.outcome==='unknown'));
+    assert(!fs.existsSync(path.join(out,plan.matches[0].relativeOutput,'match.json')));
+    const bad=spawnSync(process.execPath,[cli,'--smoke','--engine',engine,
+      '--engineCommit',sha,'--profiles','cautious'],
+      {encoding:'utf8'});
+    assert.notEqual(bad.status,0);
+    assert.match(bad.stderr,/fixed FFA\/full-bot/);
+  }finally{fs.rmSync(dir,{recursive:true,force:true});}
+}
+// Full-bot snapshot export must not put report itself into its diagnostics.
+{
+ const fs=require('node:fs'),path=require('node:path');
+ const source=fs.readFileSync(path.join(__dirname,'../tools/benchmark/engine-multibot.mjs'),'utf8');
+ assert(source.includes('diagnostics:{...data}'),
+   'full-bot diagnostics must snapshot before report.fullBots is assigned');
+ const first={recording:{total:1}},second={recording:{total:2}};
+ const reports=[first,second];
+ first.fullBots=reports.map(data=>({diagnostics:{...data}}));
+ assert.doesNotThrow(()=>JSON.stringify(first),
+   'full-bot result must remain serializable without a circular primary report');
+}
 console.log('PASS benchmark report isolation, censored results, lifetime counters and CLI validation');

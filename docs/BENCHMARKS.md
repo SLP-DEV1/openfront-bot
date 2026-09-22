@@ -138,3 +138,30 @@ sichert Zwischenergebnisse, `suite.json` die Auswahl und Prüfung.
 **Die Parametersuche überschreibt keine produktiven Bot-Einstellungen.** Eine kleine
 Stichprobe ist keine belastbare Multiplayer-Gewinnrate. Neue Änderungen sollten
 zusätzlich auf Inselkarten, Team-Partien und im echten Browser geprüft werden.
+
+## Shared trajectory / match semantics (issue #121)
+
+`tools/benchmark/trajectory.cjs` is the canonical implementation used by
+both `engine-match.mjs` and `engine-multibot.mjs`. It produces a sample from
+the **primary bot's visible GameView**, not global engine omniscience:
+`{tick,land,home,gold,enemyLand,enemyTroops}`. An enemy is a **living,
+non-self, non-friendly** player as defined by the shared
+`enemy-metrics.cjs::hostilePlayers` helper. Team allies contribute to neither
+enemy metric; in FFA all other living players count. `enemyLand` and
+`enemyTroops` are summed across the visible hostile views. No missing
+observations are imputed from a relay or the engine's hidden global state.
+
+Both harnesses advertise
+`benchmarkMeta.trajectorySemantics="gameview-hostile-only-v1"`;
+`trajectory.summary` is produced by the same shared function, including
+the arithmetic mean over **recorded sample ticks**, not every engine tick.
+A match's identity is its pinned engine commit, game seed, config, bot/model
+hashes, profile and participant set; two browser/player reports of one
+Duo match are **not two independent wins**. The separate
+`experiment-manifest.cjs` still requires explicit participant sessions,
+engine/bot hashes and observed outcome. No new success rate is claimed by
+standardizing these definitions.
+
+The short scenario and FFA league smokes check reproducibility and recording
+completeness. They are not substitutes for preregistered paired holdouts or
+real human-opponent multiplayer testing.

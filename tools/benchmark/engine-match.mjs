@@ -4,7 +4,7 @@ import path from 'node:path';
 import vm from 'node:vm';
 import {createRequire} from 'node:module';
 const localRequire=createRequire(import.meta.url);
-const {hostilePlayers}=localRequire('./enemy-metrics.cjs');
+const visibleTrajectory=localRequire('./trajectory.cjs');
 import {pathToFileURL} from 'node:url';
 import common from './common.cjs';
 import policyModel from '../../trainer/policy.cjs';
@@ -62,7 +62,7 @@ let update=null,fatal=null,now=0,queue=[],observedWinner=null;
 const recordsFile=fs.openSync(path.join(dir,'events.jsonl'),'wx');
 const intentsFile=fs.openSync(path.join(dir,'turns.jsonl'),'wx');
 let recordsCount=0,emitted=0;
-const meta={harness:'engine-gameview-v2',engineCommit,botSHA256:common.digest(source),policySHA256:policyHash,seed:opts.seed,
+const meta={trajectorySemantics:visibleTrajectory.SEMANTICS,harness:'engine-gameview-v2',engineCommit,botSHA256:common.digest(source),policySHA256:policyHash,seed:opts.seed,
   seedSource:'GameStartInfo.gameID',profile:opts.profile,settings:common.profiles[opts.profile],
   opponentProfile:opts.opponentProfile,scriptedHumans:opts.scriptedHumans,
   gameConfig:config,maxTicks:opts.ticks,clock:'100ms simulation clock; serial awaited bot cycles',
@@ -162,13 +162,7 @@ const bot=win.__OF_BENCHMARK__;if(!bot)throw Error('Userscript has no loopback b
 let started=false,spawned=false,termination='tick-limit',failure=null,finalTick=0;
 const visibleSamples=[];
 function sampleVisible(turn,me){
-  if(!me?.hasSpawned?.())return;
-  const num=fn=>{try{const v=Number(fn());return Number.isFinite(v)?v:0;}catch(_){return 0;}};
-  const enemies=hostilePlayers(view.playerViews?.(),me);
-  const snapshot={tick:turn,land:num(()=>me.numTilesOwned()),home:num(()=>me.troops()),
-    gold:num(()=>me.gold()),enemyLand:enemies.reduce((v,p)=>v+num(()=>p.numTilesOwned()),0),
-    enemyTroops:enemies.reduce((v,p)=>v+num(()=>p.troops()),0)};
-  if(visibleSamples.at(-1)?.tick!==turn)visibleSamples.push(snapshot);
+  visibleTrajectory.sampleVisible(visibleSamples,turn,me,view.playerViews?.());
 }
 try{
   for(let turn=0;turn<opts.ticks;turn++){
@@ -207,18 +201,7 @@ finally{
     report.gameEnd={outcome:winner==null?'incomplete':ids.includes(me?.clientID())?'victory':'defeat',source:'engine-WinUpdate',tick:finalTick,land:me?.numTilesOwned()??0};
   }
   report.engineWinner=observedWinner?.winner??null;
-  if(visibleSamples.length){
-    const xs=visibleSamples,peakLand=Math.max(...xs.map(x=>x.land));
-    const mean=key=>xs.reduce((v,x)=>v+x[key],0)/xs.length;
-    const end=xs.at(-1),start=xs[0];
-    report.trajectory={source:'bot GameView visible samples, every 200 engine ticks',
-      samples:xs,summary:{peakLand,meanLand:mean('land'),
-        endLand:end.land,firstLand:start.land,landChange:end.land-start.land,
-        retention:peakLand>0?end.land/peakLand:0,
-        peakHome:Math.max(...xs.map(x=>x.home)),
-        meanHome:mean('home'),meanEnemyLand:mean('enemyLand'),
-        finalEnemyLand:end.enemyLand,sampleCount:xs.length}};
-  }
+  if(visibleSamples.length)report.trajectory=visibleTrajectory.trajectory(visibleSamples);
   report.finalState={tick:finalTick,land:me?.numTilesOwned()??0,alive:me?.isAlive()??null,gold:String(me?.gold()??0),
     units:me?.units().map(u=>({type:u.type(),id:u.id()}))??[]};
   common.writeJSON(path.join(dir,'match.json'),report);
