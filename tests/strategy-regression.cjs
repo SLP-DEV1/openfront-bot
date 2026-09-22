@@ -103,6 +103,43 @@ function boot(benchmarkOptions={}) {
 (async () => {
   const asset=(type,tile,id)=>({type:()=>type,tile:()=>tile,id:()=>id,
     isActive:()=>true,level:()=>1});
+  await check('match cxBz9Y1WCZ: zero City/Factory releases savings without bypassing safety',()=>{
+    const x=boot();x.setLand(1);x.setGold(900000);
+    x.me.units=()=>[];
+    x.b.setTroopSnapshot(x.b.military(x.me,[]));
+    const needs=x.b.economicNeeds(x.me,[],[]);
+    assert.equal(needs.coreRecovery,true);
+    assert.equal(needs.savingsTarget,0);
+    assert(needs.list.some(v=>v.type==='City'));
+    assert(needs.list.some(v=>v.type==='Factory'));
+    assert(['City','Factory'].includes(needs.list[0].type));
+    assert.equal(x.b.spendBudget(x.me,125000,'City'),true);
+    x.me.incomingAttacks=()=>[{troops:27000,attackerID:3}];
+    x.b.setTroopSnapshot({...x.b.military(x.me,[]),incoming:27000});
+    const danger=x.b.economicNeeds(x.me,[],[]);
+    assert.equal(danger.coreRecovery,false);
+    assert(danger.list.every(v=>['Defense Post','SAM Launcher'].includes(v.type)));
+  });
+  await check('match cxBz9Y1WCZ: long attack drought reports blockers but emits no attack',()=>{
+    const x=boot();x.setTick(1000);
+    const groups=[{id:'weak',opponent:x.weak,tiles:[5],front:1}];
+    const s=x.b.military(x.me,groups);
+    x.b.reportAttackBlocks(x.me,groups,s,
+      {readiness:{ready:false,reason:'reserve'}},[],1000);
+    const item=x.b.state().diagnostics.find(d=>d.kind==='offense_drought');
+    assert(item&&item.safety==='observation-only-no-attack-permission');
+    assert(item.blockers['war-readiness: reserve']>=1);
+    assert.equal(x.sent.length,0);
+  });
+  await check('match cxBz9Y1WCZ: trusted partner ID survives status snapshot',()=>{
+    const x=boot();x.b.setDuo('weak','KITSU_DUO_123',{
+      id:'weak',state:{ready:false,fronts:[],incoming:0,home:90000}});
+    x.me.isFriendly=p=>p===x.weak;
+    x.b.coordinateDuo(x.me,x.b.military(x.me,[]),300);
+    const summary=x.b.diagnosticSnapshot().diagnosticV2;
+    assert.equal(summary.partnerId,'weak');
+    assert.equal(summary.partnerIdEvidence,'verified-current-peer');
+  });
   await check('1.19.2 genuine peace offer under pressure overrides conflict only for incoming offers',()=>{
     const x=boot();x.b.setWar('strong','strong');
     const s={...x.b.military(x.me,[]),incoming:26000,inc:[{attackerID:3}]};

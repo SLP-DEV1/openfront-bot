@@ -501,11 +501,13 @@ function predict(model,input){
   let diagnosticAid=null,diagnosticLastCommitmentSeen=null;
   let diagnosticHelpClosing=null;
   let diagnosticDonationSeen=new Map();
+  let donationCapture={polls:0,readable:0,candidates:0,matched:0,
+    lastProbeTick:-Infinity,lastReceiptTick:null,lastProblem:null};
   let diagnosticDecisionSequence=0;
   // Diagnostic v2: preserve critical events independently of the 1400-record UI ring.
   // Session storage is tab-scoped and never shares another bot's player identity.
   const diagnosticV2={schemaVersion:2,critical:[],dropped:0,lastDuoStatus:null,
-    lastDuoPeer:null,lastDuoAt:null};
+    lastDuoPeer:null,lastDuoAt:null,lastVerifiedPartnerId:null};
   const DIAGNOSTIC_CRITICAL_LIMIT=1200;
   function diagnosticCritical(record){
     const frozen=jsonCopy(record);
@@ -611,7 +613,8 @@ function predict(model,input){
     });
   }
   let budgetCommitments=[];
-  let attackBlockReport=null,lastAttackBlockReport=-Infinity;
+  let attackBlockReport=null,lastAttackBlockReport=-Infinity,
+    lastOffenseDroughtReport=-Infinity;
   let crisisTrend=null,lastCrisisReport=-Infinity;
   let landingFailures=new Map();
   let neuralEvidence={calls:0,nonzero:0,actionCalls:0,actionNonzero:0,last:null};
@@ -747,7 +750,9 @@ function predict(model,input){
       decisionFrame:lastDecisionFrame,planning:planningState,
       economyBudgetEvidence,shadowDecisionEvidence,
       investmentAssessments,operation,duoPlan,victoryThreat,
-      localDuo:{status:duoLocal.status,peer:duoLocal.peer,partnerID:opts.duoPartnerID,
+      localDuo:{status:duoLocal.status,peer:duoLocal.peer,
+        partnerID:opts.duoPartnerID,resolvedPartnerID:
+          duoTrustedPeer()?.id??diagnosticV2.lastVerifiedPartnerId??null,
         ownID:safeID(myPlayer()),connected:!!duoTrustedPeer(),match:duoLocal.match,
         failures:duoLocal.failures,relayDrops:duoLocal.relayDrops,
         relayTimeouts:duoLocal.relayTimeouts,ackTimeouts:duoLocal.ackTimeouts,
@@ -763,9 +768,13 @@ function predict(model,input){
       semantics:'sent-is-not-confirmed; confirmations are observations; effect unknown'};
     details.diagnosticV2={schemaVersion:2,matchId:String(game?.gameID?.()??'unknown'),
       playerId:safeID(myPlayer()),playerName:nameOf(myPlayer()),
-      partnerId:duoTrustedPeer()?.id??null,duoRoom:opts.duoRoom||null,
+      partnerId:duoTrustedPeer()?.id??diagnosticV2.lastVerifiedPartnerId??null,
+      partnerIdEvidence:duoTrustedPeer()?'verified-current-peer':
+        diagnosticV2.lastVerifiedPartnerId?'last-verified-this-match':'unknown',
+      duoRoom:opts.duoRoom||null,
       personalEliminationTick:gameEnd?.personalEliminated?gameEnd.tick:null,
       matchEndTick:game?.gameOver?.()?number(()=>game.ticks(),null):null,
+      donationCapture:{...donationCapture},
       critical:diagnosticV2.critical,dropped:diagnosticV2.dropped,
       journal:{persisted:diagnosticStore.persisted,queued:diagnosticStore.queue.length,
         lost:diagnosticStore.lost,error:diagnosticStore.error},
@@ -1084,6 +1093,7 @@ function predict(model,input){
     monitorSession=resumed?prior.session:'match-'+Date.now().toString(36)+'-'+
       Math.floor(Math.random()*0xffffffff).toString(36).padStart(8,'0');
     budgetCommitments=[];attackBlockReport=null;lastAttackBlockReport=-Infinity;
+    lastOffenseDroughtReport=-Infinity;
     crisisTrend=null;lastCrisisReport=-Infinity;landingFailures.clear();
     neuralEvidence={calls:0,nonzero:0,actionCalls:0,actionNonzero:0,last:null};
     autoStartGame=null;
@@ -1105,8 +1115,11 @@ function predict(model,input){
     diagnosticAid=null;diagnosticLastCommitmentSeen=null;
     diagnosticHelpClosing=null;diagnosticDecisionSequence=0;
     diagnosticDonationSeen.clear();
+    donationCapture={polls:0,readable:0,candidates:0,matched:0,
+      lastProbeTick:-Infinity,lastReceiptTick:null,lastProblem:null};
     diagnosticV2.critical=[];diagnosticV2.dropped=0;
     diagnosticV2.lastDuoStatus=null;diagnosticV2.lastDuoPeer=null;
+    diagnosticV2.lastVerifiedPartnerId=null;
     diagnosticV2.lastDuoAt=null;
     failedEconomyProbes=0;successfulEconomyTick=-Infinity;warWaitSince=-Infinity;
     coreQuotes.clear();coreFunding=null;lastCoreFundingReport=-Infinity;
