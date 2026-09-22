@@ -8,6 +8,8 @@ import common from './common.cjs';
 const localRequire=createRequire(import.meta.url);
 const relay=localRequire('../duo-relay.cjs');
 const {aggregateRecordings}=localRequire('./multibot-recording.cjs');
+const {hostilePlayers}=localRequire('./enemy-metrics.cjs');
+const {winnerOutcome}=localRequire('./winner-outcome.cjs');
 import policyModel from '../../trainer/policy.cjs';
 import actionModel from '../../trainer/action-policy.cjs';
 import strategicModel from '../../trainer/strategic-policy.cjs';
@@ -213,7 +215,7 @@ const visibleSamples=[];
 function sampleVisible(turn,me){
   if(!me?.hasSpawned?.())return;
   const num=fn=>{try{const v=Number(fn());return Number.isFinite(v)?v:0;}catch(_){return 0;}};
-  const enemies=(view.playerViews?.()||[]).filter(p=>p?.clientID?.()!==me?.clientID?.()&&p?.isAlive?.());
+  const enemies=hostilePlayers(view.playerViews?.(),me);
   const snapshot={tick:turn,land:num(()=>me.numTilesOwned()),home:num(()=>me.troops()),
     gold:num(()=>me.gold()),enemyLand:enemies.reduce((v,p)=>v+num(()=>p.numTilesOwned()),0),
     enemyTroops:enemies.reduce((v,p)=>v+num(()=>p.troops()),0)};
@@ -260,9 +262,7 @@ finally{
   const report=reports[0],me=view.myPlayer();
   report.fullBots=instances.map((m,i)=>{
     const me=m.view.myPlayer(),data=reports[i];
-    const winner=observedWinner?.winner;
-    const winnerIds=Array.isArray(winner)?winner.slice(winner[0]==='player'?1:2):[];
-    const outcome=winner?winnerIds.includes(m.clientID)?'victory':'defeat':
+    const outcome=observedWinner?winnerOutcome(observedWinner.winner,me):
       m.spawned&&me?.isAlive?.()===false?'defeat':'unknown';
     return {clientID:m.clientID,profile:m.profile,teamIndex:m.teamIndex??0,
       botSHA256:common.digest(m.source),outcome,
@@ -279,10 +279,8 @@ finally{
     report.gameEnd={outcome:'defeat',source:'engine-elimination',
       tick:finalTick,land:me?.numTilesOwned()??0};
   if(observedWinner){
-    const winner=observedWinner.winner;
-    const ids=Array.isArray(winner)?winner.slice(winner[0]==='player'?1:2):[];
     report.botReportedGameEnd=report.gameEnd;
-    report.gameEnd={outcome:winner==null?'incomplete':ids.includes(clientID)?'victory':'defeat',source:'engine-WinUpdate',tick:finalTick,land:me?.numTilesOwned()??0};
+    report.gameEnd={outcome:winnerOutcome(observedWinner.winner,me),source:'engine-WinUpdate',tick:finalTick,land:me?.numTilesOwned()??0};
   }
   report.engineWinner=observedWinner?.winner??null;
   if(visibleSamples.length){
