@@ -86,7 +86,6 @@ const meta={harness:'engine-gameview-multibot-v1',engineCommit,
     'deterministic human-client intents; heuristic profiles, not real human behavior':null};
 common.writeJSON(path.join(dir,'run.json'),meta);
 const runner=await createGameRunner(start,clientID,loader,gu=>{'errMsg' in gu?fatal=gu.errMsg:update=gu;});
-const clientMap=await loadTerrainMap(config.gameMap,config.gameMapSize,loader,false);
 // Mirrors WorkerClient queries; the full GameView remains the bot's only view of state.
 const worker={
   playerInteraction:async(...args)=>structuredClone(runner.playerActions(...args)),
@@ -95,15 +94,16 @@ const worker={
   attackClusteredPositions:async(...args)=>structuredClone(runner.attackClusteredPositions(...args)),
   bestTransportShipSpawn:async(...args)=>runner.bestTransportShipSpawn(...args)
 };
-const instances=members.map(m=>{
+const instances=await Promise.all(members.map(async m=>{
  const store=new Map(storage),localStorage={getItem:k=>store.get(k)??null,
    setItem:(k,v)=>store.set(k,String(v)),removeItem:k=>store.delete(k)};
  globalThis.localStorage=localStorage;
- const view=new GameView(worker,new Config(config,null,false),clientMap,
+ const isolatedMap=await loadTerrainMap(config.gameMap,config.gameMapSize,loader,false);
+ const view=new GameView(worker,new Config(config,null,false),isolatedMap,
   m.clientID,players.find(p=>p.clientID===m.clientID).username,null,opts.seed,players);
  return {...m,view,bus:new EventBus(),localStorage,queue:[],timers:[],
    timerID:0,recordsCount:0,emitted:0,started:false,spawned:false};
-});
+}));
 const view=instances[0].view;
 // Compile only the official, data-only event constructors, avoiding the browser Transport runtime.
 const adapters={
