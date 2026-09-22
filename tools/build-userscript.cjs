@@ -10,21 +10,21 @@ const files=['00-bootstrap.js','10-duo-and-diagnostics.js',
  '40-economy-runner.js','50-ui-and-entrypoint.js'];
 const output=path.join(root,'OpenFront_Solo_AggroBot.user.js');
 function assemble(){
+ const nl=String.fromCharCode(10);
  let source=files.map(name=>fs.readFileSync(
    path.join(root,'src/userscript',name),'utf8')).join('');
  const panel=fs.readFileSync(path.join(root,'src/runtime/panel-state.cjs'),'utf8');
  const segments=[
-   ['/* __DUO_STATUS_VIEW__ */','// DUO-STATUS-BEGIN\\n','// DUO-STATUS-END'],
-   ['/* __EVIDENCE_PANEL_STATE__ */','// EVIDENCE-STATE-BEGIN\\n','// EVIDENCE-STATE-END']
+   ['/* __DUO_STATUS_VIEW__ */','// DUO-STATUS-BEGIN','// DUO-STATUS-END'],
+   ['/* __EVIDENCE_PANEL_STATE__ */','// EVIDENCE-STATE-BEGIN','// EVIDENCE-STATE-END']
  ];
  for(const [marker,start,end] of segments){
-   const actualStart=start.replace('\\\\n','\\n');
-   if(panel.split(actualStart).length!==2||
-      source.split('  '+marker+'\\n').length!==2)
-      throw Error('Duplicate or missing canonical selector: '+marker);
-   const fn=panel.split(actualStart)[1].split(end)[0];
-   if(!fn.includes('function '))throw Error('Missing panel function: '+marker);
-   source=source.replace('  '+marker+'\\n',fn);
+   const placeholder='  '+marker+nl,open=start+nl;
+   if(panel.split(open).length!==2||source.split(placeholder).length!==2)
+     throw Error('Duplicate or missing canonical selector: '+marker);
+   const selector=panel.split(open)[1].split(end)[0];
+   if(!selector.includes('function '))throw Error('Missing panel function: '+marker);
+   source=source.replace(placeholder,selector);
  }
  return source;
 }
