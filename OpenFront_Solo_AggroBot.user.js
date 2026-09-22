@@ -1712,23 +1712,31 @@
       (held??tick+45):
       Number.isInteger(offered)&&offered>=tick-15&&offered<=tick+180&&
         local?.state?.target===safeID(shared)?offered:null;
+    const ownFronts=(strategic.groups||[]).filter(g=>g.id!==null&&
+      g.tiles?.length&&g.opponent?.isAlive?.()&&!friendly(g.opponent,me));
+    const partnerFronts=Array.isArray(local?.state?.fronts)?local.state.fronts:[];
+    const separatedFronts=!!local&&ownFronts.length>0&&partnerFronts.length>0&&
+      !ownFronts.some(g=>partnerFronts.includes(g.id));
     const role=danger?'Heimat verteidigen':
       partnerNeeds?'Partner unter Druck unterstützen':
       strikeTick!==null?(tick<strikeTick?'Gemeinsamen Angriff vorbereiten':
         leader?'Gemeinsamen Angriff anführen':'Gemeinsamen Angriff unterstützen'):
       partnerWarning>0?'Partnerfrühwarnung · Reserve schützen':
       active?.on>0?'Partnerfront unterstützen':
+      separatedFronts&&s.available>=Math.max(1200,s.home*.12)?
+        'Getrennte Front: eigene sichere Offensive oder Landung prüfen':
+      separatedFronts?'Getrennte Front: aufbauen und Heimatreserve halten':
       bothReady?'Auf Partner-Zeitpunkt warten':
       s.home>partnerHome*1.25?'Angriff vorbereiten':'Aufbauen / Landung vorbereiten';
     const plan={partner:duo.partnerID,target:shared?safeID(shared):null,
       targetName:shared?nameOf(shared):'Kein Gegner',role,
       partnerCommitted:active?.on||0,partnerIncoming:incoming,
       partnerHome,needHelp:partnerNeeds,partnerWarning,
-      partnerReady:!!local?.state?.ready,strikeTick,
+      partnerReady:!!local?.state?.ready,separatedFronts,strikeTick,
       planId:strikeTick===null||!shared?null:
         String(safeID(shared)).slice(0,96)+':'+String(strikeTick),
       expiresTick:strikeTick===null?null:strikeTick+110,
-      strikeStatus:strikeTick===null?'none':
+      strikeStatus:strikeTick===null?(separatedFronts?'independent-fronts':'none'):
         !sharedJoint?'locked-awaiting-safe-budget':
         tick<strikeTick?'locked-preparing':'locked-launch-window',
       joint:sharedJoint?{own:sharedJoint.own,ally:sharedJoint.ally,
