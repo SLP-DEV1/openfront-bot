@@ -439,6 +439,9 @@
   let diagnosticLastPeerTick=-Infinity;
   let diagnosticHelpSequence=0,diagnosticHelpId=null,diagnosticHelpSince=null;
   let diagnosticLastReceivedHelp=null,diagnosticLastHelpAck=null;
+  let diagnosticHelpDeadline=null,diagnosticHelpExpired=false;
+  let diagnosticAid=null,diagnosticLastCommitmentSeen=null;
+  let diagnosticHelpClosing=null;
   // Diagnostic v2: preserve critical events independently of the 1400-record UI ring.
   // Session storage is tab-scoped and never shares another bot's player identity.
   const diagnosticV2={schemaVersion:2,critical:[],dropped:0,lastDuoStatus:null,
@@ -690,6 +693,7 @@
         lost:diagnosticStore.lost,error:diagnosticStore.error},
       lastDuoTransitionAt:diagnosticV2.lastDuoAt,
       helpRequestId:diagnosticHelpId,helpSinceTick:diagnosticHelpSince,
+      helpDeadlineTick:diagnosticHelpDeadline,
       helpAckObserved:diagnosticLastHelpAck===diagnosticHelpId&&
         diagnosticHelpId!==null,
       evidence:'event-bus emission is not confirmed effect'};
@@ -1019,6 +1023,9 @@
     diagnosticAutoExported=false;diagnosticLastPeerTick=-Infinity;
     diagnosticHelpSequence=0;diagnosticHelpId=null;diagnosticHelpSince=null;
     diagnosticLastReceivedHelp=null;diagnosticLastHelpAck=null;
+    diagnosticHelpDeadline=null;diagnosticHelpExpired=false;
+    diagnosticAid=null;diagnosticLastCommitmentSeen=null;
+    diagnosticHelpClosing=null;
     diagnosticV2.critical=[];diagnosticV2.dropped=0;
     diagnosticV2.lastDuoStatus=null;diagnosticV2.lastDuoPeer=null;
     diagnosticV2.lastDuoAt=null;
@@ -1269,6 +1276,55 @@
       s.strongest>=s.home*.90||recentHostilePressure(tick))return 1;
     return 0;
   }
+  // Native incoming attacks may expose an absolute arrival tick. Unknown ETA
+  // stays null: troop totals or wall-clock observations do not imply speed.
+  function diagnosticArrival(attacks){
+    const absolute=(attacks||[]).filter(a=>!a.retreating).map(a=>{
+      for(const field of ['arrivalTick','targetTick','etaTick']){
+        if(Number.isSafeInteger(a?.[field]))return a[field];
+      }
+      return null;
+    }).filter(v=>v!==null);
+    return {estimatedArrivalTick:absolute.length?Math.min(...absolute):null,
+      arrivalEvidence:absolute.length?'explicit-gameview-field':'unknown'};
+  }
+  function diagnosticCloseHelp(reason,tick){
+    if(!diagnosticHelpId)return;
+    const event=reason==='deadline'?'duo_help_expired':
+      reason==='player-elimination'?'duo_help_expired':'duo_help_resolved';
+    telemetry(event,'Duo-Hilferuf geschlossen',{
+      requestId:diagnosticHelpId,partnerId:duoLocal.peer?.id??null,
+      requestTick:diagnosticHelpSince,deadlineTick:diagnosticHelpDeadline,
+      ageTicks:tick-diagnosticHelpSince,reason,
+      supportObserved:'unknown',status:event==='duo_help_expired'?
+        'expired-unverified':'no-longer-requested-no-causal-proof'});
+    diagnosticHelpId=null;diagnosticHelpSince=null;
+    diagnosticHelpDeadline=null;diagnosticHelpExpired=false;
+    diagnosticLastHelpAck=null;
+  }
+  function diagnosticHelpObservation(me,tick){
+    if(!diagnosticAid)return;
+    const aid=diagnosticAid;
+    const target=(game?.playerViews?.()||[]).find(p=>
+      safeID(p)===aid.partnerId);
+    if(!target||!target.isAlive?.()){
+      telemetry('duo_help_action_unconfirmed','Hilfe nicht durch Spielbeleg auflösbar',{
+        requestId:aid.requestId,actionId:aid.actionId,
+        reason:'partner-not-alive-or-not-observable',
+        status:'unconfirmed-not-proven-failed',supportObserved:'unknown'});
+      diagnosticAid=null;return;
+    }
+    if(tick-aid.tick>=80){
+      telemetry('duo_help_action_unconfirmed','Hilfe nach Beobachtungsfenster ungeklärt',{
+        requestId:aid.requestId,actionId:aid.actionId,
+        sentTick:aid.tick,partnerId:aid.partnerId,
+        partnerHomeAtEmission:aid.partnerHomeAtEmission,
+        partnerHomeNow:number(()=>target.troops?.(),null),
+        status:'unconfirmed-not-proven-failed',supportObserved:'unknown',
+        evidence:'no-direct-donation-receipt-in-gameview'});
+      diagnosticAid=null;
+    }
+  }
   function duoState(){
     const me=myPlayer(),trusted=duoTrustedPeer(),peer=trusted?.player;
     const state=me?.hasSpawned?.()?military(me,strategic.groups):null;
@@ -1277,20 +1333,26 @@
     const candidate=spawnCache?.tile??null,spawn=me?.state?.spawnTile;
     const tick=number(()=>game?.ticks?.(),0);
     const help=!!(state&&state.incoming>Math.max(1200,state.home*.1));
+    if(diagnosticHelpId&&tick>=diagnosticHelpDeadline)
+      diagnosticCloseHelp('deadline',tick);
     if(help&&!diagnosticHelpId){
       diagnosticHelpId=monitorSession+':h'+(++diagnosticHelpSequence);
-      diagnosticHelpSince=tick;diagnosticLastHelpAck=null;
+      diagnosticHelpSince=tick;diagnosticHelpDeadline=tick+180;
+      diagnosticLastHelpAck=null;
+      const arrival=diagnosticArrival(me?.incomingAttacks?.()||[]);
+      const requestedSupportTroops=Math.max(0,Math.ceil(state.incoming*1.3-state.home));
       telemetry('duo_help_request','Eigene Heimat unter Angriff; Duo-Hilfe angefragt',{
+        schemaVersion:2,matchId:String(game?.gameID?.()??'unknown'),
+        playerId:safeID(me),decisionId:monitorSession+':t'+tick,
         requestId:diagnosticHelpId,partnerId:trusted?.id??null,
-        home:state.home,incoming:state.incoming,
+        incomingTroops:state.incoming,homeTroops:state.home,
+        availableTroops:state.available,reserveTroops:state.reserve,
+        ...arrival,requestedSupportTroops,
+        requestDeadlineTick:diagnosticHelpDeadline,
         estimatedShortfall:Math.max(0,Math.ceil(state.incoming-state.home)),
         status:'sent-not-acknowledged',evidence:'visible-incoming-attack'});
     }else if(!help&&diagnosticHelpId){
-      telemetry('duo_help_resolved','Akute Duo-Hilfeanforderung beendet',{
-        requestId:diagnosticHelpId,status:'no-longer-requested',
-        evidence:'no-longer-above-threshold-not-proof-of-relief'});
-      diagnosticHelpId=null;diagnosticHelpSince=null;
-      diagnosticLastHelpAck=null;
+      diagnosticCloseHelp('below-threat-threshold',tick);
     }
     return {tick:Number.isInteger(game?.ticks?.())?game.ticks():null,
       spawn:Number.isSafeInteger(spawn)?spawn:null,
@@ -1317,8 +1379,15 @@
         state.available>=Math.max(1200,state.home*.09)),
       needHelp:!!(state&&state.incoming>Math.max(1200,state.home*.1)),
       helpRequestId:diagnosticHelpId,helpSinceTick:diagnosticHelpSince,
+      helpDeadlineTick:diagnosticHelpDeadline,
       helpShortfall:diagnosticHelpId&&state?
         Math.max(0,Math.ceil(state.incoming-state.home)):null,
+      requestedSupportTroops:diagnosticHelpId&&state?
+        Math.max(0,Math.ceil(state.incoming*1.3-state.home)):null,
+      aidForRequestId:diagnosticAid?.requestId??null,
+      aidActionId:diagnosticAid?.actionId??null,
+      aidTroops:diagnosticAid?.amount??null,
+      aidStatus:diagnosticAid?'intent-sent-effect-unknown':null,
       ackHelpRequestId:trusted?.state?.needHelp===true?
         trusted.state.helpRequestId??null:null,
       warning:duoWarningLevel(state),
@@ -1376,6 +1445,17 @@
             partnerIncoming:data.partner.state.incoming??null,
             status:'received-not-committed'});
         }else if(!helpRequest)diagnosticLastReceivedHelp=null;
+        const commitment=data.partner?.state?.aidForRequestId===diagnosticHelpId&&
+          diagnosticHelpId?data.partner.state:null;
+        if(commitment&&diagnosticLastCommitmentSeen!==commitment.aidActionId){
+          diagnosticLastCommitmentSeen=commitment.aidActionId;
+          telemetry('duo_help_commitment_seen','Partner meldet Hilfs-Intent',{
+            requestId:diagnosticHelpId,partnerId:data.partner.id,
+            partnerActionId:commitment.aidActionId,
+            promisedTroops:commitment.aidTroops??null,
+            status:'intent-reported-not-observed',
+            supportObserved:'unknown'});
+        }
         if(diagnosticHelpId&&data.partner?.state?.ackHelpRequestId===
           diagnosticHelpId&&diagnosticLastHelpAck!==diagnosticHelpId){
           diagnosticLastHelpAck=diagnosticHelpId;
@@ -6619,6 +6699,7 @@
     }
     if(game?.gameOver?.()){
       if(opts.enabled||gameEnd?.teamOutcomePending){
+        diagnosticCloseHelp('match-end',number(()=>game.ticks(),-1));
         gameEnd=gameOutcome(game,myPlayer());
         learnFinish(gameEnd.outcome);
         telemetry('game_over','Partie beendet · Bot automatisch gestoppt',{gameEnd});
@@ -6632,6 +6713,8 @@
     const eliminated=myPlayer();
     if(eliminated?.hasSpawned?.()&&eliminated.isAlive?.()===false){
       if(!gameEnd){
+        diagnosticCloseHelp('player-elimination',
+          number(()=>game.ticks(),-1));
         const team=game?.config?.().gameConfig?.().gameMode==='Team';
         gameEnd={outcome:team?'unknown':'defeat',source:'player-elimination',
           tick:number(()=>game.ticks(),-1),land:0,personalEliminated:true,
