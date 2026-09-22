@@ -61,7 +61,11 @@ const PAIRINGS = [
 ];
 
 // ---- small helpers ----
-const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
+const num = (v) => {
+  if (v == null || (typeof v === 'string' && v.trim() === '')) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
 const readJson = (p) => {
   try { return JSON.parse(fs.readFileSync(p, 'utf8')); }
   catch { return null; }
