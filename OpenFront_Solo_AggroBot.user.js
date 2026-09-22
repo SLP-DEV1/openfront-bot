@@ -1712,23 +1712,31 @@
       (held??tick+45):
       Number.isInteger(offered)&&offered>=tick-15&&offered<=tick+180&&
         local?.state?.target===safeID(shared)?offered:null;
+    const ownFronts=(strategic.groups||[]).filter(g=>g.id!==null&&
+      g.tiles?.length&&g.opponent?.isAlive?.()&&!friendly(g.opponent,me));
+    const partnerFronts=Array.isArray(local?.state?.fronts)?local.state.fronts:[];
+    const separatedFronts=!!local&&ownFronts.length>0&&partnerFronts.length>0&&
+      !ownFronts.some(g=>partnerFronts.includes(g.id));
     const role=danger?'Heimat verteidigen':
       partnerNeeds?'Partner unter Druck unterstützen':
       strikeTick!==null?(tick<strikeTick?'Gemeinsamen Angriff vorbereiten':
         leader?'Gemeinsamen Angriff anführen':'Gemeinsamen Angriff unterstützen'):
       partnerWarning>0?'Partnerfrühwarnung · Reserve schützen':
       active?.on>0?'Partnerfront unterstützen':
+      separatedFronts&&s.available>=Math.max(1200,s.home*.12)?
+        'Getrennte Front: eigene sichere Offensive oder Landung prüfen':
+      separatedFronts?'Getrennte Front: aufbauen und Heimatreserve halten':
       bothReady?'Auf Partner-Zeitpunkt warten':
       s.home>partnerHome*1.25?'Angriff vorbereiten':'Aufbauen / Landung vorbereiten';
     const plan={partner:duo.partnerID,target:shared?safeID(shared):null,
       targetName:shared?nameOf(shared):'Kein Gegner',role,
       partnerCommitted:active?.on||0,partnerIncoming:incoming,
       partnerHome,needHelp:partnerNeeds,partnerWarning,
-      partnerReady:!!local?.state?.ready,strikeTick,
+      partnerReady:!!local?.state?.ready,separatedFronts,strikeTick,
       planId:strikeTick===null||!shared?null:
         String(safeID(shared)).slice(0,96)+':'+String(strikeTick),
       expiresTick:strikeTick===null?null:strikeTick+110,
-      strikeStatus:strikeTick===null?'none':
+      strikeStatus:strikeTick===null?(separatedFronts?'independent-fronts':'none'):
         !sharedJoint?'locked-awaiting-safe-budget':
         tick<strikeTick?'locked-preparing':'locked-launch-window',
       joint:sharedJoint?{own:sharedJoint.own,ally:sharedJoint.ally,
@@ -5599,6 +5607,17 @@
     return nukes?'incoming-nuke':lostAssets?'recent-asset-loss':
       peak-land>=Math.max(200,peak*.05)?'recent-territory-loss':null;
   }
+  // Recent unconfirmed arrivals are local observations, not permanent proof
+  // that every future sea route requires an escort. Historical counters stay
+  // cumulative for diagnostics; only these bounded records affect planning.
+  function recentLandingRisk(tick,source,dest){
+    const observations=[...landingFailures.values()].filter(v=>
+      Number.isInteger(v.tile)&&Number.isInteger(v.tick)&&
+      tick>=v.tick&&tick-v.tick<=900);
+    const near=(a,b)=>Number.isInteger(a)&&Number.isInteger(b)&&
+      Math.hypot(game.x(a)-game.x(b),game.y(a)-game.y(b))<115;
+    return observations.some(v=>near(v.tile,source)||near(v.tile,dest));
+  }
   function navalRouteRisk(me,source,dest){
     if(!Number.isInteger(source)||!Number.isInteger(dest))return 'unknown-departure';
     const distance=(a,b)=>Math.hypot(game.x(a)-game.x(b),game.y(a)-game.y(b));
@@ -5617,7 +5636,8 @@
       !friendly(u.owner?.(),me)&&nearRoute(u));
     if(threats.some(u=>!escorts.some(e=>distance(e.tile(),u.tile())<90)))
       return 'unescorted-visible-warship';
-    if(marineStats.transportUnresolved>0&&!escorts.some(u=>
+    const tick=number(()=>game?.ticks?.(),0);
+    if(recentLandingRisk(tick,source,dest)&&!escorts.some(u=>
       distance(u.tile(),source)<100||distance(u.tile(),dest)<100))
       return 'no-local-escort-after-unresolved-landing';
     return null;
@@ -5684,12 +5704,9 @@
         ['Kriegsschiff bauen und Route erneut prüfen'],tick);
       return false;
     }
-    // After an observed failed landing, build an escort via fleetDefense
-    // before committing another player transport to a different beach.
-    if(marineStats.transportUnresolved>0 &&
-      !(game.units?.()||[]).some(u=>u.type?.()==='Warship'&&
-        safeID(u.owner?.())===safeID(me)&&u.isActive?.()&&
-        !u.isUnderConstruction?.()))return false;
+    // A cumulative unresolved counter must never veto all future beaches.
+    // Repeated recent losses still impose the bounded cooldown above;
+    // navalRouteRisk evaluates an escort near each prospective route.
     if(spare<1300 || navyState.incoming>0 || navyState.activeEnemy>0 ||
       recentHostilePressure(tick,260))return false;
     const foes=game.playerViews().filter(p=>safeID(p)!==safeID(me)&&p.isAlive?.()&&
