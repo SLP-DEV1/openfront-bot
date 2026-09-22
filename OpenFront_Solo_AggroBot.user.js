@@ -442,6 +442,7 @@
   let diagnosticHelpDeadline=null,diagnosticHelpExpired=false;
   let diagnosticAid=null,diagnosticLastCommitmentSeen=null;
   let diagnosticHelpClosing=null;
+  let diagnosticDecisionSequence=0;
   // Diagnostic v2: preserve critical events independently of the 1400-record UI ring.
   // Session storage is tab-scoped and never shares another bot's player identity.
   const diagnosticV2={schemaVersion:2,critical:[],dropped:0,lastDuoStatus:null,
@@ -579,6 +580,12 @@
     record.session=monitorSession;record.seq=recordSequence;
     record.time=new Date().toISOString();record.tick=tick;
     record.kind=kind;record.message=message;
+    record.schemaVersion=2;
+    record.playerId=safeID(m);
+    record.matchId=String(game?.gameID?.()??'unknown');
+    record.frameId=monitorSession+':t'+tick;
+    record.decisionId=record.decisionId??null;
+    record.actionId=record.actionId??null;
     diagnostics.push(record);
     diagnosticEnqueue(record);
     if(/^(game_over|duo_|attack_confirmed|attack_unconfirmed|build_confirmed|build_unconfirmed|boat_|transport_|action)$/.test(kind))
@@ -598,6 +605,14 @@
         action.homeAfterObserved=record.home;
         action.goldAfterObserved=record.gold;
         action.effect='unknown';}
+    }else if(record.actionId&&kind==='attack_outcome_observed'){
+      const action=actionLedger.find(x=>x.actionId===record.actionId);
+      if(action)action.outcomeObservation={
+        ownLandBefore:record.ownLandBefore,ownLandAfter:record.ownLandAfter,
+        defenderLandBefore:record.defenderLandBefore,
+        defenderLandAfter:record.defenderLandAfter,
+        observedOutcome:record.observedOutcome,attribution:record.attribution,
+        effect:'unknown'};
     }
     recordCounts[kind]=(recordCounts[kind]||0)+1;
     if(benchmark && typeof benchmark.onRecord==='function'){
@@ -1025,7 +1040,7 @@
     diagnosticLastReceivedHelp=null;diagnosticLastHelpAck=null;
     diagnosticHelpDeadline=null;diagnosticHelpExpired=false;
     diagnosticAid=null;diagnosticLastCommitmentSeen=null;
-    diagnosticHelpClosing=null;
+    diagnosticHelpClosing=null;diagnosticDecisionSequence=0;
     diagnosticV2.critical=[];diagnosticV2.dropped=0;
     diagnosticV2.lastDuoStatus=null;diagnosticV2.lastDuoPeer=null;
     diagnosticV2.lastDuoAt=null;
@@ -1132,7 +1147,9 @@
     if(runtime.economyMs>1600)v.actionsPerMinute-=6;
     const unlearned={...v};
     v=learnAdjust(v,mode,s,emergency);
+    const learnedChoice={...v};
     v=neuralAdjust(v,unlearned,me,s,items,emergency);
+    const neuralChoice={...v};
     if(!emergency){const policy=neuralStrategicSignals(me,s,tick);
       if(policy){v.aggressive+=Math.round(policy.aggression*12);
         v.reserve+=Math.round(policy.reserve*10);}}
@@ -1148,6 +1165,12 @@
       !(mode==='ASSAULT'&&duoPlan?.strikeStatus==='locked-launch-window'&&
         s.incoming===0&&!recentHostilePressure(tick)))return s;
     autoTuning={...v,mode,reason,tick};
+    if(opts.neuralEnabled)telemetry('neural_strategy_choice',
+      'Regel-, Lern- und Modellvorschlag gegenüber finaler Einstellung',{
+        decisionId:monitorSession+':t'+tick,model:neuralModelInfo(),
+        mode,ruleChoice:unlearned,learnedChoice,modelChoice:neuralChoice,
+        finalChoice:{...v},effect:'unknown',
+        evidence:'policy-comparison-not-game-outcome'});
     if(mode!=='DEFEND'||tick-lastDefenseLog>=75){
       telemetry('auto_tuning','Autonome Parameter: '+mode,{...v,reason});
       if(mode==='DEFEND')lastDefenseLog=tick;
@@ -1845,7 +1868,9 @@
     decisionKeys.set(key,tick);
     if(decisionKeys.size>140)for(const [k,v] of decisionKeys)
       if(tick-v>1100)decisionKeys.delete(k);
-    const row={tick,kind,why,alternatives:alternatives.slice(0,4)};
+    const row={tick,kind,why,alternatives:alternatives.slice(0,4),
+      decisionId:monitorSession+':t'+tick+':d'+(++diagnosticDecisionSequence),
+      evidence:'ranked-options-not-executed-actions'};
     decisionTimeline.push(row);
     if(decisionTimeline.length>90)decisionTimeline.shift();
     telemetry('decision_timeline',why,{decision:row});
@@ -2916,6 +2941,14 @@
       telemetry('forecast_audit','Angriffsprognose gegenüber sichtbarer Stack-Abnahme',
         {audit});
     }
+    telemetry('attack_outcome_observed','Angriffsfenster nachträglich verglichen',{
+      actionId:record.actionId??null,target:record.id,
+      sentTick:record.tick,observedTick:tick,
+      ownLandBefore:record.ownLand,ownLandAfter:ownLand,
+      defenderLandBefore:record.enemyLand,defenderLandAfter:enemyLand,
+      observedOutcome:captured?'territory-changed':
+        stalled?'no-progress-observed':'unknown',
+      attribution:'front-observation-not-causal-attack-result'});
     lastBattle=null;
   }
   function confirmAttack(me,tick){
@@ -2934,10 +2967,18 @@
       attackReceipts.confirmed++;
       telemetry('attack_confirmed','Angriff im Spielzustand erkannt: '+p.name,
         {actionId:p.actionId??null,target:p.id,troops:p.amount,
+          ownLandBefore:p.ownLand,
+          ownLandAtObservation:number(()=>me.numTilesOwned(),null),
+          defenderLandBefore:p.enemyLand,
+          defenderLandAtObservation:p.id===null?null:
+            number(()=>game.playerViews().find(v=>safeID(v)===p.id)?.numTilesOwned?.(),null),
+          observedStacks:out.map(a=>({id:a.id,troops:a.troops,
+            targetID:a.targetID})),
           via:newStack?'active_stack':'territory',
+          arrivalTick:null,arrivalEvidence:'not-exposed-in-attack-view',
           evidence:'observed-change-not-causal-proof'});
       if(p.id!==null){
-        lastBattle={id:p.id,name:p.name,tick:p.tick,
+        lastBattle={actionId:p.actionId??null,id:p.id,name:p.name,tick:p.tick,
           enemyLand:p.enemyLand,ownLand:p.ownLand,
           forecast:p.forecast||null,amount:p.amount,minimumObservedStack:null};
         if(coordinatedWar()&&warState.id===null){
@@ -5054,7 +5095,8 @@
             coastCandidates:coastal.length});
       }
       telemetry('neural_economy_choice','Gepruefte Bauoption gewaehlt',
-        {kind:chosen.kind,type:chosen.type,baseScore:chosen.baseScore,
+        {actionId:lastActionId,decisionId:monitorSession+':t'+tick,
+          kind:chosen.kind,type:chosen.type,baseScore:chosen.baseScore,
           neuralDelta:chosen.neuralDelta,chosenScore:chosen.siteValue,
           neuralDecision:neuralDecisionEvidence});
       economicStatus='Anfrage: '+chosen.type+(chosen.kind==='upgrade'?' (Upgrade)':'');
