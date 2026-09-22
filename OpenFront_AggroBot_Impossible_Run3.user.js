@@ -531,7 +531,8 @@
         railMethod:'owned-land-corridor-proxy',
         fullBrowserMatchValidated:false,
         note:'Die Datei ist ein Spielmitschnitt; Sieg und echte Mehrkarten-Benchmarks erfordern vollständige Browser-Matches.'},
-      opponents:[...opponentProfiles.values()].map(v=>({...v})),operation,duoPlan,victoryThreat,
+      opponents:[...opponentProfiles.values()].map(v=>({...v})),
+      decisionFrame:lastDecisionFrame,operation,duoPlan,victoryThreat,
       localDuo:{status:duoLocal.status,peer:duoLocal.peer,partnerID:opts.duoPartnerID,
         ownID:safeID(myPlayer()),connected:!!duoTrustedPeer(),match:duoLocal.match,
         failures:duoLocal.failures},
@@ -5852,7 +5853,9 @@
   }
   // P1 diagnostic observation: a frozen, cycle-specific snapshot of raw state.
   // It never grants additional attack/build permissions.
-  function decisionFrame(me,groups,s,tick=number(()=>game?.ticks?.(),-1)){
+  function decisionFrame(me,groups,s,tick=number(()=>game?.ticks?.(),-1),requestedTick=tick){
+    // The worker border is from requestedTick; resources/armies are read at tick.
+    // Preserve both timestamps so delayed worker data is never labelled fresh.
     const opponents=(groups||[]).filter(g=>g.id!==null&&
       g.opponent?.isAlive?.()).slice(0,16).map(g=>Object.freeze({
         id:g.id,front:g.tiles?.length||0,
@@ -5861,7 +5864,8 @@
         friendly:friendly(g.opponent,me)
       }));
     return Object.freeze({
-      tick,player:safeID(me),gameID:String(game?.gameID?.()??'unknown'),
+      tick,requestedTick,borderAgeTicks:Math.max(0,tick-requestedTick),
+      player:safeID(me),gameID:String(game?.gameID?.()??'unknown'),
       home:s.home,reserve:s.reserve,available:s.available,
       committed:s.committed,incoming:s.incoming,
       maxTroops:s.max,gold:goldAmount(me),
@@ -5992,7 +5996,7 @@
       observeHumanProfiles(me,tick);
       observeVictoryThreat(me,tick);
       let s=military(me,groups);rememberHostilePressure(s,tick);troopSnapshot=s;
-      lastDecisionFrame=decisionFrame(me,groups,s,tick);
+      lastDecisionFrame=decisionFrame(me,groups,s,observedTick,tick);
       strategic.groups=groups;
       coordinateDuo(me,s,tick);
       manageWar(me,groups,s,tick);
