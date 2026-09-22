@@ -442,6 +442,7 @@
   let diagnosticHelpDeadline=null,diagnosticHelpExpired=false;
   let diagnosticAid=null,diagnosticLastCommitmentSeen=null;
   let diagnosticHelpClosing=null;
+  let diagnosticDonationSeen=new Map();
   let diagnosticDecisionSequence=0;
   // Diagnostic v2: preserve critical events independently of the 1400-record UI ring.
   // Session storage is tab-scoped and never shares another bot's player identity.
@@ -1041,6 +1042,7 @@
     diagnosticHelpDeadline=null;diagnosticHelpExpired=false;
     diagnosticAid=null;diagnosticLastCommitmentSeen=null;
     diagnosticHelpClosing=null;diagnosticDecisionSequence=0;
+    diagnosticDonationSeen.clear();
     diagnosticV2.critical=[];diagnosticV2.dropped=0;
     diagnosticV2.lastDuoStatus=null;diagnosticV2.lastDuoPeer=null;
     diagnosticV2.lastDuoAt=null;
@@ -1328,6 +1330,10 @@
   function diagnosticHelpObservation(me,tick){
     if(!diagnosticAid)return;
     const aid=diagnosticAid;
+    if(aid.observedTick!==undefined){
+      if(tick-aid.observedTick>=180)diagnosticAid=null;
+      return;
+    }
     const target=(game?.playerViews?.()||[]).find(p=>
       safeID(p)===aid.partnerId);
     if(!target||!target.isAlive?.()){
@@ -1347,6 +1353,60 @@
         evidence:'no-direct-donation-receipt-in-gameview'});
       diagnosticAid=null;
     }
+  }
+  // GameView exposes engine DonateEvent updates (senderId, recipientId,
+  // donationType, amount). Only this explicit receipt may prove that support
+  // was delivered. Aggregate troop/gold deltas never establish causality.
+  function diagnosticDonationUpdates(){
+    const tick=number(()=>game?.ticks?.(),-1);
+    if(tick<0)return;
+    let updates;try{updates=game?.updatesSinceLastTick?.();}catch(_){return;}
+    if(!updates)return;
+    const events=Object.values(updates).flat().filter(u=>
+      u&&u.donationType&&['troops','gold'].includes(u.donationType)&&
+      typeof u.senderId==='string'&&typeof u.recipientId==='string'&&
+      (typeof u.amount==='bigint'||typeof u.amount==='number'));
+    for(let i=0;i<events.length;i++){
+      const ev=events[i];
+      const key=tick+':'+i+':'+ev.senderId+':'+ev.recipientId+
+        ':'+String(ev.amount)+':'+ev.donationType;
+      if(diagnosticDonationSeen.has(key))continue;
+      diagnosticDonationSeen.set(key,tick);
+      const me=safeID(myPlayer());
+      if(me!==ev.senderId&&me!==ev.recipientId)continue;
+      const amount=String(ev.amount);
+      const aid=diagnosticAid;
+      const sent=ev.donationType==='troops'&&aid&&
+        ev.senderId===me&&ev.recipientId===aid.partnerId&&
+        tick>=aid.tick&&tick-aid.tick<=110&&!aid.observedTick;
+      const received=ev.donationType==='troops'&&diagnosticHelpId&&
+        ev.recipientId===me&&ev.senderId===duoTrustedPeer()?.id;
+      const requestId=sent?aid.requestId:
+        received?diagnosticHelpId:null;
+      const actionId=sent?aid.actionId:
+        received&&duoLocal.peer?.state?.aidForRequestId===diagnosticHelpId?
+          duoLocal.peer.state.aidActionId??null:null;
+      telemetry('donation_observed','Engine-Spendenereignis beobachtet',{
+        actionId,requestId,senderId:ev.senderId,
+        recipientId:ev.recipientId,donationType:ev.donationType,
+        actualAmount:amount,evidence:'gameview-donate-event'});
+      if(requestId){
+        telemetry('duo_help_support_observed',
+          'Duo-Truppenspende durch Engine bestätigt',{
+            actionId,requestId,senderId:ev.senderId,
+            recipientId:ev.recipientId,actualTroops:amount,
+            status:'support-observed',evidence:'gameview-donate-event'});
+        if(sent){
+          aid.observedTick=tick;aid.observedTroops=amount;
+          const ledger=actionLedger.find(x=>x.actionId===aid.actionId);
+          if(ledger){ledger.actualTroopOutflow=amount;
+            ledger.observed='engine-donate-event';ledger.effect='delivered-to-recipient';}
+        }
+      }
+    }
+    for(const [key,seenTick] of diagnosticDonationSeen)
+      if(tick-seenTick>20)diagnosticDonationSeen.delete(key);
+    if(diagnosticDonationSeen.size>300)diagnosticDonationSeen.clear();
   }
   function duoState(){
     const me=myPlayer(),trusted=duoTrustedPeer(),peer=trusted?.player;
@@ -1410,7 +1470,9 @@
       aidForRequestId:diagnosticAid?.requestId??null,
       aidActionId:diagnosticAid?.actionId??null,
       aidTroops:diagnosticAid?.amount??null,
-      aidStatus:diagnosticAid?'intent-sent-effect-unknown':null,
+      aidStatus:diagnosticAid?
+        (diagnosticAid.observedTick!==undefined?'observed-engine-donate-event':
+          'intent-sent-effect-unknown'):null,
       ackHelpRequestId:trusted?.state?.needHelp===true?
         trusted.state.helpRequestId??null:null,
       warning:duoWarningLevel(state),
@@ -6769,6 +6831,7 @@
         'Unbekannter Spieltyp: BOT GESPERRT';
       paint();return;
     }
+    diagnosticDonationUpdates();
     if(game?.gameOver?.()){
       if(opts.enabled||gameEnd?.teamOutcomePending){
         diagnosticCloseHelp('match-end',number(()=>game.ticks(),-1));
