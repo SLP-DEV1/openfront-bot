@@ -88,6 +88,14 @@ Auf Nutzerwunsch sind lokale Langzeit-, vollständige Zwei-Client-, Liga- und Wi
 - **P6 / #74:** `tools/benchmark/engine-multibot.mjs` verwendet 2–8 vollständig getrennte Bot-VMs/GameViews/Worker-Anfragen/Busse innerhalb **eines offiziellen GameRunners**. `tools/benchmark/league.cjs` startet standardmäßig echte Bot-gegen-Bot-FFA beziehungsweise mit `--participants 4 --gameMode Team` vollständige 2v2-Bot-Teams. `--scripted` bleibt expliziter Legacy-Modus; ohne `--execute` werden keine Partien gestartet. Anleitung: [LEAGUE_RUNNER.md](LEAGUE_RUNNER.md).
 - **Stand:** Merge [7847517](https://github.com/SLP-DEV1/openfront-bot/commit/7847517fa17ec62df43cbd237971da8e15ef66b7). Automatischer `Verify AggroBot` auf geprüftem PR-Head erfolgreich; keine Langzeit-, echten Zwei-Browser-, Liga- oder Wirkungstests vom Nutzer angefordert oder manuell ausgeführt. Ein vorhandener Runner ist keine belegte Siegquote.
 
+## Implementierungsnachtrag P1–P3 und offizieller P0-Engine-Check
+
+- **P1 / #69:** [PR #90](https://github.com/SLP-DEV1/openfront-bot/pull/90), Merge [3e0e384](https://github.com/SLP-DEV1/openfront-bot/commit/3e0e384be4352e06a31d123a2c63b94da5052cbf): bounded 90-/180-/360-Tick-Gegnerverläufe aus realen Zeitbeobachtungen, im unveränderlichen Frame; fehlende Historie bleibt `null`. [Verify grün](https://github.com/SLP-DEV1/openfront-bot/actions/runs/35674298511).
+- **P2 / #70:** [PR #91](https://github.com/SLP-DEV1/openfront-bot/pull/91), Merge [2f6a6ae](https://github.com/SLP-DEV1/openfront-bot/commit/2f6a6ae426d007dfd89d0f8f173809522f32e4ac): konservative Factory-/Port-Einkommenswertung pro fertiggestelltem Gebäude; der beobachtete Gesamtwert ist kein kausaler Grenznutzenbeleg.
+- **P3 / #71:** gleicher PR/Commit: normaler Stillstand >900 Ticks, im Experiment >440, gibt eine Operation nur ohne aktive Offensive/Pending Attack/Heimatdruck frei. Bis acht alternative Kandidaten nach sicherem Budget. [Verify grün](https://github.com/SLP-DEV1/openfront-bot/actions/runs/35674533333).
+- **P4–P6:** [PR #89](https://github.com/SLP-DEV1/openfront-bot/pull/89), Merge [7847517](https://github.com/SLP-DEV1/openfront-bot/commit/7847517fa17ec62df43cbd237971da8e15ef66b7): explizite gegenseitige Duo-ACK, offizielle MotionPlan-ETA und Mehr-Bot-Engine-Harness mit FFA/2v2-Liga-Runner. **Keine ausgeführten Langzeit-, Zwei-Browser-, Liga- oder Wirkungstests** als Erfolg behaupten; weitere Implementierungsaufgaben bestehen.
+- **P0 / #68:** [PR #92](https://github.com/SLP-DEV1/openfront-bot/pull/92) ergänzt den Test der echten offiziellen Config-Mechanik für City/Factory/Port auf gepinntem Engine-Commit; CI-Engine-Nachweis/Review erst anhand des PR-Status werten.
+
 ## Status-Legende und Abnahmeregel
 
 - **Im Code vorhanden:** Ein bereits implementierter Baustein; **nicht** dass die Phase abgeschlossen ist.
