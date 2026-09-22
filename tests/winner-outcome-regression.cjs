@@ -19,6 +19,8 @@ assert.deepEqual(members.map(p=>winnerOutcome(undefined,p)),
   ['incomplete','incomplete','incomplete','incomplete'],'no fabricated winner');
 assert.equal(winnerOutcome(['team','blue'],player('aggrobot1',null)),
   'unknown','missing actual team ID must not infer membership from lineup');
+assert.equal(winnerOutcome(['team','blue'],{clientID:()=> 'aggrobot1',team:()=> 'blue'}),'victory',
+  'pinned engine exposes Team as a string');
 assert.equal(winnerOutcome(['team','blue'],members[0]),'victory',
   'primary gameEnd and league outcome use the same winner resolution');
 console.log('PASS FFA, both 2v2 teams, unknown teams, winnerless and primary result');
