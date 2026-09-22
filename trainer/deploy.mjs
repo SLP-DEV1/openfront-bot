@@ -16,8 +16,10 @@ for(let i=2;i<process.argv.length;i++){
 }
 if(!args.model)throw Error('Supply a confirmed champion using --model');
 const input=JSON.parse(fs.readFileSync(args.model,'utf8'));
-const chosen=input?.schema===4?strategicPolicyV4:
-  input?.schema===3?strategicPolicy:input?.schema===2?actionPolicy:policy;
+const policies=new Map([[1,policy],[2,actionPolicy],[3,strategicPolicy],[4,strategicPolicyV4]]);
+if(input?.schema===5)throw Error('Schema 5 candidate ranker is evaluation-only and cannot be bundled yet');
+const chosen=policies.get(input?.schema);
+if(!chosen)throw Error('Unsupported model schema: '+String(input?.schema));
 const model=chosen.validate(input);
 const source=path.resolve(args.source),out=path.resolve(args.out);
 if(source===out||out===path.resolve(args.model))throw Error('Refuse overwrite of source/model');
