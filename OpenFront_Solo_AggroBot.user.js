@@ -412,7 +412,8 @@
   }
   let duoLocal={instance:duoInstanceID(),
     peer:null,status:'AUS',lastAt:0,lastPublished:0,match:null,
-    partnerID:null,ownID:null,failures:0,lastPromise:null};
+    partnerID:null,ownID:null,failures:0,lastPromise:null,
+     relayDrops:0,relayTimeouts:0,ackTimeouts:0,seenPeer:false,lastExpiredPlan:null};
   let retreatRequests=new Map(),defenseStats={retreatsOrdered:0,retreatsObserved:0,unknown:0,unconfirmed:0};
   // Manual slider values remain saved; fullAuto computes independent live values.
   let autoTuning={aggressive:85,reserve:35,actionsPerMinute:72,maxTargets:16,
@@ -691,7 +692,10 @@
       investmentAssessments,operation,duoPlan,victoryThreat,
       localDuo:{status:duoLocal.status,peer:duoLocal.peer,partnerID:opts.duoPartnerID,
         ownID:safeID(myPlayer()),connected:!!duoTrustedPeer(),match:duoLocal.match,
-        failures:duoLocal.failures},
+        failures:duoLocal.failures,relayDrops:duoLocal.relayDrops,
+        relayTimeouts:duoLocal.relayTimeouts,ackTimeouts:duoLocal.ackTimeouts,
+        phase:duoStatusView(opts.duoEnabled,duoTrustedPeer(),duoPlan,
+          number(()=>game?.ticks?.(),-1),duoLocal)},
       decisionTimeline:decisionTimeline.map(v=>({...v})),
       war:{...warState},gameEnd,spawn:{...spawnState,best:spawnCache?{...spawnCache}:null},victory:winStatus,income:incomeStatus,fleet:fleetStatus,marine:{stats:marineStats,pendingBoat,pendingWarship,landingAudits:landingAudits.map(a=>({...a})),portProbeFailures},strategicTelemetry,military:troopSnapshot,
       defense:{status:defenseStatus,stats:defenseStats,pendingRetreats:[...retreatRequests.values()]},
@@ -1073,6 +1077,8 @@
     opponentProfiles.clear();operation=null;operationCooldown.clear();duoPlan=null;victoryThreat=null;decisionTimeline=[];decisionKeys.clear();
     duoLocal.peer=null;duoLocal.match=null;duoLocal.status=opts.duoEnabled?'Neue Partie · verbinde':'AUS';
     duoLocal.lastPublished=0;duoLocal.lastAt=0;duoLocal.lastPromise=null;
+    duoLocal.relayDrops=0;duoLocal.relayTimeouts=0;duoLocal.ackTimeouts=0;
+    duoLocal.seenPeer=false;duoLocal.lastExpiredPlan=null;
     warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};diagnostics=[];recordSequence=resumed?Math.max(0,Math.floor(prior.seq||0)):0;recordCounts={};recordsDropped=0;streamErrors=0;lastDiagnosticTick=-Infinity;gameEnd=null;forecastAudits=[];lastForecastAudit=null;incomeAttribution=[];
     investmentStatus='Grundaufbau';lastWarReview=-Infinity;
     defenseStatus='Keine Bedrohung';lastEmergencyRetreat=-Infinity;lastDefenseLog=-Infinity;
@@ -1256,6 +1262,18 @@
       cfg.gameMapSize??'unknown',cfg.gameMode??'unknown',seed,
       loc.pathname||'/'].join('|')
       .replace(/[^a-zA-Z0-9_.:@|,-]/g,'_').slice(0,260);
+  }
+  // Presentation only: never use these labels as plan authorization.
+  function duoStatusView(enabled,trusted,plan,tick,local){
+    if(!enabled)return {phase:'off',reason:'Duo deaktiviert'};
+    if(!trusted)return {phase:local?.seenPeer||local?.relayDrops>0?
+      'autonomous-fallback':'waiting-ack',reason:'kein frisch bestätigter Relay-Partner'};
+    if(plan?.planId&&Number.isInteger(plan.expiresTick)&&tick>plan.expiresTick)
+      return {phase:'expired',reason:'Planfrist überschritten'};
+    if(plan?.planId&&plan.partnerAck&&plan.ready)
+      return {phase:'ready',reason:'frischer Partner-ACK und sicherer Plan'};
+    return {phase:'waiting-ack',reason:plan?.planId?
+      'Partner-ACK oder sichere Front fehlt':'noch kein gemeinsamer Angriffsplan'};
   }
   function duoTrustedPeer(){
     const me=myPlayer(),peer=duoLocal.peer;
@@ -1519,6 +1537,8 @@
         const data=await response.json();
         if(!opts.duoEnabled||!game||match!==duoMatchKey()||
           room!==opts.duoRoom||ownID!==safeID(myPlayer()))return;
+        if(duoLocal.peer&&!data.partner)duoLocal.relayDrops++;
+        if(data.partner)duoLocal.seenPeer=true;
         duoLocal.peer=data.partner||null;
         duoLocal.lastAt=data.partner?Date.now():0;
         const helpRequest=data.partner?.state?.needHelp?
@@ -1566,7 +1586,9 @@
           data.reason??null);
         if(data.partner)duoLocal.failures=0;
       }catch(e){
-        duoLocal.failures++;duoLocal.peer=null;duoLocal.lastAt=0;
+        duoLocal.failures++;duoLocal.relayDrops++;
+        if(e?.name==='AbortError')duoLocal.relayTimeouts++;
+        duoLocal.peer=null;duoLocal.lastAt=0;
         const reason=e?.name==='AbortError'?
           'Browser-Timeout (8s) – lokalen Netzwerkzugriff fuer openfront.io pruefen':
           'Relay-Fehler: '+String(e?.message||e).slice(0,65);
@@ -2175,6 +2197,11 @@
       permission:'advisory-only-own-engine-check-required'});
   }
   function coordinateDuo(me,s,tick){
+    if(duoPlan?.planId&&!duoPlan.partnerAck&&
+      Number.isInteger(duoPlan.expiresTick)&&tick>duoPlan.expiresTick&&
+      duoLocal.lastExpiredPlan!==duoPlan.planId){
+      duoLocal.lastExpiredPlan=duoPlan.planId;duoLocal.ackTimeouts++;
+    }
     let duo=rankedDuo(me);
     const connectedPeer=duoTrustedPeer();
     const local=connectedPeer&&actualFriendly(connectedPeer.player,me)?
@@ -7186,6 +7213,7 @@
       <div>Partner-ID (automatisch): ${escapeHTML(duoTrustedPeer()?.id??"Warte auf Partner")}</div>
       <label>Duo-Raumcode (in beiden Browsern gleich)<input type="text" data-option="duoRoom" maxlength="64" value="${escapeHTML(opts.duoRoom)}" placeholder="z. B. KITSU_DUO_01" style="box-sizing:border-box;width:100%"></label>
       <div>Status: ${escapeHTML(duoLocal.status)} · ${duoTrustedPeer()?'Partner im aktuellen Match bestätigt':'Partner nicht verbunden'}</div>
+      <div style="color:#9bd0e4">Duo-Zustand: ${escapeHTML(duoStatusView(opts.duoEnabled,duoTrustedPeer(),duoPlan,number(()=>game?.ticks?.(),-1),duoLocal).phase)} · Relay-Drops ${duoLocal.relayDrops} · Relay-Timeouts ${duoLocal.relayTimeouts} · ACK-Timeouts ${duoLocal.ackTimeouts}</div>
       <div style="color:#9bd0e4;font-size:10px">Matchkennung: ${escapeHTML(duoMatchKey())}</div>
       <div>Spielname: ${escapeHTML(duoTrustedPeer()?nameOf(duoTrustedPeer().player):'—')}${duoTrustedPeer()&&opts.duoPartnerName&&nameOf(duoTrustedPeer().player)!==opts.duoPartnerName?' · Name weicht von Anzeige ab (ID maßgeblich)':''}</div>
       <div>Duo-Fremdbündnisse (Angriffsschutz): ${escapeHTML((duoTrustedPeer()?.state?.allies||[]).map(id=>nameOf((game?.playerViews?.()||[]).find(p=>safeID(p)===id)||{id:()=>id})).join(', ')||'—')}</div>
