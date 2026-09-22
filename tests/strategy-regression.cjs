@@ -72,7 +72,7 @@ function boot(benchmarkOptions={}) {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'sampleTroops,navalHomeRisk,navalRouteRisk,diagnosticSnapshot,learnFinish,economicDefensePressure,observeAttackOrigins,',
+    'sampleTroops,navalHomeRisk,navalRouteRisk,navalRouteEstimate,diagnosticSnapshot,learnFinish,economicDefensePressure,observeAttackOrigins,',
     'strategicDirector,economyPosture,observeOpponents,opponentTrend,observeHumanProfiles,observeVictoryThreat,coordinateDuo,planOperation,decisionNote,navalCommitmentRatio,landingThirdPartyRisk,targetHomeRatio,matchContext,rankedDuo,duoFocus,duoBattleCredit,railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,frontPressureForecast,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,offensiveCommitment,globalNavalHomeGuard,observeFronts,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,samBuildAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,tradePolicy,tradeIntentPath,sendTradeToggle,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,allianceOfferPath,sendAllianceOffer,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),setLastEmission:n=>lastEmission=n,',
     'setNeural:m=>{neuralModel=neuralValidate(m);opts.neuralEnabled=!!neuralModel;neuralPolicyCache={key:null,output:null};},neuralStrategicSignals,neuralChannel,',
@@ -87,7 +87,7 @@ function boot(benchmarkOptions={}) {
     'setMode:m=>strategic.mode=m,setAllianceCtor:C=>ctors.alliance=C,setHostilePressure:t=>lastHostilePressure=t,',
     'setNukePending:p=>nukePending=p,setMonitorSession:x=>monitorSession=x,spendBudget,commitGoldSpend,coreFundingStatus,',
     'targetOpportunityCheck,sameFrontFollowUp,reportAttackBlocks,earlyCrisis,landingFailure,neuralModelInfo,',
-    'duoConfigured,duoMatchKey,duoTrustedPeer,duoPeerAlly,duoOwnAllies,duoWarningLevel,duoJointOpportunity,duoState,duoSpawnCandidate,duoPublish,decisionFrame,decisionFrameFresh,actualFriendly,friendly,',
+    'duoTeamDecision,duoConfigured,duoMatchKey,duoTrustedPeer,duoPeerAlly,duoOwnAllies,duoWarningLevel,duoJointOpportunity,duoState,duoSpawnCandidate,duoPublish,decisionFrame,decisionFrameFresh,actualFriendly,friendly,',
     'setDuo:(partnerID,room,peer)=>{opts.duoEnabled=true;opts.duoPartnerID=partnerID;opts.duoRoom=room;duoLocal.ownID=safeID(myPlayer());duoLocal.partnerID=partnerID;duoLocal.match=duoMatchKey();duoLocal.lastAt=Date.now();duoLocal.peer=peer;},',
     'setPendingBoat:p=>pendingBoat=p,',
     'setPerf:(combat,border,economy)=>runtime={...runtime,combatMs:combat,borderMs:border,economyMs:economy},',
@@ -401,6 +401,44 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.b.navalRouteRisk(x.me,100100,100800),null);
     x.me.isFriendly=p=>p===x.weak;tile=900900;
     assert.equal(x.b.navalRouteRisk(x.me,100100,100800),null,'allied ships do not block route');
+  });
+  await check('P4 team allocator keeps partner budget separate and advisory',()=>{
+    const x=boot();
+    const d=x.b.duoTeamDecision({ownAvailable:10000,ownHome:20000,
+      ownReserve:3000,partnerAvailable:9000,partnerHome:10000,
+      partnerReserve:2000,partnerIncoming:1000,separatedFronts:true});
+    assert.equal(d.role,'independent-front');
+    assert.equal(d.ownBudget,10000);
+    assert.equal(d.partnerBudget,5500);
+    assert.equal(d.combinedBudget,15500);
+    assert.equal(d.ownReserve,3000);
+    assert.equal(d.partnerIncoming,1000);
+    assert.match(d.permission,/advisory-only/);
+    assert.equal(x.b.duoTeamDecision({...d,invasion:true,partnerNeeds:true}).role,'support');
+    assert(Object.isFrozen(d));
+  });
+  await check('P5 bounded water detour screens ships on route not straight chord',()=>{
+    const x=boot(),water=new Set([10,0,1,2]);
+    x.game.x=t=>(t%10)*100;x.game.y=t=>Math.floor(t/10)*100;
+    x.game.isWater=t=>water.has(t);
+    x.game.neighbors4=(tile,out)=>{
+      for(const p of [tile-10,tile+10,tile-1,tile+1])
+        if(p>=0&&p<100&&Math.abs(p%10-tile%10)+
+          Math.abs(Math.floor(p/10)-Math.floor(tile/10))===1)
+          out.push(p);
+      return out.length;
+    };
+    const route=x.b.navalRouteEstimate(10,12);
+    assert.equal(route.waterSteps,3);
+    assert.equal(route.etaMethod,'uncalibrated-water-steps-proxy');
+    assert.equal(route.path.join(','),'10,0,1,2');
+    x.game.units=()=>[{...asset('Warship',11,5),owner:()=>x.weak}];
+    assert.equal(x.b.navalRouteRisk(x.me,10,12),null,
+      'a ship behind the land barrier is not on the water detour');
+    water.delete(1);
+    assert.equal(x.b.navalRouteEstimate(10,12),null);
+    assert.equal(x.b.navalRouteRisk(x.me,10,12),
+      'unescorted-visible-warship','unresolved paths retain the conservative screen');
   });
   await check('1.19.1 28-percent remote landing cannot slip below global reserve gate',()=>{
     const x=boot();x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Medium'});
