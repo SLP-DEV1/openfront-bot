@@ -54,6 +54,12 @@ Workflow-Durchlauf ist erst nach GitHub-Resultat belegt.
 - **P4 / #72:** Bei getrennten bestätigten Landfronten wird ein eigenständiger, budget-/reservesensitiver Rollenhinweis mit `separatedFronts` und `strikeStatus: independent-fronts` angezeigt. Es wird **kein** gemeinsamer Starttick und keine Angriffsfreigabe ohne die vorhandenen individuellen Engine-/Allianzchecks erzeugt.
 - **Auf Nutzerwunsch ohne Langzeit-, Zwei-Client-, Liga- oder Wirkungstests umgesetzt.** Keine Aussage über neue Siegquote, Marineerfolg oder P5-Gesamtabnahme. Der unveränderte Champion wird weiterhin deterministisch gebündelt.
 
+## P0/P6 – langlebiger Live-Monitor (Issue #84, PR #85)
+
+- Der optionale Monitor behält höchstens 48 **aktive** Session-Zustände im Speicher; fertige Matches beziehungsweise 30 Minuten inaktive Sessions dürfen den Arbeitsspeicher verlassen. Ereignisdateien bleiben erhalten. Bei ausschließlich aktiven Sessions antwortet er mit HTTP 503 statt eines fälschlichen 400-Payloadfehlers.
+- Eine später wiederaufgenommene Session liest den letzten bestätigten Sequenzzähler und das ursprüngliche Verzeichnis aus `status.json`, damit alte Ereignisse nicht doppelt protokolliert werden. Vollständige ID wird trotz gekürztem Verzeichnis-Hash überprüft.
+- Regression für 51 nacheinander beendete Matches bei parallel aktiver alter Session und für Replay/Wiederaufnahme ergänzt. CI-/Integrationsergebnis siehe PR #85; keine Behauptung zu Engine-/Multiplayer- oder gesamten P0/P6-Abnahmen.
+
 ## Status-Legende und Abnahmeregel
 
 - **Im Code vorhanden:** Ein bereits implementierter Baustein; **nicht** dass die Phase abgeschlossen ist.

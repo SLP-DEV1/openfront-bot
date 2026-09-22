@@ -40,6 +40,12 @@ jobs:
           node --check OpenFront_Solo_AggroBot.user.js
           node --check OpenFront_AggroBot_Impossible_Run3.user.js
           node --check tests/strategy-regression.cjs
+      - name: Test live monitor and browser persistence
+        run: |
+          node --check OpenFront_AggroBot_Monitor.user.js
+          node --check tools/live-monitor.cjs
+          node tests/live-monitor-regression.cjs
+          node tests/browser-finish-regression.cjs
       - name: Test bot strategy
         run: node tests/strategy-regression.cjs
 
@@ -65,12 +71,6 @@ jobs:
           node --check tools/benchmark/openfront-backend.mjs
           node --check tests/openfront-backend-regression.cjs
           node tests/openfront-backend-regression.cjs
-      - name: Test live monitor and browser persistence
-        run: |
-          node --check OpenFront_AggroBot_Monitor.user.js
-          node --check tools/live-monitor.cjs
-          node tests/live-monitor-regression.cjs
-          node tests/browser-finish-regression.cjs
       - name: Check neural holdout proof
         run: |
           node --check tools/benchmark/holdout-evidence.cjs

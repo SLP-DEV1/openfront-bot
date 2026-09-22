@@ -49,6 +49,37 @@ async function main(){
       assert.equal(fs.readFileSync(path.join(dir,'events.jsonl'),'utf8')
         .trim().split('\n').length,n);
     }
+    // Keep an older, active tab while >48 finished matches rotate out of
+    // memory. All files and per-session sequence numbers must remain intact.
+    const finished=[];
+    for(let i=0;i<51;i++){
+      const id='finished-match-'+String(i).padStart(4,'0');
+      const result=await post([{...record(id,1,i),kind:'game_over'}]);
+      assert.equal(result.status,200,'finished session '+i+' accepted');
+      finished.push({id,...await result.json()});
+    }
+    response=await post([record(sessionA,3,30)]);
+    assert.equal(response.status,200,'active older tab survives rotation');
+    assert.equal((await response.json()).accepted,1);
+    const old=finished[0];
+    response=await post([record(old.id,1,0)]);
+    assert.equal(response.status,200);
+    const replay=await response.json();
+    assert.equal(replay.accepted,0,'retired session restores deduplication');
+    assert.equal(replay.runDir,old.runDir,'retired session reuses original directory');
+    response=await post([record(old.id,2,40)]);
+    assert.equal(response.status,200);
+    assert.equal((await response.json()).accepted,1);
+    const persisted=JSON.parse(fs.readFileSync(
+      path.join(old.runDir,'status.json'),'utf8'));
+    assert.equal(persisted.lastSeq,2);
+    assert.equal(persisted.completed,true);
+    assert.equal(fs.readFileSync(path.join(old.runDir,'events.jsonl'),'utf8')
+      .trim().split('\n').length,2);
+    const active=JSON.parse(fs.readFileSync(
+      path.join(first.runDir,'status.json'),'utf8'));
+    assert.equal(active.lastSeq,3);
+    assert.equal(active.completed,false);
     console.log('live monitor regression passed');
   }finally{child.kill();}
 }
