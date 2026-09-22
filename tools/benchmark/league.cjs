@@ -116,6 +116,7 @@ for(const match of matches){
  const file=path.join(dir,'match.json');
  const game=fs.existsSync(file)?JSON.parse(fs.readFileSync(file,'utf8')):null;
  const expectedFull=values.fullBots?participants:0;
+ const allSpawned=!values.fullBots||game?.fullBots?.every(m=>m.spawned===true)===true;
  const hashesValid=!values.fullBots||game?.fullBots?.length===expectedFull&&
    game.fullBots.every((p,i)=>p.botSHA256===(i<participants/2?botHash:opponentHash));
  const meta=game?.benchmarkMeta,cfg=meta?.gameConfig;
@@ -128,7 +129,7 @@ for(const match of matches){
    meta?.scriptedHumans===(values.fullBots?0:4);
  match.status=result.status===0&&!result.error&&game&&hashesValid&&originValid&&
    game.recording?.complete===true&&game.run?.failure==null&&
-   game.run?.spawned===true?'recorded':'failed';
+   game.run?.spawned===true&&allSpawned?'recorded':'failed';
  match.outcome=game?.gameEnd?.outcome??'unknown';
  match.fullBots=game?.fullBots?.map(m=>({clientID:m.clientID,
    botSHA256:m.botSHA256,profile:m.profile,teamIndex:m.teamIndex,
@@ -139,6 +140,7 @@ for(const match of matches){
    !hashesValid&&game?'participant bundle hash mismatch':
    game?.recording?.complete!==true?'recording incomplete':
    game?.run?.failure?'engine execution failure':
+   !allSpawned?'not all full bots spawned':
    game?.run?.spawned!==true?'bot not spawned':
    result.error?.message??(result.status===0?null:
    (result.stderr||'Benchmark subprocess failed').slice(-2000));
