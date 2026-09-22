@@ -522,7 +522,7 @@
     try{await diagnosticStore.flushing;}finally{diagnosticStore.flushing=null;}
   }
   async function diagnosticReadAll(session=monitorSession){
-    if(diagnosticStore.timer){clearTimeout(diagnosticStore.timer);
+    if(diagnosticStore.timer){if(typeof clearTimeout==='function')clearTimeout(diagnosticStore.timer);
       diagnosticStore.timer=null;}
     await diagnosticFlush();
     const db=await diagnosticOpen();
