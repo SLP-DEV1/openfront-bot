@@ -65,6 +65,13 @@ Workflow-Durchlauf ist erst nach GitHub-Resultat belegt.
 - Der historische Marine-Test hat die frühere globale Sperre durch den kumulativen `transportUnresolved`-Zähler verlangt; der aktuell implementierte Schutz basiert dagegen auf frischen, örtlich zuordenbaren `landingFailure`-Beobachtungen. Die Regression prüft jetzt nahes Risiko, eigene Eskorte, andere Routen und Ablauf nach 900 Ticks.
 - [PR #87](https://github.com/SLP-DEV1/openfront-bot/pull/87), [vollständig grüner Verify-Workflow](https://github.com/SLP-DEV1/openfront-bot/actions/runs/35672532125) und [Merge c85b998](https://github.com/SLP-DEV1/openfront-bot/commit/c85b998529fbd70622b1266ef4d981f063a18d1a). Diese Regression ist keine Abnahme des vollständigen P0/P5-Engine- und Multiplayerpakets.
 
+## P4–P6 Implementierungsnachtrag (ohne angeforderte Langzeit-/Wirkungstests)
+
+- **P4 / #72:** `duoTeamDecision()` liefert getrennte Heim-/Partnerbudgets, Reserven, eingehende Angriffe, Rollen `support/defend/joint-attack/independent-front/hold/build` und Begründung. Das ist eine **beratende** gemeinsame Entscheidung, keine zusätzliche Berechtigung zum Senden. Bestätigte Allianz, Frische und lokale Engine-Legalität bleiben maßgeblich.
+- **P5 / #73:** `navalRouteEstimate()` sucht begrenzt auf Wasserfeldern mit vier Nachbarn bis zu 1.800 geprüften Feldern und verwendet den berechneten Weg für sichtbare Warship-Nähe. Bei unbekannter Route bleibt die konservative direkte Prüfung. Das ETA-Intervall ist ausdrücklich eine **unkalibrierte Wasserweg-Heuristik**, keine behauptete Engine-Geschwindigkeit oder gesicherte Landungszeit.
+- **P6 / #74:** `tools/benchmark/league.cjs` erstellt reproduzierbare Paarungen und kann die vorhandene Engine/GameView-Benchmark nach Profil und skriptgesteuertem Gegnertyp ausführen; jede Partie erhält Seed, Engine-Pin, Bot-Hash und eigenes Ergebnis. **Noch keine Liga aus vollständigen Bot-Gegnern**, kein automatischer Modellaufstieg und keine Siege ohne durchgeführte Partien.
+- **Auf Nutzerwunsch wurden keine Langzeit-, Zwei-Client-, Liga- oder Wirkungstests durchgeführt.** Auch P4–P6 sind als Gesamtphasen noch nicht abgenommen.
+
 ## Status-Legende und Abnahmeregel
 
 - **Im Code vorhanden:** Ein bereits implementierter Baustein; **nicht** dass die Phase abgeschlossen ist.
