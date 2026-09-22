@@ -3849,6 +3849,15 @@ function boot(benchmarkOptions={}) {
     const army=x.b.military(x.me,groups);
     const frame=x.b.decisionFrame(x.me,groups,army,300);
     assert.equal(frame.tick,300);
+    assert.equal(frame.requestedTick,300);
+    assert.equal(frame.borderAgeTicks,0);
+    const delayed=x.b.decisionFrame(x.me,groups,army,320,300);
+    assert.equal(delayed.tick,320,'resources reflect observation time');
+    assert.equal(delayed.requestedTick,300,'worker border retains request time');
+    assert.equal(delayed.borderAgeTicks,20);
+    assert.equal(x.b.decisionFrameFresh(delayed,341),false);
+    assert.equal(x.b.decisionFrameFresh(delayed,340),true);
+    assert(Object.isFrozen(delayed));
     assert.equal(frame.home,90000);
     assert.equal(frame.gold,1000000);
     assert.equal(frame.opponents[0].id,'strong');
