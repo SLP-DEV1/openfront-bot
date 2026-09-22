@@ -19,7 +19,7 @@
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
     autoStrategy:true, diplomacy:true, offerAlliances:true, nukes:true, antiNuke:true, lateOffense:true,
-    impossibleMode:true,impossibleExperiment:false,neuralEnabled:false,evidenceMode:false,
+    impossibleMode:true,impossibleExperiment:false,neuralEnabled:false,evidenceMode:false,shadowRankEnabled:false,
     duoEnabled:false,duoPartnerID:'',duoPartnerName:'',duoRoom:''};
   let opts;
   try { opts = {...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; }
@@ -44,6 +44,63 @@
   // Deployment replaces only the literal below; benchmark loads a signed-by-hash
   // local model from its isolated loopback storage. No browser network fetches.
   const NEURAL_BUNDLED_MODEL = null;
+  const SHADOW_V5_BUNDLED_MODEL = null;
+  // GENERATED-SHADOW-V5-BEGIN: keep equal to trainer/candidate-policy-v5.cjs
+  const shadowV5=(()=>{
+const INPUTS=32,HIDDEN=20,OUTPUTS=2;
+const LENGTH=INPUTS*HIDDEN+HIDDEN+HIDDEN*OUTPUTS+OUTPUTS;
+const clamp=(n,a=0,b=1)=>Math.max(a,Math.min(b,Number.isFinite(n)?n:a));
+const logrel=(n,base)=>clamp(Math.log1p(Math.max(0,Number(n)||0))/
+  Math.log1p(Math.max(1,Number(base)||1)),0,2)/2;
+function features(state={},candidate={}){
+  const home=Math.max(1,Number(state.home)||1),gold=Math.max(1,Number(state.gold)||1);
+  const values=[
+    logrel(state.home,state.maxTroops),logrel(state.gold,10000000),
+    clamp((state.incoming||0)/home,0,2)/2,clamp((state.committed||0)/home,0,2)/2,
+    clamp((state.reserve||0)/home,0,1),clamp(state.economyRelative,0,2)/2,
+    clamp(state.capacityUse,0,1),clamp(state.frontReach,0,1),
+    clamp(state.partnerNeed,0,1),clamp(state.enemyBound,0,1),
+    clamp(state.landTrend,-1,1)/2+.5,clamp(state.goldTrend,-1,1)/2+.5,
+    clamp(state.troopTrend,-1,1)/2+.5,clamp(state.frontCount/8,0,1),
+    clamp(state.portAccess,0,1),clamp(state.technologyCoverage,0,1),
+    clamp(candidate.expectedLand/Math.max(1,state.land||1),0,1),
+    clamp(candidate.costTroops/home,0,1),clamp(candidate.costGold/gold,0,1),
+    clamp(candidate.duration/1200,0,1),clamp(candidate.returnTime/1200,0,1),
+    clamp(candidate.counterRisk,0,1),clamp(candidate.thirdPartyRisk,0,1),
+    clamp(candidate.infrastructureValue,0,1),clamp(candidate.incomeValue,0,1),
+    clamp(candidate.recruitmentValue,0,1),clamp(candidate.siteRisk,0,1),
+    clamp(candidate.holdProbability,0,1),clamp(candidate.legalConfidence,0,1),
+    candidate.kind==='attack'?1:0,candidate.kind==='investment'?1:0,
+    candidate.kind==='naval'?1:0
+  ];
+  return values.map(v=>clamp(v));
+}
+function validate(model){
+  if(!model||model.schema!==5||model.arch!=='32x20x2-tanh'||
+    !Array.isArray(model.outputs)||model.outputs.length!==OUTPUTS||
+    model.outputs[0]!=='heldGain'||model.outputs[1]!=='lossRisk'||
+    !Array.isArray(model.weights)||model.weights.length!==LENGTH||
+    Array.from(model.weights).some(x=>!Number.isFinite(x)||Math.abs(x)>5))
+    throw Error('Invalid schema-5 candidate model');
+  return model;
+}
+function zero(){return {schema:5,arch:'32x20x2-tanh',
+  outputs:['heldGain','lossRisk'],weights:Array(LENGTH).fill(0)};}
+function predict(model,input){
+  const w=validate(model).weights;
+  if(!Array.isArray(input)||input.length!==INPUTS||input.some(x=>!Number.isFinite(x)||x<0||x>1))
+    throw Error('Invalid candidate feature vector');
+  const h=[],hiddenBias=INPUTS*HIDDEN,outStart=hiddenBias+HIDDEN,
+    outBias=outStart+HIDDEN*OUTPUTS;
+  for(let j=0;j<HIDDEN;j++){let z=w[hiddenBias+j];for(let i=0;i<INPUTS;i++)z+=input[i]*w[i*HIDDEN+j];h.push(Math.tanh(z));}
+  const out=[];for(let k=0;k<OUTPUTS;k++){let z=w[outBias+k];for(let j=0;j<HIDDEN;j++)z+=h[j]*w[outStart+j*OUTPUTS+k];out.push((Math.tanh(z)+1)/2);}
+  return {heldGain:out[0],lossRisk:out[1]};
+}
+    return {features,validate,predict};
+  })();
+  // GENERATED-SHADOW-V5-END
+  let shadowV5Model=null;
+  try{shadowV5Model=shadowV5.validate(SHADOW_V5_BUNDLED_MODEL);}catch(_){shadowV5Model=null;}
   const NEURAL_LENGTH=90,NEURAL_STORAGE='of-aggrobot-neural-policy-v1';
   let neuralModel=null;
   function neuralValidate(data){
@@ -389,7 +446,7 @@
   let forecastAudits=[],lastForecastAudit=null,incomeAttribution=[];
   let failedEconomyProbes=0,successfulEconomyTick=-Infinity,warWaitSince=-Infinity;
   let coreQuotes=new Map(),lastCoreFundingReport=-Infinity,coreFunding=null;
-  let lastEconomyProbeReport=null,neuralDecisionEvidence=null,economyBudgetEvidence=null;
+  let lastEconomyProbeReport=null,neuralDecisionEvidence=null,economyBudgetEvidence=null,shadowDecisionEvidence=null;
   let investmentStatus='Grundaufbau',lastWarReview=-Infinity;
   let defenseStatus='Keine Bedrohung',lastEmergencyRetreat=-Infinity,lastDefenseLog=-Infinity;
   let targetIntelCache=new Map(),frontMemory=new Map(),lastFrontWarning=-Infinity;
@@ -688,7 +745,7 @@
         note:'Die Datei ist ein Spielmitschnitt; Sieg und echte Mehrkarten-Benchmarks erfordern vollständige Browser-Matches.'},
       opponents:[...opponentProfiles.values()].map(v=>({...v})),
       decisionFrame:lastDecisionFrame,planning:planningState,
-      economyBudgetEvidence,
+      economyBudgetEvidence,shadowDecisionEvidence,
       investmentAssessments,operation,duoPlan,victoryThreat,
       localDuo:{status:duoLocal.status,peer:duoLocal.peer,partnerID:opts.duoPartnerID,
         ownID:safeID(myPlayer()),connected:!!duoTrustedPeer(),match:duoLocal.match,
@@ -1053,7 +1110,7 @@
     diagnosticV2.lastDuoAt=null;
     failedEconomyProbes=0;successfulEconomyTick=-Infinity;warWaitSince=-Infinity;
     coreQuotes.clear();coreFunding=null;lastCoreFundingReport=-Infinity;
-    lastEconomyProbeReport=null;neuralDecisionEvidence=null;economyBudgetEvidence=null;
+    lastEconomyProbeReport=null;neuralDecisionEvidence=null;economyBudgetEvidence=null;shadowDecisionEvidence=null;
     lastEconomicAction=-Infinity;lastNeutralSend=-Infinity;lastEnemySend=-Infinity;lastHostilePressure=-Infinity;consecutiveIdle=0;
     economicPending=null;economicBlocked.clear();economicNegative.clear();economicStatus='Bauplanung bereit';economicLastPlan='—';
     samQuotedCost=0;portQuotedCost=0;samQuotedTick=-Infinity;portQuotedTick=-Infinity;
@@ -2025,6 +2082,30 @@
       rejected:limited[1]||null,durationMs:Number((performance.now()-started).toFixed(2)),
       budgetMs,truncated:candidates.length>limited.length||performance.now()-started>budgetMs,
       semantics:'bounded-ranking-only; existing legality remains authoritative'};
+    // Candidate-v5 only observes the fixed rule-ranked choices; its output is
+    // never read by an intent, budget, reserve, legality or target selector.
+    if(opts.shadowRankEnabled&&shadowV5Model&&limited.length){
+      try{
+        const state={home:s.home,maxTroops:s.max,committed:s.committed,
+          incoming:s.incoming,reserve:s.reserve,gold:goldAmount(me),
+          land:number(()=>me.numTilesOwned(),0),capacityUse:s.ratio,
+          frontCount:groups?.length||0};
+        const rankedShadow=limited.map(candidate=>{
+          const f=shadowV5.features(state,{kind:candidate.kind,
+            costTroops:candidate.cost||0,counterRisk:candidate.risk||0,
+            holdProbability:1-Math.min(1,candidate.risk||0)});
+          const outcome=shadowV5.predict(shadowV5Model,f);
+          return {id:candidate.id,heldGain:outcome.heldGain,
+            lossRisk:outcome.lossRisk,score:outcome.heldGain-outcome.lossRisk};
+        }).sort((a,b)=>b.score-a.score||String(a.id).localeCompare(String(b.id)));
+        shadowDecisionEvidence={tick,ruleChoice:selected?.id??null,
+          wouldPrefer:rankedShadow[0]?.id??null,ranked:rankedShadow,
+          changedIntent:false,evidence:'shadow-only; not observed game effect'};
+        if(tick%100<4)telemetry('neural_shadow_rank',
+          'Schema-5-Vorschlag nur protokolliert',shadowDecisionEvidence);
+      }catch(e){shadowDecisionEvidence={tick,error:String(e?.message||e),
+        changedIntent:false};}
+    }
     return planningState;
   }
   // Observed behaviour is evidence, not knowledge of a human's intentions.
@@ -7029,7 +7110,7 @@
             botEmbargoes:[...botEmbargoes],assessments:tradeAssessments},strategicTelemetry,
           attackBlockReport,crisisTrend,neuralEvidence:{...neuralEvidence,model:neuralModelInfo()},
           neuralDecisionEvidence,coreFunding,economyProbe:lastEconomyProbeReport,
-          economyBudgetEvidence,
+          economyBudgetEvidence,shadowDecisionEvidence,
            director:lastDirectorDecision,economyPosture:lastEconomyPosture,
           forecastAudit:lastForecastAudit,
           recentIncomeSamples:incomeAttribution.slice(-4).map(v=>({...v})),
@@ -7139,7 +7220,7 @@
         opts.fullAuto=!opts.fullAuto;
         if(opts.fullAuto){opts.autoStrategy=true;autoTuning.tick=-Infinity;}
       }else if(key==='autoStrategy'&&opts.fullAuto){opts.fullAuto=false;opts.autoStrategy=false;}
-      else if(['economy','boats','autoSpawn','defense','stopOnError','upgrades','safeMode','autoStrategy','diplomacy','offerAlliances','nukes','antiNuke','lateOffense','impossibleMode','impossibleExperiment','learningEnabled','neuralEnabled','duoEnabled','evidenceMode'].includes(key)){
+      else if(['economy','boats','autoSpawn','defense','stopOnError','upgrades','safeMode','autoStrategy','diplomacy','offerAlliances','nukes','antiNuke','lateOffense','impossibleMode','impossibleExperiment','learningEnabled','neuralEnabled','duoEnabled','evidenceMode','shadowRankEnabled'].includes(key)){
         opts[key]=!opts[key];
         if(key==='duoEnabled'){
           duoLocal.peer=null;duoLocal.lastAt=0;duoLocal.match=null;
@@ -7225,6 +7306,8 @@
       <div style="color:#a9efc9">Start_Live_Duo.bat starten · Port 8767 · nur Raumcode in beiden Browsern gleich · Bündnis gilt erst nach Bestätigung im Spiel · Relay-Ausfall ⇒ beide spielen autonom weiter.</div>
       </details>
       <details data-section="neural"${openFor('neural')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Neurales Modell</summary>
+      <div>${b('shadowRankEnabled',opts.shadowRankEnabled?'Schema-5 Shadow AN':'Schema-5 Shadow AUS')}</div>
+      <div style="color:#9bd0e4">Shadow: ${shadowV5Model?'Schema 5 geladen, nur Vergleich':'kein Schema-5-Kandidat geladen'} · ${escapeHTML(shadowDecisionEvidence?.wouldPrefer??'—')} (ohne Aktionswirkung)</div>
       <div style="color:#9bd0e4">Inferenz: ${escapeHTML(neuralModelInfo().fingerprint||'kein Modell')} · Signale ${neuralEvidence.nonzero}/${neuralEvidence.calls} · Ranking ${neuralEvidence.actionNonzero}/${neuralEvidence.actionCalls}</div>
       <div style="color:#9bd0e4">Neurales Modell: ${neuralModel?.schema===4?'Strategische Policy v4 (24 Signale)':neuralModel?.schema===3?'Strategische Policy v3 (16 Signale)':neuralModel?.schema===2?'Aktionsranking (max. ±14 Punkte)':neuralModel?.schema===1?'Slider (max. ±8 Punkte)':'nicht geladen'} · nur bei freigegebener Partie</div>
       </details>
