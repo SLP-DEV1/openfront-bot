@@ -31,6 +31,11 @@ jobs:
           git -C ../OpenFrontIO checkout --detach bb8af015b515b3b717bd4d901074c5f4c16641cb
           cd ../OpenFrontIO
           npm ci --ignore-scripts
+      - name: Verify official City/Factory troop capacity on pinned engine
+        run: |
+          node tools/benchmark/engine-capacity-smoke.mjs \
+            --engine ../OpenFrontIO \
+            --engineCommit bb8af015b515b3b717bd4d901074c5f4c16641cb
       - name: Run actual official-engine Impossible game (integration smoke)
         run: |
           node -e "require('fs').writeFileSync('zero-policy.json', JSON.stringify(require('./trainer/action-policy.cjs').zero()))"
