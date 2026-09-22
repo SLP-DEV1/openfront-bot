@@ -44,4 +44,36 @@ assert.throws(()=>parse(['--engine','/tmp/engine','--ticks','NaN']),/Invalid tic
 assert.throws(()=>parse(['--engine','/tmp/engine','--seed','../oops']),/Seed/);
 assert.throws(()=>parse(['--engine','/tmp/engine','--mystery','1']),/Unknown option/);
 assert.throws(()=>parse(['--engine','/tmp/engine','--profile','nope']),/Unknown profile/);
+// P6 league planning regression: a temporary *pinned* git repository suffices
+// for a dry-run. This must never execute a match or claim a victory.
+{
+  const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+  const {execFileSync}=require('node:child_process');
+  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'aggro-league-plan-'));
+  try {
+    const engine=path.join(temp,'engine'),output=path.join(temp,'league');
+    fs.mkdirSync(engine);
+    const git=(...argv)=>execFileSync('git',['-C',engine,...argv],
+      {encoding:'utf8'}).trim();
+    git('init','-q');
+    git('-c','user.name=Regression','-c','user.email=regression@example.invalid',
+      'commit','--allow-empty','-qm','test engine pin');
+    const commit=git('rev-parse','HEAD');
+    const runner=path.join(__dirname,'../tools/benchmark/league.cjs');
+    execFileSync(process.execPath,[runner,'--engine',engine,
+      '--engineCommit',commit,'--out',output,'--seeds','league-test-01,league-test-02',
+      '--profiles','balanced','--opponents','rush'],{encoding:'utf8'});
+    const report=JSON.parse(fs.readFileSync(path.join(output,'league.json'),'utf8'));
+    assert.equal(report.engineCommit,commit);
+    assert.match(report.botSHA256,/^[a-f0-9]{64}$/);
+    assert.equal(report.matches.length,2);
+    assert.equal(new Set(report.matches.map(m=>m.id)).size,2);
+    assert(report.matches.every(m=>m.status==='not-run'&&m.outcome==='unknown'));
+    assert(!fs.existsSync(path.join(output,report.matches[0].relativeOutput,'match.json')),
+      'dry-run must not fabricate game results');
+    assert.throws(()=>execFileSync(process.execPath,[runner,'--engine',engine,
+      '--engineCommit',commit,'--out',output],{stdio:'pipe'}),
+      'cannot overwrite existing provenance report');
+  } finally {fs.rmSync(temp,{recursive:true,force:true});}
+}
 console.log('PASS benchmark report isolation, censored results, lifetime counters and CLI validation');
