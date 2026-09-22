@@ -27,6 +27,12 @@ function assertMatch(report,scenario,expected){
   fail(meta?.botSHA256===expected.botSHA256,'bot SHA-256 mismatch');
   fail(meta?.seed===scenario.seed,'seed mismatch');
   fail(meta?.scriptedHumans===scenario.scriptedHumans,'scripted humans mismatch');
+  fail(meta?.gameConfig?.gameMap===scenario.map,'game map mismatch');
+  fail(meta?.gameConfig?.gameMapSize==='Compact','game map size mismatch');
+  fail(meta?.gameConfig?.difficulty==='Impossible','difficulty mismatch');
+  fail(meta?.gameConfig?.gameType==='Private','game type mismatch');
+  fail(meta?.opponentProfile===scenario.opponentProfile,'opponent profile mismatch');
+  fail(meta?.maxTicks===expected.ticks,'tick limit mismatch');
   fail(meta?.gameConfig?.gameMode===(scenario.gameMode==='Team'?'Team':'Free For All')||
     meta?.gameConfig?.gameMode===scenario.gameMode,'game mode mismatch');
   fail(run?.failure==null&&run?.termination!=='error','engine failure');
@@ -101,7 +107,7 @@ function main(argv=process.argv.slice(2)){
     if(fs.existsSync(path.join(dir,'match.json'))){
       try{
         const report=JSON.parse(fs.readFileSync(path.join(dir,'match.json'),'utf8'));
-        item.errors.push(...assertMatch(report,item,{engineCommit:opts.engineCommit,botSHA256}));
+        item.errors.push(...assertMatch(report,item,{engineCommit:opts.engineCommit,botSHA256,ticks:opts.ticks}));
         item.termination=report.run?.termination??'unknown';
         item.samples=report.trajectory?.samples?.length??0;
       }catch(e){item.errors.push('invalid match report: '+e.message);}
