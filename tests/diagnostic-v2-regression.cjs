@@ -13,6 +13,12 @@ for(const [name,script] of [['Solo',source],['Run3',run3]]){
   assert.match(script,/personalEliminationTick:gameEnd\?\.personalEliminated\?gameEnd\.tick:null/,name+' personal elimination');
   assert.match(script,/matchEndTick:game\?\.gameOver\?\.\(\)/,name+' match end');
   assert.match(script,/dropped:diagnosticV2\.dropped/,name+' overflow accounting');
-  assert.match(script,/sessionStorage\.setItem\('aggrobot-diagnostic-v2'/,name+' tab persistence');
+  assert.match(script,/sessionStorage\.setItem\('aggrobot-diagnostic-v2-meta'/,name+' tab checkpoint');
+  assert.match(script,/indexedDB\.open\('aggrobot-diagnostic-v2',1\)/,name+' full IndexedDB journal');
+  assert.match(script,/\['events\.jsonl',jsonl\(sorted\)\]/,name+' full event stream');
+  assert.match(script,/\['snapshots\.jsonl',jsonl\(snapshot\)\]/,name+' snapshot stream');
+  assert.match(script,/\['duo\.jsonl',jsonl\(duo\)\]/,name+' duo stream');
+  assert.match(script,/diagnosticZip\(files\)/,name+' single ZIP');
+  assert.match(script,/void exportDiagnosticPackage\(true\)/,name+' automatic end export');
 }
 console.log('PASS diagnostic v2 journal, identity, duo transitions and Run3 parity markers');
