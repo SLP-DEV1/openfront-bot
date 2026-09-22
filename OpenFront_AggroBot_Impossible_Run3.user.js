@@ -1616,6 +1616,25 @@
     return {target:id,own,ally,needed,enemy,front,
       strikeTick:duoPlan?.strikeTick??null};
   }
+  function duoTeamDecision(v){
+    const ownBudget=Math.max(0,Math.floor(Math.min(v.ownAvailable||0,
+      (v.ownHome||0)*.72)));
+    const partnerBudget=Math.max(0,Math.floor(Math.min(v.partnerAvailable||0,
+      (v.partnerHome||0)*.55)));
+    const role=v.invasion?(v.partnerNeeds?'support':'defend'):
+      v.sharedJoint&&v.bothReady?'joint-attack':
+      v.separatedFronts&&ownBudget>=Math.max(1200,(v.ownHome||0)*.12)?
+        'independent-front':v.partnerWarning>0?'hold':'build';
+    const reason=v.invasion?'observed-invasion':
+      v.sharedJoint&&v.bothReady?'confirmed-common-front-and-budgets':
+      v.separatedFronts?'confirmed-separated-fronts':
+      v.partnerWarning>0?'partner-early-warning':'no-safe-joint-window';
+    return Object.freeze({role,reason,ownBudget,partnerBudget,
+      ownReserve:v.ownReserve||0,partnerReserve:v.partnerReserve||0,
+      partnerIncoming:v.partnerIncoming||0,
+      combinedBudget:ownBudget+partnerBudget,
+      permission:'advisory-only-own-engine-check-required'});
+  }
   function coordinateDuo(me,s,tick){
     let duo=rankedDuo(me);
     const connectedPeer=duoTrustedPeer();
@@ -1717,6 +1736,12 @@
     const partnerFronts=Array.isArray(local?.state?.fronts)?local.state.fronts:[];
     const separatedFronts=!!local&&ownFronts.length>0&&partnerFronts.length>0&&
       !ownFronts.some(g=>partnerFronts.includes(g.id));
+    // Advisory team allocator; never counts ally troops as our own budget.
+    // Independent-front decisions cannot authorize an unsafe joint strike.
+    const teamDecision=duoTeamDecision({invasion,partnerNeeds,bothReady,
+      separatedFronts,sharedJoint,partnerWarning,ownAvailable:s.available,
+      ownHome:s.home,ownReserve:s.reserve,partnerAvailable:local?.state?.available,
+      partnerReserve:local?.state?.reserve,partnerHome,partnerIncoming:incoming});
     const role=danger?'Heimat verteidigen':
       partnerNeeds?'Partner unter Druck unterstützen':
       strikeTick!==null?(tick<strikeTick?'Gemeinsamen Angriff vorbereiten':
@@ -1732,7 +1757,8 @@
       targetName:shared?nameOf(shared):'Kein Gegner',role,
       partnerCommitted:active?.on||0,partnerIncoming:incoming,
       partnerHome,needHelp:partnerNeeds,partnerWarning,
-      partnerReady:!!local?.state?.ready,separatedFronts,strikeTick,
+      partnerReady:!!local?.state?.ready,separatedFronts,
+      teamDecision,strikeTick,
       planId:strikeTick===null||!shared?null:
         String(safeID(shared)).slice(0,96)+':'+String(strikeTick),
       expiresTick:strikeTick===null?null:strikeTick+110,
@@ -5618,17 +5644,52 @@
       Math.hypot(game.x(a)-game.x(b),game.y(a)-game.y(b))<115;
     return observations.some(v=>near(v.tile,source)||near(v.tile,dest));
   }
+  // Bounded water-only shortest-route probe; destination itself is land.
+  // ETA range is a heuristic, not official movement speed or engine pathfinding.
+  function navalRouteEstimate(source,dest,maxVisited=1800){
+    if(!Number.isInteger(source)||!Number.isInteger(dest)||
+      !game?.isWater?.(source))return null;
+    const adjacent=[];
+    try{const n=game.neighbors4(dest,adjacent);
+      if(!Number.isInteger(n)||n<1)return null;
+      const targets=new Set(adjacent.slice(0,n).filter(t=>game.isWater(t)));
+      if(!targets.size)return null;
+      const queue=[source],previous=new Map([[source,null]]);
+      for(let head=0;head<queue.length&&head<maxVisited;head++){
+        const tile=queue[head];
+        if(targets.has(tile)){
+          const path=[];let cursor=tile;
+          while(cursor!==null){path.push(cursor);cursor=previous.get(cursor);}
+          path.reverse();
+          const waterSteps=path.length-1;
+          return {waterSteps,etaTicksRange:[waterSteps,waterSteps*6],
+            etaMethod:'uncalibrated-water-steps-proxy',path};
+        }
+        const next=[];const n=game.neighbors4(tile,next);
+        for(const neighbor of next.slice(0,n))if(!previous.has(neighbor)&&
+          game.isWater(neighbor)){
+          previous.set(neighbor,tile);queue.push(neighbor);
+        }
+      }
+    }catch(_){}
+    return null;
+  }
   function navalRouteRisk(me,source,dest){
     if(!Number.isInteger(source)||!Number.isInteger(dest))return 'unknown-departure';
     const distance=(a,b)=>Math.hypot(game.x(a)-game.x(b),game.y(a)-game.y(b));
     const ships=(game.units?.()||[]).filter(u=>u.isActive?.()&&
       !u.isUnderConstruction?.()&&u.type?.()==='Warship'&&Number.isInteger(u.tile?.()));
     const escorts=ships.filter(u=>safeID(u.owner?.())===safeID(me));
-    // Straight corridor is a screening proxy, not a claim to know the route.
+    // Prefer real connected water tiles when the bounded search resolves a
+    // path; unknown routes retain the old conservative straight-line proxy.
+    const estimate=navalRouteEstimate(source,dest);
+    const route=estimate?.path;
     const ax=game.x(source),ay=game.y(source),dx=game.x(dest)-ax,dy=game.y(dest)-ay;
     const length2=dx*dx+dy*dy;
     const nearRoute=u=>{
       const x=game.x(u.tile()),y=game.y(u.tile());
+      if(route)return route.some(tile=>Math.hypot(x-game.x(tile),
+        y-game.y(tile))<70);
       const t=length2?clamp(((x-ax)*dx+(y-ay)*dy)/length2,0,1):0;
       return Math.hypot(x-ax-t*dx,y-ay-t*dy)<70;
     };
@@ -5780,7 +5841,13 @@
           fresh.ratio<.47)continue;
         const ship=legal?.buildableUnits?.find(x=>x.type==='Transport'&&Number.isInteger(x.canBuild));
         if(!ship || (goldAmount(me)<Number(ship.cost)&&!game.config().infiniteGold?.()))continue;
+        const routeEstimate=navalRouteEstimate(ship.canBuild,dest);
         const routeRisk=navalRouteRisk(me,ship.canBuild,dest);
+        if(routeEstimate)
+          telemetry('marine_eta_proxy','Wasserroute als Näherung berechnet',
+            {target:safeID(current),dest,waterSteps:routeEstimate.waterSteps,
+              etaTicksRange:routeEstimate.etaTicksRange,
+              etaMethod:routeEstimate.etaMethod});
         if(routeRisk||navalHomeRisk(me,number(()=>game.ticks(),tick))){
           decisionNote('marine-pause','Landung nach Sicherheitsprüfung zurückgestellt',
             [routeRisk||'Heimatlage hat sich verändert'],tick);
