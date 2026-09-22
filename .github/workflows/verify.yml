@@ -82,6 +82,10 @@ jobs:
           node --check tools/benchmark/holdout-evidence.cjs
           node --check tools/benchmark/holdout-eval.mjs
           node tests/holdout-regression.cjs
+      - name: Check V3 map breakdown export
+        run: |
+          node --check tools/benchmark/v3-map-breakdown.mjs
+          node tests/v3-map-breakdown-regression.cjs
       - name: Test neural trainer and deployer
         run: |
           node --check trainer/train.mjs
