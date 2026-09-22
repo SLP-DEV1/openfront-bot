@@ -54,6 +54,13 @@ Workflow-Durchlauf ist erst nach GitHub-Resultat belegt.
 - **P4 / #72:** Bei getrennten bestätigten Landfronten wird ein eigenständiger, budget-/reservesensitiver Rollenhinweis mit `separatedFronts` und `strikeStatus: independent-fronts` angezeigt. Es wird **kein** gemeinsamer Starttick und keine Angriffsfreigabe ohne die vorhandenen individuellen Engine-/Allianzchecks erzeugt.
 - **Auf Nutzerwunsch ohne Langzeit-, Zwei-Client-, Liga- oder Wirkungstests umgesetzt.** Keine Aussage über neue Siegquote, Marineerfolg oder P5-Gesamtabnahme. Der unveränderte Champion wird weiterhin deterministisch gebündelt.
 
+## P4–P6 Implementierungsnachtrag (ohne angeforderte Langzeit-/Wirkungstests)
+
+- **P4 / #72:** `duoTeamDecision()` liefert getrennte Heim-/Partnerbudgets, Reserven, eingehende Angriffe, Rollen `support/defend/joint-attack/independent-front/hold/build` und Begründung. Das ist eine **beratende** gemeinsame Entscheidung, keine zusätzliche Berechtigung zum Senden. Bestätigte Allianz, Frische und lokale Engine-Legalität bleiben maßgeblich.
+- **P5 / #73:** `navalRouteEstimate()` sucht begrenzt auf Wasserfeldern mit vier Nachbarn bis zu 1.800 geprüften Feldern und verwendet den berechneten Weg für sichtbare Warship-Nähe. Bei unbekannter Route bleibt die konservative direkte Prüfung. Das ETA-Intervall ist ausdrücklich eine **unkalibrierte Wasserweg-Heuristik**, keine behauptete Engine-Geschwindigkeit oder gesicherte Landungszeit.
+- **P6 / #74:** `tools/benchmark/league.cjs` erstellt reproduzierbare Paarungen und kann die vorhandene Engine/GameView-Benchmark nach Profil und skriptgesteuertem Gegnertyp ausführen; jede Partie erhält Seed, Engine-Pin, Bot-Hash und eigenes Ergebnis. **Noch keine Liga aus vollständigen Bot-Gegnern**, kein automatischer Modellaufstieg und keine Siege ohne durchgeführte Partien.
+- **Auf Nutzerwunsch wurden keine Langzeit-, Zwei-Client-, Liga- oder Wirkungstests durchgeführt.** Auch P4–P6 sind als Gesamtphasen noch nicht abgenommen.
+
 ## Status-Legende und Abnahmeregel
 
 - **Im Code vorhanden:** Ein bereits implementierter Baustein; **nicht** dass die Phase abgeschlossen ist.
