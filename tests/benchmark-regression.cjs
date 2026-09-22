@@ -9,7 +9,7 @@ const base={bot:'1.10.9',gameType:'Singleplayer',difficulty:'Medium',
     scriptedHumans:0,opponentProfile:'balanced',maxTicks:18000,
     gameConfig:{bots:40,nations:8}},
   gameEnd:{outcome:'victory',land:100,tick:300},
-  recording:{total:1500,counts:{attack_confirmed:32},dropped:100,complete:true},records:[]};
+  recording:{total:1500,counts:{attack_confirmed:32},dropped:0,complete:true},records:[]};
 const copy=x=>JSON.parse(JSON.stringify(x));
 const other=copy(base);other.benchmarkMeta.botSHA256='new';
 assert.equal(compare([summarize(base),summarize(other)]).length,1);
@@ -39,8 +39,11 @@ for(const outcome of ['incomplete','unknown']){
   assert.equal(compare([summarize(base),summarize(changed)]).length,0);
 }
 assert.equal(summarize(base).attackConfirmed,32,'lifetime counters survive ring truncation');
-assert.equal(summarize(base).recordingComplete,false,
+const dropped=copy(base);dropped.recording.dropped=100;
+assert.equal(summarize(dropped).recordingComplete,false,
   'explicit complete cannot override 100 dropped records');
+assert.equal(compare([summarize(dropped),summarize(other)]).length,0,
+  'a completed game with dropped records is not a verified pair');
 assert.equal(summarize({...base,recording:{complete:true,dropped:0,streamErrors:0}}).recordingComplete,true);
 assert.equal(summarize({...base,recording:{complete:true,dropped:0,streamErrors:1}}).recordingComplete,false);
 assert.equal(summarize({...base,recording:{complete:true}}).recordingComplete,null,
@@ -48,6 +51,8 @@ assert.equal(summarize({...base,recording:{complete:true}}).recordingComplete,nu
 assert.equal(summarize({...base,recording:{dropped:0}}).recordingComplete,null,
   'zero drops without completion confirmation is unknown');
 assert.equal(summarize({...base,recording:undefined}).recordingComplete,null);
+assert.equal(compare([summarize({...base,recording:undefined}),summarize(other)]).length,0,
+  'unknown recording completeness cannot establish a paired result');
 assert.equal(summarize({...base,gameEnd:null,finalState:{land:55},run:{tick:100}}).finalLand,55);
 assert.throws(()=>parse(['--engine','/tmp/engine','--ticks','NaN']),/Invalid ticks/);
 assert.throws(()=>parse(['--engine','/tmp/engine','--seed','../oops']),/Seed/);
