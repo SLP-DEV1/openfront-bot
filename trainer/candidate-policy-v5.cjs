@@ -32,8 +32,10 @@ function features(state={},candidate={}){
 }
 function validate(model){
   if(!model||model.schema!==5||model.arch!=='32x20x2-tanh'||
+    !Array.isArray(model.outputs)||model.outputs.length!==OUTPUTS||
+    model.outputs[0]!=='heldGain'||model.outputs[1]!=='lossRisk'||
     !Array.isArray(model.weights)||model.weights.length!==LENGTH||
-    model.weights.some(x=>!Number.isFinite(x)||Math.abs(x)>5))
+    Array.from(model.weights).some(x=>!Number.isFinite(x)||Math.abs(x)>5))
     throw Error('Invalid schema-5 candidate model');
   return model;
 }
