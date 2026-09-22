@@ -118,16 +118,17 @@ for(const match of matches){
  const expectedFull=values.fullBots?participants:0;
  const hashesValid=!values.fullBots||game?.fullBots?.length===expectedFull&&
    game.fullBots.every((p,i)=>p.botSHA256===(i<participants/2?botHash:opponentHash));
- const originValid=game?.benchmarkMeta?.engineCommit===engineHash&&
-   game?.benchmarkMeta?.seed===match.seed&&
-   game?.benchmarkMeta?.maxTicks===ticks&&
-   game?.benchmarkMeta?.gameConfig?.gameMode===
-     (values.gameMode==='FFA'?'Free For All':'Team')||
-   game?.benchmarkMeta?.engineCommit===engineHash&&
-   game?.benchmarkMeta?.seed===match.seed&&game?.benchmarkMeta?.maxTicks===ticks&&
-   game?.benchmarkMeta?.gameConfig?.gameMode===values.gameMode;
+ const meta=game?.benchmarkMeta,cfg=meta?.gameConfig;
+ const allowedMode=values.gameMode==='FFA'?['FFA','Free For All']:['Team'];
+ const originValid=meta?.engineCommit===engineHash&&
+   meta?.seed===match.seed&&meta?.maxTicks===ticks&&
+   meta?.gameMap===values.map&&meta?.gameMapSize===values.size&&
+   cfg?.gameType==='Private'&&cfg?.difficulty===values.difficulty&&
+   allowedMode.includes(cfg?.gameMode)&&
+   meta?.scriptedHumans===(values.fullBots?0:4);
  match.status=result.status===0&&!result.error&&game&&hashesValid&&originValid&&
-   game.recording?.complete===true?'recorded':'failed';
+   game.recording?.complete===true&&game.run?.failure==null&&
+   game.run?.spawned===true?'recorded':'failed';
  match.outcome=game?.gameEnd?.outcome??'unknown';
  match.fullBots=game?.fullBots?.map(m=>({clientID:m.clientID,
    botSHA256:m.botSHA256,profile:m.profile,teamIndex:m.teamIndex,
@@ -137,6 +138,8 @@ for(const match of matches){
  match.error=!originValid&&game?'game provenance mismatch':
    !hashesValid&&game?'participant bundle hash mismatch':
    game?.recording?.complete!==true?'recording incomplete':
+   game?.run?.failure?'engine execution failure':
+   game?.run?.spawned!==true?'bot not spawned':
    result.error?.message??(result.status===0?null:
    (result.stderr||'Benchmark subprocess failed').slice(-2000));
  save();
