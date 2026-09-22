@@ -60,6 +60,11 @@ Workflow-Durchlauf ist erst nach GitHub-Resultat belegt.
 - Eine später wiederaufgenommene Session liest den letzten bestätigten Sequenzzähler und das ursprüngliche Verzeichnis aus `status.json`, damit alte Ereignisse nicht doppelt protokolliert werden. Vollständige ID wird trotz gekürztem Verzeichnis-Hash überprüft.
 - Regression für 51 nacheinander beendete Matches bei parallel aktiver alter Session und für Replay/Wiederaufnahme ergänzt. CI-/Integrationsergebnis siehe PR #85; keine Behauptung zu Engine-/Multiplayer- oder gesamten P0/P6-Abnahmen.
 
+## P0/P5 – Marine-Regression nach lokaler Beobachtung (PR #87)
+
+- Der historische Marine-Test hat die frühere globale Sperre durch den kumulativen `transportUnresolved`-Zähler verlangt; der aktuell implementierte Schutz basiert dagegen auf frischen, örtlich zuordenbaren `landingFailure`-Beobachtungen. Die Regression prüft jetzt nahes Risiko, eigene Eskorte, andere Routen und Ablauf nach 900 Ticks.
+- [PR #87](https://github.com/SLP-DEV1/openfront-bot/pull/87), [vollständig grüner Verify-Workflow](https://github.com/SLP-DEV1/openfront-bot/actions/runs/35672532125) und [Merge c85b998](https://github.com/SLP-DEV1/openfront-bot/commit/c85b998529fbd70622b1266ef4d981f063a18d1a). Diese Regression ist keine Abnahme des vollständigen P0/P5-Engine- und Multiplayerpakets.
+
 ## Status-Legende und Abnahmeregel
 
 - **Im Code vorhanden:** Ein bereits implementierter Baustein; **nicht** dass die Phase abgeschlossen ist.
