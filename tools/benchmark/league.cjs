@@ -89,7 +89,7 @@ for(const match of matches){
      {bot,profile:match.profile,teamIndex:0},
      {bot:opponentBot,profile:match.opponent,teamIndex:1}];
    const lineupFile=path.join(dir,'lineup.json');
-   fs.writeFileSync(lineupFile,JSON.stringify(lineup,null,2)+'\\n');
+   fs.writeFileSync(lineupFile,JSON.stringify(lineup,null,2)+'\n');
    command=path.join(__dirname,'engine-multibot.mjs');
    argv=['--lineup',lineupFile,'--gameType','Private',
      '--gameMode',values.gameMode,'--bots','0','--nations','0',
