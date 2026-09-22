@@ -1498,6 +1498,14 @@ function predict(model,input){
     const candidate=spawnCache?.tile??null,spawn=me?.state?.spawnTile;
     const tick=number(()=>game?.ticks?.(),0);
     const help=!!(state&&state.incoming>Math.max(1200,state.home*.1));
+    const trend=armyTrend(tick);
+    const earlyCrisis=!!(state&&(
+      state.incoming>=Math.max(500,state.home*.025)||
+      state.strongest>=state.home*.9||
+      (trend?.ticks>=60&&trend.tiles<-
+        Math.max(100,number(()=>me.numTilesOwned(),0)*.03))||
+      (crisisTrend&&tick<crisisTrend.expires&&
+        (crisisTrend.lostLand>0||crisisTrend.lostAssets>0))));
     if(diagnosticHelpId&&tick>=diagnosticHelpDeadline)
       diagnosticCloseHelp('deadline',tick);
     if(help&&!diagnosticHelpId){
@@ -1543,6 +1551,9 @@ function predict(model,input){
         state.ratio>=.38&&!state.activeEnemy&&
         state.available>=Math.max(1200,state.home*.09)),
       needHelp:!!(state&&state.incoming>Math.max(1200,state.home*.1)),
+      earlyCrisis,land:number(()=>me?.numTilesOwned?.(),0),
+      cities:(me?.units?.()||[]).filter(u=>u.isActive?.()&&u.type?.()==='City').length,
+      factories:(me?.units?.()||[]).filter(u=>u.isActive?.()&&u.type?.()==='Factory').length,
       helpRequestId:diagnosticHelpId,helpSinceTick:diagnosticHelpSince,
       helpDeadlineTick:diagnosticHelpDeadline,
       helpShortfall:diagnosticHelpId&&state?
@@ -2338,8 +2349,8 @@ function predict(model,input){
     const partnerWarning=Math.max(duoWarningLevel(
       {home:partnerHome,incoming,strongest:0},tick),
       local?.state?.warning||0);
-    const partnerNeeds=incoming>Math.max(1200,partnerHome*.10)||
-      local?.state?.warning===2;
+    const partnerNeeds=incoming>Math.max(1200,partnerHome*.035)||
+      local?.state?.earlyCrisis===true||local?.state?.warning===2;
     const invasion=danger||partnerNeeds||
       (crisisTrend&&tick<crisisTrend.expires&&
         (crisisTrend.lostLand>0||crisisTrend.lostAssets>0));
@@ -2428,6 +2439,8 @@ function predict(model,input){
       targetName:shared?nameOf(shared):'Kein Gegner',role,
       partnerCommitted:active?.on||0,partnerIncoming:incoming,
       partnerHome,needHelp:partnerNeeds,partnerWarning,
+      partnerEarlyCrisis:local?.state?.earlyCrisis===true,
+      partnerLand:local?.state?.land??null,
       partnerReady:!!local?.state?.ready,separatedFronts,
       teamDecision,strikeTick,
       partnerAck:!!(planId&&local?.state?.ackPlanId===planId),
@@ -6361,7 +6374,8 @@ function predict(model,input){
   function teamSupport(me,tick,s){
     const peer=duoTrustedPeer();
     const local=peer&&actualFriendly(peer.player,me)?peer:null;
-    const warning=local?.state?.warning||0;
+    const warning=Math.max(local?.state?.warning||0,
+      local?.state?.earlyCrisis?1:0);
     const donationCooldown=local?(warning>=2?90:warning>=1?160:240):300;
     if((winStatus.mode!=='Team'&&!local)||tick-lastDonation<donationCooldown||
       !actionBudget())return false;
@@ -6380,8 +6394,10 @@ function predict(model,input){
       const ownDanger=duoWarningLevel(s,tick)>0;
       // Donating from two symmetric bots must not form a back-and-forth
       // loop. Only donate on observed pressure and concrete troop shortage.
-      const critical=warning>=2||inbound>partnerHome*.25;
-      const recoveryNeed=warning>=2&&inbound===0&&s.home>partnerHome*1.35?
+      const critical=warning>=2||inbound>partnerHome*.12;
+      const recoveryNeed=warning>=1&&inbound===0&&s.home>partnerHome*1.35&&
+        number(()=>partner.numTilesOwned(),0)<
+          number(()=>me.numTilesOwned(),0)*.65?
         Math.min(partnerHome*.20,s.home*.07):0;
       const shortage=Math.max(0,inbound*1.55-partnerHome,
         inbound>partnerHome*.06?inbound*.18:0,recoveryNeed);
@@ -6390,7 +6406,7 @@ function predict(model,input){
       const safe=Math.max(0,Math.floor(s.home-floor));
       const amount=Math.floor(Math.min(shortage,
         s.available*(critical?.32:.22),s.home*(critical?.14:.10),safe));
-      if(!ownDanger&&(inbound>partnerHome*.06||recoveryNeed>=1000)&&
+      if(!ownDanger&&(inbound>partnerHome*.025||recoveryNeed>=1000)&&
         amount>=1000&&
         ctors.donateTroops&&(!me.canDonateTroops||me.canDonateTroops(partner))&&
         send('donateTroops',[partner,amount],
