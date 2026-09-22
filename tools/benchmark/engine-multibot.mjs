@@ -5,6 +5,8 @@ import vm from 'node:vm';
 import {createRequire} from 'node:module';
 import {pathToFileURL} from 'node:url';
 import common from './common.cjs';
+const localRequire=createRequire(import.meta.url);
+const relay=localRequire('../duo-relay.cjs');
 import policyModel from '../../trainer/policy.cjs';
 import actionModel from '../../trainer/action-policy.cjs';
 import strategicModel from '../../trainer/strategic-policy.cjs';
@@ -68,7 +70,7 @@ const players=[...members.map(m=>({clientID:m.clientID,
   }))];
 const start={gameID:opts.seed,lobbyCreatedAt:0,players,config};
 const loader=new NodeGameMapLoader(path.join(opts.engine,'resources/maps'));
-let update=null,fatal=null,now=0,queue=[],observedWinner=null;
+let update=null,fatal=null,now=0,observedWinner=null;
 const recordsFile=fs.openSync(path.join(dir,'events.jsonl'),'wx');
 const intentsFile=fs.openSync(path.join(dir,'turns.jsonl'),'wx');
 let recordsCount=0,emitted=0;
@@ -131,7 +133,6 @@ for(const [name,convert] of Object.entries(adapters)){
    m.emitted++;emitted++;
   });
 }
-let rng=parseInt(common.digest(opts.seed).slice(0,8),16);
 const scriptedStats={intents:0,attacks:0,neutral:0,skipped:0,profiles:{}};
 for(let i=0;i<opts.scriptedHumans;i++)scriptedStats.profiles[profileFor(i)]=(scriptedStats.profiles[profileFor(i)]||0)+1;
 function scriptedHumanIntents(turn){
@@ -171,7 +172,6 @@ function scriptedHumanIntents(turn){
   }
   return out;
 }
-const math=Object.create(Math);math.random=()=>{rng=(Math.imul(rng,1664525)+1013904223)>>>0;return rng/4294967296;};
 class Clock extends Date{constructor(...args){super(...(args.length?args:[now]));}static now(){return now;}}
 for(const m of instances){
  const win={location:{hostname:'localhost'},addEventListener(){},
@@ -184,6 +184,16 @@ for(const m of instances){
  math.random=()=>{m.rng=(Math.imul(m.rng,1664525)+1013904223)>>>0;
    return m.rng/4294967296;};
  const context={window:win,localStorage:m.localStorage,Math:math,Date:Clock,
+  AbortController:class {signal={aborted:false};abort(){this.signal.aborted=true;}},
+  fetch:async(url,options={})=>{
+    if(url!=='http://127.0.0.1:8767/duo'||options.method!=='POST')
+      throw Error('External requests forbidden in engine-multibot');
+    const request=JSON.parse(options.body||'null');
+    const response=relay.validate(request)?relay.exchange(request,now):
+      {status:400,body:{error:'invalid-duo-payload'}};
+    return {ok:response.status===200,status:response.status,
+      json:async()=>response.body};
+  },
   document:{readyState:'loading',body:null,addEventListener(){},
    querySelector:tag=>tag==='control-panel'?{game:m.view,eventBus:m.bus}:null},
   performance:{now:()=>now},console:{info(){},warn:(...args)=>fs.appendFileSync(
@@ -221,13 +231,18 @@ try{
     fs.writeSync(intentsFile,JSON.stringify({turnNumber:turn,intents},(_,v)=>typeof v==='bigint'?v.toString():v)+'\n');
     update=null;runner.addTurn({turnNumber:turn,intents});
     if(!runner.executeNextTick()||fatal||!update)throw Error(fatal||'Engine tick produced no update');
-    for(const m of instances)m.view.update(structuredClone(update));
+    for(const m of instances){globalThis.localStorage=m.localStorage;
+      m.view.update(structuredClone(update));}
     finalTick=view.ticks();
     const winUpdate=Object.values(update.updates).flat().find(u=>u&&Object.hasOwn(u,'winner')&&Object.hasOwn(u,'allPlayersStats'));
     if(winUpdate)observedWinner=winUpdate;
     if(turn%4===0||winUpdate)for(const m of instances){
+      globalThis.localStorage=m.localStorage;
       await m.bot.pump();if(!m.started&&m.bot.status().connected){
-        m.bot.start(common.profiles[m.profile]);m.started=true;}}
+        m.bot.start({...common.profiles[m.profile],
+          ...(gameMode===GameMode.Team?{duoEnabled:true,
+            duoRoom:'BENCH_DUO_TEAM'+(m.teamIndex??0)}:{})});
+        m.started=true;}}
     const me=view.myPlayer();
     for(const m of instances)m.spawned ||= !!m.view.myPlayer()?.hasSpawned();
     if(turn%200===0||winUpdate||!me?.isAlive?.())sampleVisible(turn,me);
