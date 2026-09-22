@@ -436,6 +436,7 @@
   let actionSequence=0,lastActionId=null;
   let monitorSession='';
   let actionLedger=[];
+  let diagnosticLastPeerTick=-Infinity;
   // Diagnostic v2: preserve critical events independently of the 1400-record UI ring.
   // Session storage is tab-scoped and never shares another bot's player identity.
   const diagnosticV2={schemaVersion:2,critical:[],dropped:0,lastDuoStatus:null,
@@ -520,7 +521,7 @@
     })();
     try{await diagnosticStore.flushing;}finally{diagnosticStore.flushing=null;}
   }
-  async function diagnosticReadAll(){
+  async function diagnosticReadAll(session=monitorSession){
     if(diagnosticStore.timer){clearTimeout(diagnosticStore.timer);
       diagnosticStore.timer=null;}
     await diagnosticFlush();
@@ -530,8 +531,8 @@
       const entries=[];
       try{
         const tx=db.transaction('events','readonly');
-        const range=IDBKeyRange.bound([monitorSession,0],
-          [monitorSession,Number.MAX_SAFE_INTEGER]);
+        const range=IDBKeyRange.bound([session,0],
+          [session,Number.MAX_SAFE_INTEGER]);
         const request=tx.objectStore('events').openCursor(range);
         request.onsuccess=()=>{
           const cursor=request.result;
@@ -582,11 +583,14 @@
         tick:record.tick,intent:record.intent,description:message,
         requestedTroops:record.requestedTroops??null,
         quotedCost:record.quotedCost??null,emission:'event-bus',
+        homeBefore:record.home,goldBefore:record.gold,
         observed:'unknown',effect:'unknown'});
       if(actionLedger.length>300)actionLedger.shift();
     }else if(record.actionId&&/^(attack|build|boat|transport)_(confirmed|unconfirmed|arrived|unresolved)$/.test(kind)){
       const action=actionLedger.find(x=>x.actionId===record.actionId);
       if(action){action.observed=kind;action.observedTick=record.tick;
+        action.homeAfterObserved=record.home;
+        action.goldAfterObserved=record.gold;
         action.effect='unknown';}
     }
     recordCounts[kind]=(recordCounts[kind]||0)+1;
@@ -687,13 +691,88 @@
       firstSequence:diagnostics[0]?.seq??null,streamErrors};
     return jsonCopy(details);
   }
-  function exportDiagnostics() {
-    const details=diagnosticSnapshot();
-    const blob=new Blob([JSON.stringify(details,null,2)],{type:'application/json'});
-    const url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download='OpenFront_AggroBot_'+VERSION+'_Diagnose.json';document.body.append(a);a.click();a.remove();
-    setTimeout(()=>URL.revokeObjectURL(url),2000);
+
+  // Stored ZIP: a single download avoids multi-download browser blocking.
+  function diagnosticZip(files){
+    const encoder=new TextEncoder(),locals=[],central=[];
+    const table=new Uint32Array(256);
+    for(let n=0;n<256;n++){let c=n;for(let j=0;j<8;j++)
+      c=c&1?0xedb88320^(c>>>1):c>>>1;table[n]=c>>>0;}
+    const crc32=bytes=>{let c=0xffffffff;for(const b of bytes)
+      c=table[(c^b)&255]^(c>>>8);return (c^0xffffffff)>>>0;};
+    const put16=(view,at,n)=>view.setUint16(at,n,true);
+    const put32=(view,at,n)=>view.setUint32(at,n,true);
+    let offset=0,centralSize=0;
+    if(files.length>65535)throw Error('ZIP entry limit');
+    for(const [name,body] of files){
+      const filename=encoder.encode(name),bytes=encoder.encode(body);
+      if(bytes.length>0xffffffff||offset+bytes.length>0xffffffff)
+        throw Error('Diagnostic ZIP too large');
+      const crc=crc32(bytes),local=new Uint8Array(30),lv=new DataView(local.buffer);
+      put32(lv,0,0x04034b50);put16(lv,4,20);put16(lv,6,0x0800);
+      put16(lv,8,0);put32(lv,14,crc);put32(lv,18,bytes.length);
+      put32(lv,22,bytes.length);put16(lv,26,filename.length);
+      locals.push(local,filename,bytes);
+      const header=new Uint8Array(46),cv=new DataView(header.buffer);
+      put32(cv,0,0x02014b50);put16(cv,4,20);put16(cv,6,20);
+      put16(cv,8,0x0800);put32(cv,16,crc);put32(cv,20,bytes.length);
+      put32(cv,24,bytes.length);put16(cv,28,filename.length);
+      put32(cv,42,offset);
+      central.push(header,filename);
+      offset+=local.length+filename.length+bytes.length;
+      centralSize+=header.length+filename.length;
+    }
+    const ending=new Uint8Array(22),ev=new DataView(ending.buffer);
+    put32(ev,0,0x06054b50);put16(ev,8,files.length);
+    put16(ev,10,files.length);put32(ev,12,centralSize);
+    put32(ev,16,offset);
+    return new Blob([...locals,...central,ending],{type:'application/zip'});
   }
+  function diagnosticDownload(blob,filename){
+    const url=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=url;a.download=filename;document.body.append(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),60000);
+  }
+  let diagnosticAutoExported=false;
+  async function exportDiagnosticPackage(automatic=false){
+    if(automatic){
+      if(diagnosticAutoExported)return;
+      diagnosticAutoExported=true;
+    }
+    const session=monitorSession,summary=diagnosticSnapshot();
+    const rows=await diagnosticReadAll(session);
+    const complete=rows.length===summary.recording.total&&
+      rows.every((row,i)=>row.session===session&&row.seq===i+1)&&
+      diagnosticStore.lost===0&&!diagnosticStore.error;
+    summary.diagnosticV2.journal={
+      ...summary.diagnosticV2.journal,storedRows:rows.length,
+      expectedRows:summary.recording.total,complete,
+      note:complete?'IndexedDB timeline complete':
+        'Timeline incomplete or storage unavailable; do not use as complete evidence'};
+    const sorted=rows.sort((a,b)=>a.seq-b.seq);
+    const jsonl=items=>items.map(x=>JSON.stringify(x)).join('\n')+
+      (items.length?'\n':'');
+    const duo=sorted.filter(x=>/^duo_/.test(x.kind)||
+      x.kind==='action'&&/^DUO/.test(x.message||''));
+    const snapshot=sorted.filter(x=>x.kind==='snapshot');
+    // Compact overview includes the old diagnostic for existing consumers.
+    // No statement of action success is inferred from gold/land deltas.
+    const files=[
+      ['summary.json',JSON.stringify(summary,null,2)],
+      ['events.jsonl',jsonl(sorted)],
+      ['snapshots.jsonl',jsonl(snapshot)],
+      ['duo.jsonl',jsonl(duo)],
+      ['README.txt','OpenFront diagnostic v2 | session='+session+
+        '\ncomplete='+complete+' | event bus emission is not effect proof.'+
+        '\nZIP uses stored entries. Merge browsers by matchId, then playerId and session.\n']
+    ];
+    if(session!==monitorSession)return; // Never label a new match as old.
+    try{diagnosticDownload(diagnosticZip(files),
+      'OpenFront_'+VERSION+'_'+String(summary.diagnosticV2.playerId||'unknown')+
+      '_DiagnoseV2.zip');}
+    catch(e){console.warn(PREFIX,'Diagnosepaket konnte nicht exportiert werden',e);}
+  }
+  function exportDiagnostics(){void exportDiagnosticPackage();}
 
 
   const log = message => {recent.unshift(message);recent=recent.slice(0,7);console.info(PREFIX,message);telemetry('decision',message);};
@@ -931,6 +1010,7 @@
     attackReceipts={confirmed:0,unconfirmed:0,territoryGained:0};blockedTargets.clear();
     attackCommands=[];attackCommandSequence=0;observedAttacks.clear();
     actionSequence=0;lastActionId=null;actionLedger=[];
+    diagnosticAutoExported=false;diagnosticLastPeerTick=-Infinity;
     diagnosticV2.critical=[];diagnosticV2.dropped=0;
     diagnosticV2.lastDuoStatus=null;diagnosticV2.lastDuoPeer=null;
     diagnosticV2.lastDuoAt=null;
@@ -1256,6 +1336,15 @@
           room!==opts.duoRoom||ownID!==safeID(myPlayer()))return;
         duoLocal.peer=data.partner||null;
         duoLocal.lastAt=data.partner?Date.now():0;
+        const duoTick=number(()=>game?.ticks?.(),0);
+        if(duoTick-diagnosticLastPeerTick>=120){
+          diagnosticLastPeerTick=duoTick;
+          telemetry('duo_exchange','Duo-Relay-Zustand gesendet und Antwort empfangen',{
+            ownId:ownID,peerId:data.partner?.id??null,
+            localState:payload.state,peerState:data.partner?.state??null,
+            relayReason:data.reason??null,
+            sharedMatch:match,duoRoom:room});
+        }
         duoLocal.status=data.partner?'Erkannt · '+data.partner.id:
           data.reason==='different-match'?
           'Raumcode gleich, aber Match-Kennung unterscheidet sich':
@@ -5617,7 +5706,8 @@
     navalCooldown.set(targetKey,tick+160);
     fleetStatus='Transport angefordert · Bestätigung ausstehend';
     telemetry('boat_intent','Transport angefordert; wartet auf Spielzustand',
-      {dest,troops,target:targetKey,route:pendingBoat.route});
+      {actionId:pendingBoat.actionId,dest,troops,target:targetKey,
+        route:pendingBoat.route});
     return true;
   }
   // Protect real owned shores from visible incoming transports. BuildUnitIntentEvent
@@ -6480,6 +6570,7 @@
         gameEnd=gameOutcome(game,myPlayer());
         learnFinish(gameEnd.outcome);
         telemetry('game_over','Partie beendet · Bot automatisch gestoppt',{gameEnd});
+        void exportDiagnosticPackage(true);
         if(opts.enabled){opts.enabled=false;generation++;persist();}
       }
       status='Partie beendet · Bot AUS';paint();return;
@@ -6496,6 +6587,7 @@
         if(!team)learnFinish('defeat');
         telemetry('game_over',team?'Eigener Spieler eliminiert · Teamergebnis offen':
           'Eigener Spieler eliminiert · Niederlage',{gameEnd});
+        void exportDiagnosticPackage(true);
       }
       if(opts.enabled){opts.enabled=false;generation++;persist();}
       status='Spieler eliminiert · Bot AUS';paint();return;
