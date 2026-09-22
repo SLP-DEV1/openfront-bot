@@ -41,7 +41,10 @@ const reject=(mutate,reason)=>{
 };
 reject(x=>x.pop(),'missing-or-extra-match');
 reject(x=>x.push(clone(x[0])),'missing-or-extra-match');
-reject(x=>x[0].arm=x[1].arm,'duplicate-scenario-arm');
+reject(x=>{x[0].arm=x[1].arm;
+  x[0].botSHA256=x[1].botSHA256;
+  x[0].policySHA256=x[1].policySHA256;
+},'duplicate-scenario-arm');
 reject(x=>x[0].matchId=x[1].matchId,'missing-or-duplicate-match-id');
 reject(x=>x[0].policySHA256=sha('1'),'provenance-mismatch');
 reject(x=>x[0].engineCommit='a'.repeat(39)+'b','provenance-mismatch');
