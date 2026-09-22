@@ -53,6 +53,8 @@ jobs:
         run: |
           node --check tests/diagnostic-v2-regression.cjs
           node tests/diagnostic-v2-regression.cjs
+          node --check tests/diagnostic-zip-regression.cjs
+          node tests/diagnostic-zip-regression.cjs
       - name: Test bot strategy
         run: node tests/strategy-regression.cjs
       - name: Test match auto-start and panel
