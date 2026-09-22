@@ -10,6 +10,15 @@
 const fs=require('node:fs');
 function count(records,kind){return records.filter(r=>r?.kind===kind).length;}
 function last(records,kind){return [...records].reverse().find(r=>r?.kind===kind)||null;}
+function recordingIntegrity(recording){
+  if(!recording)return null;
+  // An explicit `complete: true` cannot override known loss or stream errors.
+  if(recording.complete===false||recording.dropped>0||recording.streamErrors>0)
+    return false;
+  if(recording.complete===true&&recording.dropped===0&&
+      (recording.streamErrors===undefined||recording.streamErrors===0))return true;
+  return null; // Missing counters are unknown, not proof of completeness.
+}
 function summarize(data,file='<input>'){
   const rec=Array.isArray(data.records)?data.records:[];
   const counts=data.recording?.counts;
@@ -33,7 +42,7 @@ function summarize(data,file='<input>'){
     scriptedHumans:meta.scriptedHumans??null,
     opponentProfile:meta.opponentProfile??null,
     seedSource:meta.seedSource??null,gameConfig:meta.gameConfig??null,maxTicks:meta.maxTicks??null,
-    recordingComplete:data.recording?.complete??(data.recording?data.recording.dropped===0:null),
+    recordingComplete:recordingIntegrity(data.recording),
     recordedEvents:data.recording?.total??rec.length,
     endTick:end?.tick??data.run?.tick??data.finalState?.tick??finale?.tick??null,finalLand,
     attackIntents:total('attack_intent'),
@@ -82,6 +91,7 @@ function findings(row){
   const out=[];
   if(!row.finished)out.push('No verified completed result; exclude from win-rate denominator.');
   if(row.recordingComplete===false)out.push('Recording is incomplete; inspect stream/checkpoint before drawing conclusions.');
+  if(row.recordingComplete===null)out.push('Recording completeness is unknown; do not treat missing counters as a verified stream.');
   if(row.warshipsUnconfirmed>0)out.push(`${row.warshipsUnconfirmed} warship requests lacked confirmation.`);
   if(row.attacksUnconfirmed>0)out.push(`${row.attacksUnconfirmed} attacks lacked confirmation.`);
   if(row.transportSent>row.transportConfirmed)out.push(`${row.transportSent-row.transportConfirmed} transport requests lacked a visible ship.`);
@@ -108,5 +118,5 @@ function main(args){
   if(!json)console.log('Valid paired comparisons:',report.pairedComparisons.length);
 }
 if(require.main===module)main(process.argv.slice(2));
-module.exports={summarize,compare,comparisonKey,findings};
+module.exports={summarize,compare,comparisonKey,findings,recordingIntegrity};
 
