@@ -2534,6 +2534,10 @@ function boot(benchmarkOptions={}) {
       maxTicks:18000,botSHA256:'source-old',profile:'autonomous',
       settings:{fullAuto:true},scriptedHumans:0,opponentProfile:'balanced'});
     current.benchmarkMeta={...base.benchmarkMeta,botSHA256:'source-new'};
+    assert.equal(compare([summarize(base),summarize(current)]).length,0,
+      'metadata alone cannot verify an unrecorded game');
+    base.recording={complete:true,dropped:0,streamErrors:0};
+    current.recording={complete:true,dropped:0,streamErrors:0};
     const verified=compare([summarize(base),summarize(current)]);
     assert.equal(verified.length,1);
     assert.equal(verified[0].matches.length,2);
