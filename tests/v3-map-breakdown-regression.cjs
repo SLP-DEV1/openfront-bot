@@ -238,3 +238,27 @@ for (const pair of PAIRINGS) {
 }
 
 console.log(`PASS v3-map-breakdown: ${MODELS.length * DIFFICULTIES.length} model/difficulty grids (48 each), provenance, grid uniqueness, null-honesty, and ${PAIRINGS.length} paired comparisons verified`);
+
+
+// Issue #105: exercise the exporter's real numeric normalizer against nullish
+// and zero inputs, and confirm missing values do not count toward mean n.
+{
+  const exporter = fs.readFileSync(
+    path.join(__dirname, '..', 'tools', 'benchmark', 'v3-map-breakdown.mjs'), 'utf8'
+  );
+  const vm = require('node:vm');
+  const helper = exporter.match(/const num = \(v\) => \{[\s\S]*?\n\};/);
+  assert.ok(helper, 'exporter must declare the null-honest num helper');
+  const num = vm.runInNewContext(helper[0] + '\nnum;');
+  assert.equal(num(null), null, 'explicit JSON null stays null');
+  assert.equal(num(undefined), null, 'undefined stays null');
+  assert.equal(num(''), null, 'blank string stays null');
+  assert.equal(num('  '), null, 'whitespace-only string stays null');
+  assert.equal(num(0), 0, 'real zero stays zero');
+  assert.equal(num('12.5'), 12.5, 'valid numeric text stays numeric');
+  const values = [num(null), num(undefined), num(0), num(12)];
+  const disclosed = values.filter((x) => x != null);
+  assert.equal(disclosed.length, 2, 'null observations do not increase denominator');
+  assert.equal(disclosed.reduce((a, b) => a + b, 0) / disclosed.length, 6,
+    'real zero contributes to mean and denominator');
+}
