@@ -2255,10 +2255,13 @@ function boot(benchmarkOptions={}) {
     x.b.inspectMarine(x.me,310);
     assert.equal(x.b.state().marineStats.transportConfirmed,1);
     assert.equal(x.b.state().pendingBoat.resolvedDest,42);
-    assert.equal(x.b.state().warState.id,'strong');
+    assert.equal(x.b.state().warState.id,null,
+      'a ship alone must not lock unrelated land fronts');
     x.game.ownerID=()=>1;
     x.b.inspectMarine(x.me,320);
     assert.equal(x.b.state().marineStats.transportArrived,1);
+    assert.equal(x.b.state().warState.id,'strong',
+      'only an observed bridgehead promotes the provisional naval target');
   });
   await check('v1.10.10 naval planner prefers observed enemy coast over inland spawn', async () => {
     const x=boot();x.b.setWar('strong','strong');x.strong.troops=()=>5000;
@@ -2801,6 +2804,10 @@ function boot(benchmarkOptions={}) {
     assert(x.b.state().diagnostics.some(e=>e.kind==='boat_delayed'));
     x.game.units=()=>[];
     x.b.inspectMarine(x.me,960);
+    assert.equal(x.b.state().marineStats.transportUnresolved,0,
+      'disappearance alone is not proof of a failed landing');
+    assert(x.b.state().diagnostics.some(e=>e.kind==='boat_observation_lost'));
+    x.b.inspectMarine(x.me,1080);
     assert.equal(x.b.state().marineStats.transportUnresolved,1);
     assert(x.b.state().navalSiteNegative.some(([tile])=>tile===6));
     assert.equal(x.b.state().marineStats.transportArrived,0);
@@ -4101,6 +4108,47 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.b.decisionFrameFresh(frame,299),false);
     x.me.id=()=> 'another';
     assert.equal(x.b.decisionFrameFresh(frame,301),false);
+  });
+  await check('#133 disappeared ship may own coast during observation window',()=>{
+    const x=boot();x.b.setBoatCtor(class {});
+    assert(x.b.sendMarineTransport(x.me,6,12000,300,
+      'LANDUNG -> strong','player:strong'));
+    x.game.ownerID=t=>t===6?3:1;
+    x.game.units=()=>[{id:()=>91,type:()=> 'Transport',
+      owner:()=>x.me,targetTile:()=>6,tile:()=>42,isActive:()=>true}];
+    x.b.inspectMarine(x.me,310);
+    assert.equal(x.b.state().warState.id,null);
+    x.game.units=()=>[];
+    x.b.inspectMarine(x.me,360);
+    assert.equal(x.b.state().marineStats.transportUnresolved,0);
+    assert(x.b.state().pendingBoat);
+    x.game.ownerID=()=>1;
+    x.b.inspectMarine(x.me,420);
+    assert.equal(x.b.state().marineStats.transportArrived,1);
+    assert.equal(x.b.state().marineStats.transportUnresolved,0);
+    assert.equal(x.b.state().warState.id,'strong');
+    assert.equal(x.b.state().pendingBoat,null);
+  });
+  await check('#133 marine cannot overwrite an existing independent war',()=>{
+    const x=boot();x.b.setBoatCtor(class {});
+    x.b.setWar('weak','weak');
+    assert(x.b.sendMarineTransport(x.me,6,12000,300,
+      'LANDUNG -> strong','player:strong'));
+    x.game.ownerID=t=>t===6?3:1;
+    x.game.units=()=>[{id:()=>92,type:()=> 'Transport',
+      owner:()=>x.me,targetTile:()=>6,tile:()=>42,isActive:()=>true}];
+    x.b.inspectMarine(x.me,310);
+    assert.equal(x.b.state().warState.id,'weak');
+    x.game.units=()=>[];x.b.inspectMarine(x.me,360);
+    x.game.ownerID=()=>1;x.b.inspectMarine(x.me,420);
+    assert.equal(x.b.state().warState.id,'weak');
+  });
+  await check('#133 disabled local Duo exports no stale room or partner',()=>{
+    const x=boot();x.b.opts.duoRoom='stored-room';
+    const snapshot=x.b.diagnosticSnapshot();
+    assert.equal(snapshot.diagnosticV2.duoRoom,null);
+    assert.equal(snapshot.diagnosticV2.partnerId,null);
+    assert.equal(snapshot.diagnosticV2.partnerIdEvidence,'local-duo-off');
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;
