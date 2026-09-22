@@ -63,6 +63,8 @@ jobs:
         run: |
           node --check tools/benchmark/engine-match.mjs
           node --check tools/benchmark/engine-multibot.mjs
+          node tests/enemy-metrics-regression.cjs
+          node tests/winner-outcome-regression.cjs
           node --check tools/benchmark/league.cjs
           node --check tools/benchmark/serve-browser.mjs
           node --check tools/benchmark/suite.mjs
