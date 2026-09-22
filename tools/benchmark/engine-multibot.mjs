@@ -262,7 +262,9 @@ finally{
       botSHA256:common.digest(m.source),outcome,
       started:m.started,spawned:m.spawned,emitted:m.emitted,
       land:me?.numTilesOwned?.()??null,alive:me?.isAlive?.()??null,
-      diagnostics:data};
+      // Snapshot a plain copy BEFORE assigning report.fullBots: the first
+      // client's diagnostics otherwise points back to report and forms a cycle.
+      diagnostics:{...data}};
   });
   report.benchmarkMeta={...report.benchmarkMeta,...meta,gameMap:config.gameMap,gameMapSize:config.gameMapSize,gameMode:config.gameMode};
   report.run={termination,tick:finalTick,spawned:instances[0].spawned,emitted,failure,recordCount:recordsCount,
