@@ -611,7 +611,8 @@ function predict(model,input){
     });
   }
   let budgetCommitments=[];
-  let attackBlockReport=null,lastAttackBlockReport=-Infinity;
+  let attackBlockReport=null,lastAttackBlockReport=-Infinity,
+    lastOffenseDroughtReport=-Infinity;
   let crisisTrend=null,lastCrisisReport=-Infinity;
   let landingFailures=new Map();
   let neuralEvidence={calls:0,nonzero:0,actionCalls:0,actionNonzero:0,last:null};
@@ -1089,6 +1090,7 @@ function predict(model,input){
     monitorSession=resumed?prior.session:'match-'+Date.now().toString(36)+'-'+
       Math.floor(Math.random()*0xffffffff).toString(36).padStart(8,'0');
     budgetCommitments=[];attackBlockReport=null;lastAttackBlockReport=-Infinity;
+    lastOffenseDroughtReport=-Infinity;
     crisisTrend=null;lastCrisisReport=-Infinity;landingFailures.clear();
     neuralEvidence={calls:0,nonzero:0,actionCalls:0,actionNonzero:0,last:null};
     autoStartGame=null;
@@ -3740,12 +3742,28 @@ function predict(model,input){
         enemyHome:number(()=>x.opponent?.troops?.(),null)};
     });
     const counts={};for(const row of rows)counts[row.reason]=(counts[row.reason]||0)+1;
-    attackBlockReport={tick,ranked:ranked.length,home:s.home,
+    attackBlockReport={tick,ranked:ranked.length,
+      lastEnemyAttackTick:Number.isFinite(lastEnemySend)?lastEnemySend:null,
+      lastNeutralAttackTick:Number.isFinite(lastNeutralSend)?lastNeutralSend:null,
+      lastAttackAgeTicks:tick-Math.max(lastEnemySend,lastNeutralSend),home:s.home,
       available:s.available,reserve:s.reserve,incoming:s.incoming,
       reserveShare:s.reserveShare??null,
       reserveReason:s.reserveReason??null,
       reserveFloors:s.reserveFloors??null,
       committed:s.committed,readiness:readiness.reason,counts,targets:rows.slice(0,8)};
+    if(rows.length&&tick-Math.max(lastEnemySend,lastNeutralSend)>=240&&
+      tick-lastOffenseDroughtReport>=180){
+      lastOffenseDroughtReport=tick;
+      telemetry('offense_drought','Keine neuen Angriffs-Intents trotz sichtbarer Front',{
+        ...attackBlockReport,rankedTargets:ranked.slice(0,5).map(x=>({
+          id:x.id,amount:x.amount,score:x.score,
+          forecast:x.forecast??null})),
+        blockers:counts,activeOutgoing:s.activeEnemy,
+        pendingAttack:pendingAttack?.id??null,
+        warLock:warState.id??null,warWaitSince,
+        safety:'observation-only-no-attack-permission',
+        interpretation:'ranked-target-does-not-imply-safe-legal-send'});
+    }
     if(!ranked.some(x=>x.id!==null)&&rows.length){
       telemetry('attack_block_report','Kein Landkriegsziel freigegeben',
         {attackBlockReport});
