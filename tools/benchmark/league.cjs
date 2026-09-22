@@ -143,7 +143,13 @@ for(const match of matches){
    result.error?.message??(result.status===0?null:
    (result.stderr||'Benchmark subprocess failed').slice(-2000));
  save();
- if(match.status==='failed'){process.exitCode=1;break;}
+ if(match.status==='failed'){
+   console.error('LEAGUE_MATCH_FAILED '+JSON.stringify({id:match.id,error:match.error,
+     exitStatus:result.status,termination:match.termination,
+     stdout:String(result.stdout||'').slice(-1800),
+     stderr:String(result.stderr||'').slice(-3500)}));
+   process.exitCode=1;break;
+ }
 }
 report.completedAt=new Date().toISOString();save();
 console.log(JSON.stringify({report:outputFile,recorded:matches.filter(
