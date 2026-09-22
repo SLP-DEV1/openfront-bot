@@ -4357,6 +4357,13 @@ function predict(model,input){
     const wantedPort=!portEnabled?0:opts.boats?Math.min(5,Math.max(1,Math.floor(mine/1050)+1)):
       (factories>=1 && mine>600?Math.min(2,Math.floor(mine/2700)+1):0);
     const startup=(cityEnabled&&cities<1)||(factoryEnabled&&factories<1);
+    // After losing the last productive buildings, do not keep the former
+    // Warship/Port/SAM savings target ahead of a legal, affordable core.
+    // An observed incoming nuke or currently active invasion keeps priority.
+    const coreRecovery=startup&&mine>0&&
+      troopSnapshot.incoming===0&&
+      !(crisisTrend&&nowTick<crisisTrend.expires&&
+        (crisisTrend.lostLand>0||crisisTrend.lostAssets>0));
     const nowTick=number(()=>game.ticks(),0);
     // Eight failed coast scans used to disable first-port planning forever.
     // Retry after a bounded pause: territory and legal build sites can change.
@@ -4424,10 +4431,12 @@ function predict(model,input){
       ((cityEnabled&&cities<3)||(factoryEnabled&&factories<3));
     const neural=neuralStrategicSignals(me,troopSnapshot,nowTick);
     const list=[
-      {type:'City',desired:capacityCityDesired,score:92+(productiveStall&&cities<3?110:0)+(neural?.cityPriority||0)*90+econBoost/2+(posture==='recruit'?38:0)+Math.max(0,pressure-.35)*75+
+      {type:'City',desired:capacityCityDesired,score:92+
+        (coreRecovery&&cities===0?530:0)+(productiveStall&&cities<3?110:0)+(neural?.cityPriority||0)*90+econBoost/2+(posture==='recruit'?38:0)+Math.max(0,pressure-.35)*75+
           (pressure>.80&&!immediate?30:0)+(cities===0?115:hardMode()&&cities<2?80:0)+
           (capStalled?pressure>=.98?355:pressure>=.95?295:pressure>=.90?230:135:0)},
-      {type:'Factory',desired:wantedFactory,score:91+(productiveStall&&factories<3?110:0)+(neural?.factoryPriority||0)*90+econBoost+(posture==='bootstrap'?20:0)+
+      {type:'Factory',desired:wantedFactory,score:91+
+        (coreRecovery&&factories===0?520:0)+(productiveStall&&factories<3?110:0)+(neural?.factoryPriority||0)*90+econBoost+(posture==='bootstrap'?20:0)+
           (factories===0?100:hardMode()&&factories<2?85:0)+
           (gold<450000?15:0)+(pressure<.60&&factories>0?10:0)+
           (factories<2&&cities>=2?24:0)-
@@ -4477,7 +4486,7 @@ function predict(model,input){
         // otherwise early harbor hoarding delays essential income buildings.
         cities>=2&&factories>=2&&!hardMode()?500000:0):0;
     const firstPortWindow=portMilestone&&(!capStalled||pressure<.95);
-    const savingsTarget=immediate?0:samFund>0?samFund:
+    const savingsTarget=immediate||coreRecovery?0:samFund>0?samFund:
       capStalled&&!firstPortWindow&&!enemyNukes?0:portFund>0?portFund:
       portMilestone||(threat&&intel.uncovered.length>0&&wantedSAM>0)?0:
       saveForSilo?1150000:saveForNuke?firstRocketFund:0;
@@ -4495,7 +4504,7 @@ function predict(model,input){
       'SAM Launcher':0,
       'Missile Silo':(neural?.nuclearPriority||0)*75};
     return {list:value,policyBiases,threatened,gold,cities,factories,mine,pressure,nuclearThreat:threat,incomingNukes:enemyNukes,intel,
-      startup,basic,emergency,immediate,capStalled,firstPortWindow,savingsTarget,saveForSilo,saveForNuke,siloCount,
+      startup,coreRecovery,basic,emergency,immediate,capStalled,firstPortWindow,savingsTarget,saveForSilo,saveForNuke,siloCount,
       enemySilos,proactiveSAM,wantedDefense,wantedSAM,portMilestone,coastSites:coastSites.length,portProbeFailures,
       samQuotedCost,portQuotedCost,posture,samSearchBlocked};
   }
@@ -4539,6 +4548,11 @@ function predict(model,input){
       tick-samQuotedTick<=300?needs.samQuotedCost:0;
     let floor=needs.savingsTarget;
     if(purpose==='Warship')floor=samFund;
+    if(needs.coreRecovery&&['City','Factory'].includes(purpose)){
+      // Only when no current troop invasion exists; final worker legality,
+      // real quote and shared pending-gold checks still apply below.
+      floor=0;
+    }
     if(purpose==='SAM Launcher'||purpose==='Port'&&needs.portMilestone&&
       needs.savingsTarget===needs.portQuotedCost||
       purpose==='Missile Silo'&&needs.saveForSilo||
@@ -4784,6 +4798,7 @@ function predict(model,input){
       portMilestone:requirements.portMilestone,
       portQuote:tick-portQuotedTick<=210&&portQuotedCost>0?portQuotedCost:null,
       goldFloor:requirements.savingsTarget,coreQuote:funding.needed,
+      coreRecovery:requirements.coreRecovery,
       semantics:'shared savings target; individual build exceptions still apply'};
     // A cached price saves worker traffic while underfunded; refresh once
     // the price is funded or quotes age. Never assert a legal site from it.
@@ -4812,7 +4827,8 @@ function predict(model,input){
     }
     // Do not waste worker queries or count failed builds while deliberately
     // accumulating funds for the first silo / first atomic strike.
-    if(requirements.savingsTarget>0 && !requirements.immediate && !requirements.nuclearThreat &&
+    if(requirements.savingsTarget>0 && !requirements.coreRecovery &&
+      !requirements.immediate && !requirements.nuclearThreat &&
       !requirements.portMilestone && !game.config().infiniteGold?.() &&
       requirements.gold<requirements.savingsTarget){
       economicStatus='Spare: '+investmentStatus+' ('+Math.floor(requirements.gold).toLocaleString()+
