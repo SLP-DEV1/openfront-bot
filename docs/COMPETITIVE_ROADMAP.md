@@ -51,6 +51,7 @@ Workflow-Durchlauf ist erst nach GitHub-Resultat belegt.
 - `marineStats.transportUnresolved` bleibt als kumulative **Diagnosezahl**, nicht als globale, niemals auslaufende Freigabesperre.
 - Jüngste ungeklärte Landungen gelten höchstens 900 Spielticks und nur im 115-Koordinateneinheiten-Umfeld von Start oder Ziel der aktuell geprüften Route als Eskorte-Hinweis. Nach altem Vorfall oder an einer anderen Küste darf die übrige Marineplanung wieder selbst entscheiden.
 - Der vorhandene konservative direkte Warship-Korridor, die 3-Fehler-Pause, Ziel-Cooldowns, aktuelle Invasions- und Allianzprüfungen bleiben erhalten; dies ist **kein** fertiges Wasser-Pathfinding, ETA-Modell oder Brückenkopf-Nachschubsystem.
+- **P4 / #72:** Bei getrennten bestätigten Landfronten wird ein eigenständiger, budget-/reservesensitiver Rollenhinweis mit `separatedFronts` und `strikeStatus: independent-fronts` angezeigt. Es wird **kein** gemeinsamer Starttick und keine Angriffsfreigabe ohne die vorhandenen individuellen Engine-/Allianzchecks erzeugt.
 - **Auf Nutzerwunsch ohne Langzeit-, Zwei-Client-, Liga- oder Wirkungstests umgesetzt.** Keine Aussage über neue Siegquote, Marineerfolg oder P5-Gesamtabnahme. Der unveränderte Champion wird weiterhin deterministisch gebündelt.
 
 ## Status-Legende und Abnahmeregel
