@@ -13,7 +13,6 @@ const values={engine:null,engineCommit:common.ENGINE_COMMIT,
   profiles:'autonomous,balanced,cautious,expansion',
   opponents:'rush,balanced,defender,opportunist',ticks:'18000',
   map:'World',size:'Compact',difficulty:'Impossible',execute:false};
-for(let i=0;i<process.argv.slice(2).length;i++){}
 const args=process.argv.slice(2);
 for(let i=0;i<args.length;i++){
   const key=args[i].replace(/^--/,'');
