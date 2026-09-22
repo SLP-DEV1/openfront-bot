@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         OpenFront AggroBot Impossible Run3 Neural
 // @namespace    https://openfront.io/
-// @version      1.21.1
-// @description  AggroBot 1.21.1 with bundled Impossible Run3 schema-4 champion (experimental); no external Brain or Qwen.
+// @version      1.21.2
+// @description  AggroBot 1.21.2 with bundled Impossible Run3 schema-4 champion (experimental); no external Brain or Qwen.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
 // @run-at       document-start
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.21.1', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.21.2', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
