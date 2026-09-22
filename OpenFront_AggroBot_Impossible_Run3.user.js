@@ -1926,9 +1926,6 @@
           !s.out.some(a=>attackTargets(a.targetID,operation.target))?
             'Truppenbudget ausgeschöpft':
         tick-operation.since>1100?'Operationsfrist erreicht':
-        operation.review?.preferred==='switch'?'Bessere sichere Operation verfügbar':
-        operation.review?.preferred==='pause'&&operation.review.idleTicks>440?
-          'Operation ohne beobachteten Fortschritt':
         number(()=>p.numTilesOwned?.(),Infinity)<=operation.successLand?
           'Gebietsziel beobachtet':null;
       if(!reason&&p){
@@ -5992,7 +5989,8 @@
     const arrivalThreat=exposed.some(u=>distance(u.tile(),dest)<=
       Math.max(70,Math.min(220,etaTicks*estimatedSpeed*.8)));
     const risk=exposed.length?(arrivalThreat?'visible-warship-at-arrival':'unescorted-visible-warship'):
-      uncertain.length&&!localEscorts.length?'local-unresolved-landing':null;
+      uncertain.length&&!localEscorts.length?
+        'no-local-escort-after-unresolved-landing':null;
     return {risk,distance:Math.round(routeDistance),etaTicks,
       threats:threats.length,unescortedThreats:exposed.length,
       escorts:localEscorts.length,uncertaintyUntil,
