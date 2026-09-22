@@ -1,14 +1,30 @@
 # OpenFront Solo AggroBot
 
-**Version 1.20.11** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) · Singleplayer, Public und Private · [offene Validierungspunkte](https://github.com/SLP-DEV1/openfront-bot/issues/12)
+**Version 1.21.0** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) · Singleplayer, Public und Private · [offene Validierungspunkte](https://github.com/SLP-DEV1/openfront-bot/issues/12)
 
 Der Bot erkennt neue spielbare Matches, wählt bei manuellem Spawn eine Position und steuert Expansion, Verteidigung, Wirtschaft, Flotte, Handel und Diplomatie. Die trainierte Neural-Policy kann optional *begrenzt* mitentscheiden; es gibt keine localhost-Brain- oder Live-Qwen-Anbindung mehr. **Es gibt keine belegte garantierte Impossible- oder Multiplayer-Siegquote.**
 
 ## Multiplayer-Umbau: Gesamtplan und Fortschritt
 
-Der vollständige, eingereichte [mehrphasige Entwicklungsplan](docs/COMPETITIVE_PLAN_2026-09-22.md) ist archiviert. Die [laufende Statusübersicht](docs/COMPETITIVE_ROADMAP.md) zeigt **vorhandene Funktionen getrennt von abgenommenen Arbeitspaketen**. Im [Master-Issue #75](https://github.com/SLP-DEV1/openfront-bot/issues/75) sind alle Phasen P0–P6 mit eigenen abhakbaren Issues verlinkt. **P0 ist in Arbeit** (City-/Factory-Kapazitätskorrektur liegt laut 1.20.9 vor); eine vollständige Abnahme der Phasen oder eine neue Gesamt-Testmessung wird damit nicht behauptet. Die ursprüngliche Analyse bezog sich auf den älteren Commit `10e81ee` / 1.20.8.
+Der vollständige, eingereichte [mehrphasige Entwicklungsplan](docs/COMPETITIVE_PLAN_2026-09-22.md) ist archiviert. Die [laufende Statusübersicht](docs/COMPETITIVE_ROADMAP.md) zeigt **vorhandene Funktionen getrennt von Testnachweisen**. Im [Master-Issue #75](https://github.com/SLP-DEV1/openfront-bot/issues/75) sind alle Phasen P0–P6 mit eigenen Issues verlinkt. Der implementierbare Umfang ist mit 1.21.0 geliefert; die auf Nutzerwunsch ausgelassenen Langzeit-, Zwei-Client-, Liga- und Wirkungsmessungen bleiben ausdrücklich ohne Ergebnis. Die ursprüngliche Analyse bezog sich auf den älteren Commit `10e81ee` / 1.20.8.
 
 ## Schnellstart / Update
+
+**1.21.0 – Implementierungsumfang P0–P6:** Der Entscheidungszyklus
+vergleicht begrenzt bis zu acht Handlungsalternativen samt Halten,
+Gegenreaktion, Drittpartei, Stillstandskosten und Reserve. Investitionen
+tragen 120-/600-Tick-Nutzen, Risiko, Preisquelle, Standort und Ablauf;
+Operationen vergleichen Fortsetzen, Verstärken, Pause, Rückzug und Wechsel.
+Duo-Pläne synchronisieren Rollen, getrennte Budgets, Plan-ID, ACK, Start,
+Ablauf und Abbruchgründe. Marineplanung erfasst konservative ETA,
+sichtbares zeitliches Abfangrisiko und nur lokale, auslaufende Unsicherheit;
+Embargos berücksichtigen einen ausdrücklichen Eigen-/Gegnerkosten-Proxy.
+Für P6 existieren nun reproduzierbare Liga-Pläne, ein strikter
+Replay-Sichtzustandsimport und ein inaktives Kandidatenmodell für gehaltenen
+Gewinn/Verlustrisiko. Details: [Implementierungsprotokoll](docs/ROADMAP_IMPLEMENTATION_P0_P6_1.21.0.md).
+Auf Nutzerwunsch wurden **keine Langzeit-, Zwei-Client-, Liga- oder
+Wirkungstests** ausgeführt; daraus folgt keine neue Siegquote oder
+Modell-Promotion.
 
 **1.20.11 – Fortschritt in P0–P6, keine Gesamtphasen-Abnahme:**
 Der Bot verwirft überalterte Grenz-Worker-Ergebnisse (P1), verbucht die

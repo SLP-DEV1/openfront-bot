@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.20.11
+// @version      1.21.0
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.20.11', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.21.0', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -371,10 +371,11 @@
   let fleetStatus='Keine Marineaktivität',lastFleet=-Infinity,lastDonation=-Infinity,navalSweep=0;
   let tradeStatus='Handel automatisch offen',lastTradeTick=-Infinity,
     tradeBusy=false,tradeStats={opened:0,embargoed:0,skipped:0},
-    botEmbargoes=new Set();
+    botEmbargoes=new Set(),tradeAssessments=[];
   let pendingBoat=null,pendingWarship=null,navalCooldown=new Map(),navalBackoffUntil=-Infinity,portProbeFailures=0,lastPortRetryTick=-Infinity,navalSiteNegative=new Map();
   let landingAudits=[];
-  let marineStats={transportSent:0,transportConfirmed:0,transportArrived:0,bridgeheadHeld:0,bridgeheadLost:0,
+  let marineStats={transportSent:0,transportConfirmed:0,transportArrived:0,bridgeheadHeld:0,
+    bridgeheadHeld120:0,bridgeheadHeld600:0,bridgeheadLost:0,
     transportUnconfirmed:0,transportUnresolved:0,warshipSent:0,
     warshipConfirmed:0,warshipUnconfirmed:0};
   let strategicTelemetry={favorableVictims:0,falloutSkipped:0,falloutFallback:0,afkTargets:0,assists:0,neutralLandings:0,forecastCount:0,
@@ -393,6 +394,9 @@
   let defenseStatus='Keine Bedrohung',lastEmergencyRetreat=-Infinity,lastDefenseLog=-Infinity;
   let targetIntelCache=new Map(),frontMemory=new Map(),lastFrontWarning=-Infinity;
   let opponentHistory=new Map(),opponentProfiles=new Map(),lastEconomyPosture='—',lastDirectorDecision=null;
+  let planningState={tick:-Infinity,candidates:[],selected:null,rejected:null,
+    durationMs:0,budgetMs:50,truncated:false};
+  let investmentAssessments=[];
   let operation=null,operationCooldown=new Map(),duoPlan=null,victoryThreat=null,decisionTimeline=[],decisionKeys=new Map();
   // sessionStorage is tab-scoped: survives reloads but never assigns the
   // same ID to two ordinary tabs sharing one browser profile.
@@ -532,7 +536,8 @@
         fullBrowserMatchValidated:false,
         note:'Die Datei ist ein Spielmitschnitt; Sieg und echte Mehrkarten-Benchmarks erfordern vollständige Browser-Matches.'},
       opponents:[...opponentProfiles.values()].map(v=>({...v})),
-      decisionFrame:lastDecisionFrame,operation,duoPlan,victoryThreat,
+      decisionFrame:lastDecisionFrame,planning:planningState,
+      investmentAssessments,operation,duoPlan,victoryThreat,
       localDuo:{status:duoLocal.status,peer:duoLocal.peer,partnerID:opts.duoPartnerID,
         ownID:safeID(myPlayer()),connected:!!duoTrustedPeer(),match:duoLocal.match,
         failures:duoLocal.failures},
@@ -781,7 +786,7 @@
     buildCursor=0;spawnCache=null;spawnJob=null;spawnRetryAt=0;spawnAlternatives=[];spawnState={scanned:0,phase:'idle',lastSent:null,attempts:0,blocked:null,deadline:null};cooldowns.clear();rejected.clear();
     plan=null;lastSelection='';lastEmission=0;borderOffset=0;lastBorderRefresh=0;
     totalSent=0;totalFailed=0;actions=[];errors=0;troopSamples=[];
-    lastDecisionFrame=null;lastRecoveryReason='';lastBattle=null;pendingAttack=null;targetIntelCache.clear();frontMemory.clear();opponentHistory.clear();lastEconomyPosture='—';lastDirectorDecision=null;neuralPolicyCache={key:null,output:null};lastFrontWarning=-Infinity;
+    lastDecisionFrame=null;lastRecoveryReason='';lastBattle=null;pendingAttack=null;targetIntelCache.clear();frontMemory.clear();opponentHistory.clear();lastEconomyPosture='—';lastDirectorDecision=null;planningState={tick:-Infinity,candidates:[],selected:null,rejected:null,durationMs:0,budgetMs:50,truncated:false};investmentAssessments=[];neuralPolicyCache={key:null,output:null};lastFrontWarning=-Infinity;
     attackReceipts={confirmed:0,unconfirmed:0,territoryGained:0};blockedTargets.clear();
     attackCommands=[];attackCommandSequence=0;observedAttacks.clear();
     actionSequence=0;lastActionId=null;
@@ -799,9 +804,10 @@
     diplomacyStats={accepted:0,rejected:0,offered:0};goldSamples=[];incomeStatus={train:null,trade:null,gold:null,observed:false};
     winStatus={mode:'FFA',progress:null,threshold:null,remaining:null,urgent:false};fleetStatus='Keine Marineaktivität';lastFleet=-Infinity;lastDonation=-Infinity;navalSweep=0;
     tradeStatus='Handel automatisch offen';lastTradeTick=-Infinity;tradeBusy=false;
-    tradeStats={opened:0,embargoed:0,skipped:0};botEmbargoes.clear();
+    tradeStats={opened:0,embargoed:0,skipped:0};botEmbargoes.clear();tradeAssessments=[];
     pendingBoat=null;pendingWarship=null;navalCooldown.clear();navalBackoffUntil=-Infinity;portProbeFailures=0;lastPortRetryTick=-Infinity;navalSiteNegative.clear();
-    marineStats={transportSent:0,transportConfirmed:0,transportArrived:0,bridgeheadHeld:0,bridgeheadLost:0,
+    marineStats={transportSent:0,transportConfirmed:0,transportArrived:0,bridgeheadHeld:0,
+      bridgeheadHeld120:0,bridgeheadHeld600:0,bridgeheadLost:0,
       transportUnconfirmed:0,transportUnresolved:0,warshipSent:0,
       warshipConfirmed:0,warshipUnconfirmed:0};
     strategicTelemetry={favorableVictims:0,falloutSkipped:0,falloutFallback:0,afkTargets:0,assists:0,neutralLandings:0,forecastCount:0,engineForecasts:0,proxyForecasts:0,forecastComparisons:0,forecastUnavailable:0};
@@ -1030,7 +1036,7 @@
     return 0;
   }
   function duoState(){
-    const me=myPlayer(),peer=duoTrustedPeer()?.player;
+    const me=myPlayer(),trusted=duoTrustedPeer(),peer=trusted?.player;
     const state=me?.hasSpawned?.()?military(me,strategic.groups):null;
     const target=duoPlan?.strikeTick?duoPlan.target:
       operation?.target??duoPlan?.target??warState.id;
@@ -1050,6 +1056,9 @@
         Number.isInteger(duoPlan.expiresTick)&&
         number(()=>game.ticks(),Infinity)<=duoPlan.expiresTick?
           duoPlan.planId:null,
+      ownBudget:duoPlan?.joint?.own??null,
+      partnerBudget:duoPlan?.joint?.ally??null,
+      abortOn:['relay-stale','alliance-lost','front-lost','own-invasion','partner-crisis'],
       ready:!!(state&&state.incoming===0&&
         !recentHostilePressure(number(()=>game?.ticks?.(),0))&&
         !(crisisTrend&&number(()=>game?.ticks?.(),0)<crisisTrend.expires)&&
@@ -1476,6 +1485,73 @@
     if(decisionTimeline.length>90)decisionTimeline.shift();
     telemetry('decision_timeline',why,{decision:row});
   }
+  // P1 bounded look-ahead. It compares a small set of already-known options
+  // under three explicit responses. This ranks planners only; every action
+  // still passes its existing worker, alliance, reserve and budget gates.
+  function strategicCandidatePlan(me,groups,s,context,ranked,tick){
+    const started=performance.now(),budgetMs=50,candidates=[];
+    const home=Math.max(1,s.home),waitGrowth=Math.max(0,s.growthPotential||0);
+    const holdRisk=clamp(Math.max(s.incoming,s.strongest)/home,0,2);
+    candidates.push({id:'hold',channel:'hold',kind:'hold',target:null,
+      utility:Math.round(35+holdRisk*85-waitGrowth/Math.max(1,home)*900),
+      cost:0,risk:holdRisk,waitCost:Math.round(waitGrowth),
+      scenarios:{holds:0,counter:s.incoming,thirdParty:s.strongest},
+      reason:holdRisk>=.85?'sichtbarer Druck':'Reserve und Wachstum abwarten'});
+    const cap=Math.max(1,s.max),capPressure=s.home/cap;
+    const observedIncome=Math.max(0,(incomeStatus.train||0)+(incomeStatus.trade||0));
+    candidates.push({id:'invest',channel:'hold',kind:'invest',target:null,
+      utility:Math.round(42+(capPressure>.82?48:0)+Math.min(35,observedIncome/50000)-holdRisk*55),
+      cost:null,risk:holdRisk,waitCost:Math.round(waitGrowth*.6),
+      scenarios:{holds:observedIncome,counter:-Math.round(s.incoming*.35),thirdParty:-Math.round(s.strongest*.1)},
+      reason:capPressure>.82?'Kapazität ausbauen':'beobachtetes Einkommen verstärken'});
+    for(const item of (ranked||[]).slice(0,6)){
+      if(performance.now()-started>budgetMs)break;
+      if(item.id===null){
+        const amount=Math.max(0,neutralAttackAmount(s,setting('aggressive')));
+        candidates.push({id:'neutral:'+String(item.tile??item.tiles?.[0]??'land'),
+          channel:'land',kind:'expand',target:null,utility:Math.round(70+Math.min(45,item.score||0)-holdRisk*60),
+          cost:amount,risk:holdRisk*.55,waitCost:Math.round(waitGrowth*.25),
+          scenarios:{holds:item.tiles?.length||1,counter:-Math.round(amount*.2),thirdParty:-Math.round(s.strongest*.05)},
+          reason:'neutrales Wachstum mit begrenztem Einsatz'});continue;
+      }
+      const enemy=Math.max(0,number(()=>item.opponent?.troops?.(),0));
+      const guard=frontRiskPlan(groups,s,item.id),amount=Math.max(0,
+        Math.floor(Math.min(s.available*.72,guard.safeStrike||0)));
+      const forecast=amount>0?attackForecast(me,item,amount):
+        {loss:Infinity,time:Infinity,engine:false,method:'no-safe-budget'};
+      const other=(groups||[]).filter(g=>g.id!==null&&g.id!==item.id&&
+        !friendly(g.opponent,me)).reduce((n,g)=>Math.max(n,
+          number(()=>g.opponent?.troops?.(),0)),0);
+      const held=Math.max(0,(item.tiles?.length||0)*18-
+        (Number.isFinite(forecast.loss)?forecast.loss/Math.max(1,amount)*25:60));
+      const counter=Math.max(0,enemy-amount*.7),third=Math.max(0,other-(home-amount));
+      candidates.push({id:'attack:'+item.id,channel:'land',kind:'attack',target:item.id,
+        utility:Math.round(55+(item.score||0)+held-counter/home*90-third/home*70),
+        cost:amount,risk:clamp((counter+third)/home,0,2),waitCost:Math.round(waitGrowth*.4),
+        scenarios:{holds:Math.round(held),counter:Math.round(counter),thirdParty:Math.round(third)},
+        forecast:{loss:Number.isFinite(forecast.loss)?forecast.loss:null,
+          time:Number.isFinite(forecast.time)?forecast.time:null,method:forecast.method},
+        reason:'Frontziel gegen Halten, Gegenangriff und Drittpartei verglichen'});
+    }
+    if(opts.boats&&ctors.boat&&!pendingBoat&&s.incoming===0)
+      candidates.push({id:'naval',channel:'naval',kind:'naval',target:null,
+        utility:Math.round((ranked||[]).length?36:82-holdRisk*55),cost:null,
+        risk:holdRisk,waitCost:Math.round(waitGrowth*.5),
+        scenarios:{holds:25,counter:0,thirdParty:Math.round(s.strongest*.08)},
+        reason:'alternative Seeoperation bei begrenzter Landoption'});
+    const peer=duoTrustedPeer();
+    if(peer?.state?.needHelp)candidates.push({id:'support:'+peer.id,channel:'hold',
+      kind:'support',target:peer.id,utility:90,risk:holdRisk,cost:null,waitCost:0,
+      scenarios:{holds:40,counter:s.incoming,thirdParty:s.strongest},
+      reason:'bestätigter Partnerbedarf'});
+    candidates.sort((a,b)=>b.utility-a.utility||String(a.id).localeCompare(String(b.id)));
+    const limited=candidates.slice(0,8),selected=limited[0]||null;
+    planningState={tick,candidates:limited,selected,
+      rejected:limited[1]||null,durationMs:Number((performance.now()-started).toFixed(2)),
+      budgetMs,truncated:candidates.length>limited.length||performance.now()-started>budgetMs,
+      semantics:'bounded-ranking-only; existing legality remains authoritative'};
+    return planningState;
+  }
   // Observed behaviour is evidence, not knowledge of a human's intentions.
   // No guesses from hidden armies, and no cross-match personal profiling.
   function observeHumanProfiles(me,tick){
@@ -1763,23 +1839,39 @@
       separatedFronts?'Getrennte Front: aufbauen und Heimatreserve halten':
       bothReady?'Auf Partner-Zeitpunkt warten':
       s.home>partnerHome*1.25?'Angriff vorbereiten':'Aufbauen / Landung vorbereiten';
+    const planId=strikeTick===null||!shared?null:
+      String(safeID(shared)).slice(0,96)+':'+String(strikeTick);
+    const roleOptions=[
+      {type:'hold',legal:true,utility:danger||partnerWarning>0?90:28},
+      {type:'invest',legal:!danger,utility:s.ratio<.65?58:24},
+      {type:'attack',legal:!!sharedJoint,utility:sharedJoint?75:0},
+      {type:'relieve',legal:partnerNeeds,utility:partnerNeeds?95:0},
+      {type:'flank',legal:separatedFronts,utility:separatedFronts?64:0},
+      {type:'land',legal:separatedFronts&&opts.boats,utility:separatedFronts&&opts.boats?52:0},
+      {type:'targeted-aid',legal:partnerNeeds||partnerWarning>0,
+        utility:partnerNeeds?88:partnerWarning>0?45:0}
+    ].filter(x=>x.legal).sort((a,b)=>b.utility-a.utility);
     const plan={partner:duo.partnerID,target:shared?safeID(shared):null,
       targetName:shared?nameOf(shared):'Kein Gegner',role,
       partnerCommitted:active?.on||0,partnerIncoming:incoming,
       partnerHome,needHelp:partnerNeeds,partnerWarning,
       partnerReady:!!local?.state?.ready,separatedFronts,
       teamDecision,strikeTick,
-      partnerAck:!!(local?.state?.ackPlanId&&strikeTick!==null&&
-        local.state.ackPlanId===String(safeID(shared)).slice(0,96)+':'+String(strikeTick)),
-      planId:strikeTick===null||!shared?null:
-        String(safeID(shared)).slice(0,96)+':'+String(strikeTick),
+      partnerAck:!!(planId&&local?.state?.ackPlanId===planId),
+      planId,
       expiresTick:strikeTick===null?null:strikeTick+110,
       strikeStatus:strikeTick===null?(separatedFronts?'independent-fronts':'none'):
         !sharedJoint?'locked-awaiting-safe-budget':
+        local?.state?.ackPlanId!==planId?'locked-awaiting-peer-ack':
         tick<strikeTick?'locked-preparing':'locked-launch-window',
       joint:sharedJoint?{own:sharedJoint.own,ally:sharedJoint.ally,
         needed:sharedJoint.needed}:null,
-      ready:bothReady,ownReserve:s.reserve,tick,source:local?
+      options:roleOptions,ownBudget:sharedJoint?.own??Math.floor(s.available*.5),
+      partnerBudget:sharedJoint?.ally??number(()=>local?.state?.ownBudget,0),
+      abortOn:['relay-stale','alliance-lost','target-friendly','home-invasion',
+        'reserve-breach','plan-expired'],
+      ready:bothReady,peerAck:!!(planId&&local?.state?.ackPlanId===planId),
+      ownReserve:s.reserve,tick,source:local?
         'lokaler Duo-Relay + bestätigter Spielzustand':
         'sichtbare Spielzustände (kein Relay)'};
     if(!duoPlan||duoPlan.target!==plan.target||duoPlan.role!==role||
@@ -1790,9 +1882,42 @@
           'Partner-Einsatz nur bei beobachteten Angriffen bestätigt'],tick);
     duoPlan=plan;return plan;
   }
+  function operationOptions(me,items,s,tick,current=operation){
+    if(!current)return null;
+    const active=(s.out||[]).filter(a=>!a.retreating&&
+      attackTargets(a.targetID,current.target));
+    const idle=tick-(current.lastProgressTick??current.since);
+    const remaining=Math.max(0,current.budget-current.spent);
+    const alternatives=(items||[]).filter(x=>x.id!==null&&x.id!==current.target&&
+      x.opponent?.isAlive?.()&&!friendly(x.opponent,me)).map(x=>({
+        id:x.id,name:nameOf(x.opponent),opportunity:2/Math.max(.5,
+          enemyOpportunityRatio(x.opponent,lateGame(me),s.home)),
+        safe:!frontRiskPlan(items,s,x.id).danger})).filter(x=>x.safe)
+      .sort((a,b)=>b.opportunity-a.opportunity);
+    const options=[
+      {action:'continue',utility:active.length?70:idle<180?45:10,
+        reason:active.length?'laufende Armee beobachtet':'kurzes Fortschrittsfenster'},
+      {action:'reinforce',utility:remaining>Math.max(1000,s.home*.04)&&
+        s.incoming===0&&idle<260?62:-100,
+        reason:'Restbudget und Heimatreserve'},
+      {action:'pause',utility:idle>260&&!active.length?68:15,
+        reason:'kein beobachteter Fortschritt ohne aktive Armee'},
+      {action:'retreat',utility:s.incoming>Math.max(1200,s.home*.10)?95:-100,
+        reason:'Heimat unter Angriff'},
+      {action:'switch',utility:alternatives[0]&&idle>300&&!active.length?
+        72+Math.min(20,alternatives[0].opportunity*10):-100,
+        reason:alternatives[0]?'bessere sichere Alternative '+alternatives[0].name:
+          'keine sichere Alternative'}
+    ].sort((a,b)=>b.utility-a.utility);
+    return {tick,preferred:options[0].action,options,
+      activeStacks:active.length,idleTicks:idle,remainingBudget:remaining,
+      alternative:alternatives[0]||null,
+      semantics:'observed-state comparison; no causal battle claim'};
+  }
   function planOperation(me,items,s,tick){
     const danger=s.incoming>Math.max(1200,s.home*.10);
     if(operation){
+      operation.review=operationOptions(me,items,s,tick,operation);
       const p=game.playerViews?.().find(x=>safeID(x)===operation.target);
       const reason=!p?.isAlive?.()?'Ziel ausgeschieden':
         friendly(p,me)||me.isOnSameTeam?.(p)?'Ziel jetzt verbündet':
@@ -3021,7 +3146,7 @@
   }
   // Shared strategic director: decide which existing LEGAL planner gets first
   // refusal. Never issues intents and never weakens any planner's safety gate.
-  function strategicDirector(me,s,context,ranked,tick) {
+  function strategicDirector(me,s,context,ranked,tick,planning=planningState) {
     const land=ranked.filter(x=>x.id===null);
     const enemy=ranked.filter(x=>x.id!==null);
     const threatened=s.incoming>0 || recentHostilePressure(tick,260) ||
@@ -3045,11 +3170,15 @@
       enemy.length||land.length?['land','naval','hold']:
       ['naval','hold'];
     const learned=neuralStrategicSignals(me,s,tick);
+    const planned=channel=>planning?.candidates?.filter(x=>x.channel===channel)
+      .reduce((best,x)=>Math.max(best,x.utility),-1000)??-1000;
     const utility={
-      land:(land.length||enemy.length?110:0)+((land.length||enemy.length)?learned?.landPriority||0:0)*65,
+      land:(land.length||enemy.length?110:0)+((land.length||enemy.length)?learned?.landPriority||0:0)*65+
+        clamp(planned('land'),-100,160)*.22,
       naval:(canSail?(navalFirst?120:80):-1000)+
-        (canSail?(learned?.navalPriority||0)*65:0),
-      hold:(land.length||enemy.length||canSail?-25:35)+(learned?.holdPriority||0)*60
+        (canSail?(learned?.navalPriority||0)*65:0)+clamp(planned('naval'),-100,160)*.22,
+      hold:(land.length||enemy.length||canSail?-25:35)+(learned?.holdPriority||0)*60+
+        clamp(planned('hold'),-100,160)*.22
     };
     // Recover/defend is an absolute gate; priority values never grant legality.
     const hasLearnedPreference=learned&&
@@ -3061,12 +3190,15 @@
       [...new Set([...ruleOrder,'land','naval','hold'])].sort((a,b)=>
         utility[b]-utility[a]);
     const reason=recovering?'Heimtruppen und Grenzen stabilisieren':
+      planning?.selected?.reason?'Planung: '+planning.selected.reason:
       navalFirst?'Keine sichere Landexpansion: Marineweg vor Landkrieg prüfen':
       enemy.length?'Sicheren Landkrieg vor Küstenoperation prüfen':
       land.length?'Freies Land vor teurer Küstenoperation':
       'Keine freigegebene Landaktion; Seeweg prüfen';
     return {order,reason,landCandidates:land.length,enemyCandidates:enemy.length,
       navalCandidate:canSail,threatened,economy:economyPosture(me,s,tick),
+      planning:{selected:planning?.selected?.id||null,
+        rejected:planning?.rejected?.id||null,durationMs:planning?.durationMs??null},
       neural:learned?{utility,weights:learned}:null};
   }
   async function legalTarget(me,item,serial) {
@@ -3530,31 +3662,54 @@
     }
     return sites;
   }
-  // Relative payback, derived only from observed income and validated costs.
-  // Scores rank otherwise legal builds; never create a build authorization.
-  function investmentValue(item,cost,requirements,units){
+  // P2 multi-horizon investment evidence. Values are comparative estimates,
+  // not claims about exact engine yield and never create build authorization.
+  function investmentAssessment(item,cost,requirements,units){
     const income=incomeStatus.observed?incomeStatus:null;
-    if(item.type==='SAM Launcher'&&requirements.nuclearThreat)
-      return requirements.intel.uncovered.length?46:9;
-    if(item.type==='Defense Post'&&requirements.immediate)return 35;
-    if(item.type==='City')return (requirements.pressure>.70?28:0)+
-      (requirements.capStalled?35:0);
+    const horizons=[120,600],gold=Math.max(1,requirements.gold),base={
+      type:item.type,cost:Number.isFinite(cost)?cost:null,horizons,
+      priceSource:'worker',siteConfirmed:true,expiresTick:number(()=>game.ticks(),0)+120,
+      marginal:{short:0,long:0},paybackTicks:null,risk:0,score:0};
+    if(item.type==='SAM Launcher'&&requirements.nuclearThreat){
+      base.score=requirements.intel.uncovered.length?46:9;
+      base.marginal={short:requirements.incomingNukes?90:35,long:55};
+      base.risk=requirements.intel.uncovered.length?0.15:.55;return base;
+    }
+    if(item.type==='Defense Post'&&requirements.immediate){
+      base.score=35;base.marginal={short:70,long:20};base.risk=.2;return base;
+    }
+    if(item.type==='City'){
+      base.score=(requirements.pressure>.70?28:0)+(requirements.capStalled?35:0);
+      base.marginal={short:requirements.capStalled?65:18,long:requirements.capStalled?85:42};
+      base.risk=requirements.immediate?.65:.2;return base;
+    }
     if(item.type==='Factory'&&income?.train>0){
-      // Total observed train income is not the marginal return of ONE new
-      // Factory. Use only a conservative per-completed-unit proxy.
+      // Total observed train income is not the marginal return of one new
+      // Factory. Attribute only a conservative per-completed-unit proxy.
       const completed=units.filter(u=>u.type?.()==='Factory'&&
         !u.isUnderConstruction?.()).length;
-      return completed>0?
-        Math.min(24,(income.train/completed)/Math.max(1,cost)*18):0;
+      const marginal=completed>0?income.train/completed:0;
+      const perTick=marginal/120;base.paybackTicks=cost/Math.max(1,perTick);
+      base.score=Math.min(24,marginal/Math.max(1,cost)*18);
+      base.marginal={short:Math.min(60,marginal/cost*20),long:Math.min(100,marginal/cost*80)};
+      base.risk=requirements.immediate?.7:.25;return base;
     }
     if(item.type==='Port'){
       const completed=units.filter(u=>u.type?.()==='Port'&&!u.isUnderConstruction?.()).length;
-      if(completed===0)return requirements.portMilestone?35:12;
-      if(income?.trade===0)return -70;
-      if(income?.trade>0)return Math.min(28,
-        (income.trade/completed)/Math.max(1,cost)*14);
+      if(completed===0){base.score=requirements.portMilestone?35:12;
+        base.marginal={short:requirements.portMilestone?25:5,long:requirements.portMilestone?70:20};
+        base.risk=requirements.coastSites?0.3:.9;return base;}
+      if(income?.trade===0){base.score=-70;base.risk=.8;return base;}
+      if(income?.trade>0){const marginal=income.trade/completed;
+        base.score=Math.min(28,marginal/Math.max(1,cost)*14);
+        base.paybackTicks=cost/Math.max(1,marginal/120);
+        base.marginal={short:Math.min(50,marginal/cost*18),long:Math.min(100,marginal/cost*70)};
+        base.risk=.3;return base;}
     }
-    return 0;
+    base.risk=cost/gold;base.score=0;return base;
+  }
+  function investmentValue(item,cost,requirements,units){
+    return investmentAssessment(item,cost,requirements,units).score;
   }
   function economicDefensePressure(me,s,tick=number(()=>game.ticks())){
     const home=Math.max(1,number(()=>me.troops()));
@@ -4024,6 +4179,7 @@
     if(requirements.samSearchBlocked)decisionNote('sam-blockiert',
       'SAM bezahlbar, aber wiederholt kein Bauplatz bestätigt; andere Bauten freigegeben',
       ['Standortsuche wird fortgesetzt; Spielregeln und Platzierung bleiben ungeklärt'],tick);
+    investmentAssessments=[];
     const entries=requirements.list;
     if(lastEconomyPosture!==requirements.posture){
       lastEconomyPosture=requirements.posture;
@@ -4310,12 +4466,15 @@
             continue;
           }
           if(!infinite && gold>0)siteValue-=Math.min(36,(cost/gold)*26);
-          siteValue+=investmentValue(item,cost,requirements,units);
+          const assessment=investmentAssessment(item,cost,requirements,units);
+          siteValue+=assessment.score;
           if(isUpgrade)siteValue-=Math.max(0,number(()=>units.find(u=>u.id?.()===b.canUpgrade)?.level(),1)-2)*6;
           if(!isUpgrade && item.count>=item.desired)continue;
           const old=units.find(u=>u.id?.()===b.canUpgrade);
           proposals.push({kind:isUpgrade?'upgrade':'build',type:item.type,tile,requestTile:site.ref,
-            unitId:b.canUpgrade,level:number(()=>old?.level(),0),cost,siteValue});
+            unitId:b.canUpgrade,level:number(()=>old?.level(),0),cost,siteValue,assessment});
+          if(!investmentAssessments.some(x=>x.type===assessment.type&&x.cost===assessment.cost))
+            investmentAssessments.push(assessment);
         }
       }
       if(proposals.length)break;
@@ -5156,15 +5315,25 @@
     const mine=safeID(me),own=type=>units.filter(u=>
       u.type?.()===type&&safeID(u.owner?.())===mine&&u.isActive?.());
     landingAudits=landingAudits.filter(a=>{
-      const held=ownedTile(a.tile,me);
-      if(held&&tick-a.tick<120)return true;
-      marineStats[held?'bridgeheadHeld':'bridgeheadLost']++;
-      telemetry(held?'bridgehead_held':'bridgehead_lost',held?
-        'Landungsziel über 120 Ticks gehalten':'Landungsziel vor Haltefrist verloren',
-        {tile:a.tile,target:a.target,observedTicks:tick-a.tick,
-          evidence:'destination-ownership-not-causal'});
-      if(!held){navalCooldown.set(a.key,tick+350);navalSiteNegative.set(a.tile,tick+900);}
-      return false;
+      const held=ownedTile(a.tile,me),age=tick-a.tick;
+      a.checkpoints=Array.isArray(a.checkpoints)?a.checkpoints:[];
+      if(!held){
+        marineStats.bridgeheadLost++;
+        telemetry('bridgehead_lost','Landungsziel vor Abschluss der Wirkungsbeobachtung verloren',
+          {tile:a.tile,target:a.target,observedTicks:age,
+            checkpoints:a.checkpoints,evidence:'destination-ownership-not-causal'});
+        navalCooldown.set(a.key,tick+350);navalSiteNegative.set(a.tile,tick+900);
+        return false;
+      }
+      for(const horizon of [120,600])if(age>=horizon&&!a.checkpoints.includes(horizon)){
+        a.checkpoints.push(horizon);
+        marineStats['bridgeheadHeld'+horizon]++;
+        if(horizon===120)marineStats.bridgeheadHeld++;
+        telemetry('bridgehead_held_'+horizon,'Landungsziel am '+horizon+'-Tick-Horizont gehalten',
+          {tile:a.tile,target:a.target,observedTicks:age,horizon,
+            evidence:'destination-ownership-not-causal'});
+      }
+      return age<600;
     });
     if(pendingBoat){
       const boat=pendingBoat,ships=own('Transport');
@@ -5214,7 +5383,8 @@
         fleetStatus='Landung / Gebiet am Ziel bestätigt';
         telemetry('boat_arrived','Transportziel nach bestätigtem Schiff übernommen',
           {dest:boat.dest,resolvedDest:landingTile,target:boat.target,shipIds:boat.shipIds});
-        landingAudits.push({tile:landingTile,target:boat.target,key:boat.key,tick});
+        landingAudits.push({tile:landingTile,target:boat.target,key:boat.key,tick,
+          checkpoints:[]});
         navalCooldown.set(boat.key,tick+140);
         landingFailures.delete(boat.key);
         navalSiteNegative.delete(landingTile);
@@ -5262,7 +5432,7 @@
       }
     }
   }
-  function sendMarineTransport(me,dest,troops,tick,label,targetKey){
+  function sendMarineTransport(me,dest,troops,tick,label,targetKey,route=null){
     if(pendingBoat || (navalCooldown.get(targetKey)||0)>tick)return false;
     if(!Number.isInteger(dest)||!(troops>=1000))return false;
     const fresh=military(me,strategic.groups);
@@ -5274,12 +5444,14 @@
     pendingBoat={dest,tick,troops,key:targetKey,target:label,
       playerID:targetKey.startsWith('player:')?targetKey.slice(7):null,
       resolvedDest:null,beforeIds,shipIds:[],seen:false,
-      lastShipTile:null,lastProgressTick:tick,delayed:false};
+      lastShipTile:null,lastProgressTick:tick,delayed:false,
+      route:route?{distance:route.distance,etaTicks:route.etaTicks,
+        risk:route.risk,uncertaintyUntil:route.uncertaintyUntil}:null};
     marineStats.transportSent++;
     navalCooldown.set(targetKey,tick+160);
     fleetStatus='Transport angefordert · Bestätigung ausstehend';
     telemetry('boat_intent','Transport angefordert; wartet auf Spielzustand',
-      {dest,troops,target:targetKey});
+      {dest,troops,target:targetKey,route:pendingBoat.route});
     return true;
   }
   // Protect real owned shores from visible incoming transports. BuildUnitIntentEvent
@@ -5408,6 +5580,27 @@
     const spawn=p?.state?.spawnTile;
     return Number.isInteger(spawn)&&safeID(game.owner(spawn))===id?spawn:null;
   }
+  function tradeImpactAssessment(me,p,tick){
+    const ownPorts=ownStructures(me).filter(u=>u.type?.()==='Port'&&
+      !u.isUnderConstruction?.()).length;
+    const enemyPorts=(p.units?.()||[]).filter(u=>u.type?.()==='Port'&&
+      !u.isUnderConstruction?.()).length;
+    const id=safeID(p),front=(strategic.groups||[]).find(g=>g.id===id);
+    const outgoing=(me.outgoingAttacks?.()||[]).filter(a=>
+      !a.retreating&&attackTargets(a.targetID,p)).length;
+    const incoming=(me.incomingAttacks?.()||[]).filter(a=>
+      !a.retreating&&attackTargetID(a.attackerID)===id).length;
+    const conflict=outgoing+incoming;
+    // OpenFront does not expose per-counterparty trade income here. Keep the
+    // estimate explicit and symmetric instead of inventing exact gold values.
+    const estimatedEnemyCost=enemyPorts*14+conflict*24+(front?.tiles?.length||0)*.4;
+    const estimatedOwnCost=ownPorts*14;
+    const score=estimatedEnemyCost-estimatedOwnCost;
+    return {target:id,tick,ownPorts,enemyPorts,outgoing,incoming,
+      borderTiles:front?.tiles?.length||0,estimatedEnemyCost,
+      estimatedOwnCost,score,worthwhile:conflict>0&&score>=0,
+      evidence:'port-count/front/conflict proxy; counterparty income unavailable'};
+  }
   async function tradePolicy(me,tick){
     if(!opts.economy||tick-lastTradeTick<80||!actionBudget())return false;
     if(!tradeIntentPath()){
@@ -5439,15 +5632,20 @@
           !a.retreating&&attackTargetID(a.attackerID)===id);
     });
     if(hostile.length){
-      const p=hostile.sort((a,b)=>number(()=>b.troops?.(),0)-number(()=>a.troops?.(),0))[0],
-        tile=tradeAnchor(p);
+      const assessed=hostile.map(p=>({p,a:tradeImpactAssessment(me,p,tick)}))
+        .sort((a,b)=>b.a.score-a.a.score||
+          number(()=>b.p.troops?.(),0)-number(()=>a.p.troops?.(),0));
+      tradeAssessments=assessed.map(x=>x.a).slice(0,8);
+      const selected=assessed.find(x=>x.a.worthwhile),p=selected?.p,
+        tile=p?tradeAnchor(p):null;
       if(Number.isInteger(tile)){lastTradeTick=tick;try{
         const a=await me.actions(tile,null);
         if(a?.interaction?.canEmbargo===true&&
           safeID(game.owner(tile))===safeID(p)&&!me.hasEmbargoAgainst?.(p)&&
           sendTradeToggle(me,p,'start','HANDEL STOPPEN → '+nameOf(p))){
           botEmbargoes.add(safeID(p));tradeStats.embargoed++;
-          tradeStatus='Embargo gegen aktiven Gegner: '+nameOf(p);return true;
+           tradeStatus='Embargo gegen aktiven Gegner: '+nameOf(p)+
+             ' · Wirkungsscore '+Math.round(selected.a.score);return true;
         }
       }catch(_){tradeStats.skipped++;}}
     }
@@ -5749,15 +5947,23 @@
     }catch(_){}
     return null;
   }
-  function navalRouteRisk(me,source,dest){
-    if(!Number.isInteger(source)||!Number.isInteger(dest))return 'unknown-departure';
+  function navalRouteAssessment(me,source,dest,tick=number(()=>game.ticks(),0)){
+    if(!Number.isInteger(source)||!Number.isInteger(dest))return {
+      risk:'unknown-departure',distance:null,etaTicks:null,threats:0,
+      escorts:0,uncertaintyUntil:null,method:'visible-time-screen'};
     const distance=(a,b)=>Math.hypot(game.x(a)-game.x(b),game.y(a)-game.y(b));
+    const routeDistance=distance(source,dest);
+    // This is deliberately a conservative ETA estimate, not pathfinding. The
+    // engine remains authoritative about the real water route and destination.
+    const estimatedSpeed=Math.max(.5,number(()=>game.config().boatSpeed?.('Transport'),2));
+    const estimate=navalRouteEstimate(source,dest);
+    const etaTicks=estimate?.etaTicksEstimate??
+      Math.max(1,Math.ceil(routeDistance/estimatedSpeed));
     const ships=(game.units?.()||[]).filter(u=>u.isActive?.()&&
       !u.isUnderConstruction?.()&&u.type?.()==='Warship'&&Number.isInteger(u.tile?.()));
     const escorts=ships.filter(u=>safeID(u.owner?.())===safeID(me));
     // Prefer real connected water tiles when the bounded search resolves a
     // path; unknown routes retain the old conservative straight-line proxy.
-    const estimate=navalRouteEstimate(source,dest);
     const route=estimate?.path;
     const ax=game.x(source),ay=game.y(source),dx=game.x(dest)-ax,dy=game.y(dest)-ay;
     const length2=dx*dx+dy*dy;
@@ -5770,13 +5976,29 @@
     };
     const threats=ships.filter(u=>safeID(u.owner?.())!==safeID(me)&&
       !friendly(u.owner?.(),me)&&nearRoute(u));
-    if(threats.some(u=>!escorts.some(e=>distance(e.tile(),u.tile())<90)))
-      return 'unescorted-visible-warship';
-    const tick=number(()=>game?.ticks?.(),0);
-    if(recentLandingRisk(tick,source,dest)&&!escorts.some(u=>
-      distance(u.tile(),source)<100||distance(u.tile(),dest)<100))
-      return 'no-local-escort-after-unresolved-landing';
-    return null;
+    const localEscorts=escorts.filter(u=>nearRoute(u)||
+      distance(u.tile(),source)<100||distance(u.tile(),dest)<100);
+    const exposed=threats.filter(u=>!localEscorts.some(e=>
+      distance(e.tile(),u.tile())<90));
+    // Failed transports create uncertainty only around the observed route and
+    // only while the evidence is recent. They never globally poison the navy.
+    const uncertain=[...landingFailures.values()].filter(v=>
+      Number.isInteger(v.tile)&&Number.isInteger(v.tick)&&tick>=v.tick&&tick-v.tick<=900&&
+      (distance(v.tile,source)<150||distance(v.tile,dest)<150));
+    const uncertaintyUntil=uncertain.length?Math.max(...uncertain.map(v=>v.tick+900)):null;
+    const arrivalThreat=exposed.some(u=>distance(u.tile(),dest)<=
+      Math.max(70,Math.min(220,etaTicks*estimatedSpeed*.8)));
+    const risk=exposed.length?(arrivalThreat?'visible-warship-at-arrival':'unescorted-visible-warship'):
+      uncertain.length&&!localEscorts.length?
+        'no-local-escort-after-unresolved-landing':null;
+    return {risk,distance:Math.round(routeDistance),etaTicks,
+      threats:threats.length,unescortedThreats:exposed.length,
+      escorts:localEscorts.length,uncertaintyUntil,
+      method:estimate?.etaMethod||
+        'straight-corridor-time-screen; engine path remains authoritative'};
+  }
+  function navalRouteRisk(me,source,dest,tick){
+    return navalRouteAssessment(me,source,dest,tick).risk;
   }
   // A remote landing can empty the homeland even when no opposing land
   // border is currently visible. Account for other *visible live nations*,
@@ -5792,8 +6014,19 @@
       return {amount:requested,remote:!landContact,
         other:0,reason:hardMode()&&!opts.impossibleExperiment?
           'impossible-experiment-off':'small-or-land-connected'};
-    const visible=(game.playerViews?.()||[]).filter(p=>p?.isAlive?.()&&
-      safeID(p)!==safeID(me)&&safeID(p)!==targetID&&!friendly(p,me));
+    const ownSpawn=me.state?.spawnTile,diag=Math.hypot(game.width(),game.height());
+    const visible=(game.playerViews?.()||[]).filter(p=>{
+      if(!p?.isAlive?.()||safeID(p)===safeID(me)||safeID(p)===targetID||friendly(p,me))return false;
+      const id=safeID(p),contact=(groups||[]).some(g=>g.id===id&&g.tiles?.length);
+      const active=(p.outgoingAttacks?.()||[]).some(a=>!a.retreating&&
+        attackTargetID(a.targetID)===safeID(me));
+      const spawn=p.state?.spawnTile,near=Number.isInteger(ownSpawn)&&Number.isInteger(spawn)&&
+        Math.hypot(game.x(ownSpawn)-game.x(spawn),game.y(ownSpawn)-game.y(spawn))<=diag*.55;
+      const naval=(game.units?.()||[]).some(u=>u.isActive?.()&&
+        safeID(u.owner?.())===id&&['Transport','Warship'].includes(u.type?.())&&
+        Number.isInteger(u.targetTile?.())&&ownedTile(u.targetTile(),me));
+      return contact||active||near||naval;
+    });
     const other=visible.reduce((best,p)=>Math.max(best,
       Math.max(0,number(()=>p.troops?.(),0))),0);
     if(other<=0)return {amount:requested,remote:true,other:0,
@@ -5916,19 +6149,20 @@
           fresh.ratio<.47)continue;
         const ship=legal?.buildableUnits?.find(x=>x.type==='Transport'&&Number.isInteger(x.canBuild));
         if(!ship || (goldAmount(me)<Number(ship.cost)&&!game.config().infiniteGold?.()))continue;
-        const routeEstimate=navalRouteEstimate(ship.canBuild,dest);
-        const routeRisk=navalRouteRisk(me,ship.canBuild,dest);
-        if(routeEstimate)
-          telemetry('marine_eta_proxy','Wasserroute als Näherung berechnet',
-            {target:safeID(current),dest,waterSteps:routeEstimate.waterSteps,
-              etaTicksEstimate:routeEstimate.etaTicksEstimate,
-              etaExact:false,ticksPerMove:routeEstimate.ticksPerMove,
-              etaMethod:routeEstimate.etaMethod});
+        const route=navalRouteAssessment(me,ship.canBuild,dest,tick),routeRisk=route.risk;
+        if(route.etaTicks!==null)telemetry('marine_eta_proxy',
+          'Wasserroute als Näherung berechnet',{target:safeID(current),dest,
+            etaTicksEstimate:route.etaTicks,etaExact:false,etaMethod:route.method});
         if(routeRisk||navalHomeRisk(me,number(()=>game.ticks(),tick))){
           decisionNote('marine-pause','Landung nach Sicherheitsprüfung zurückgestellt',
             [routeRisk||'Heimatlage hat sich verändert'],tick);
           continue;
         }
+        const history=opponentHistory.get(safeID(current)),previous=history?.previous,
+          interval=previous?Math.max(1,history.tick-previous.tick):null,
+          growthPerTick=interval?Math.max(0,(history.troops-previous.troops)/interval):0,
+          currentEnemy=number(()=>current.troops(),Infinity),
+          arrivalEnemy=Math.min(currentEnemy*1.5,currentEnemy+growthPerTick*route.etaTicks);
         const committedWar=isWar()&&warState.id===safeID(current);
         const exposedNavy=opponentTrend(current,tick).sustained&&
           opponentTrend(current,tick).falling&&adversaryWindow(me,current).exposed;
@@ -5952,11 +6186,13 @@
         amount=globalGuard.amount;
         // Having a large spare army is not sufficient: the ACTUAL landing
         // contingent must plausibly beat the enemy's fresh home force.
-        if(amount<1000||amount<number(()=>current.troops(),Infinity)*
+        if(amount<1000||amount<arrivalEnemy*
           (hardMode()?1.05:.85) || fresh.home-amount<fresh.reserve ||
           landingThirdPartyRisk(me,dest,current,amount))continue;
         if(sendMarineTransport(me,dest,amount,
-          tick,'LANDUNG → '+nameOf(current),'player:'+safeID(current))){
+          tick,'LANDUNG → '+nameOf(current),'player:'+safeID(current),route)){
+          telemetry('naval_commitment','Landung gegen geschätzte Zielstärke bei Ankunft',
+            {target:safeID(current),amount,currentEnemy,arrivalEnemy,route});
           if(exposedNavy)telemetry('naval_window','Anhaltende Drittfront bestätigt',
             {target:safeID(current),amount,trend:opponentTrend(current,tick)});
           return true;
@@ -5987,7 +6223,8 @@
         }
         if(!game.config().infiniteGold?.() &&
           goldAmount(me)<Number(ship.cost))continue;
-        if(navalHomeRisk(me,number(()=>game.ticks(),tick))||navalRouteRisk(me,ship.canBuild,dest))continue;
+        const route=navalRouteAssessment(me,ship.canBuild,dest,tick);
+        if(navalHomeRisk(me,number(()=>game.ticks(),tick))||route.risk)continue;
         const area=neutralIslandEstimate(dest);
         if(area!==null&&area<24){
           navalSiteNegative.set(dest,tick+480);
@@ -6002,7 +6239,7 @@
         if(amount<1000 || navyState.home-amount<
           Math.max(navyState.reserve,navyState.strongest*.78))continue;
         if(sendMarineTransport(me,dest,amount,tick,
-          'INSEL-EXPANSION → neutrales Küstenland','neutral:'+dest)){
+          'INSEL-EXPANSION → neutrales Küstenland','neutral:'+dest,route)){
           strategicTelemetry.neutralLandings++;
           fleetStatus='Neutrale Insellandung angefordert · Bestätigung ausstehend';
           return true;
@@ -6180,7 +6417,7 @@
           opponentProfiles:[...opponentProfiles.values()],
           decisions:decisionTimeline.slice(-8),income:incomeStatus,
           trade:{status:tradeStatus,stats:{...tradeStats},
-            botEmbargoes:[...botEmbargoes]},strategicTelemetry,
+            botEmbargoes:[...botEmbargoes],assessments:tradeAssessments},strategicTelemetry,
           attackBlockReport,crisisTrend,neuralEvidence:{...neuralEvidence,model:neuralModelInfo()},
           neuralDecisionEvidence,coreFunding,economyProbe:lastEconomyProbeReport,
            director:lastDirectorDecision,economyPosture:lastEconomyPosture,
@@ -6203,6 +6440,7 @@
       status='Strategie: '+context.wanted+' · Heim '+Math.round(s.home/10)+
         ' · Reserve '+Math.round(s.reserve/10)+' · Front '+Math.round(s.committed/10);
       const ranked=rankedTargets(groups,me,tick,s,context);
+      const planning=strategicCandidatePlan(me,groups,s,context,ranked,tick);
       reportAttackBlocks(me,groups,s,context,ranked,tick);
       // Do not open a new front while the homeland is under heavy assault.
       const dangerNow=defenseAssessment(me,s,tick);
@@ -6212,12 +6450,13 @@
       if(await fleetDefense(me,tick,serial))return;
       if(teamSupport(me,tick,s))return;
       // Economy has its own scheduler and cannot block the combat planner.
-      const directive=strategicDirector(me,s,context,ranked,tick);
+      const directive=strategicDirector(me,s,context,ranked,tick,planning);
       if(!lastDirectorDecision||lastDirectorDecision.order[0]!==directive.order[0]||
         lastDirectorDecision.economy!==directive.economy){
         telemetry('director_decision',directive.reason,{order:directive.order,
           economy:directive.economy,landCandidates:directive.landCandidates,
-          enemyCandidates:directive.enemyCandidates,threatened:directive.threatened});
+          enemyCandidates:directive.enemyCandidates,threatened:directive.threatened,
+          planning:directive.planning});
       }
       lastDirectorDecision=directive;
       if(directive.order[0]==='hold') {
