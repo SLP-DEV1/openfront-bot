@@ -537,6 +537,49 @@ function boot(benchmarkOptions={}) {
       assert.equal(x.b.state().marineStats[lost?'bridgeheadLost':'bridgeheadHeld'],1);
     }
   });
+  await check('team dZK7W1CkfP early ship visibility loss waits until ETA, not a penalty',()=>{
+    const x=boot();x.b.setBoatCtor(class {});
+    assert(x.b.sendMarineTransport(x.me,5,12000,300,'test','player:weak'));
+    const boat={...asset('Transport',10,99),owner:()=>x.me,
+      targetTile:()=>5};
+    x.game.motionPlans=()=>new Map([[99,{startTick:305,
+      ticksPerStep:1,path:Array(300).fill(5),planId:1}]]);
+    x.game.units=()=>[boat];x.game.owner=()=>x.weak;
+    x.setTick(305);x.b.inspectMarine(x.me,305);
+    x.game.units=()=>[];x.setTick(355);
+    x.b.inspectMarine(x.me,355);
+    let d=x.b.diagnosticSnapshot();
+    assert.equal(d.marine.stats.transportUnresolved,0);
+    assert.equal(d.marine.unobservedLandings.length,1);
+    assert.equal(d.marine.unobservedLandings[0].deadline,704);
+    assert.equal(x.b.state().landingFailures.length,0);
+    assert(x.b.state().diagnostics.some(e=>e.kind==='boat_visibility_lost'));
+    assert(x.b.state().diagnostics.some(e=>e.kind==='naval_war_lock_release'));
+    // Ownership later visible is valid evidence but not causal proof.
+    x.game.owner=()=>x.me;x.setTick(410);x.b.inspectMarine(x.me,410);
+    d=x.b.diagnosticSnapshot();
+    assert.equal(d.marine.unobservedLandings.length,0);
+    assert.equal(d.marine.stats.transportArrived,1);
+    assert.equal(d.marine.stats.transportUnresolved,0);
+    assert.equal(x.b.state().landingFailures.length,0);
+  });
+  await check('team dZK7W1CkfP missing transport without owned coast expires only after watch',()=>{
+    const x=boot();x.b.setBoatCtor(class {});
+    assert(x.b.sendMarineTransport(x.me,5,12000,300,'test','player:weak'));
+    const boat={...asset('Transport',10,99),owner:()=>x.me,
+      targetTile:()=>5};
+    x.game.motionPlans=()=>new Map([[99,{startTick:305,
+      ticksPerStep:1,path:Array(70).fill(5),planId:1}]]);
+    x.game.units=()=>[boat];x.game.owner=()=>x.weak;
+    x.setTick(305);x.b.inspectMarine(x.me,305);
+    x.game.units=()=>[];x.setTick(355);x.b.inspectMarine(x.me,355);
+    assert.equal(x.b.state().landingFailures.length,0);
+    x.setTick(475);x.b.inspectMarine(x.me,475);
+    assert.equal(x.b.state().marineStats.transportUnresolved,1);
+    assert.equal(x.b.state().landingFailures.length,1);
+    assert(x.b.state().diagnostics.some(e=>e.kind==='boat_unresolved'&&
+      e.reason==='no-owned-coast-after-observation-window'));
+  });
   await check('1.19.1 ports alone are not naval focus and changed profile resets confidence',()=>{
     const x=boot();x.weak.type=()=> 'HUMAN';
     x.weak.units=()=>[asset('Port',5,1),asset('Port',7,2)];
