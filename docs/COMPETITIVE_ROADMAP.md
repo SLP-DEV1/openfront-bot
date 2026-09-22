@@ -30,6 +30,13 @@ und echte Engine-/Multiplayer-Spiele **sind damit nicht ersetzt**.
 Die CI führt jetzt auch den Manifest-Test aus; ein grüner neuer
 Workflow-Durchlauf ist erst nach GitHub-Resultat belegt.
 
+## P1 – Entscheidungssnapshot auf aktuellem 1.20.11-Stand (PR #77)
+
+- Unveränderlicher, rein diagnostischer `decisionFrame` hält aktuelle Rohtruppen, Reserve, Gold (BigInt-sicher), Land, beobachtete Gegner und bestätigte Duo-ID fest; keine neue Aktionsfreigabe.
+- Bestehender Worker-Stale-Guard bleibt der einzige Guard und verwirft ab **mehr als 20 Ticks** sowie bei zurückliegendem Tick oder gewechseltem Player; Notverteidigung bleibt vor dem await.
+- Snapshot wird in der periodischen Diagnose erfasst und beim Match-Reset gelöscht. Solo und deterministisches Run3-Bundle werden zusammen aktualisiert.
+- Regression zu Freeze, Rohwerten, 20-Tick-Grenze, Spielerwechsel sowie bestehendem Guard; vollständige P1- und Live-Duo-Abnahme weiterhin separat.
+
 ## Status-Legende und Abnahmeregel
 
 - **Im Code vorhanden:** Ein bereits implementierter Baustein; **nicht** dass die Phase abgeschlossen ist.
