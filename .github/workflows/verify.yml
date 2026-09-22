@@ -126,6 +126,11 @@ jobs:
           node tools/benchmark/v5-curriculum-campaign.mjs setup --dryRun true > /dev/null
           node trainer/train.mjs --engineCommit bb8af015b515b3b717bd4d901074c5f4c16641cb --schema 4 --difficulty Impossible,Hard --maps World,Europe --nations 1,4 --generations 10 --population 6 --trainSeeds 3 --evalSeeds 2 --ticks 7200 --ticksSchedule 7200,7200,7200,7200,7200,18000,18000,18000,18000,18000 --dryRun true > /dev/null
           node tests/v5-curriculum-regression.cjs
+      - name: Check Neural V6 collapse campaign
+        run: |
+          node --check tools/benchmark/v6-collapse-campaign.mjs
+          node tools/benchmark/v6-collapse-campaign.mjs setup --dryRun true > /dev/null
+          node tests/v6-collapse-campaign-regression.cjs
       - name: Test P6 paired model-promotion evidence gate
         run: |
           node tests/workflow-trigger-regression.cjs
