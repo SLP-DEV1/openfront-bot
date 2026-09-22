@@ -46,6 +46,13 @@ Workflow-Durchlauf ist erst nach GitHub-Resultat belegt.
 - **P6 / #74:** Experiment-Manifest, Schema-4-Baseline und gepaarte CI-Auswertung sind vorhanden; keine vollständige Gegnerliga, keine reproduzierbare menschliche Replay-Rekonstruktion oder Promotion auf unabhängiger Holdout-Liga.
 - **Master #75:** 0/7 *Gesamtphasen* vollständig abgenommen. Dieses Update überschreibt die historischen Abschnitte unterhalb nicht; dort genannte ältere fehlgeschlagene Tests beschreiben nur deren damaligen Commit.
 
+## P5 – zeitlich/lokal begrenzte Marineunsicherheit (Implementierung ohne Matchtests)
+
+- `marineStats.transportUnresolved` bleibt als kumulative **Diagnosezahl**, nicht als globale, niemals auslaufende Freigabesperre.
+- Jüngste ungeklärte Landungen gelten höchstens 900 Spielticks und nur im 115-Koordinateneinheiten-Umfeld von Start oder Ziel der aktuell geprüften Route als Eskorte-Hinweis. Nach altem Vorfall oder an einer anderen Küste darf die übrige Marineplanung wieder selbst entscheiden.
+- Der vorhandene konservative direkte Warship-Korridor, die 3-Fehler-Pause, Ziel-Cooldowns, aktuelle Invasions- und Allianzprüfungen bleiben erhalten; dies ist **kein** fertiges Wasser-Pathfinding, ETA-Modell oder Brückenkopf-Nachschubsystem.
+- **Auf Nutzerwunsch ohne Langzeit-, Zwei-Client-, Liga- oder Wirkungstests umgesetzt.** Keine Aussage über neue Siegquote, Marineerfolg oder P5-Gesamtabnahme. Der unveränderte Champion wird weiterhin deterministisch gebündelt.
+
 ## Status-Legende und Abnahmeregel
 
 - **Im Code vorhanden:** Ein bereits implementierter Baustein; **nicht** dass die Phase abgeschlossen ist.
