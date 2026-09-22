@@ -430,7 +430,9 @@ function boot(benchmarkOptions={}) {
     };
     const route=x.b.navalRouteEstimate(10,16);
     assert.equal(route.waterSteps,7);
-    assert.equal(route.etaMethod,'uncalibrated-water-steps-proxy');
+    assert.equal(route.ticksPerMove,1,'pinned official transport moves once per engine tick');
+    assert.equal(route.etaTicksEstimate,8);
+    assert.equal(route.etaExact,false,'BFS route may differ from official pathfinder');
     assert.equal(route.path.join(','),'10,0,1,2,3,4,5,6');
     x.game.units=()=>[{...asset('Warship',13,5),owner:()=>x.weak}];
     assert.equal(x.b.navalRouteRisk(x.me,10,16),null,
@@ -3490,6 +3492,9 @@ function boot(benchmarkOptions={}) {
     x.setTick(350);peer.state.tick=350;
     military=x.b.military(x.me,groups);
     x.b.coordinateDuo(x.me,military,350);
+    const agreed=x.b.state().duoPlan.planId;
+    peer.state.planId=agreed;peer.state.ackPlanId=agreed;
+    peer.state.expiresTick=x.b.state().duoPlan.expiresTick;
     const joint=x.b.duoJointOpportunity(x.me,groups,military,groups[0],350,true);
     assert(joint&&joint.own>0&&joint.ally>0);
     assert(joint.own+joint.ally>=joint.needed);
@@ -3528,6 +3533,9 @@ function boot(benchmarkOptions={}) {
     x.setTick(350);peer.state.tick=350;
     army=x.b.military(x.me,groups);
     x.b.coordinateDuo(x.me,army,350);
+    const agreed=x.b.state().duoPlan.planId;
+    peer.state.planId=agreed;peer.state.ackPlanId=agreed;
+    peer.state.expiresTick=x.b.state().duoPlan.expiresTick;
     assert.equal(army.reserve,originalReserve,'Duo may not silently lower the home reserve');
     const context=x.b.strategy(x.me,groups,army);
     const ranked=x.b.rankedTargets(groups,x.me,350,army,context);
