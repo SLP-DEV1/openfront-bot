@@ -5094,6 +5094,23 @@
     telemetry('landing_failure_guard','Landungsziel nach Verlust vorübergehend gesperrt',
       {key,tile,count,until,reason,evidence:'observed-no-confirmed-arrival'});
   }
+  // Prefer the visible, engine-produced grid MotionPlan for an active ship.
+  // This path and ticksPerStep come from the official GameView (not BFS).
+  // This projects movement only; retreat, interception and re-path can change it.
+  function observedTransportETA(ship,tick=number(()=>game?.ticks?.(),0)){
+    const id=ship?.id?.();
+    const plan=Number.isInteger(id)?game?.motionPlans?.()?.get(id):null;
+    if(!plan||!Number.isInteger(plan.startTick)||
+      !Number.isInteger(plan.ticksPerStep)||plan.ticksPerStep<1||
+      !plan.path?.length)return null;
+    const arrivalTick=plan.startTick+
+      (plan.path.length-1)*plan.ticksPerStep;
+    return {source:'official-visible-motion-plan',
+      etaTicksEstimate:Math.max(0,arrivalTick-tick),
+      arrivalTick,steps:plan.path.length-1,
+      ticksPerMove:plan.ticksPerStep,planId:plan.planId,
+      etaExact:false};
+  }
   function inspectMarine(me,tick){
     const units=(()=>{try{return game.units?.()||[];}catch(_){return [];}})();
     const mine=safeID(me),own=type=>units.filter(u=>
@@ -5129,6 +5146,8 @@
           boat.lastShipTile=position;boat.lastProgressTick=tick;
         }
         const id=observed.id?.();
+        const observedETA=observedTransportETA(observed,tick);
+        if(observedETA)boat.eta=observedETA;
         const resolved=observed.targetTile?.();
         if(Number.isInteger(resolved))boat.resolvedDest=resolved;
         if(!boat.shipIds.includes(id))boat.shipIds.push(id);
@@ -5137,7 +5156,8 @@
           fleetStatus='Transport im Spiel sichtbar';
           telemetry('boat_confirmed','Transport im Spielzustand beobachtet',
             {dest:boat.dest,resolvedDest:boat.resolvedDest??null,
-              target:boat.target,ship:id,troops:boat.troops});
+              target:boat.target,ship:id,troops:boat.troops,
+              eta:boat.eta??null});
           if(boat.playerID&&coordinatedWar()&&warState.id===null){
             const target=game.playerViews?.().find(p=>safeID(p)===boat.playerID);
             if(target?.isAlive?.()&&!friendly(target,me)){
