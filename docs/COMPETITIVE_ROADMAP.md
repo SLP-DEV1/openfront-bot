@@ -96,6 +96,12 @@ Auf Nutzerwunsch sind lokale Langzeit-, vollständige Zwei-Client-, Liga- und Wi
 - **P4–P6:** [PR #89](https://github.com/SLP-DEV1/openfront-bot/pull/89), Merge [7847517](https://github.com/SLP-DEV1/openfront-bot/commit/7847517fa17ec62df43cbd237971da8e15ef66b7): explizite gegenseitige Duo-ACK, offizielle MotionPlan-ETA und Mehr-Bot-Engine-Harness mit FFA/2v2-Liga-Runner. **Keine ausgeführten Langzeit-, Zwei-Browser-, Liga- oder Wirkungstests** als Erfolg behaupten; weitere Implementierungsaufgaben bestehen.
 - **P0 / #68:** [PR #92](https://github.com/SLP-DEV1/openfront-bot/pull/92) ist als [f0b1ae6](https://github.com/SLP-DEV1/openfront-bot/commit/f0b1ae65f0be8dda15c197dd87e54782e76a7a6c) gemergt. Offizieller Config.maxTroops-/Wachstumstest für City/Factory/Port auf gepinntem Engine-Commit im [Engine-Workflow 35674819769](https://github.com/SLP-DEV1/openfront-bot/actions/runs/35674819769) als eigener Schritt **grün**. Ein kompletter GameRunner-Baubefehl wurde nicht simuliert und die weiteren Workflow-Schritte sind separat zu bewerten.
 
+## P6 Mehr-Bot-Aufzeichnungsfehler und Abschlussstatus dieses Durchlaufs
+
+- [PR #93](https://github.com/SLP-DEV1/openfront-bot/pull/93), Merge [d7b1fb7](https://github.com/SLP-DEV1/openfront-bot/commit/d7b1fb76cc14702faa40f2709139814fa7db1f74): der gemeinsame Mehr-Bot-JSONL-Stream wird gegen die **Summe** aller per-Client-Recordings geprüft, nicht gegen den ersten Client. Unbekannte Zähler, Ereignislücken und Streamfehler bleiben als unvollständig gekennzeichnet. [Verify erfolgreich](https://github.com/SLP-DEV1/openfront-bot/actions/runs/35675062709).
+- Der gesamte [offizielle Engine-Smoke für #92](https://github.com/SLP-DEV1/openfront-bot/actions/runs/35674819769) ist **erfolgreich**; die echte `Config.maxTroops`-/Wachstumsprobe bestand bereits als einzelner Schritt. Keine vollständige ausgespielte Gebäude-Baukausalität daraus ableiten.
+- Nach #89–#93 aktuell keine offenen Pull Requests. **#68–#75 bleiben als Roadmap offen**, soweit tatsächlich noch Codeaufgaben ausstehen, nicht allein wegen der auf Nutzerwunsch übersprungenen lokalen Langzeit-/2-Browser-/Liga-/Wirkungstests. Der Reststand darf weder als fertiges Gesamtsystem noch als neue Siegquote ausgegeben werden.
+
 ## Status-Legende und Abnahmeregel
 
 - **Im Code vorhanden:** Ein bereits implementierter Baustein; **nicht** dass die Phase abgeschlossen ist.
