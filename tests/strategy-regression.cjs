@@ -72,7 +72,7 @@ function boot(benchmarkOptions={}) {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'sampleTroops,navalHomeRisk,navalRouteRisk,navalRouteEstimate,diagnosticSnapshot,learnFinish,economicDefensePressure,observeAttackOrigins,',
+    'investmentValue,setIncomeStatus:v=>incomeStatus=v,sampleTroops,navalHomeRisk,navalRouteRisk,navalRouteEstimate,diagnosticSnapshot,learnFinish,economicDefensePressure,observeAttackOrigins,',
     'strategicDirector,economyPosture,observeOpponents,opponentTrend,opponentWindows,observeHumanProfiles,observeVictoryThreat,coordinateDuo,planOperation,decisionNote,navalCommitmentRatio,landingThirdPartyRisk,targetHomeRatio,matchContext,rankedDuo,duoFocus,duoBattleCredit,railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,frontPressureForecast,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,offensiveCommitment,globalNavalHomeGuard,observeFronts,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,samBuildAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,tradePolicy,tradeIntentPath,sendTradeToggle,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,allianceOfferPath,sendAllianceOffer,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),setLastEmission:n=>lastEmission=n,',
     'setNeural:m=>{neuralModel=neuralValidate(m);opts.neuralEnabled=!!neuralModel;neuralPolicyCache={key:null,output:null};},neuralStrategicSignals,neuralChannel,',
@@ -3908,6 +3908,40 @@ function boot(benchmarkOptions={}) {
     assert(guard>0&&guard<targets,'stale borders must not enter candidate decisions');
     assert.match(source,/observedTick-tick>20/);
   });
+  await check('P2 observed train/trade totals cannot be valued as one new building',()=>{
+    const x=boot();
+    const requirements={pressure:.25,capStalled:false,
+      portMilestone:false,nuclearThreat:false,immediate:false};
+    const factory=tile=>asset('Factory',tile,tile);
+    const port=tile=>asset('Port',tile,tile);
+    x.b.setIncomeStatus({observed:true,train:60000,trade:60000});
+    assert(Math.abs(x.b.investmentValue({type:'Factory'},100000,requirements,
+      [factory(1),factory(2)])-5.4)<1e-9);
+    assert(Math.abs(x.b.investmentValue({type:'Port'},100000,requirements,
+      [port(1),port(2)])-4.2)<1e-9);
+    assert.equal(x.b.investmentValue({type:'Factory'},100000,requirements,[]),0,
+      'income from another source must not be attributed to nonexistent Factories');
+    x.b.setIncomeStatus({observed:false,train:60000,trade:60000});
+    assert.equal(x.b.investmentValue({type:'Factory'},100000,requirements,
+      [factory(1)]),0,'unobserved payback is unknown, never invented');
+  });
+  await check('P3 default long-idle operation releases without dropping an active front',()=>{
+    const x=boot(),op=()=>({target:'strong',type:'Front sichern',
+      since:300,initialLand:1200,lastObservedLand:1200,lastProgressTick:300,
+      successLand:900,budget:50000,spent:0});
+    x.b.opts.impossibleExperiment=false;x.b.setOperation(op());
+    x.setTick(1200);x.b.planOperation(x.me,[],x.b.military(x.me,[]),1200);
+    assert.equal(x.b.state().operation?.target,'strong',
+      'the default timeout cannot release prematurely');
+    x.setTick(1201);x.b.planOperation(x.me,[],x.b.military(x.me,[]),1201);
+    assert.equal(x.b.state().operation,null,
+      'idle plan eventually yields to another legal opportunity');
+    x.b.setOperation(op());
+    x.me.outgoingAttacks=()=>[{targetID:'strong',troops:2000,retreating:false}];
+    x.b.planOperation(x.me,[],x.b.military(x.me,[]),1201);
+    assert.equal(x.b.state().operation?.target,'strong',
+      'observed active attack must retain its live operation');
+  });
   await check('1.20.11 observed operation progress does not claim causality',()=>{
     const x=boot();let land=1200;
     x.strong.numTilesOwned=()=>land;
@@ -3923,7 +3957,7 @@ function boot(benchmarkOptions={}) {
       r.kind==='operation_progress');
     assert.equal(proof?.evidence,'observed-not-causal-proof');
   });
-  await check('1.20.11 stalled operation is released only behind experiment flag',()=>{
+  await check('1.20.11 short experimental idle timeout does not change normal early window',()=>{
     const x=boot();
     x.b.setOperation({target:'strong',type:'Front sichern',since:300,
       initialLand:1200,lastObservedLand:1200,lastProgressTick:300,
