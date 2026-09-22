@@ -291,6 +291,17 @@ function boot(benchmarkOptions={}) {
     assert.equal(await x.b.economy(x.me,2420,0,[]),true);
     assert.equal(x.sent[0].unit,'SAM Launcher');
   });
+  await check('PR #80 quoted SAM is protected already at 90 percent troop cap',async()=>{
+    const x=samScenario();x.setHome(90000);
+    x.b.setTroopSnapshot(x.b.military(x.me,[]));
+    assert.equal(x.b.economicNeeds(x.me,x.me.units(),[]).capStalled,true,
+      '85 percent City threshold must not silently move to 95 percent');
+    assert.equal(await x.b.economy(x.me,2400,0,[]),false);
+    const need=x.b.economicNeeds(x.me,x.me.units(),[]);
+    assert.equal(need.savingsTarget,1500000);
+    assert.equal(x.b.spendBudget(x.me,125000,'City'),false);
+    assert.equal(x.b.spendBudget(x.me,300000,'Warship'),false);
+  });
   await check('audit ship cannot consume quoted SAM protection fund',async()=>{
     const x=samScenario();
     assert.equal(await x.b.economy(x.me,2400,0,[]),false);
