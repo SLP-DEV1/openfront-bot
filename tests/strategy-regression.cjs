@@ -408,13 +408,22 @@ function boot(benchmarkOptions={}) {
     const s={home:2032444,reserve:600000,incoming:0};
     assert(x.b.globalNavalHomeGuard(x.me,x.weak,s,585343,[]).amount<585343);
   });
-  await check('1.19.1 unresolved landing requires escort at this departure or destination',()=>{
+  await check('1.19.1 recent local landing failure needs escort; old or remote failures do not',()=>{
     const x=boot();x.game.x=t=>t%1000;x.game.y=t=>Math.floor(t/1000);
     x.b.state().marineStats.transportUnresolved=1;
     let tile=900900;
     x.game.units=()=>[{...asset('Warship',0,5),tile:()=>tile,owner:()=>x.me}];
+    assert.equal(x.b.navalRouteRisk(x.me,100100,100800),null,
+      'a historical counter alone must not globally block every route');
+    x.b.landingFailure({key:'player:weak',dest:100800},300,100800,'ship-disappeared');
     assert.equal(x.b.navalRouteRisk(x.me,100100,100800),'no-local-escort-after-unresolved-landing');
     tile=100150;assert.equal(x.b.navalRouteRisk(x.me,100100,100800),null);
+    tile=900900;x.setTick(1201);
+    assert.equal(x.b.navalRouteRisk(x.me,100100,100800),null,
+      'escort obligation expires after 900 ticks');
+    x.setTick(300);
+    assert.equal(x.b.navalRouteRisk(x.me,500500,500800),null,
+      'failure at another coastline must not block a distant route');
   });
   await check('1.19.1 nuke appearing during naval worker await stops dispatch',async()=>{
     const x=boot();x.b.setBoatCtor(class {});
