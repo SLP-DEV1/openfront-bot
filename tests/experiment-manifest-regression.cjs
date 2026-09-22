@@ -19,4 +19,18 @@ assert.throws(()=>manifest({...base,engineCommit:'unknown'},assets));
 assert.throws(()=>manifest({...base,mode:'1v1'},assets));
 assert.throws(()=>manifest({...base,observedOutcome:'assumed-win'},assets));
 assert.throws(()=>manifest({...base,settings:{reserve:Infinity}},assets));
+const expectedHashes={settings:x.settingsSha256,source:x.sourceSha256,
+  run3:x.run3Sha256,model:x.championSha256};
+assert.deepEqual(manifest({...base,expectedHashes},assets),x,
+  'identical pinned inputs retain reproducible manifest');
+for(const key of Object.keys(expectedHashes)){
+  assert.throws(()=>manifest({...base,expectedHashes:{
+    ...expectedHashes,[key]:'0'.repeat(64)}},assets),
+  /fingerprint mismatch/,key+' changed without updating pinned identity');
+}
+assert.throws(()=>manifest({...base,expectedHashes:{source:x.sourceSha256}},assets),
+  /Expected all four/,'partial pins cannot hide a model or settings change');
+assert.throws(()=>manifest({...base,expectedHashes:{
+  ...expectedHashes,model:'not-a-sha'}},assets),/fingerprint mismatch/);
+console.log('PASS pinned experiment fingerprints for source, Run3, champion and settings');
 console.log('PASS paired experiment identity, hashes, valid outcomes and match-level observation');
