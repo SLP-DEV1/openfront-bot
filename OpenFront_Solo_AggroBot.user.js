@@ -5673,9 +5673,9 @@
           while(cursor!==null){path.push(cursor);cursor=previous.get(cursor);}
           path.reverse();
           const waterSteps=path.length-1;
-          return {waterSteps,etaTicksLowerBound:waterSteps,
-            etaTicks:waterSteps+1,etaTicksRange:[waterSteps+1,null],
-            ticksPerMove:1,etaMethod:'official-transport-one-tick-per-move-bfs-route-approximation',path};
+          return {waterSteps,etaTicksEstimate:waterSteps+1,
+            ticksPerMove:1,etaExact:false,
+            etaMethod:'official-transport-one-tick-per-move-bfs-route-approximation',path};
         }
         const next=[];const n=game.neighbors4(tile,next);
         for(const neighbor of next.slice(0,n))if(!previous.has(neighbor)&&
@@ -5858,9 +5858,8 @@
         if(routeEstimate)
           telemetry('marine_eta_proxy','Wasserroute als Näherung berechnet',
             {target:safeID(current),dest,waterSteps:routeEstimate.waterSteps,
-              etaTicks:routeEstimate.etaTicks,
-              etaTicksRange:routeEstimate.etaTicksRange,
-              ticksPerMove:routeEstimate.ticksPerMove,
+              etaTicksEstimate:routeEstimate.etaTicksEstimate,
+              etaExact:false,ticksPerMove:routeEstimate.ticksPerMove,
               etaMethod:routeEstimate.etaMethod});
         if(routeRisk||navalHomeRisk(me,number(()=>game.ticks(),tick))){
           decisionNote('marine-pause','Landung nach Sicherheitsprüfung zurückgestellt',
@@ -6366,6 +6365,9 @@
         const allowed={aggressive:[40,100],reserve:[5,65],actionsPerMinute:[15,120],maxTargets:[4,25]};
         for(const [key,value] of Object.entries(settings)){
           if(key==='fullAuto'&&typeof value==='boolean')continue;
+          if(key==='duoEnabled'&&typeof value==='boolean')continue;
+          if(key==='duoRoom'&&typeof value==='string'&&
+            /^[a-zA-Z0-9_-]{6,64}$/.test(value))continue;
           if(!allowed[key]||typeof value!=='number'||!Number.isFinite(value)||value<allowed[key][0]||value>allowed[key][1])
             throw new Error('Invalid benchmark setting: '+key);
         }
@@ -6376,7 +6378,8 @@
       },
       stop:()=>{telemetry('benchmark_stop','Lokaler Testlauf gestoppt');opts.enabled=false;autoStartGame=game;generation++;},
       // Engine harness awaits every cycle; ordinary browser timers stay unchanged.
-      pump:async()=>{await step();await economyStep();await diplomacyTick();await nukeStep();}
+      pump:async()=>{await step();await economyStep();await diplomacyTick();
+        await nukeStep();if(opts.duoEnabled)await duoPublish();}
     });
   }
   console.info(PREFIX,'v'+VERSION,'ready; Singleplayer/Public/Private, auto-start after match discovery');
