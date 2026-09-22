@@ -430,7 +430,9 @@ function boot(benchmarkOptions={}) {
     };
     const route=x.b.navalRouteEstimate(10,16);
     assert.equal(route.waterSteps,7);
-    assert.equal(route.etaMethod,'uncalibrated-water-steps-proxy');
+    assert.equal(route.ticksPerMove,1,'pinned official transport moves once per engine tick');
+    assert.equal(route.etaTicksEstimate,8);
+    assert.equal(route.etaExact,false,'BFS route may differ from official pathfinder');
     assert.equal(route.path.join(','),'10,0,1,2,3,4,5,6');
     x.game.units=()=>[{...asset('Warship',13,5),owner:()=>x.weak}];
     assert.equal(x.b.navalRouteRisk(x.me,10,16),null,
@@ -3490,6 +3492,9 @@ function boot(benchmarkOptions={}) {
     x.setTick(350);peer.state.tick=350;
     military=x.b.military(x.me,groups);
     x.b.coordinateDuo(x.me,military,350);
+    const agreed=x.b.state().duoPlan.planId;
+    peer.state.planId=agreed;peer.state.ackPlanId=agreed;
+    peer.state.expiresTick=x.b.state().duoPlan.expiresTick;
     const joint=x.b.duoJointOpportunity(x.me,groups,military,groups[0],350,true);
     assert(joint&&joint.own>0&&joint.ally>0);
     assert(joint.own+joint.ally>=joint.needed);
@@ -3528,6 +3533,9 @@ function boot(benchmarkOptions={}) {
     x.setTick(350);peer.state.tick=350;
     army=x.b.military(x.me,groups);
     x.b.coordinateDuo(x.me,army,350);
+    const agreed=x.b.state().duoPlan.planId;
+    peer.state.planId=agreed;peer.state.ackPlanId=agreed;
+    peer.state.expiresTick=x.b.state().duoPlan.expiresTick;
     assert.equal(army.reserve,originalReserve,'Duo may not silently lower the home reserve');
     const context=x.b.strategy(x.me,groups,army);
     const ranked=x.b.rankedTargets(groups,x.me,350,army,context);
@@ -3539,7 +3547,7 @@ function boot(benchmarkOptions={}) {
       'game command must use own independently available troops only');
     assert(x.me.troops()-x.sent[0].troops>=originalReserve);
   });
-  await check('1.20.5 second bot may join first already-observed attack',()=>{
+  await check('P4 observed ally attack alone cannot bypass reciprocal joint-plan acknowledgement',()=>{
     const x=boot();x.weak.troops=()=>90000;x.strong.troops=()=>42000;
     const groups=[{id:'strong',opponent:x.strong,front:8,tiles:[6]}];
     x.b.setGroups(groups);
@@ -3556,7 +3564,8 @@ function boot(benchmarkOptions={}) {
     peer.state.ready=false;peer.state.strikeTick=null;
     peer.state.available=0;peer.state.reserve=90000;
     assert.equal(x.b.coordinateDuo(x.me,army,350).strikeTick,345);
-    assert(x.b.duoJointOpportunity(x.me,groups,army,groups[0],350,true));
+    assert.equal(x.b.duoJointOpportunity(x.me,groups,army,groups[0],350,true),null,
+      'observed attack does not override an unacknowledged partner plan');
     x.setTick(410);
     assert.equal(x.b.coordinateDuo(x.me,army,410).strikeTick,null,
       'an observed attack cannot retain a plan from a stale relay tick');
@@ -3579,6 +3588,9 @@ function boot(benchmarkOptions={}) {
     peer.state.planId=plan.planId;peer.state.expiresTick=349;
     assert.equal(x.b.duoJointOpportunity(x.me,groups,army,groups[0],350,true),null);
     peer.state.expiresTick=455;
+    assert.equal(x.b.duoJointOpportunity(x.me,groups,army,groups[0],350,true),null,
+      'matching plan without explicit partner acknowledgement is not launch permission');
+    peer.state.ackPlanId=plan.planId;
     assert(x.b.duoJointOpportunity(x.me,groups,army,groups[0],350,true));
     x.setTick(456);peer.state.tick=456;
     assert.equal(x.b.duoJointOpportunity(x.me,groups,army,groups[0],456,true),null);

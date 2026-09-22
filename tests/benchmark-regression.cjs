@@ -62,9 +62,10 @@ assert.throws(()=>parse(['--engine','/tmp/engine','--profile','nope']),/Unknown 
     const runner=path.join(__dirname,'../tools/benchmark/league.cjs');
     execFileSync(process.execPath,[runner,'--engine',engine,
       '--engineCommit',commit,'--out',output,'--seeds','league-test-01,league-test-02',
-      '--profiles','balanced','--opponents','rush'],{encoding:'utf8'});
+      '--profiles','balanced','--opponents','rush','--scripted'],{encoding:'utf8'});
     const report=JSON.parse(fs.readFileSync(path.join(output,'league.json'),'utf8'));
     assert.equal(report.engineCommit,commit);
+    assert.equal(report.kind,'legacy-scripted-opponent-league');
     assert.match(report.botSHA256,/^[a-f0-9]{64}$/);
     assert.equal(report.matches.length,2);
     assert.equal(new Set(report.matches.map(m=>m.id)).size,2);

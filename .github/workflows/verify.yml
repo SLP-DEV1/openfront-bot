@@ -60,6 +60,8 @@ jobs:
       - name: Check benchmark tools
         run: |
           node --check tools/benchmark/engine-match.mjs
+          node --check tools/benchmark/engine-multibot.mjs
+          node --check tools/benchmark/league.cjs
           node --check tools/benchmark/serve-browser.mjs
           node --check tools/benchmark/suite.mjs
           node tests/benchmark-regression.cjs
