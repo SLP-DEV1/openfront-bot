@@ -49,6 +49,10 @@ jobs:
           node --check tools/live-monitor.cjs
           node tests/live-monitor-regression.cjs
           node tests/browser-finish-regression.cjs
+      - name: Test diagnostic v2 journal and Duo event capture
+        run: |
+          node --check tests/diagnostic-v2-regression.cjs
+          node tests/diagnostic-v2-regression.cjs
       - name: Test bot strategy
         run: node tests/strategy-regression.cjs
       - name: Test match auto-start and panel
