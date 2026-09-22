@@ -1043,6 +1043,9 @@
       strikeTick:Number.isInteger(duoPlan?.strikeTick)?duoPlan.strikeTick:null,
       planId:duoPlan?.planId??null,expiresTick:duoPlan?.expiresTick??null,
       ackPlanId:duoPlan?.planId&&duoPlan.ready&&peer&&
+        state&&state.incoming===0&&
+        state.available>=(duoPlan.joint?.own??Infinity)&&
+        !recentHostilePressure(number(()=>game?.ticks?.(),0))&&
         actualFriendly(peer,me)&&duoPlan.partner===safeID(peer)&&
         Number.isInteger(duoPlan.expiresTick)&&
         number(()=>game.ticks(),Infinity)<=duoPlan.expiresTick?
