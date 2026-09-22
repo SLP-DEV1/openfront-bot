@@ -15,7 +15,8 @@ function evaluate({protocol,rows}={}){
   const {engineCommit,modes,maps,opponents,seeds,arms,minPairsPerCell}=protocol;
   if(!HEX40.test(engineCommit||'')||!uniqueStrings(modes)||
      !modes.every(m=>['1v1','official-2v2','ffa-duo'].includes(m))||
-     !uniqueStrings(maps)||!uniqueStrings(opponents)||!uniqueStrings(seeds)||
+     !uniqueStrings(maps)||maps.length<2||
+     !uniqueStrings(opponents)||opponents.length<2||!uniqueStrings(seeds)||
      !Number.isSafeInteger(minPairsPerCell)||minPairsPerCell<2||
      seeds.length<minPairsPerCell||!arms||
      Object.keys(arms).sort().join('|')!==[...ARMS].sort().join('|')||
