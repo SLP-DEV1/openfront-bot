@@ -40,9 +40,11 @@ function evaluate({protocol,rows}={}){
     if(typeof r.matchId!=='string'||!r.matchId.trim()||matchIds.has(r.matchId))
       return fail('missing-or-duplicate-match-id');
     matchIds.add(r.matchId);
-    if(r.engineCommit?.toLowerCase()!==engineCommit.toLowerCase()||
-       r.botSHA256?.toLowerCase()!==arms[r.arm].botSHA256.toLowerCase()||
-       r.policySHA256?.toLowerCase()!==arms[r.arm].policySHA256.toLowerCase())
+    if(typeof r.engineCommit!=='string'||typeof r.botSHA256!=='string'||
+       typeof r.policySHA256!=='string'||
+       r.engineCommit.toLowerCase()!==engineCommit.toLowerCase()||
+       r.botSHA256.toLowerCase()!==arms[r.arm].botSHA256.toLowerCase()||
+       r.policySHA256.toLowerCase()!==arms[r.arm].policySHA256.toLowerCase())
       return fail('provenance-mismatch');
     if(r.exitCode!==0||r.verified!==true||r.confirmed!==true||
        r.recording?.complete!==true||r.recording.dropped!==0||
