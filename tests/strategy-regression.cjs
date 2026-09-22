@@ -418,7 +418,7 @@ function boot(benchmarkOptions={}) {
     assert(Object.isFrozen(d));
   });
   await check('P5 bounded water detour screens ships on route not straight chord',()=>{
-    const x=boot(),water=new Set([10,0,1,2]);
+    const x=boot(),water=new Set([10,0,1,2,3,4,5,6,13]);
     x.game.x=t=>(t%10)*100;x.game.y=t=>Math.floor(t/10)*100;
     x.game.isWater=t=>water.has(t);
     x.game.neighbors4=(tile,out)=>{
@@ -428,16 +428,16 @@ function boot(benchmarkOptions={}) {
           out.push(p);
       return out.length;
     };
-    const route=x.b.navalRouteEstimate(10,12);
-    assert.equal(route.waterSteps,3);
+    const route=x.b.navalRouteEstimate(10,16);
+    assert.equal(route.waterSteps,7);
     assert.equal(route.etaMethod,'uncalibrated-water-steps-proxy');
-    assert.equal(route.path.join(','),'10,0,1,2');
-    x.game.units=()=>[{...asset('Warship',11,5),owner:()=>x.weak}];
-    assert.equal(x.b.navalRouteRisk(x.me,10,12),null,
+    assert.equal(route.path.join(','),'10,0,1,2,3,4,5,6');
+    x.game.units=()=>[{...asset('Warship',13,5),owner:()=>x.weak}];
+    assert.equal(x.b.navalRouteRisk(x.me,10,16),null,
       'a ship behind the land barrier is not on the water detour');
-    water.delete(1);
-    assert.equal(x.b.navalRouteEstimate(10,12),null);
-    assert.equal(x.b.navalRouteRisk(x.me,10,12),
+    water.delete(3);
+    assert.equal(x.b.navalRouteEstimate(10,16),null);
+    assert.equal(x.b.navalRouteRisk(x.me,10,16),
       'unescorted-visible-warship','unresolved paths retain the conservative screen');
   });
   await check('1.19.1 28-percent remote landing cannot slip below global reserve gate',()=>{
