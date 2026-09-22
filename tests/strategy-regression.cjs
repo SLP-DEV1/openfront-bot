@@ -271,6 +271,26 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.b.state().gameEnd.outcome,'victory');
     assert.equal(x.b.state().diagnostics.filter(r=>r.kind==='game_over').length,2);
   });
+  await check('issue #76 BigInt gold above safe integer range is clamped',()=>{
+    const x=boot();x.me.gold=()=>BigInt(Number.MAX_SAFE_INTEGER)+123456789n;
+    const needs=x.b.economicNeeds(x.me,[],[]);
+    assert.equal(needs.gold,Number.MAX_SAFE_INTEGER);
+    assert.equal(x.b.spendBudget(x.me,125000,'Factory'),true);
+  });
+  await check('issue #76 cap-stalled SAM quote outranks City and discretionary fleet',async()=>{
+    const x=samScenario();x.setHome(99000);
+    x.b.setTroopSnapshot(x.b.military(x.me,[]));
+    assert.equal(x.b.economicNeeds(x.me,x.me.units(),[]).capStalled,true);
+    assert.equal(await x.b.economy(x.me,2400,0,[]),false);
+    const need=x.b.economicNeeds(x.me,x.me.units(),[]);
+    assert.equal(need.savingsTarget,1500000);
+    assert.equal(x.b.spendBudget(x.me,125000,'City'),false);
+    assert.equal(x.b.spendBudget(x.me,300000,'Warship'),false);
+    x.setTick(2420);x.setGold(1700000);
+    x.b.setTroopSnapshot(x.b.military(x.me,[]));
+    assert.equal(await x.b.economy(x.me,2420,0,[]),true);
+    assert.equal(x.sent[0].unit,'SAM Launcher');
+  });
   await check('audit ship cannot consume quoted SAM protection fund',async()=>{
     const x=samScenario();
     assert.equal(await x.b.economy(x.me,2400,0,[]),false);
@@ -775,8 +795,10 @@ function boot(benchmarkOptions={}) {
     assert.equal(await x.b.economy(x.me,300,0,[]),true);
     assert(['City','Factory'].includes(x.sent[0].unit),x.sent[0].unit);
   });
+  // Savings tests exercise a non-capped army; near >=85% capacity the
+  // separate cap-relief regressions correctly prioritize City instead.
   await check('late game accumulates funds without treating saving as failed construction', async () => {
-    const x=boot();x.setTick(2400);x.setLand(51613);x.setGold(900000);
+    const x=boot();x.setTick(2400);x.setLand(51613);x.setGold(900000);x.setHome(70000);
     const units=['City','City','Factory','Factory'].map((type,i)=>({
       type:()=>type,isActive:()=>true,tile:()=>100+i*20,id:()=>i+1,level:()=>1}));
     x.me.units=()=>units;
@@ -787,7 +809,7 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.b.state().failedEconomyProbes,0);
   });
   await check('first silo is funded and built at threshold', async () => {
-    const x=boot();x.setTick(2400);x.setLand(51613);x.setGold(1200000);
+    const x=boot();x.setTick(2400);x.setLand(51613);x.setGold(1200000);x.setHome(70000);
     const units=['City','City','Factory','Factory'].map((type,i)=>({
       type:()=>type,isActive:()=>true,tile:()=>100+i*20,id:()=>i+1,level:()=>1}));
     x.me.units=()=>units;
@@ -989,7 +1011,7 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.b.state().failedEconomyProbes,0);
   });
   await check('issue #5 potential neighbor does not cancel Silo fund', async () => {
-    const x=boot();x.setTick(2400);x.setLand(51613);x.setGold(900000);
+    const x=boot();x.setTick(2400);x.setLand(51613);x.setGold(900000);x.setHome(70000);
     const units=['City','City','Factory','Factory'].map((type,i)=>({
       type:()=>type,isActive:()=>true,tile:()=>5500+i*20,id:()=>i+1,level:()=>1}));
     x.me.units=()=>units;x.strong.troops=()=>200000;
@@ -1371,7 +1393,7 @@ function boot(benchmarkOptions={}) {
     assert.equal(p.list.some(e=>e.type==='City'),false);
   });
   await check('v1.10.0 MIRV-only game saves a MIRV-sized fund', () => {
-    const x=boot();x.setTick(2400);x.setLand(5000);
+    const x=boot();x.setTick(2400);x.setLand(5000);x.setHome(70000);
     x.game.config().isUnitDisabled=t=>t==='Atom Bomb'||t==='Hydrogen Bomb';
     const units=['City','City','Factory','Factory','Missile Silo'].map((type,i)=>({
       type:()=>type,isActive:()=>true,level:()=>1,tile:()=>200+i*50}));
@@ -1985,7 +2007,7 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.sent[0].unit,'Port');
   });
   await check('v1.10.5 missing Port worker site does not block silo forever', async () => {
-    const x=boot();x.setTick(2400);x.setLand(52000);x.setGold(900000);
+    const x=boot();x.setTick(2400);x.setLand(52000);x.setGold(900000);x.setHome(70000);
     x.game.isShore=t=>t===5500;
     const units=['City','City','Factory','Factory'].map((type,i)=>({
       type:()=>type,isActive:()=>true,tile:()=>5000+i*20,
@@ -3057,6 +3079,31 @@ function boot(benchmarkOptions={}) {
     assert.equal(proof.evidence,'ranking-only-worker-legality-preserved');
   });
 
+  await check('issue #76 first legal Port survives moderate cap pressure and silo savings',async()=>{
+    const x=boot();x.setTick(2400);x.setGold(1700000);x.setLand(4400);
+    x.setHome(90000);x.game.isShore=t=>t===5500;
+    const units=['City','City','Factory','Factory'].map((type,i)=>asset(type,5000+i*25,i+1));
+    x.me.units=()=>units;x.b.setTroopSnapshot(x.b.military(x.me,[]));
+    const needs=x.b.economicNeeds(x.me,units,[5500]);
+    assert.equal(needs.capStalled,true);
+    assert.equal(needs.firstPortWindow,true);
+    assert.equal(needs.portMilestone,true);
+    x.me.actions=async(tile,types)=>({buildableUnits:types.map(type=>({
+      type,canBuild:tile,canUpgrade:false,cost:BigInt(type==='Port'?500000:1000000)}))});
+    assert.equal(await x.b.economy(x.me,2400,0,[5500]),true);
+    assert.equal(x.sent[0].unit,'Port');
+  });
+  await check('issue #76 refreshes worker price before Build intent',async()=>{
+    const x=boot(),seen=new Map();x.setTick(300);x.setGold(1000000);
+    x.me.actions=async(tile,types)=>({buildableUnits:types.map(type=>{
+      const key=type+':'+tile,n=(seen.get(key)||0)+1;seen.set(key,n);
+      return {type,canBuild:type==='Factory'?tile:false,canUpgrade:false,
+        cost:BigInt(n===1?125000:1500000)};
+    })});
+    assert.equal(await x.b.economy(x.me,300,0,[]),false);
+    assert.equal(x.sent.length,0,'stale affordable quote cannot authorize the new price');
+    assert([...seen.values()].some(n=>n>1),'the chosen worker option is re-queried');
+  });
   await check('1.20.9 capped army buys City instead of Factory even with legal Port',async()=>{
     const x=boot();x.setTick(2400);x.setLand(4400);x.setGold(1700000);x.setHome(99000);
     x.game.isShore=()=>true;
@@ -3447,6 +3494,37 @@ function boot(benchmarkOptions={}) {
     peer.state.available=0;peer.state.reserve=90000;
     assert.equal(x.b.coordinateDuo(x.me,army,350).strikeTick,345);
     assert(x.b.duoJointOpportunity(x.me,groups,army,groups[0],350,true));
+  });
+  await check('issue #76 expired or mismatched Duo strike cannot launch',()=>{
+    const x=boot();x.weak.troops=()=>90000;x.strong.troops=()=>42000;
+    const groups=[{id:'strong',opponent:x.strong,front:8,tiles:[6]}];
+    x.b.setGroups(groups);x.weak.isFriendly=()=>true;
+    const peer={id:'weak',state:{tick:300,home:90000,incoming:0,
+      fronts:['strong'],target:'strong',strikeTick:345,allied:true,
+      available:40000,reserve:45000,ready:true,needHelp:false}};
+    x.b.setDuo('weak','KITSU_DUO_123',peer);
+    let army=x.b.military(x.me,groups);
+    const plan=x.b.coordinateDuo(x.me,army,300);
+    x.setTick(350);peer.state.tick=350;
+    army=x.b.military(x.me,groups);
+    x.b.coordinateDuo(x.me,army,350);
+    peer.state.planId='different:345';
+    assert.equal(x.b.duoJointOpportunity(x.me,groups,army,groups[0],350,true),null);
+    peer.state.planId=plan.planId;peer.state.expiresTick=349;
+    assert.equal(x.b.duoJointOpportunity(x.me,groups,army,groups[0],350,true),null);
+    peer.state.expiresTick=455;
+    assert(x.b.duoJointOpportunity(x.me,groups,army,groups[0],350,true));
+    x.setTick(456);peer.state.tick=456;
+    assert.equal(x.b.duoJointOpportunity(x.me,groups,army,groups[0],456,true),null);
+  });
+  await check('issue #76 vanished front does not hold historical maximum for 240 ticks',()=>{
+    const x=boot();x.setTick(300);
+    const groups=[{id:'strong',opponent:x.strong,front:8,tiles:[6]}];
+    x.b.observeFronts(x.me,groups,300);
+    assert(x.b.military(x.me,[]).strongest>0);
+    x.setTick(399);
+    assert.equal(x.b.military(x.me,[]).strongest,0,
+      'old peak must decay when the frontier is no longer visible');
   });
   await check('1.20.6 Duo lock survives benign strategy change, but invasion cancels',()=>{
     const x=boot();
