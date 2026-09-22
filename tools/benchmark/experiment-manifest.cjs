@@ -7,6 +7,7 @@ const path=require('node:path');
 const crypto=require('node:crypto');
 const hash=data=>crypto.createHash('sha256').update(data).digest('hex');
 const sha=x=>typeof x==='string'&&/^[a-f0-9]{40}$/i.test(x);
+const fingerprint=x=>typeof x==='string'&&/^[a-f0-9]{64}$/i.test(x);
 function canonical(v){
   if(Array.isArray(v))return v.map(canonical);
   if(v&&typeof v==='object'){
@@ -21,7 +22,7 @@ function canonical(v){
 function manifest(input,assets){
   if(!input||!assets||typeof input!=='object')throw Error('Missing input/assets');
   const {matchId,seed,map,mode,botCommit,engineCommit,settings,participants,
-    policy='rule-basis',observedOutcome='unknown'}=input;
+    policy='rule-basis',observedOutcome='unknown',expectedHashes}=input;
   if(!matchId||typeof matchId!=='string'||!seed||
       !map||typeof map!=='string'||!['1v1','official-2v2','ffa-duo'].includes(mode)||
       !sha(botCommit)||!sha(engineCommit)||!settings||
@@ -41,12 +42,26 @@ function manifest(input,assets){
       throw Error('Missing asset '+key);
   }
   const normalized=canonical(settings);
+  const actualHashes={settings:hash(JSON.stringify(normalized)),source:hash(assets.source),
+    run3:hash(assets.run3),model:hash(assets.model)};
+  // An archived experiment may pin its exact inputs; fail closed rather than
+  // silently report fingerprints for a different local checkout/model.
+  if(expectedHashes!==undefined){
+    if(!expectedHashes||typeof expectedHashes!=='object'||Array.isArray(expectedHashes)||
+        Object.keys(expectedHashes).sort().join(',')!=='model,run3,settings,source')
+      throw Error('Expected all four experiment fingerprints');
+    for(const key of Object.keys(actualHashes)){
+      if(!fingerprint(expectedHashes[key])||
+          expectedHashes[key].toLowerCase()!==actualHashes[key])
+        throw Error('Experiment fingerprint mismatch: '+key);
+    }
+  }
   return {schema:'aggrobot-experiment-v1',matchId,seed:String(seed),map,mode,
     botCommit:botCommit.toLowerCase(),engineCommit:engineCommit.toLowerCase(),
     policy,participantSessions:participants.length,observationUnit:'match',
-    observedOutcome,settingsSha256:hash(JSON.stringify(normalized)),
-    sourceSha256:hash(assets.source),run3Sha256:hash(assets.run3),
-    championSha256:hash(assets.model)};
+    observedOutcome,settingsSha256:actualHashes.settings,
+    sourceSha256:actualHashes.source,run3Sha256:actualHashes.run3,
+    championSha256:actualHashes.model};
 }
 if(require.main===module){
   const file=process.argv[2];
