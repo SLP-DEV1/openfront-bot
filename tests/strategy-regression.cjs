@@ -3915,10 +3915,10 @@ function boot(benchmarkOptions={}) {
     const factory=tile=>asset('Factory',tile,tile);
     const port=tile=>asset('Port',tile,tile);
     x.b.setIncomeStatus({observed:true,train:60000,trade:60000});
-    assert.equal(x.b.investmentValue({type:'Factory'},100000,requirements,
-      [factory(1),factory(2)]),5.4);
-    assert.equal(x.b.investmentValue({type:'Port'},100000,requirements,
-      [port(1),port(2)]),4.2);
+    assert(Math.abs(x.b.investmentValue({type:'Factory'},100000,requirements,
+      [factory(1),factory(2)])-5.4)<1e-9);
+    assert(Math.abs(x.b.investmentValue({type:'Port'},100000,requirements,
+      [port(1),port(2)])-4.2)<1e-9);
     assert.equal(x.b.investmentValue({type:'Factory'},100000,requirements,[]),0,
       'income from another source must not be attributed to nonexistent Factories');
     x.b.setIncomeStatus({observed:false,train:60000,trade:60000});
