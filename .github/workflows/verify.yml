@@ -90,6 +90,10 @@ jobs:
         run: |
           node --check tools/benchmark/v3-map-breakdown.mjs
           node tests/v3-map-breakdown-regression.cjs
+      - name: Test P6 paired model-promotion evidence gate
+        run: |
+          node --check trainer/promotion-gate-v5.cjs
+          node tests/promotion-gate-v5-regression.cjs
       - name: Test neural trainer and deployer
         run: |
           node --check trainer/train.mjs
