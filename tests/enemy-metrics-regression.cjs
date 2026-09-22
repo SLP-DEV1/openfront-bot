@@ -4,6 +4,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
 const {hostilePlayers}=require('../tools/benchmark/enemy-metrics.cjs');
+const visibleTrajectory=require('../tools/benchmark/trajectory.cjs');
 
 const player=(id,alive=true)=>({clientID:()=>id,isAlive:()=>alive});
 const me=player('me');
@@ -31,7 +32,7 @@ const sampleCode=engineMatch.slice(start,end);
 function actualEngineMatchSample(me,players){
   const visibleSamples=[];
   const view={playerViews:()=>players};
-  const context={me,view,visibleSamples,hostilePlayers};
+  const context={me,view,visibleSamples,visibleTrajectory};
   vm.runInNewContext(sampleCode+'\nsampleVisible(200,me);sampleVisible(200,me);',context);
   assert.equal(visibleSamples.length,1,'duplicate tick should not be sampled twice');
   return visibleSamples[0];
@@ -60,3 +61,11 @@ const ffaSample=actualEngineMatchSample(ffaSelf,[ffaSelf,ffaOther1,ffaOther2]);
 assert.equal(ffaSample.enemyLand,18,'FFA must include all other living players');
 assert.equal(ffaSample.enemyTroops,180);
 console.log('PASS actual engine-match Team and FFA enemy sampling path');
+
+// Both official-engine harnesses must use the very same sampling implementation.
+const multibot=fs.readFileSync(path.join(__dirname,
+  '../tools/benchmark/engine-multibot.mjs'),'utf8');
+assert(multibot.includes('visibleTrajectory.sampleVisible(visibleSamples,turn,me,view.playerViews?.())'));
+assert(engineMatch.includes('visibleTrajectory.sampleVisible(visibleSamples,turn,me,view.playerViews?.())'));
+assert.equal(visibleTrajectory.trajectory([teamSample]).summary.finalEnemyLand,18);
+assert.equal(visibleTrajectory.SEMANTICS,'gameview-hostile-only-v1');
