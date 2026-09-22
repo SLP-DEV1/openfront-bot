@@ -6447,7 +6447,7 @@ function predict(model,input){
       const critical=warning>=2||inbound>partnerHome*.12;
       const recoveryNeed=warning>=1&&inbound===0&&s.home>partnerHome*1.35&&
         number(()=>partner.numTilesOwned(),0)<
-          number(()=>me.numTilesOwned(),0)*.65?
+          number(()=>me.numTilesOwned(),0)*(warning>=2?.85:.65)?
         Math.min(partnerHome*.20,s.home*.07):0;
       const shortage=Math.max(0,inbound*1.55-partnerHome,
         inbound>partnerHome*.06?inbound*.18:0,recoveryNeed);
