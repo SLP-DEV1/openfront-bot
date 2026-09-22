@@ -437,6 +437,8 @@
   let monitorSession='';
   let actionLedger=[];
   let diagnosticLastPeerTick=-Infinity;
+  let diagnosticHelpSequence=0,diagnosticHelpId=null,diagnosticHelpSince=null;
+  let diagnosticLastReceivedHelp=null,diagnosticLastHelpAck=null;
   // Diagnostic v2: preserve critical events independently of the 1400-record UI ring.
   // Session storage is tab-scoped and never shares another bot's player identity.
   const diagnosticV2={schemaVersion:2,critical:[],dropped:0,lastDuoStatus:null,
@@ -584,6 +586,7 @@
         requestedTroops:record.requestedTroops??null,
         quotedCost:record.quotedCost??null,emission:'event-bus',
         homeBefore:record.home,goldBefore:record.gold,
+        actualTroopOutflow:'unknown',actualGoldCost:'unknown',
         observed:'unknown',effect:'unknown'});
       if(actionLedger.length>300)actionLedger.shift();
     }else if(record.actionId&&/^(attack|build|boat|transport)_(confirmed|unconfirmed|arrived|unresolved)$/.test(kind)){
@@ -686,6 +689,9 @@
       journal:{persisted:diagnosticStore.persisted,queued:diagnosticStore.queue.length,
         lost:diagnosticStore.lost,error:diagnosticStore.error},
       lastDuoTransitionAt:diagnosticV2.lastDuoAt,
+      helpRequestId:diagnosticHelpId,helpSinceTick:diagnosticHelpSince,
+      helpAckObserved:diagnosticLastHelpAck===diagnosticHelpId&&
+        diagnosticHelpId!==null,
       evidence:'event-bus emission is not confirmed effect'};
     details.recording={total:recordSequence,counts:{...recordCounts},dropped:recordsDropped,
       firstSequence:diagnostics[0]?.seq??null,streamErrors};
@@ -1011,6 +1017,8 @@
     attackCommands=[];attackCommandSequence=0;observedAttacks.clear();
     actionSequence=0;lastActionId=null;actionLedger=[];
     diagnosticAutoExported=false;diagnosticLastPeerTick=-Infinity;
+    diagnosticHelpSequence=0;diagnosticHelpId=null;diagnosticHelpSince=null;
+    diagnosticLastReceivedHelp=null;diagnosticLastHelpAck=null;
     diagnosticV2.critical=[];diagnosticV2.dropped=0;
     diagnosticV2.lastDuoStatus=null;diagnosticV2.lastDuoPeer=null;
     diagnosticV2.lastDuoAt=null;
@@ -1182,7 +1190,7 @@
       }
       log(description);telemetry('action',description,
         {intent:kind,actionId,decisionId,emission:'event-bus',
-          requestedTroops:kind==='attack'||kind==='boat'?
+          requestedTroops:['attack','boat','donateTroops'].includes(kind)?
             Number(args[1]):null,quotedCost:null,
           effect:'unknown'});return true;
     } catch(e) {totalFailed++;log('Event fehlgeschlagen: '+String(e.message));return false;}
@@ -1267,6 +1275,23 @@
     const target=duoPlan?.strikeTick?duoPlan.target:
       operation?.target??duoPlan?.target??warState.id;
     const candidate=spawnCache?.tile??null,spawn=me?.state?.spawnTile;
+    const tick=number(()=>game?.ticks?.(),0);
+    const help=!!(state&&state.incoming>Math.max(1200,state.home*.1));
+    if(help&&!diagnosticHelpId){
+      diagnosticHelpId=monitorSession+':h'+(++diagnosticHelpSequence);
+      diagnosticHelpSince=tick;diagnosticLastHelpAck=null;
+      telemetry('duo_help_request','Eigene Heimat unter Angriff; Duo-Hilfe angefragt',{
+        requestId:diagnosticHelpId,partnerId:trusted?.id??null,
+        home:state.home,incoming:state.incoming,
+        estimatedShortfall:Math.max(0,Math.ceil(state.incoming-state.home)),
+        status:'sent-not-acknowledged',evidence:'visible-incoming-attack'});
+    }else if(!help&&diagnosticHelpId){
+      telemetry('duo_help_resolved','Akute Duo-Hilfeanforderung beendet',{
+        requestId:diagnosticHelpId,status:'no-longer-requested',
+        evidence:'no-longer-above-threshold-not-proof-of-relief'});
+      diagnosticHelpId=null;diagnosticHelpSince=null;
+      diagnosticLastHelpAck=null;
+    }
     return {tick:Number.isInteger(game?.ticks?.())?game.ticks():null,
       spawn:Number.isSafeInteger(spawn)?spawn:null,
       candidate:Number.isSafeInteger(candidate)?candidate:null,
@@ -1291,6 +1316,11 @@
         state.ratio>=.38&&!state.activeEnemy&&
         state.available>=Math.max(1200,state.home*.09)),
       needHelp:!!(state&&state.incoming>Math.max(1200,state.home*.1)),
+      helpRequestId:diagnosticHelpId,helpSinceTick:diagnosticHelpSince,
+      helpShortfall:diagnosticHelpId&&state?
+        Math.max(0,Math.ceil(state.incoming-state.home)):null,
+      ackHelpRequestId:trusted?.state?.needHelp===true?
+        trusted.state.helpRequestId??null:null,
       warning:duoWarningLevel(state),
       allied:!!(peer&&actualFriendly(peer,me)),
       allies:duoOwnAllies(me),
@@ -1336,6 +1366,23 @@
           room!==opts.duoRoom||ownID!==safeID(myPlayer()))return;
         duoLocal.peer=data.partner||null;
         duoLocal.lastAt=data.partner?Date.now():0;
+        const helpRequest=data.partner?.state?.needHelp?
+          data.partner.state.helpRequestId??null:null;
+        if(helpRequest&&helpRequest!==diagnosticLastReceivedHelp){
+          diagnosticLastReceivedHelp=helpRequest;
+          telemetry('duo_help_received','Partner-Hilferuf empfangen',{
+            requestId:helpRequest,partnerId:data.partner.id,
+            estimatedShortfall:data.partner.state.helpShortfall??null,
+            partnerIncoming:data.partner.state.incoming??null,
+            status:'received-not-committed'});
+        }else if(!helpRequest)diagnosticLastReceivedHelp=null;
+        if(diagnosticHelpId&&data.partner?.state?.ackHelpRequestId===
+          diagnosticHelpId&&diagnosticLastHelpAck!==diagnosticHelpId){
+          diagnosticLastHelpAck=diagnosticHelpId;
+          telemetry('duo_help_ack_seen','Partner bestätigt Empfang des Hilferufs',{
+            requestId:diagnosticHelpId,partnerId:data.partner.id,
+            status:'received-ack-only-not-support-commitment'});
+        }
         const duoTick=number(()=>game?.ticks?.(),0);
         if(duoTick-diagnosticLastPeerTick>=120){
           diagnosticLastPeerTick=duoTick;
@@ -4911,6 +4958,11 @@
     if(send(chosen.kind,args,`${chosen.kind==='upgrade'?'UPGRADE':'BAU'} ${chosen.type} · ${chosen.cost.toLocaleString()} Gold`)){
       commitGoldSpend(me,chosen.cost,chosen.type);
       economicPending={...chosen,tick,actionId:lastActionId};
+      const issued=actionLedger.find(x=>x.actionId===lastActionId);
+      if(issued)issued.quotedCost=chosen.cost;
+      telemetry('build_quote','Baukosten aus Worker-Angebot',{
+        actionId:lastActionId,type:chosen.type,quotedCost:chosen.cost,
+        evidence:'worker-quote-not-observed-spending'});
       failedEconomyProbes=0;lastEconomy=tick;lastEconomicAction=tick;
       if(chosen.type==='SAM Launcher')telemetry('sam_intent','SAM-Bau angefordert',
         {tile:chosen.tile,gold:requirements.gold,cost:chosen.cost,
