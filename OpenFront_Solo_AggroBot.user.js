@@ -501,6 +501,8 @@ function predict(model,input){
   let diagnosticAid=null,diagnosticLastCommitmentSeen=null;
   let diagnosticHelpClosing=null;
   let diagnosticDonationSeen=new Map();
+  let donationCapture={polls:0,readable:0,candidates:0,matched:0,
+    lastProbeTick:-Infinity,lastReceiptTick:null,lastProblem:null};
   let diagnosticDecisionSequence=0;
   // Diagnostic v2: preserve critical events independently of the 1400-record UI ring.
   // Session storage is tab-scoped and never shares another bot's player identity.
@@ -772,6 +774,7 @@ function predict(model,input){
       duoRoom:opts.duoRoom||null,
       personalEliminationTick:gameEnd?.personalEliminated?gameEnd.tick:null,
       matchEndTick:game?.gameOver?.()?number(()=>game.ticks(),null):null,
+      donationCapture:{...donationCapture},
       critical:diagnosticV2.critical,dropped:diagnosticV2.dropped,
       journal:{persisted:diagnosticStore.persisted,queued:diagnosticStore.queue.length,
         lost:diagnosticStore.lost,error:diagnosticStore.error},
@@ -1112,6 +1115,8 @@ function predict(model,input){
     diagnosticAid=null;diagnosticLastCommitmentSeen=null;
     diagnosticHelpClosing=null;diagnosticDecisionSequence=0;
     diagnosticDonationSeen.clear();
+    donationCapture={polls:0,readable:0,candidates:0,matched:0,
+      lastProbeTick:-Infinity,lastReceiptTick:null,lastProblem:null};
     diagnosticV2.critical=[];diagnosticV2.dropped=0;
     diagnosticV2.lastDuoStatus=null;diagnosticV2.lastDuoPeer=null;
     diagnosticV2.lastVerifiedPartnerId=null;
@@ -1444,41 +1449,64 @@ function predict(model,input){
   function diagnosticDonationUpdates(){
     const tick=number(()=>game?.ticks?.(),-1);
     if(tick<0)return;
-    let updates;try{updates=game?.updatesSinceLastTick?.();}catch(_){return;}
-    if(!updates)return;
+    donationCapture.polls++;
+    let updates;try{updates=game?.updatesSinceLastTick?.();}
+    catch(_){donationCapture.lastProblem='gameview-read-error';return;}
+    if(!updates){
+      donationCapture.lastProblem='no-gameview-updates-this-poll';return;
+    }
+    donationCapture.readable++;
     const events=Object.values(updates).flat().filter(u=>
-      u&&u.donationType&&['troops','gold'].includes(u.donationType)&&
-      typeof u.senderId==='string'&&typeof u.recipientId==='string'&&
+      u&&['troops','gold'].includes(u.donationType)&&
+      ['string','number'].includes(typeof u.senderId)&&
+      ['string','number'].includes(typeof u.recipientId)&&
       (typeof u.amount==='bigint'||typeof u.amount==='number'));
+    donationCapture.candidates+=events.length;
+    if((diagnosticAid||diagnosticHelpId)&&
+      tick-donationCapture.lastProbeTick>=160){
+      donationCapture.lastProbeTick=tick;
+      telemetry('duo_donation_capture_probe','Spendenbelege im Browser geprüft',{
+        polls:donationCapture.polls,readable:donationCapture.readable,
+        candidateEvents:donationCapture.candidates,
+        matchedEvents:donationCapture.matched,
+        lastReceiptTick:donationCapture.lastReceiptTick,
+        updateChannels:Object.entries(updates)
+          .filter(([,rows])=>Array.isArray(rows))
+          .map(([channel,rows])=>({channel,count:rows.length})).slice(0,32),
+        warning:'no-receipt-is-not-proof-of-no-donation'});
+    }
     for(let i=0;i<events.length;i++){
       const ev=events[i];
-      const key=tick+':'+i+':'+ev.senderId+':'+ev.recipientId+
+      const senderId=String(ev.senderId),recipientId=String(ev.recipientId);
+      const key=tick+':'+i+':'+senderId+':'+recipientId+
         ':'+String(ev.amount)+':'+ev.donationType;
       if(diagnosticDonationSeen.has(key))continue;
       diagnosticDonationSeen.set(key,tick);
       const me=safeID(myPlayer());
-      if(me!==ev.senderId&&me!==ev.recipientId)continue;
+      if(me!==senderId&&me!==recipientId)continue;
+      donationCapture.matched++;donationCapture.lastReceiptTick=tick;
+      donationCapture.lastProblem=null;
       const amount=String(ev.amount);
       const aid=diagnosticAid;
       const sent=ev.donationType==='troops'&&aid&&
-        ev.senderId===me&&ev.recipientId===aid.partnerId&&
+        senderId===me&&recipientId===aid.partnerId&&
         tick>=aid.tick&&tick-aid.tick<=110&&!aid.observedTick;
       const received=ev.donationType==='troops'&&diagnosticHelpId&&
-        ev.recipientId===me&&ev.senderId===duoTrustedPeer()?.id;
+        recipientId===me&&senderId===duoTrustedPeer()?.id;
       const requestId=sent?aid.requestId:
         received?diagnosticHelpId:null;
       const actionId=sent?aid.actionId:
         received&&duoLocal.peer?.state?.aidForRequestId===diagnosticHelpId?
           duoLocal.peer.state.aidActionId??null:null;
       telemetry('donation_observed','Engine-Spendenereignis beobachtet',{
-        actionId,requestId,senderId:ev.senderId,
-        recipientId:ev.recipientId,donationType:ev.donationType,
+        actionId,requestId,senderId,
+        recipientId,donationType:ev.donationType,
         actualAmount:amount,evidence:'gameview-donate-event'});
       if(requestId){
         telemetry('duo_help_support_observed',
           'Duo-Truppenspende durch Engine bestätigt',{
-            actionId,requestId,senderId:ev.senderId,
-            recipientId:ev.recipientId,actualTroops:amount,
+            actionId,requestId,senderId,
+            recipientId,actualTroops:amount,
             status:'support-observed',evidence:'gameview-donate-event'});
         if(sent){
           aid.observedTick=tick;aid.observedTroops=amount;
