@@ -66,7 +66,7 @@ function summarize(data,file='<input>'){
 }
 function comparisonKey(row){
   // Missing engine/config identity cannot establish a controlled comparison.
-  if(!row.finished||row.seed===null||!row.seedSource||!row.harness||!row.engineCommit||
+  if(!row.finished||row.recordingComplete!==true||row.seed===null||!row.seedSource||!row.harness||!row.engineCommit||
     !row.gameConfig||!row.botSHA256||!row.profile||!row.maxTicks||
     row.scriptedHumans===null||!row.opponentProfile||!row.settings)return null;
   const ordered=Object.fromEntries(Object.entries(row.gameConfig).sort(([a],[b])=>a.localeCompare(b)));
@@ -106,7 +106,7 @@ function main(args){
   const rows=paths.map(p=>summarize(JSON.parse(fs.readFileSync(p,'utf8')),p));
   const report={matches:rows,pairedComparisons:compare(rows),
     findings:rows.map(row=>({file:row.file,items:findings(row)})),
-    note:'Pairing requires verified completion and identical engine, harness, seed source, full game config and tick limit. Engine matches do not verify browser/multiplayer performance.'};
+    note:'Pairing requires verified completion, complete recording and identical engine, harness, seed source, full game config and tick limit. Engine matches do not verify browser/multiplayer performance.'};
   if(json)console.log(JSON.stringify(report,null,2));
   else for(const m of rows)console.log([
     m.file,m.bot,m.map,m.difficulty,m.gameMode,
