@@ -4,9 +4,12 @@ Kampagnen-Spezifikation für `benchmark-results/neural-v6-collapse/`
 (local, gitignored — Treiber: `tools/benchmark/v6-collapse-campaign.mjs`,
 Launcher: `Start_V6_Collapse.bat`).
 
-**Status: Kampagne vorbereitet (2026-09-22), Lauf nicht gestartet.**
+**Status (2026-09-22):** `setup` abgeschlossen; **`baseline-newbot`
+gemessen** (A=5, B=1, C=11 vs. Phase-1-Baseline A=6, B=2, C=9 —
+Details unten); Voll-Lauf `all` gestartet (Trainingsphase Stammbaum A,
+danach Stammbaum V4, Holdout, Collapse der Kandidaten, Report).
 Der Lauf ist dry-run- und regressionstest-seziert
-(`tests/v6-collapse-campaign-regression.cjs`); der Start erfolgt über
+(`tests/v6-collapse-campaign-regression.cjs`); Start/Resume über
 `Start_V6_Collapse.bat` (Phase `all` oder schrittweise).
 
 ## Hintergrund & Ziel
@@ -189,8 +192,76 @@ Entscheidungs-Datei: `decision.json` (aus `report`-Phase, enthält
 | Typ C (frühes Sterben / spätere Land-Defizite) | 9 |
 | **Summe** | **17** (17/17 reproduzierbar) |
 
+## baseline-newbot (gemessen 2026-09-22, V5-V4-prov ohne Retraining)
+
+Reiner Posture-Bot-Runtime-Effekt, 17 Zellen, botSHA256
+`57775ec7…`: **A=5, B=1, C=11** (Phase-1-Baseline altes Bot:
+A=6, B=2, C=9). Ergebnis:
+`benchmark-results/neural-v6-collapse/collapse/baseline-newbot/
+collapse-regression.json`.
+
+Zellweise (Kandidat, alt → neu):
+
+| Zelle | altes Bot | neues Posture-Bot | Effekt |
+|---|---|---|---|
+| v5hold-2-Europe-4 | eliminated @4900, Land 0 | **tick-limit @18000, Land 41642** | A→C, gelöst |
+| v5hold-5-Europe-4 | eliminated @4682, Land 0 | defeat @9731, Land 33435 | A→C, gelöst |
+| v5hold-5-World-1 | eliminated @5648, Land 0 | defeat @6941, Land 694 | A→C, marginal |
+| v5hold-3-World-4 | defeat @12471 | **SIEG @11971** | neue Sieg-Zelle |
+| v5hold-0-Europe-4 | defeat @11561, Land 27695 | defeat @14431, Land 101202 | +2870 Ticks, 3,7× Land |
+| v5hold-0-World-1 | defeat @12001, Land 28613 | defeat @6481, Land 7243 | **neu A** (überverteidigt) |
+| v5hold-2-World-1 | defeat @7561, Land 4416 | eliminated @6242, Land 0 | **neu A** (überverteidigt) |
+| v5hold-0-Europe-1 | defeat @12451, c50 @12400 | defeat @12681, c50 @12600 | Kollaps kaum verzögert |
+| v5hold-3-Europe-4 | eliminated @5063 | eliminated @4864 | A, unverändert |
+| v5hold-4-World-4 | defeat @4291 | defeat @5051 | A, unverändert |
+| v5hold-11-World-1 | defeat @4791 | defeat @4491 | A, unverändert |
+| (übrige 6 Zellen) | — | — | C, teils besser, teils schlechter |
+
+Beantwortung der fünf Messfragen:
+
+1. **Sechs frühe Totalverluste:** teilweise. 3 von 6 gelöst/verspätet
+   (2-Europe-4, 5-World-1, 5-Europe-4), 3 unverändert strukturell
+   (3-Europe-4, 4-World-4, 11-World-1 — alle sterben bei Tick
+   4800–5050, Peak ≤ 42k: der Posture-Bot erreicht sie nicht früh
+   genug), aber 2 **neue** Typ-A (0-World-1, 2-World-1). Netto A: 6→5.
+2. **Mega-Angriff / Truppenbindungen:** nicht rechtzeitig. In
+   0-Europe-1 Peak praktisch identisch (302050@9600 vs. 301514@9600)
+   und Kollaps fast zum selben Tick (c50 12600 vs. 12400) — der Bot
+   bindet weiter, verzögert nur ~200 Ticks. In 0-Europe-4 baute er
+   später und höher (Peak 225652@12800) und hielt 2870 Ticks länger,
+   kollapsed aber trotzdem (c50 14430).
+3. **Beide Europe-Spätkollapse:** nicht verhindert. 0-Europe-1
+   praktisch unverändert (End-Land 98092 vs. 109426), 0-Europe-4
+   deutlich gebessert (End-Land 101202 vs. 27695), beide fallen
+   trotzdem unter 50 % des Peaks. Die B→C-Umklassifikation beruht
+   darauf, dass stageC unter dem neuen Bot in beiden Zellen ebenfalls
+   verliert (Typ B verlangt überlebende Referenz).
+4. **Neue Überverteidigungs-Probleme:** ja, 2 Zellen. 0-World-1
+   (12001→6481) und 2-World-1 (7561→6242) erreichen denselben Peak
+   wie das alte Bot, sterben aber deutlich früher — konsistent mit
+   THREATENED/RECOVERING-Verharren ohne Re-Bindung. Zusätzlich
+   schlechter: 10-Europe-4 (9991→7639, eliminated), 6-World-4
+   (8211→7771, Peak 47346→34770), 4-World-1 (tick-limit, Land
+   81183→60370). Das ist der Preis für die 3 gelösten A-Zellen.
+5. **Schnelle World-Siege:** ja, erhalten und besser. stageC (neues
+   Bot) gewinnt 3 von 4 relevanten World-Zellen statt 1: 0-World-1
+   @8331 (vorher @11341, 3010 Ticks schneller), 5-World-1 @11391
+   (vorher nur tick-limit), 11-World-1 @8351 (vorher Niederlage).
+   Der Kandidat gewinnt neu 3-World-4 @11971.
+
+**Zwischen-Fazit für die Dreier-Vergleichskette**
+(V5-V4-prov altes Bot → V5-V4-prov Posture-Bot → V6-V4-prov
+Posture-Bot): Der Posture-Bot allein liefert eine Netto-Verbesserung
+(A 6→5, 1 neue Sieg-Zelle, stageC-Referenz deutlich stärker), aber
+der Kollaps-Modus bleibt: 3 strukturelle A-Zellen + 2 neue
+Überverteidigungs-Zellen. Genau diese 5 Zellen muss das Retraining
+im V6-V4-Stammbaum attackieren; die Messung des Kandidaten gegen
+`baseline-newbot` ist die Vergleichsgröße (Gate: weniger A/B-Zellen
+als `baseline-newbot` und als stageC).
+
 ## Ergebnis
 
-**Noch nicht gestartet** (Stand 2026-09-22). Nach Abschluss:
-`benchmark-results/neural-v6-collapse/holdout/decision.json`
-(gitignored), verdichtet: `evaluation-summary.json` (dieser Ordner).
+**Voll-Lauf läuft** (Stand 2026-09-22, Stammbaum A in Training).
+Nach Abschluss: `benchmark-results/neural-v6-collapse/holdout/
+decision.json` (gitignored), verdichtet: `evaluation-summary.json`
+(dieser Ordner).
