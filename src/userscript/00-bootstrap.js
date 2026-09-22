@@ -1321,14 +1321,4 @@ function predict(model,input){
       .replace(/[^a-zA-Z0-9_.:@|,-]/g,'_').slice(0,260);
   }
   // Presentation only: never use these labels as plan authorization.
-  function duoStatusView(enabled,trusted,plan,tick,local){
-    if(!enabled)return {phase:'off',reason:'Duo deaktiviert'};
-    if(!trusted)return {phase:local?.seenPeer||local?.relayDrops>0?
-      'autonomous-fallback':'waiting-ack',reason:'kein frisch bestätigter Relay-Partner'};
-    if(plan?.planId&&Number.isInteger(plan.expiresTick)&&tick>plan.expiresTick)
-      return {phase:'expired',reason:'Planfrist überschritten'};
-    if(plan?.planId&&plan.partnerAck&&plan.ready)
-      return {phase:'ready',reason:'frischer Partner-ACK und sicherer Plan'};
-    return {phase:'waiting-ack',reason:plan?.planId?
-      'Partner-ACK oder sichere Front fehlt':'noch kein gemeinsamer Angriffsplan'};
-  }
+  /* __DUO_STATUS_VIEW__ */
