@@ -72,6 +72,11 @@ Workflow-Durchlauf ist erst nach GitHub-Resultat belegt.
 - **P6 / #74:** `tools/benchmark/league.cjs` erstellt reproduzierbare Paarungen und kann die vorhandene Engine/GameView-Benchmark nach Profil und skriptgesteuertem Gegnertyp ausführen; jede Partie erhält Seed, Engine-Pin, Bot-Hash und eigenes Ergebnis. **Noch keine Liga aus vollständigen Bot-Gegnern**, kein automatischer Modellaufstieg und keine Siege ohne durchgeführte Partien.
 - **Auf Nutzerwunsch wurden keine Langzeit-, Zwei-Client-, Liga- oder Wirkungstests durchgeführt.** Auch P4–P6 sind als Gesamtphasen noch nicht abgenommen.
 
+## P4–P6: gezielte CI-Regressionen nach Integration (PR #88)
+
+- Nach Merge von [PR #86](https://github.com/SLP-DEV1/openfront-bot/pull/86) wurden in [PR #88](https://github.com/SLP-DEV1/openfront-bot/pull/88) fokussierte Tests für getrennte Duo-Budgets, einen verbundenen Wasser-Umweg samt konservativem Fallback sowie den Liga-Dry-Run mit Engine-Pin, Bot-Hash und unbekannten Resultaten ergänzt.
+- **[Verify AggroBot grün](https://github.com/SLP-DEV1/openfront-bot/actions/runs/35672891052)**, Merge [fe119db](https://github.com/SLP-DEV1/openfront-bot/commit/fe119db78f51dafb36f619d7c5acdf20fa2b2a2a). Dies sind isolierte Regressionen; Langzeit-, vollständige Zwei-Client-, Liga- und Wirkungstests stehen weiterhin aus. P4, P5 und P6 bleiben als Gesamtphasen offen.
+
 ## Status-Legende und Abnahmeregel
 
 - **Im Code vorhanden:** Ein bereits implementierter Baustein; **nicht** dass die Phase abgeschlossen ist.
