@@ -79,9 +79,9 @@ Vollständige Metriken: `evaluation-summary.json` in diesem Verzeichnis.
 
 ## Champion-Entscheidung (unverändertes `evaluation-v2.cjs`)
 
-18 Paar-Vergleiche (9 Kandidaten × Referenzen stageC und B-prov × 2
-Schwierigkeitsgrade), alle gültig (N=48), **alle `no-verified-improvement`** →
-**NO PROMOTION**. Alle 18: `decisionRoundNeeded=true`. Enge Fälle:
+34 Paar-Vergleiche (je Schwierigkeit 9 Kandidaten gegen stageC und 8 gegen
+B-prov), alle gültig (N=48), **alle `no-verified-improvement`** →
+**NO PROMOTION**. Alle 34: `decisionRoundNeeded=true`. Enge Fälle:
 
 | Ref → Kandidat | Schw. | I/C Siege | improved/regressed | net |
 |---|---|---|---|---|
