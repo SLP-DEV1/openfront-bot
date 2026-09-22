@@ -439,6 +439,11 @@
   let diagnosticLastPeerTick=-Infinity;
   let diagnosticHelpSequence=0,diagnosticHelpId=null,diagnosticHelpSince=null;
   let diagnosticLastReceivedHelp=null,diagnosticLastHelpAck=null;
+  let diagnosticHelpDeadline=null,diagnosticHelpExpired=false;
+  let diagnosticAid=null,diagnosticLastCommitmentSeen=null;
+  let diagnosticHelpClosing=null;
+  let diagnosticDonationSeen=new Map();
+  let diagnosticDecisionSequence=0;
   // Diagnostic v2: preserve critical events independently of the 1400-record UI ring.
   // Session storage is tab-scoped and never shares another bot's player identity.
   const diagnosticV2={schemaVersion:2,critical:[],dropped:0,lastDuoStatus:null,
@@ -576,6 +581,12 @@
     record.session=monitorSession;record.seq=recordSequence;
     record.time=new Date().toISOString();record.tick=tick;
     record.kind=kind;record.message=message;
+    record.schemaVersion=2;
+    record.playerId=safeID(m);
+    record.matchId=String(game?.gameID?.()??'unknown');
+    record.frameId=monitorSession+':t'+tick;
+    record.decisionId=record.decisionId??null;
+    record.actionId=record.actionId??null;
     diagnostics.push(record);
     diagnosticEnqueue(record);
     if(/^(game_over|duo_|attack_confirmed|attack_unconfirmed|build_confirmed|build_unconfirmed|boat_|transport_|action)$/.test(kind))
@@ -595,6 +606,14 @@
         action.homeAfterObserved=record.home;
         action.goldAfterObserved=record.gold;
         action.effect='unknown';}
+    }else if(record.actionId&&kind==='attack_outcome_observed'){
+      const action=actionLedger.find(x=>x.actionId===record.actionId);
+      if(action)action.outcomeObservation={
+        ownLandBefore:record.ownLandBefore,ownLandAfter:record.ownLandAfter,
+        defenderLandBefore:record.defenderLandBefore,
+        defenderLandAfter:record.defenderLandAfter,
+        observedOutcome:record.observedOutcome,attribution:record.attribution,
+        effect:'unknown'};
     }
     recordCounts[kind]=(recordCounts[kind]||0)+1;
     if(benchmark && typeof benchmark.onRecord==='function'){
@@ -690,6 +709,7 @@
         lost:diagnosticStore.lost,error:diagnosticStore.error},
       lastDuoTransitionAt:diagnosticV2.lastDuoAt,
       helpRequestId:diagnosticHelpId,helpSinceTick:diagnosticHelpSince,
+      helpDeadlineTick:diagnosticHelpDeadline,
       helpAckObserved:diagnosticLastHelpAck===diagnosticHelpId&&
         diagnosticHelpId!==null,
       evidence:'event-bus emission is not confirmed effect'};
@@ -1019,6 +1039,10 @@
     diagnosticAutoExported=false;diagnosticLastPeerTick=-Infinity;
     diagnosticHelpSequence=0;diagnosticHelpId=null;diagnosticHelpSince=null;
     diagnosticLastReceivedHelp=null;diagnosticLastHelpAck=null;
+    diagnosticHelpDeadline=null;diagnosticHelpExpired=false;
+    diagnosticAid=null;diagnosticLastCommitmentSeen=null;
+    diagnosticHelpClosing=null;diagnosticDecisionSequence=0;
+    diagnosticDonationSeen.clear();
     diagnosticV2.critical=[];diagnosticV2.dropped=0;
     diagnosticV2.lastDuoStatus=null;diagnosticV2.lastDuoPeer=null;
     diagnosticV2.lastDuoAt=null;
@@ -1125,7 +1149,9 @@
     if(runtime.economyMs>1600)v.actionsPerMinute-=6;
     const unlearned={...v};
     v=learnAdjust(v,mode,s,emergency);
+    const learnedChoice={...v};
     v=neuralAdjust(v,unlearned,me,s,items,emergency);
+    const neuralChoice={...v};
     if(!emergency){const policy=neuralStrategicSignals(me,s,tick);
       if(policy){v.aggressive+=Math.round(policy.aggression*12);
         v.reserve+=Math.round(policy.reserve*10);}}
@@ -1141,6 +1167,12 @@
       !(mode==='ASSAULT'&&duoPlan?.strikeStatus==='locked-launch-window'&&
         s.incoming===0&&!recentHostilePressure(tick)))return s;
     autoTuning={...v,mode,reason,tick};
+    if(opts.neuralEnabled)telemetry('neural_strategy_choice',
+      'Regel-, Lern- und Modellvorschlag gegenüber finaler Einstellung',{
+        decisionId:monitorSession+':t'+tick,model:neuralModelInfo(),
+        mode,ruleChoice:unlearned,learnedChoice,modelChoice:neuralChoice,
+        finalChoice:{...v},effect:'unknown',
+        evidence:'policy-comparison-not-game-outcome'});
     if(mode!=='DEFEND'||tick-lastDefenseLog>=75){
       telemetry('auto_tuning','Autonome Parameter: '+mode,{...v,reason});
       if(mode==='DEFEND')lastDefenseLog=tick;
@@ -1269,6 +1301,113 @@
       s.strongest>=s.home*.90||recentHostilePressure(tick))return 1;
     return 0;
   }
+  // Native incoming attacks may expose an absolute arrival tick. Unknown ETA
+  // stays null: troop totals or wall-clock observations do not imply speed.
+  function diagnosticArrival(attacks){
+    const absolute=(attacks||[]).filter(a=>!a.retreating).map(a=>{
+      for(const field of ['arrivalTick','targetTick','etaTick']){
+        if(Number.isSafeInteger(a?.[field]))return a[field];
+      }
+      return null;
+    }).filter(v=>v!==null);
+    return {estimatedArrivalTick:absolute.length?Math.min(...absolute):null,
+      arrivalEvidence:absolute.length?'explicit-gameview-field':'unknown'};
+  }
+  function diagnosticCloseHelp(reason,tick){
+    if(!diagnosticHelpId)return;
+    const event=reason==='deadline'?'duo_help_expired':
+      reason==='player-elimination'?'duo_help_expired':'duo_help_resolved';
+    telemetry(event,'Duo-Hilferuf geschlossen',{
+      requestId:diagnosticHelpId,partnerId:duoLocal.peer?.id??null,
+      requestTick:diagnosticHelpSince,deadlineTick:diagnosticHelpDeadline,
+      ageTicks:tick-diagnosticHelpSince,reason,
+      supportObserved:'unknown',status:event==='duo_help_expired'?
+        'expired-unverified':'no-longer-requested-no-causal-proof'});
+    diagnosticHelpId=null;diagnosticHelpSince=null;
+    diagnosticHelpDeadline=null;diagnosticHelpExpired=false;
+    diagnosticLastHelpAck=null;
+  }
+  function diagnosticHelpObservation(me,tick){
+    if(!diagnosticAid)return;
+    const aid=diagnosticAid;
+    if(aid.observedTick!==undefined){
+      if(tick-aid.observedTick>=180)diagnosticAid=null;
+      return;
+    }
+    const target=(game?.playerViews?.()||[]).find(p=>
+      safeID(p)===aid.partnerId);
+    if(!target||!target.isAlive?.()){
+      telemetry('duo_help_action_unconfirmed','Hilfe nicht durch Spielbeleg auflösbar',{
+        requestId:aid.requestId,actionId:aid.actionId,
+        reason:'partner-not-alive-or-not-observable',
+        status:'unconfirmed-not-proven-failed',supportObserved:'unknown'});
+      diagnosticAid=null;return;
+    }
+    if(tick-aid.tick>=80){
+      telemetry('duo_help_action_unconfirmed','Hilfe nach Beobachtungsfenster ungeklärt',{
+        requestId:aid.requestId,actionId:aid.actionId,
+        sentTick:aid.tick,partnerId:aid.partnerId,
+        partnerHomeAtEmission:aid.partnerHomeAtEmission,
+        partnerHomeNow:number(()=>target.troops?.(),null),
+        status:'unconfirmed-not-proven-failed',supportObserved:'unknown',
+        evidence:'no-direct-donation-receipt-in-gameview'});
+      diagnosticAid=null;
+    }
+  }
+  // GameView exposes engine DonateEvent updates (senderId, recipientId,
+  // donationType, amount). Only this explicit receipt may prove that support
+  // was delivered. Aggregate troop/gold deltas never establish causality.
+  function diagnosticDonationUpdates(){
+    const tick=number(()=>game?.ticks?.(),-1);
+    if(tick<0)return;
+    let updates;try{updates=game?.updatesSinceLastTick?.();}catch(_){return;}
+    if(!updates)return;
+    const events=Object.values(updates).flat().filter(u=>
+      u&&u.donationType&&['troops','gold'].includes(u.donationType)&&
+      typeof u.senderId==='string'&&typeof u.recipientId==='string'&&
+      (typeof u.amount==='bigint'||typeof u.amount==='number'));
+    for(let i=0;i<events.length;i++){
+      const ev=events[i];
+      const key=tick+':'+i+':'+ev.senderId+':'+ev.recipientId+
+        ':'+String(ev.amount)+':'+ev.donationType;
+      if(diagnosticDonationSeen.has(key))continue;
+      diagnosticDonationSeen.set(key,tick);
+      const me=safeID(myPlayer());
+      if(me!==ev.senderId&&me!==ev.recipientId)continue;
+      const amount=String(ev.amount);
+      const aid=diagnosticAid;
+      const sent=ev.donationType==='troops'&&aid&&
+        ev.senderId===me&&ev.recipientId===aid.partnerId&&
+        tick>=aid.tick&&tick-aid.tick<=110&&!aid.observedTick;
+      const received=ev.donationType==='troops'&&diagnosticHelpId&&
+        ev.recipientId===me&&ev.senderId===duoTrustedPeer()?.id;
+      const requestId=sent?aid.requestId:
+        received?diagnosticHelpId:null;
+      const actionId=sent?aid.actionId:
+        received&&duoLocal.peer?.state?.aidForRequestId===diagnosticHelpId?
+          duoLocal.peer.state.aidActionId??null:null;
+      telemetry('donation_observed','Engine-Spendenereignis beobachtet',{
+        actionId,requestId,senderId:ev.senderId,
+        recipientId:ev.recipientId,donationType:ev.donationType,
+        actualAmount:amount,evidence:'gameview-donate-event'});
+      if(requestId){
+        telemetry('duo_help_support_observed',
+          'Duo-Truppenspende durch Engine bestätigt',{
+            actionId,requestId,senderId:ev.senderId,
+            recipientId:ev.recipientId,actualTroops:amount,
+            status:'support-observed',evidence:'gameview-donate-event'});
+        if(sent){
+          aid.observedTick=tick;aid.observedTroops=amount;
+          const ledger=actionLedger.find(x=>x.actionId===aid.actionId);
+          if(ledger){ledger.actualTroopOutflow=amount;
+            ledger.observed='engine-donate-event';ledger.effect='delivered-to-recipient';}
+        }
+      }
+    }
+    for(const [key,seenTick] of diagnosticDonationSeen)
+      if(tick-seenTick>20)diagnosticDonationSeen.delete(key);
+    if(diagnosticDonationSeen.size>300)diagnosticDonationSeen.clear();
+  }
   function duoState(){
     const me=myPlayer(),trusted=duoTrustedPeer(),peer=trusted?.player;
     const state=me?.hasSpawned?.()?military(me,strategic.groups):null;
@@ -1277,20 +1416,26 @@
     const candidate=spawnCache?.tile??null,spawn=me?.state?.spawnTile;
     const tick=number(()=>game?.ticks?.(),0);
     const help=!!(state&&state.incoming>Math.max(1200,state.home*.1));
+    if(diagnosticHelpId&&tick>=diagnosticHelpDeadline)
+      diagnosticCloseHelp('deadline',tick);
     if(help&&!diagnosticHelpId){
       diagnosticHelpId=monitorSession+':h'+(++diagnosticHelpSequence);
-      diagnosticHelpSince=tick;diagnosticLastHelpAck=null;
+      diagnosticHelpSince=tick;diagnosticHelpDeadline=tick+180;
+      diagnosticLastHelpAck=null;
+      const arrival=diagnosticArrival(me?.incomingAttacks?.()||[]);
+      const requestedSupportTroops=Math.max(0,Math.ceil(state.incoming*1.3-state.home));
       telemetry('duo_help_request','Eigene Heimat unter Angriff; Duo-Hilfe angefragt',{
+        schemaVersion:2,matchId:String(game?.gameID?.()??'unknown'),
+        playerId:safeID(me),decisionId:monitorSession+':t'+tick,
         requestId:diagnosticHelpId,partnerId:trusted?.id??null,
-        home:state.home,incoming:state.incoming,
+        incomingTroops:state.incoming,homeTroops:state.home,
+        availableTroops:state.available,reserveTroops:state.reserve,
+        ...arrival,requestedSupportTroops,
+        requestDeadlineTick:diagnosticHelpDeadline,
         estimatedShortfall:Math.max(0,Math.ceil(state.incoming-state.home)),
         status:'sent-not-acknowledged',evidence:'visible-incoming-attack'});
     }else if(!help&&diagnosticHelpId){
-      telemetry('duo_help_resolved','Akute Duo-Hilfeanforderung beendet',{
-        requestId:diagnosticHelpId,status:'no-longer-requested',
-        evidence:'no-longer-above-threshold-not-proof-of-relief'});
-      diagnosticHelpId=null;diagnosticHelpSince=null;
-      diagnosticLastHelpAck=null;
+      diagnosticCloseHelp('below-threat-threshold',tick);
     }
     return {tick:Number.isInteger(game?.ticks?.())?game.ticks():null,
       spawn:Number.isSafeInteger(spawn)?spawn:null,
@@ -1317,8 +1462,17 @@
         state.available>=Math.max(1200,state.home*.09)),
       needHelp:!!(state&&state.incoming>Math.max(1200,state.home*.1)),
       helpRequestId:diagnosticHelpId,helpSinceTick:diagnosticHelpSince,
+      helpDeadlineTick:diagnosticHelpDeadline,
       helpShortfall:diagnosticHelpId&&state?
         Math.max(0,Math.ceil(state.incoming-state.home)):null,
+      requestedSupportTroops:diagnosticHelpId&&state?
+        Math.max(0,Math.ceil(state.incoming*1.3-state.home)):null,
+      aidForRequestId:diagnosticAid?.requestId??null,
+      aidActionId:diagnosticAid?.actionId??null,
+      aidTroops:diagnosticAid?.amount??null,
+      aidStatus:diagnosticAid?
+        (diagnosticAid.observedTick!==undefined?'observed-engine-donate-event':
+          'intent-sent-effect-unknown'):null,
       ackHelpRequestId:trusted?.state?.needHelp===true?
         trusted.state.helpRequestId??null:null,
       warning:duoWarningLevel(state),
@@ -1376,6 +1530,17 @@
             partnerIncoming:data.partner.state.incoming??null,
             status:'received-not-committed'});
         }else if(!helpRequest)diagnosticLastReceivedHelp=null;
+        const commitment=data.partner?.state?.aidForRequestId===diagnosticHelpId&&
+          diagnosticHelpId?data.partner.state:null;
+        if(commitment&&diagnosticLastCommitmentSeen!==commitment.aidActionId){
+          diagnosticLastCommitmentSeen=commitment.aidActionId;
+          telemetry('duo_help_commitment_seen','Partner meldet Hilfs-Intent',{
+            requestId:diagnosticHelpId,partnerId:data.partner.id,
+            partnerActionId:commitment.aidActionId,
+            promisedTroops:commitment.aidTroops??null,
+            status:'intent-reported-not-observed',
+            supportObserved:'unknown'});
+        }
         if(diagnosticHelpId&&data.partner?.state?.ackHelpRequestId===
           diagnosticHelpId&&diagnosticLastHelpAck!==diagnosticHelpId){
           diagnosticLastHelpAck=diagnosticHelpId;
@@ -1765,7 +1930,9 @@
     decisionKeys.set(key,tick);
     if(decisionKeys.size>140)for(const [k,v] of decisionKeys)
       if(tick-v>1100)decisionKeys.delete(k);
-    const row={tick,kind,why,alternatives:alternatives.slice(0,4)};
+    const row={tick,kind,why,alternatives:alternatives.slice(0,4),
+      decisionId:monitorSession+':t'+tick+':d'+(++diagnosticDecisionSequence),
+      evidence:'ranked-options-not-executed-actions'};
     decisionTimeline.push(row);
     if(decisionTimeline.length>90)decisionTimeline.shift();
     telemetry('decision_timeline',why,{decision:row});
@@ -2836,6 +3003,14 @@
       telemetry('forecast_audit','Angriffsprognose gegenüber sichtbarer Stack-Abnahme',
         {audit});
     }
+    telemetry('attack_outcome_observed','Angriffsfenster nachträglich verglichen',{
+      actionId:record.actionId??null,target:record.id,
+      sentTick:record.tick,observedTick:tick,
+      ownLandBefore:record.ownLand,ownLandAfter:ownLand,
+      defenderLandBefore:record.enemyLand,defenderLandAfter:enemyLand,
+      observedOutcome:captured?'territory-changed':
+        stalled?'no-progress-observed':'unknown',
+      attribution:'front-observation-not-causal-attack-result'});
     lastBattle=null;
   }
   function confirmAttack(me,tick){
@@ -2854,10 +3029,18 @@
       attackReceipts.confirmed++;
       telemetry('attack_confirmed','Angriff im Spielzustand erkannt: '+p.name,
         {actionId:p.actionId??null,target:p.id,troops:p.amount,
+          ownLandBefore:p.ownLand,
+          ownLandAtObservation:number(()=>me.numTilesOwned(),null),
+          defenderLandBefore:p.enemyLand,
+          defenderLandAtObservation:p.id===null?null:
+            number(()=>game.playerViews().find(v=>safeID(v)===p.id)?.numTilesOwned?.(),null),
+          observedStacks:out.map(a=>({id:a.id,troops:a.troops,
+            targetID:a.targetID})),
           via:newStack?'active_stack':'territory',
+          arrivalTick:null,arrivalEvidence:'not-exposed-in-attack-view',
           evidence:'observed-change-not-causal-proof'});
       if(p.id!==null){
-        lastBattle={id:p.id,name:p.name,tick:p.tick,
+        lastBattle={actionId:p.actionId??null,id:p.id,name:p.name,tick:p.tick,
           enemyLand:p.enemyLand,ownLand:p.ownLand,
           forecast:p.forecast||null,amount:p.amount,minimumObservedStack:null};
         if(coordinatedWar()&&warState.id===null){
@@ -4974,7 +5157,8 @@
             coastCandidates:coastal.length});
       }
       telemetry('neural_economy_choice','Gepruefte Bauoption gewaehlt',
-        {kind:chosen.kind,type:chosen.type,baseScore:chosen.baseScore,
+        {actionId:lastActionId,decisionId:monitorSession+':t'+tick,
+          kind:chosen.kind,type:chosen.type,baseScore:chosen.baseScore,
           neuralDelta:chosen.neuralDelta,chosenScore:chosen.siteValue,
           neuralDecision:neuralDecisionEvidence});
       economicStatus='Anfrage: '+chosen.type+(chosen.kind==='upgrade'?' (Upgrade)':'');
@@ -5626,7 +5810,8 @@
       if(!held){
         marineStats.bridgeheadLost++;
         telemetry('bridgehead_lost','Landungsziel vor Abschluss der Wirkungsbeobachtung verloren',
-          {tile:a.tile,target:a.target,observedTicks:age,
+          {actionId:a.actionId??null,shipIds:a.shipIds??[],
+            tile:a.tile,target:a.target,observedTicks:age,
             checkpoints:a.checkpoints,evidence:'destination-ownership-not-causal'});
         navalCooldown.set(a.key,tick+350);navalSiteNegative.set(a.tile,tick+900);
         return false;
@@ -5636,7 +5821,8 @@
         marineStats['bridgeheadHeld'+horizon]++;
         if(horizon===120)marineStats.bridgeheadHeld++;
         telemetry('bridgehead_held_'+horizon,'Landungsziel am '+horizon+'-Tick-Horizont gehalten',
-          {tile:a.tile,target:a.target,observedTicks:age,horizon,
+          {actionId:a.actionId??null,shipIds:a.shipIds??[],
+            tile:a.tile,target:a.target,observedTicks:age,horizon,
             evidence:'destination-ownership-not-causal'});
       }
       return age<600;
@@ -5688,8 +5874,13 @@
         marineStats.transportArrived++;
         fleetStatus='Landung / Gebiet am Ziel bestätigt';
         telemetry('boat_arrived','Transportziel nach bestätigtem Schiff übernommen',
-          {actionId:boat.actionId??null,dest:boat.dest,resolvedDest:landingTile,target:boat.target,shipIds:boat.shipIds});
-        landingAudits.push({tile:landingTile,target:boat.target,key:boat.key,tick,
+          {actionId:boat.actionId??null,dest:boat.dest,resolvedDest:landingTile,
+            target:boat.target,shipIds:boat.shipIds,
+            eta:boat.eta??null,status:'coast-owned-after-ship-observation',
+            evidence:'ship-plus-destination-ownership-not-causal'});
+        landingAudits.push({actionId:boat.actionId??null,
+          shipIds:[...boat.shipIds],eta:boat.eta??null,
+          tile:landingTile,target:boat.target,key:boat.key,tick,
           checkpoints:[]});
         navalCooldown.set(boat.key,tick+140);
         landingFailures.delete(boat.key);
@@ -5700,13 +5891,17 @@
         marineStats.transportUnresolved++;
         fleetStatus='Transport verschwunden – Landung nicht bestätigt';
         telemetry('boat_unresolved','Transport nicht mehr sichtbar; kein eigener Zielbesitz',
-          {dest:boat.dest,resolvedDest:landingTile,target:boat.target,shipIds:boat.shipIds,
-            reason:'ship-disappeared'});
+          {actionId:boat.actionId??null,dest:boat.dest,resolvedDest:landingTile,
+            target:boat.target,shipIds:boat.shipIds,eta:boat.eta??null,
+            reason:'ship-disappeared',status:'unresolved-not-proven-destroyed'});
         landingFailure(boat,tick,landingTile,'ship-disappeared');pendingBoat=null;
       }else if(boat.seen && tick-boat.tick>650 && !boat.delayed){
         boat.delayed=true;fleetStatus='Transport noch unterwegs / Landung ungeklärt';
-        telemetry('boat_delayed',fleetStatus,{dest:boat.dest,resolvedDest:landingTile,
-          shipIds:boat.shipIds,lastProgressTick:boat.lastProgressTick});
+        telemetry('boat_delayed',fleetStatus,{
+          actionId:boat.actionId??null,dest:boat.dest,resolvedDest:landingTile,
+          shipIds:boat.shipIds,eta:boat.eta??null,
+          lastProgressTick:boat.lastProgressTick,
+          status:'in-transit-arrival-unknown'});
       }else if(tick-boat.tick>(boat.seen?1350:90) &&
         (!boat.seen||tick-boat.lastProgressTick>260)){
         if(boat.seen)marineStats.transportUnresolved++;
@@ -5714,8 +5909,11 @@
         fleetStatus=boat.seen?'Transport lange ohne Landungsbestätigung':
           'Transport nach Intent nicht im Spiel beobachtet';
         telemetry(boat.seen?'boat_unresolved':'boat_unconfirmed',fleetStatus,
-          {dest:boat.dest,resolvedDest:landingTile,target:boat.target,troops:boat.troops,
-            reason:boat.seen?'stalled-no-owned-coast':'ship-not-seen'});
+          {actionId:boat.actionId??null,dest:boat.dest,
+            resolvedDest:landingTile,target:boat.target,
+            shipIds:boat.shipIds,eta:boat.eta??null,troops:boat.troops,
+            reason:boat.seen?'stalled-no-owned-coast':'ship-not-seen',
+            status:'unresolved-not-proven-lost'});
         landingFailure(boat,tick,landingTile,
           boat.seen?'stalled-no-owned-coast':'ship-not-seen');pendingBoat=null;
       }
@@ -6042,8 +6240,24 @@
         send('donateTroops',[partner,amount],
           'DUO · TEAMHILFE → '+nameOf(partner))){
         lastDonation=tick;
+        const requestId=local?.state?.needHelp?
+          local.state.helpRequestId??null:null;
+        if(requestId){
+          diagnosticAid={requestId,partnerId:duo.partnerID,
+            actionId:lastActionId,amount,tick,
+            partnerHomeAtEmission:partnerHome};
+          telemetry('duo_help_accepted','Sichere Truppenhilfe angefordert',{
+            requestId,partnerId:duo.partnerID,actionId:lastActionId,
+            acceptedTroops:amount,status:'accepted-for-emitted-intent',
+            supportObserved:'unknown'});
+          telemetry('duo_help_action_sent','Truppenspende als Intent gesendet',{
+            requestId,partnerId:duo.partnerID,actionId:lastActionId,
+            sentTroops:amount,status:'action-sent-not-confirmed',
+            supportObserved:'unknown'});
+        }
         telemetry('duo_donation','Notfallhilfe gegen beobachtete Partnerfront',
-          {planId:duoPlan?.planId??null,partner:duo.partnerID,partnerIncoming:inbound,warning,
+          {requestId,actionId:lastActionId,
+            planId:duoPlan?.planId??null,partner:duo.partnerID,partnerIncoming:inbound,warning,
             partnerHome,amount,ownHome:s.home,remaining:s.home-amount,floor,
             displayAmount:Math.round(amount/10)});
         return true;
@@ -6617,8 +6831,10 @@
         'Unbekannter Spieltyp: BOT GESPERRT';
       paint();return;
     }
+    diagnosticDonationUpdates();
     if(game?.gameOver?.()){
       if(opts.enabled||gameEnd?.teamOutcomePending){
+        diagnosticCloseHelp('match-end',number(()=>game.ticks(),-1));
         gameEnd=gameOutcome(game,myPlayer());
         learnFinish(gameEnd.outcome);
         telemetry('game_over','Partie beendet · Bot automatisch gestoppt',{gameEnd});
@@ -6632,6 +6848,8 @@
     const eliminated=myPlayer();
     if(eliminated?.hasSpawned?.()&&eliminated.isAlive?.()===false){
       if(!gameEnd){
+        diagnosticCloseHelp('player-elimination',
+          number(()=>game.ticks(),-1));
         const team=game?.config?.().gameConfig?.().gameMode==='Team';
         gameEnd={outcome:team?'unknown':'defeat',source:'player-elimination',
           tick:number(()=>game.ticks(),-1),land:0,personalEliminated:true,
@@ -6724,11 +6942,28 @@
       s=tuneAutonomously(me,groups,s,tick,context);
       troopSnapshot=s;
       coordinateDuo(me,s,tick);
+      diagnosticHelpObservation(me,tick);
       planOperation(me,groups,s,tick);
       if(tick-lastDiagnosticTick>=80){lastDiagnosticTick=tick;
         telemetry('snapshot','Spielzustand',{difficulty:game.config().gameConfig().difficulty,
           gameType:game.config().gameConfig().gameType,matchContext:matchContext(me),
           decisionFrame:lastDecisionFrame,
+          defenseEvidence:{
+            incomingAttacks:(me.incomingAttacks?.()||[]).filter(a=>!a.retreating)
+              .map(a=>({
+                attackerId:attackTargetID(a.attackerID)??null,
+                troops:number(()=>a.troops,null),
+                ...diagnosticArrival([a])})).slice(0,40),
+            incomingTotal:s.incoming,home:s.home,reserve:s.reserve,
+            available:s.available,committed:s.committed,
+            outgoingRecallCandidates:(me.outgoingAttacks?.()||[])
+              .filter(a=>!a.retreating).map(a=>({
+                stackId:a.id,targetId:attackTargetID(a.targetID),
+                troops:number(()=>a.troops,null)})).slice(0,40),
+            warningLevel:duoWarningLevel(s,tick),
+            helpRequestId:diagnosticHelpId,
+            estimatedSupportDeficit:Math.max(0,Math.ceil(s.incoming*1.3-s.home)),
+            evidence:'gameview-state-not-predicted-survival'},
           investment:investmentStatus,
           cities:ownStructures(me).filter(u=>u.type?.()==='City').length,
           factories:ownStructures(me).filter(u=>u.type?.()==='Factory').length,
@@ -6746,6 +6981,15 @@
           forecastAudit:lastForecastAudit,
           recentIncomeSamples:incomeAttribution.slice(-4).map(v=>({...v})),
           fleet:fleetStatus,
+          economicEvidence:{
+            gold:goldAmount(me),trainGold:incomeStatus.train??null,
+            tradeGold:incomeStatus.trade??null,
+            pending:economicPending?{actionId:economicPending.actionId??null,
+              type:economicPending.type,kind:economicPending.kind,
+              tile:economicPending.tile,quotedCost:economicPending.cost,
+              status:'requested-not-confirmed'}:null,
+            lastWorkerProbe:lastEconomyProbeReport,
+            unknownActualSpend:true},
           marine:{stats:{...marineStats},pendingBoat:pendingBoat?{...pendingBoat}:null,
             pendingWarship:pendingWarship?{...pendingWarship}:null,
             ports:ownStructures(me).filter(u=>u.type?.()==='Port').length,
