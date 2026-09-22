@@ -1042,6 +1042,11 @@
       warTarget:duoID(warState.id)?warState.id:null,
       strikeTick:Number.isInteger(duoPlan?.strikeTick)?duoPlan.strikeTick:null,
       planId:duoPlan?.planId??null,expiresTick:duoPlan?.expiresTick??null,
+      ackPlanId:duoPlan?.planId&&duoPlan.ready&&peer&&
+        actualFriendly(peer,me)&&duoPlan.partner===safeID(peer)&&
+        Number.isInteger(duoPlan.expiresTick)&&
+        number(()=>game.ticks(),Infinity)<=duoPlan.expiresTick?
+          duoPlan.planId:null,
       ready:!!(state&&state.incoming===0&&
         !recentHostilePressure(number(()=>game?.ticks?.(),0))&&
         !(crisisTrend&&number(()=>game?.ticks?.(),0)<crisisTrend.expires)&&
@@ -1610,7 +1615,9 @@
       !Number.isInteger(duoPlan.strikeTick)||tick<duoPlan.strikeTick||
       tick>(Number.isInteger(duoPlan.expiresTick)?duoPlan.expiresTick:duoPlan.strikeTick+110)||
       (Number.isInteger(info.expiresTick)&&tick>info.expiresTick&&observedOn<=0)||
-      (info.planId&&duoPlan.planId&&info.planId!==duoPlan.planId&&observedOn<=0)||
+      // Both full bots agree to the same live plan before launching.
+      !duoPlan.planId||info.ackPlanId!==duoPlan.planId||
+      info.planId!==duoPlan.planId||
       info.target!==id||
       (info.strikeTick!==duoPlan.strikeTick&&observedOn<=0)))return null;
     return {target:id,own,ally,needed,enemy,front,
@@ -1759,6 +1766,8 @@
       partnerHome,needHelp:partnerNeeds,partnerWarning,
       partnerReady:!!local?.state?.ready,separatedFronts,
       teamDecision,strikeTick,
+      partnerAck:!!(local?.state?.ackPlanId&&strikeTick!==null&&
+        local.state.ackPlanId===String(safeID(shared)).slice(0,96)+':'+String(strikeTick)),
       planId:strikeTick===null||!shared?null:
         String(safeID(shared)).slice(0,96)+':'+String(strikeTick),
       expiresTick:strikeTick===null?null:strikeTick+110,
@@ -5644,8 +5653,10 @@
       Math.hypot(game.x(a)-game.x(b),game.y(a)-game.y(b))<115;
     return observations.some(v=>near(v.tile,source)||near(v.tile,dest));
   }
-  // Bounded water-only shortest-route probe; destination itself is land.
-  // ETA range is a heuristic, not official movement speed or engine pathfinding.
+  // Bounded water-only route probe; destination itself is land.
+  // TransportShipExecution at official pinned bb8af015 has ticksPerMove=1.
+  // A movement step costs one engine tick; actual WaterPathFinder may follow
+  // a different or delayed path, so this cannot promise arrival at one tick.
   function navalRouteEstimate(source,dest,maxVisited=1800){
     if(!Number.isInteger(source)||!Number.isInteger(dest)||
       !game?.isWater?.(source))return null;
@@ -5662,8 +5673,9 @@
           while(cursor!==null){path.push(cursor);cursor=previous.get(cursor);}
           path.reverse();
           const waterSteps=path.length-1;
-          return {waterSteps,etaTicksRange:[waterSteps,waterSteps*6],
-            etaMethod:'uncalibrated-water-steps-proxy',path};
+          return {waterSteps,etaTicksLowerBound:waterSteps,
+            etaTicks:waterSteps+1,etaTicksRange:[waterSteps+1,null],
+            ticksPerMove:1,etaMethod:'official-transport-one-tick-per-move-bfs-route-approximation',path};
         }
         const next=[];const n=game.neighbors4(tile,next);
         for(const neighbor of next.slice(0,n))if(!previous.has(neighbor)&&
@@ -5846,7 +5858,9 @@
         if(routeEstimate)
           telemetry('marine_eta_proxy','Wasserroute als Näherung berechnet',
             {target:safeID(current),dest,waterSteps:routeEstimate.waterSteps,
+              etaTicks:routeEstimate.etaTicks,
               etaTicksRange:routeEstimate.etaTicksRange,
+              ticksPerMove:routeEstimate.ticksPerMove,
               etaMethod:routeEstimate.etaMethod});
         if(routeRisk||navalHomeRisk(me,number(()=>game.ticks(),tick))){
           decisionNote('marine-pause','Landung nach Sicherheitsprüfung zurückgestellt',
