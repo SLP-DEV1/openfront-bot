@@ -86,6 +86,11 @@ jobs:
         run: |
           node --check tools/benchmark/v3-map-breakdown.mjs
           node tests/v3-map-breakdown-regression.cjs
+      - name: Check Neural V4 early campaign
+        run: |
+          node --check tools/benchmark/v4-early-campaign.mjs
+          node tools/benchmark/v4-early-campaign.mjs setup --dryRun true > /dev/null
+          node tests/v4-early-campaign-regression.cjs
       - name: Test neural trainer and deployer
         run: |
           node --check trainer/train.mjs
