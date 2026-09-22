@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import {createRequire} from 'node:module';
+const localRequire=createRequire(import.meta.url);
+const {hostilePlayers}=localRequire('./enemy-metrics.cjs');
 import {pathToFileURL} from 'node:url';
 import common from './common.cjs';
 import policyModel from '../../trainer/policy.cjs';
@@ -162,7 +164,7 @@ const visibleSamples=[];
 function sampleVisible(turn,me){
   if(!me?.hasSpawned?.())return;
   const num=fn=>{try{const v=Number(fn());return Number.isFinite(v)?v:0;}catch(_){return 0;}};
-  const enemies=(view.playerViews?.()||[]).filter(p=>p?.clientID?.()!==me?.clientID?.()&&p?.isAlive?.());
+  const enemies=hostilePlayers(view.playerViews?.(),me);
   const snapshot={tick:turn,land:num(()=>me.numTilesOwned()),home:num(()=>me.troops()),
     gold:num(()=>me.gold()),enemyLand:enemies.reduce((v,p)=>v+num(()=>p.numTilesOwned()),0),
     enemyTroops:enemies.reduce((v,p)=>v+num(()=>p.troops()),0)};

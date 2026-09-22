@@ -32,6 +32,7 @@ jobs:
         run: |
           node --check tools/duo-relay.cjs
           node tests/duo-relay-regression.cjs
+          node tests/duo-relay-oversize-regression.cjs
       - name: Verify experiment manifest provenance
         run: |
           node --check tools/benchmark/experiment-manifest.cjs
@@ -48,17 +49,27 @@ jobs:
           node --check tools/live-monitor.cjs
           node tests/live-monitor-regression.cjs
           node tests/browser-finish-regression.cjs
+      - name: Test diagnostic v2 journal and Duo event capture
+        run: |
+          node --check tests/diagnostic-v2-regression.cjs
+          node tests/diagnostic-v2-regression.cjs
+          node --check tests/diagnostic-zip-regression.cjs
+          node tests/diagnostic-zip-regression.cjs
+          node --check tests/diagnostic-evidence-regression.cjs
+          node tests/diagnostic-evidence-regression.cjs
       - name: Test bot strategy
         run: node tests/strategy-regression.cjs
-
       - name: Test match auto-start and panel
         run: |
           node --check tests/autostart-regression.cjs
           node tests/autostart-regression.cjs
-
       - name: Test hybrid learning
         run: node tests/learning-regression.cjs
-
+      - name: Check Scenario Pack and read-only Evidence Mode
+        run: |
+          node --check tools/benchmark/scenario-pack.cjs
+          node tests/scenario-pack-regression.cjs > /dev/null
+          node tests/evidence-panel-regression.cjs
       - name: Check benchmark tools
         run: |
           node --check tools/benchmark/engine-match.mjs
