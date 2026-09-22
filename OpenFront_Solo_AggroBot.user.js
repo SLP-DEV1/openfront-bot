@@ -6122,8 +6122,24 @@
         send('donateTroops',[partner,amount],
           'DUO · TEAMHILFE → '+nameOf(partner))){
         lastDonation=tick;
+        const requestId=local?.state?.needHelp?
+          local.state.helpRequestId??null:null;
+        if(requestId){
+          diagnosticAid={requestId,partnerId:duo.partnerID,
+            actionId:lastActionId,amount,tick,
+            partnerHomeAtEmission:partnerHome};
+          telemetry('duo_help_accepted','Sichere Truppenhilfe angefordert',{
+            requestId,partnerId:duo.partnerID,actionId:lastActionId,
+            acceptedTroops:amount,status:'accepted-for-emitted-intent',
+            supportObserved:'unknown'});
+          telemetry('duo_help_action_sent','Truppenspende als Intent gesendet',{
+            requestId,partnerId:duo.partnerID,actionId:lastActionId,
+            sentTroops:amount,status:'action-sent-not-confirmed',
+            supportObserved:'unknown'});
+        }
         telemetry('duo_donation','Notfallhilfe gegen beobachtete Partnerfront',
-          {planId:duoPlan?.planId??null,partner:duo.partnerID,partnerIncoming:inbound,warning,
+          {requestId,actionId:lastActionId,
+            planId:duoPlan?.planId??null,partner:duo.partnerID,partnerIncoming:inbound,warning,
             partnerHome,amount,ownHome:s.home,remaining:s.home-amount,floor,
             displayAmount:Math.round(amount/10)});
         return true;
@@ -6807,6 +6823,7 @@
       s=tuneAutonomously(me,groups,s,tick,context);
       troopSnapshot=s;
       coordinateDuo(me,s,tick);
+      diagnosticHelpObservation(me,tick);
       planOperation(me,groups,s,tick);
       if(tick-lastDiagnosticTick>=80){lastDiagnosticTick=tick;
         telemetry('snapshot','Spielzustand',{difficulty:game.config().gameConfig().difficulty,
