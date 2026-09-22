@@ -2,6 +2,35 @@
 
 **Quelle:** `tests/strategy-regression.cjs` vom aktuellen GitHub-Hauptskript 1.20.9. Dies ist ein **in-memory JavaScript-Testlauf mit nachgebildeten Node-`fs`/`vm`/`assert`-Schnittstellen**, **kein** nativ ausgeführter Node-Test und kein CI-Nachweis. Ergebnis dieser Näherung: **271 grün, 19 rot**. Die früher gemeldeten **265/17** stammen von einem **anderen** Commit (1.20.8) und werden nicht vermischt.
 
+## Nachtrag: aktueller nativer CI-Stand (22.09.2026)
+
+Die oben aufgeführten **19 roten Fälle sind historische Ergebnisse eines
+unvollständigen In-Memory-Nachbaus auf 1.20.9/1.20.10**, nicht aktuelle
+Fehlschläge von `main`. Auf Commit
+[`9288c3e`](https://github.com/SLP-DEV1/openfront-bot/commit/9288c3eb6e762957f9d59d55eb449decd9811732)
+war [Verify AggroBot erfolgreich](https://github.com/SLP-DEV1/openfront-bot/actions/runs/35699149162).
+Der Workflow führt `node tests/strategy-regression.cjs` nativ aus.
+Damit sind die dort weiterhin enthaltenen SAM-/Silo-/Hafen-/Neural-/Duo-
+Assertions **für diesen Commit als native Regressionen bestanden**; sie
+sind nicht als 16 aktuelle Produktfehler zu führen. Das klassifiziert
+**nur den alten Testlauf als nicht repräsentativ**, nicht die Qualität
+realer Matches oder die Vollständigkeit der P0-Mechanik.
+
+Gezielte Kontrolle am aktuellen Testquelltext: die 16 historischen
+Testnamen sind weiterhin vorhanden (SAM Zeilen 305/324/336/2772;
+Silo 893/904/1106/1488; Hafen 2069/2085/2102/2138/2593/2806;
+Neural 3323; Duo 3426, Zeilennummern vor diesem Nachtrag). Die drei
+Nachbau-Artefakte werden durch native Node-/Dateisystem-Ausführung
+statt durch Änderungen der Assertions behandelt. Kein Test wurde
+entfernt, deaktiviert oder auf eine bequemere Erwartung umgestellt.
+
+**Grenze:** Das CI-Ergebnis von `9288c3e` ist nicht automatisch ein
+Nachweis für die später gemergten PRs #99/#100; deren eigene
+PR-Workflows waren erfolgreich, der anschließende `main`-Workflow
+muss getrennt betrachtet werden. Weitere P0-Aufgaben (u. a.
+Aktionswirkungsnachweis und tatsächliche Engine-/Live-Szenarien)
+bleiben offen.
+
 ## Drei explizite Testumgebungs-Artefakte
 
 - [ ] `v1.9.6 proactive diplomacy sends offer while expanding`: `setImmediate` war im Nachbau der Node-Laufzeit nicht verfügbar. Mit echtem Node erneut prüfen.
