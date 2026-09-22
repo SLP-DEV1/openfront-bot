@@ -7231,10 +7231,15 @@
         const e=evidencePanelState(planningState,troopSnapshot,lastDecisionFrame,
           number(()=>game?.ticks?.(),-1),actionLedger,economyBudgetEvidence);
         const a=e.alternative;
-        return `<div style="color:#a9efc9">Verworfene Alternative: ${escapeHTML(a?a.id+' · Nutzen '+a.utility+' · '+a.reason:'noch keine Rangliste')}</div>
-          <div style="color:#9bd0e4">Reservegrund: ${escapeHTML(e.reserveReason)} · Worker-Alter: ${e.workerAge===null?'unbekannt':e.workerAge+' Ticks'}${e.workerStale?' (veraltet/unklar)':''}</div>
-          <div style="color:#9bd0e4">Letzte Aktion: ${escapeHTML(e.actionId??'—')} · Entscheidung: ${escapeHTML(e.decisionId??'—')} · Wirkung: ${escapeHTML(e.effect)} (nicht aus Intent ableiten)</div>
-          <div style="color:#9bd0e4;font-size:10px">Nur Rangfolge und Beobachtung; keine zusätzliche Aktionsfreigabe.</div>`;
+        return '<div style="color:#a9efc9">Verworfene Alternative: '+
+          escapeHTML(a?a.id+' · Nutzen '+a.utility+' · '+a.reason:'noch keine Rangliste')+'</div>'+
+          '<div style="color:#9bd0e4">Reservegrund: '+escapeHTML(e.reserveReason)+
+          ' · Worker-Alter: '+(e.workerAge===null?'unbekannt':e.workerAge+' Ticks')+
+          (e.workerStale?' (veraltet/unklar)':'')+'</div>'+
+          '<div style="color:#9bd0e4">Letzte Aktion: '+escapeHTML(e.actionId??'—')+
+          ' · Entscheidung: '+escapeHTML(e.decisionId??'—')+
+          ' · Wirkung: '+escapeHTML(e.effect)+' (nicht aus Intent ableiten)</div>'+
+          '<div style="color:#9bd0e4;font-size:10px">Nur Rangfolge und Beobachtung; keine zusätzliche Aktionsfreigabe.</div>';
       })():''}
       ${(()=>{const e=evidencePanelState(planningState,troopSnapshot,lastDecisionFrame,
         number(()=>game?.ticks?.(),-1),actionLedger,economyBudgetEvidence),q=e.budget;
