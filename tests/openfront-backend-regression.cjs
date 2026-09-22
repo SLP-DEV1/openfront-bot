@@ -31,15 +31,15 @@ const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),net=
       startBackend({engine:dir,dir,ports,timeoutMs:500,log:()=>{},
         launch:{command:process.execPath,args:['-e',code,JSON.stringify(ports)]}}),
       /already occupied/);
-    await backend.stop();
+    backend.stop();
     // Stop is idempotent.
-    await backend.stop();
+    backend.stop();
     for(let i=0;i<60&&await portOpen(ports[0]);i++)
       await new Promise(r=>setTimeout(r,50));
     assert.equal(await portOpen(ports[0]),false);
     assert(fs.existsSync(path.join(dir,'openfront-backend.log')));
   }finally{
-    await backend?.stop();
+    backend?.stop();
     fs.rmSync(dir,{recursive:true,force:true});
   }
   console.log('PASS managed OpenFront backend: readiness, conflict refusal and shutdown');

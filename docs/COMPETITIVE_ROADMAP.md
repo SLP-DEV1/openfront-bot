@@ -3,40 +3,6 @@
 > **Master-Issue:** [#75 – Gesamtübersicht](https://github.com/SLP-DEV1/openfront-bot/issues/75) · **[Vollständiger eingereichter Entwicklungsplan](COMPETITIVE_PLAN_2026-09-22.md)** (neun Abschnitte einschließlich Befunde, Architektur, P0–P6, Messverfahren und Quellen).  
 > **Erstellt:** 22.09.2026. Ursprüngliche Analyse: Commit `10e81ee` / 1.20.8; beim Anlegen des Trackers war das GitHub-Hauptskript laut README **1.20.9**; zwischenzeitlich wurde **1.20.10** mit Action-Trace erstellt. **Keine neue Gesamt-Testausführung** für 1.20.9 wurde für diese Plananlage durchgeführt.
 
-## Aktueller Umsetzungsstand – Teilpaket 1.20.11 (22.09.2026)
-
-**Keine der sieben Gesamtphasen ist abgenommen.** Der historische
-1.20.8-Analysebefund und die früheren simulierten/nativen Testergebnisse
-bleiben als historischer Stand sichtbar. Die folgenden Änderungen sind
-kleine, einzeln prüfbare Schritte; ein vollständiger Live-Duo-/Holdout-
-Vergleich liegt noch nicht vor.
-
-| Phase | In diesem Paket umgesetzt | Nachweis / weiterhin offen |
-| --- | --- | --- |
-| **P0** | Run3 aus dem aktuellen 1.20.11-Hauptskript mit **unverändertem 1.000-Gewichte-Champion** synchronisiert; Syntax/Quellparität und Relay-Payload gezielt geprüft. | [Bundle-Commit](https://github.com/SLP-DEV1/openfront-bot/commit/c7632f342e2e2835305e5272b5cf1acbc5d7be3f); gesamter nativer CI-/Engine-Nachweis und Triage der bestehenden Fehler offen. |
-| **P1** | Worker-Grenzergebnis bei Match-/Spielerwechsel oder mehr als 40 Ticks Verzögerung verwerfen, statt alte Ziele als aktuelle Entscheidung auszuführen. | [Quelländerung](https://github.com/SLP-DEV1/openfront-bot/commit/4a947b633c971573a408b2c5254c40473bc19526), [gezielter Regressionstest](https://github.com/SLP-DEV1/openfront-bot/commit/fc1ef43aa236f9af12dd187e2551921c3b80afd6). Vollständiger Snapshot und Antwortszenarien offen. |
-| **P2** | Kontobewegung als **signierte Nettogoldänderung** samt getrennten Bahn-/Schiffszählern erfassen. Käufe/Spenden dürfen nicht als Null-Einkommen umgedeutet werden. | [Quelländerung](https://github.com/SLP-DEV1/openfront-bot/commit/4a947b633c971573a408b2c5254c40473bc19526), [Regression](https://github.com/SLP-DEV1/openfront-bot/commit/fc1ef43aa236f9af12dd187e2551921c3b80afd6). Vollständige Transaktionszuordnung und Grenznutzen offen. |
-| **P3** | Beobachteten Gebietsfortschritt mit Zeit und explizit **nicht kausalem** Beleg speichern; experimentell lange untätige Operation nach Schutzprüfung freigeben. | [Quelländerung](https://github.com/SLP-DEV1/openfront-bot/commit/8689669a9dc2b2227a4161ca5e8295662842be50), [gezielter Test](https://github.com/SLP-DEV1/openfront-bot/commit/fbc6e245b1060f7e24c0679b38d1b8e736c63a40). Default-Regel bleibt unverändert; Kampfsimulation/Kalibrierung offen. |
-| **P4** | Duo-Plan erhält eine deterministische **Beobachtungs-ID**, Angriffstick und begrenztes Ablaufdatum im Relay; ungültige Laufzeiten werden abgewiesen. | [Bot/Plan](https://github.com/SLP-DEV1/openfront-bot/commit/8689669a9dc2b2227a4161ca5e8295662842be50), [Relay](https://github.com/SLP-DEV1/openfront-bot/commit/eac21058803e63a00f469e5f0d71ff012e8198a2), [Validierung](https://github.com/SLP-DEV1/openfront-bot/commit/47f6fb15516259f4e41751b2fbacce7eef2385ed). Plan-ID derzeit **Diagnose, kein verbindlicher gegenseitiger ACK**; zwei vollständige Clients offen. |
-| **P5** | Embargo nur bei **beobachteten** eigenen/eingehenden Kämpfen statt bloßer Kriegsabsicht; eigene Bot-Embargos nach Ende der Kämpfe wieder öffnen. | [Quelländerung](https://github.com/SLP-DEV1/openfront-bot/commit/4a947b633c971573a408b2c5254c40473bc19526), [gezielter Test](https://github.com/SLP-DEV1/openfront-bot/commit/fc1ef43aa236f9af12dd187e2551921c3b80afd6). Handelssimulation, Marine-ETA und Einkommenswirkung offen. |
-| **P6** | Reproduzierbares Experiment-Manifest mit Commit-/Options-/Quell-/Bundle-/Champion-Hashes, Match als Stichprobeneinheit und ausdrücklich unbekanntem Ausgang. | [Generator](https://github.com/SLP-DEV1/openfront-bot/commit/c0d40984fb1be45a2d78be30d0b18e41cbeea254), [Tests](https://github.com/SLP-DEV1/openfront-bot/commit/9fe60ca6a96ddb0a76c0153701e87ad9d9f99648), [Protokoll](EXPERIMENT_PROTOCOL.md). Kein Matchrunner, keine Gegnerliga oder neue Siegnachweise. |
-
-**Gezielte lokale Test-Auswertung dieses Teilpakets:** drei neue
-P1/P2/P5-Fälle und zwei P3-Fälle im isolierten JavaScript-Test-Harness
-bestanden; Syntax beider Userscripts, aller geänderten JS-Dateien,
-bytegleiche Run3-Ableitung und Relay-Planvalidierung geprüft.
-Der vollständige native `node tests/strategy-regression.cjs`-Lauf
-und echte Engine-/Multiplayer-Spiele **sind damit nicht ersetzt**.
-Die CI führt jetzt auch den Manifest-Test aus; ein grüner neuer
-Workflow-Durchlauf ist erst nach GitHub-Resultat belegt.
-
-## P1 – Entscheidungssnapshot auf aktuellem 1.20.11-Stand (PR #77)
-
-- Unveränderlicher, rein diagnostischer `decisionFrame` hält aktuelle Rohtruppen, Reserve, Gold (BigInt-sicher), Land, beobachtete Gegner und bestätigte Duo-ID fest; keine neue Aktionsfreigabe.
-- Bestehender Worker-Stale-Guard bleibt der einzige Guard und verwirft ab **mehr als 20 Ticks** sowie bei zurückliegendem Tick oder gewechseltem Player; Notverteidigung bleibt vor dem await.
-- Snapshot wird in der periodischen Diagnose erfasst und beim Match-Reset gelöscht. Solo und deterministisches Run3-Bundle werden zusammen aktualisiert.
-- Regression zu Freeze, Rohwerten, 20-Tick-Grenze, Spielerwechsel sowie bestehendem Guard; vollständige P1- und Live-Duo-Abnahme weiterhin separat.
-
 ## Status-Legende und Abnahmeregel
 
 - **Im Code vorhanden:** Ein bereits implementierter Baustein; **nicht** dass die Phase abgeschlossen ist.

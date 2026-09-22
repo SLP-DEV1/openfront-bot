@@ -1,8 +1,6 @@
 'use strict';
 const assert=require('node:assert/strict');
 const {once}=require('node:events');
-const fs=require('node:fs');
-const path=require('node:path');
 const relay=require('../tools/duo-relay.cjs');
 const mk=(ownID,partnerID,instance,match='v1|Public|World|Large|FFA|123|_')=>({
   room:'KITSU_DUO_123',ownID,partnerID,instance,match,
@@ -24,14 +22,6 @@ const mk=(ownID,partnerID,instance,match='v1|Public|World|Large|FFA|123|_')=>({
   assert.equal(relay.validate({...A,partnerID:'one'}),false);
   assert.equal(relay.validate({...A,state:{...A.state,target:'../bad'}}),false);
   assert.equal(relay.validate({...A,state:{...A.state,strikeTick:345}}),true);
-  assert.equal(relay.validate({...A,state:{...A.state,
-    strikeTick:345,planId:'enemyA:345',expiresTick:455}}),true);
-  assert.equal(relay.validate({...A,state:{...A.state,
-    strikeTick:345,planId:'enemyA:345',expiresTick:526}}),false);
-  assert.equal(relay.validate({...A,state:{...A.state,
-    strikeTick:345,planId:'enemyA:345',expiresTick:300}}),false);
-  assert.equal(relay.validate({...A,state:{...A.state,
-    strikeTick:null,planId:'enemyA:345',expiresTick:455}}),false);
   assert.equal(relay.validate({...A,state:{...A.state,warning:1,warTarget:'enemy1'}}),true);
   assert.equal(relay.validate({...A,state:{...A.state,warning:2}}),true);
   assert.equal(relay.validate({...A,state:{...A.state,warning:3}}),false);
@@ -83,10 +73,7 @@ const mk=(ownID,partnerID,instance,match='v1|Public|World|Large|FFA|123|_')=>({
   try{
     const health=await fetch('http://127.0.0.1:'+server.address().port+'/health');
     assert.equal(health.status,200);
-    const source=fs.readFileSync(path.join(__dirname,'..','OpenFront_Solo_AggroBot.user.js'),'utf8');
-    const botVersion=source.match(/^\/\/ @version\s+(\d+\.\d+\.\d+)\s*$/m)?.[1];
-    assert(botVersion,'bot userscript version header must exist');
-    assert.equal((await health.json()).version,botVersion,'relay version must match bot userscript');
+    assert.equal((await health.json()).version,relay.VERSION||'1.20.11');
     assert.equal((await call(A,'https://evil.example')).status,403);
     const preflight=await fetch(endpoint,{method:'OPTIONS',
       headers:{Origin:'https://play.openfront.io',

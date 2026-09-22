@@ -75,19 +75,19 @@ function boot(benchmarkOptions={}) {
     'sampleTroops,navalHomeRisk,navalRouteRisk,diagnosticSnapshot,learnFinish,economicDefensePressure,observeAttackOrigins,',
     'strategicDirector,economyPosture,observeOpponents,opponentTrend,observeHumanProfiles,observeVictoryThreat,coordinateDuo,planOperation,decisionNote,navalCommitmentRatio,landingThirdPartyRisk,targetHomeRatio,matchContext,rankedDuo,duoFocus,duoBattleCredit,railCorridor,nukeBezierPoints,nukeBezierPoint,checkIncomeAttribution,military,frontPressureForecast,rememberHostilePressure,recentHostilePressure,warReadiness,targetOpportunity,frontRiskPlan,offensiveCommitment,globalNavalHomeGuard,observeFronts,targetEconomics,adversaryWindow,enemyOpportunityRatio,allyAssistTarget,growthPressure,neutralAttackAmount,rankedTargets,confirmAttack,evaluateLastBattle,attackTargetPlayer,attackTargetID,attackTargets,economy,economicNeeds,economicAnchors,portCoastalAnchors,samBuildAnchors,nuclearIntel,strategy,manageWar,gameOutcome,telemetry,coordinatedWar,attack,actionBudget,connected,permittedMatch,multiplayerMatch,send,reset,naval,neutralNavalCandidates,inspectMarine,sendMarineTransport,defense,fleetDefense,tradePolicy,tradeIntentPath,sendTradeToggle,teamSupport,renewAlliances,defenseAssessment,emergencyRetreat,siteScore,railStationScore,recognize,tuneAutonomously,setting,inspectNukeLaunch,nukeStep,nukeTargets,nukeTrajectoryRisk,rocketReadiness,nukeSalvoPlan,diplomacyScore,diplomacyTickSafe,allianceOfferPath,sendAllianceOffer,victoryPlan,sampleIncome,enemyUnderAttack,attackForecast,targetsFromBorder,intentHealth,reportIntents,spawnRemaining,spawnTileValid,spawnRivals,spawnScore,emergencySpawnSearch,startSpawnSearch,doSpawn,spawnBlock,step,',
     'setBudget:n=>actions=Array(n).fill(Date.now()),setLastEmission:n=>lastEmission=n,',
-    'setNeural:m=>{neuralModel=neuralValidate(m);opts.neuralEnabled=!!neuralModel;neuralPolicyCache={key:null,output:null};},neuralStrategicSignals,neuralChannel,',
+    'setNeural:m=>{neuralModel=neuralValidate(m);opts.neuralEnabled=!!neuralModel;neuralPolicyCache={key:null,output:null};neuralEvidence={calls:0,nonzero:0,actionCalls:0,actionNonzero:0,last:null};},neuralStrategicSignals,neuralChannel,',
     'setPortBackoff:(fail,tick)=>{portProbeFailures=fail;lastPortRetryTick=tick;},',
     'setWarWait:n=>warWaitSince=n,setEconFails:n=>failedEconomyProbes=n,',
     'setPending:p=>pendingAttack=p,setLastBattle:p=>lastBattle=p,',
     'setWar:(id,name)=>warState={id,name,since:game.ticks(),blockedUntil:-Infinity},setWarBlockUntil:n=>warState.blockedUntil=n,',
     'setGroups:groups=>strategic.groups=groups,',
-    'setDuoPlan:p=>duoPlan=p,setOperation:p=>operation=p,eventBus:()=>bus,',
+    'setDuoPlan:p=>duoPlan=p,eventBus:()=>bus,',
     'setBoats:yes=>opts.boats=yes,setBoatCtor:C=>ctors.boat=C,',
     'setCancelCtor:C=>ctors.cancel=C,setTroopSnapshot:t=>troopSnapshot=t,setCtor:(key,C)=>ctors[key]=C,',
     'setMode:m=>strategic.mode=m,setAllianceCtor:C=>ctors.alliance=C,setHostilePressure:t=>lastHostilePressure=t,',
     'setNukePending:p=>nukePending=p,setMonitorSession:x=>monitorSession=x,spendBudget,commitGoldSpend,coreFundingStatus,',
     'targetOpportunityCheck,sameFrontFollowUp,reportAttackBlocks,earlyCrisis,landingFailure,neuralModelInfo,',
-    'duoConfigured,duoMatchKey,duoTrustedPeer,duoPeerAlly,duoOwnAllies,duoWarningLevel,duoJointOpportunity,duoState,duoSpawnCandidate,duoPublish,decisionFrame,decisionFrameFresh,actualFriendly,friendly,',
+    'duoConfigured,duoMatchKey,duoTrustedPeer,duoPeerAlly,duoOwnAllies,duoWarningLevel,duoJointOpportunity,duoState,duoSpawnCandidate,duoPublish,actualFriendly,friendly,',
     'setDuo:(partnerID,room,peer)=>{opts.duoEnabled=true;opts.duoPartnerID=partnerID;opts.duoRoom=room;duoLocal.ownID=safeID(myPlayer());duoLocal.partnerID=partnerID;duoLocal.match=duoMatchKey();duoLocal.lastAt=Date.now();duoLocal.peer=peer;},',
     'setPendingBoat:p=>pendingBoat=p,',
     'setPerf:(combat,border,economy)=>runtime={...runtime,combatMs:combat,borderMs:border,economyMs:economy},',
@@ -270,37 +270,6 @@ function boot(benchmarkOptions={}) {
     await x.b.step();
     assert.equal(x.b.state().gameEnd.outcome,'victory');
     assert.equal(x.b.state().diagnostics.filter(r=>r.kind==='game_over').length,2);
-  });
-  await check('issue #76 BigInt gold above safe integer range is clamped',()=>{
-    const x=boot();x.me.gold=()=>BigInt(Number.MAX_SAFE_INTEGER)+123456789n;
-    const needs=x.b.economicNeeds(x.me,[],[]);
-    assert.equal(needs.gold,Number.MAX_SAFE_INTEGER);
-    assert.equal(x.b.spendBudget(x.me,125000,'Factory'),true);
-  });
-  await check('issue #76 cap-stalled SAM quote outranks City and discretionary fleet',async()=>{
-    const x=samScenario();x.setHome(99000);
-    x.b.setTroopSnapshot(x.b.military(x.me,[]));
-    assert.equal(x.b.economicNeeds(x.me,x.me.units(),[]).capStalled,true);
-    assert.equal(await x.b.economy(x.me,2400,0,[]),false);
-    const need=x.b.economicNeeds(x.me,x.me.units(),[]);
-    assert.equal(need.savingsTarget,1500000);
-    assert.equal(x.b.spendBudget(x.me,125000,'City'),false);
-    assert.equal(x.b.spendBudget(x.me,300000,'Warship'),false);
-    x.setTick(2420);x.setGold(1700000);
-    x.b.setTroopSnapshot(x.b.military(x.me,[]));
-    assert.equal(await x.b.economy(x.me,2420,0,[]),true);
-    assert.equal(x.sent[0].unit,'SAM Launcher');
-  });
-  await check('PR #80 quoted SAM is protected already at 90 percent troop cap',async()=>{
-    const x=samScenario();x.setHome(90000);
-    x.b.setTroopSnapshot(x.b.military(x.me,[]));
-    assert.equal(x.b.economicNeeds(x.me,x.me.units(),[]).capStalled,true,
-      '85 percent City threshold must not silently move to 95 percent');
-    assert.equal(await x.b.economy(x.me,2400,0,[]),false);
-    const need=x.b.economicNeeds(x.me,x.me.units(),[]);
-    assert.equal(need.savingsTarget,1500000);
-    assert.equal(x.b.spendBudget(x.me,125000,'City'),false);
-    assert.equal(x.b.spendBudget(x.me,300000,'Warship'),false);
   });
   await check('audit ship cannot consume quoted SAM protection fund',async()=>{
     const x=samScenario();
@@ -806,10 +775,8 @@ function boot(benchmarkOptions={}) {
     assert.equal(await x.b.economy(x.me,300,0,[]),true);
     assert(['City','Factory'].includes(x.sent[0].unit),x.sent[0].unit);
   });
-  // Savings tests exercise a non-capped army; near >=85% capacity the
-  // separate cap-relief regressions correctly prioritize City instead.
   await check('late game accumulates funds without treating saving as failed construction', async () => {
-    const x=boot();x.setTick(2400);x.setLand(51613);x.setGold(900000);x.setHome(70000);
+    const x=boot();x.setTick(2400);x.setLand(51613);x.setGold(900000);
     const units=['City','City','Factory','Factory'].map((type,i)=>({
       type:()=>type,isActive:()=>true,tile:()=>100+i*20,id:()=>i+1,level:()=>1}));
     x.me.units=()=>units;
@@ -820,7 +787,7 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.b.state().failedEconomyProbes,0);
   });
   await check('first silo is funded and built at threshold', async () => {
-    const x=boot();x.setTick(2400);x.setLand(51613);x.setGold(1200000);x.setHome(70000);
+    const x=boot();x.setTick(2400);x.setLand(51613);x.setGold(1200000);
     const units=['City','City','Factory','Factory'].map((type,i)=>({
       type:()=>type,isActive:()=>true,tile:()=>100+i*20,id:()=>i+1,level:()=>1}));
     x.me.units=()=>units;
@@ -1022,7 +989,7 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.b.state().failedEconomyProbes,0);
   });
   await check('issue #5 potential neighbor does not cancel Silo fund', async () => {
-    const x=boot();x.setTick(2400);x.setLand(51613);x.setGold(900000);x.setHome(70000);
+    const x=boot();x.setTick(2400);x.setLand(51613);x.setGold(900000);
     const units=['City','City','Factory','Factory'].map((type,i)=>({
       type:()=>type,isActive:()=>true,tile:()=>5500+i*20,id:()=>i+1,level:()=>1}));
     x.me.units=()=>units;x.strong.troops=()=>200000;
@@ -1404,7 +1371,7 @@ function boot(benchmarkOptions={}) {
     assert.equal(p.list.some(e=>e.type==='City'),false);
   });
   await check('v1.10.0 MIRV-only game saves a MIRV-sized fund', () => {
-    const x=boot();x.setTick(2400);x.setLand(5000);x.setHome(70000);
+    const x=boot();x.setTick(2400);x.setLand(5000);
     x.game.config().isUnitDisabled=t=>t==='Atom Bomb'||t==='Hydrogen Bomb';
     const units=['City','City','Factory','Factory','Missile Silo'].map((type,i)=>({
       type:()=>type,isActive:()=>true,level:()=>1,tile:()=>200+i*50}));
@@ -1985,7 +1952,7 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.b.state().spawnState.attempts,1);
   });
   await check('v1.10.5 first Port beats upgrades after basic City/Factory', async () => {
-    const x=boot();x.setTick(2400);x.setGold(500000);
+    const x=boot();x.setTick(2400);x.setGold(500000);x.setHome(20000);
     x.game.isShore=t=>t===5500;
     const units=['City','Factory'].map((type,i)=>({
       type:()=>type,isActive:()=>true,tile:()=>5000+i*20,
@@ -2001,7 +1968,7 @@ function boot(benchmarkOptions={}) {
     assert(x.b.state().diagnostics.some(e=>e.kind==='port_intent'));
   });
   await check('v1.10.5 first Port not indefinitely blocked by silo savings', async () => {
-    const x=boot();x.setTick(2400);x.setGold(900000);x.setLand(52000);
+    const x=boot();x.setTick(2400);x.setGold(900000);x.setLand(52000);x.setHome(20000);
     x.game.isShore=t=>t===5500;
     const units=['City','City','Factory','Factory'].map((type,i)=>({
       type:()=>type,isActive:()=>true,tile:()=>5000+i*20,
@@ -2018,7 +1985,7 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.sent[0].unit,'Port');
   });
   await check('v1.10.5 missing Port worker site does not block silo forever', async () => {
-    const x=boot();x.setTick(2400);x.setLand(52000);x.setGold(900000);x.setHome(70000);
+    const x=boot();x.setTick(2400);x.setLand(52000);x.setGold(900000);
     x.game.isShore=t=>t===5500;
     const units=['City','City','Factory','Factory'].map((type,i)=>({
       type:()=>type,isActive:()=>true,tile:()=>5000+i*20,
@@ -2054,7 +2021,7 @@ function boot(benchmarkOptions={}) {
       `expected rotating Port probes, got ${new Set(queried).size}`);
   });
   await check('v1.10.5 own Port is confirmed from actual unit view', async () => {
-    const x=boot();x.setTick(300);x.setGold(500000);x.game.isShore=t=>t===5500;
+    const x=boot();x.setTick(300);x.setGold(500000);x.setHome(20000);x.game.isShore=t=>t===5500;
     const city={type:()=> 'City',isActive:()=>true,tile:()=>5000};
     const factory={type:()=> 'Factory',isActive:()=>true,tile:()=>5020};
     let units=[city,factory];
@@ -2509,7 +2476,7 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.b.state().economicPending.tile,x.sent[0].tile+1);
   });
   await check('v1.17.2 first harbor chooses a safe coast rather than exposed frontline', async () => {
-    const x=boot();x.setTick(300);x.setGold(500000);
+    const x=boot();x.setTick(300);x.setGold(500000);x.setHome(20000);
     x.game.isShore=t=>t===5500||t===5560;
     x.game.owner=t=>t===5501?x.weak:x.me;
     x.game.neighbors4=(t,out)=>{if(t===5500){out.push(5501);return 1;}return 0;};
@@ -3090,31 +3057,6 @@ function boot(benchmarkOptions={}) {
     assert.equal(proof.evidence,'ranking-only-worker-legality-preserved');
   });
 
-  await check('issue #76 first legal Port survives moderate cap pressure and silo savings',async()=>{
-    const x=boot();x.setTick(2400);x.setGold(1700000);x.setLand(4400);
-    x.setHome(90000);x.game.isShore=t=>t===5500;
-    const units=['City','City','Factory','Factory'].map((type,i)=>asset(type,5000+i*25,i+1));
-    x.me.units=()=>units;x.b.setTroopSnapshot(x.b.military(x.me,[]));
-    const needs=x.b.economicNeeds(x.me,units,[5500]);
-    assert.equal(needs.capStalled,true);
-    assert.equal(needs.firstPortWindow,true);
-    assert.equal(needs.portMilestone,true);
-    x.me.actions=async(tile,types)=>({buildableUnits:types.map(type=>({
-      type,canBuild:tile,canUpgrade:false,cost:BigInt(type==='Port'?500000:1000000)}))});
-    assert.equal(await x.b.economy(x.me,2400,0,[5500]),true);
-    assert.equal(x.sent[0].unit,'Port');
-  });
-  await check('issue #76 refreshes worker price before Build intent',async()=>{
-    const x=boot(),seen=new Map();x.setTick(300);x.setGold(1000000);
-    x.me.actions=async(tile,types)=>({buildableUnits:types.map(type=>{
-      const key=type+':'+tile,n=(seen.get(key)||0)+1;seen.set(key,n);
-      return {type,canBuild:type==='Factory'?tile:false,canUpgrade:false,
-        cost:BigInt(n===1?125000:1500000)};
-    })});
-    assert.equal(await x.b.economy(x.me,300,0,[]),false);
-    assert.equal(x.sent.length,0,'stale affordable quote cannot authorize the new price');
-    assert([...seen.values()].some(n=>n>1),'the chosen worker option is re-queried');
-  });
   await check('1.20.9 capped army buys City instead of Factory even with legal Port',async()=>{
     const x=boot();x.setTick(2400);x.setLand(4400);x.setGold(1700000);x.setHome(99000);
     x.game.isShore=()=>true;
@@ -3239,7 +3181,8 @@ function boot(benchmarkOptions={}) {
     assert(calm.reserve<=calm.home*.63+1);
   });
   await check('1.19.8 schema4 supplies nonzero action ranking only for legal builds',async()=>{
-    const x=boot();x.setTick(300);
+    const x=boot();x.setTick(300);x.strong.troops=()=>20000;
+    x.b.setTroopSnapshot(x.b.military(x.me,[]));
     x.b.setNeural({schema:4,arch:'24x24x16-tanh',weights:Array(1000).fill(.04)});
     assert.equal(await x.b.economy(x.me,300,0,[]),true);
     const ev=x.b.diagnosticSnapshot().neuralEvidence;
@@ -3505,40 +3448,6 @@ function boot(benchmarkOptions={}) {
     peer.state.available=0;peer.state.reserve=90000;
     assert.equal(x.b.coordinateDuo(x.me,army,350).strikeTick,345);
     assert(x.b.duoJointOpportunity(x.me,groups,army,groups[0],350,true));
-    x.setTick(410);
-    assert.equal(x.b.coordinateDuo(x.me,army,410).strikeTick,null,
-      'an observed attack cannot retain a plan from a stale relay tick');
-  });
-  await check('issue #76 expired or mismatched Duo strike cannot launch',()=>{
-    const x=boot();x.weak.troops=()=>90000;x.strong.troops=()=>42000;
-    const groups=[{id:'strong',opponent:x.strong,front:8,tiles:[6]}];
-    x.b.setGroups(groups);x.weak.isFriendly=()=>true;
-    const peer={id:'weak',state:{tick:300,home:90000,incoming:0,
-      fronts:['strong'],target:'strong',strikeTick:345,allied:true,
-      available:40000,reserve:45000,ready:true,needHelp:false}};
-    x.b.setDuo('weak','KITSU_DUO_123',peer);
-    let army=x.b.military(x.me,groups);
-    const plan=x.b.coordinateDuo(x.me,army,300);
-    x.setTick(350);peer.state.tick=350;
-    army=x.b.military(x.me,groups);
-    x.b.coordinateDuo(x.me,army,350);
-    peer.state.planId='different:345';
-    assert.equal(x.b.duoJointOpportunity(x.me,groups,army,groups[0],350,true),null);
-    peer.state.planId=plan.planId;peer.state.expiresTick=349;
-    assert.equal(x.b.duoJointOpportunity(x.me,groups,army,groups[0],350,true),null);
-    peer.state.expiresTick=455;
-    assert(x.b.duoJointOpportunity(x.me,groups,army,groups[0],350,true));
-    x.setTick(456);peer.state.tick=456;
-    assert.equal(x.b.duoJointOpportunity(x.me,groups,army,groups[0],456,true),null);
-  });
-  await check('issue #76 vanished front does not hold historical maximum for 240 ticks',()=>{
-    const x=boot();x.setTick(300);
-    const groups=[{id:'strong',opponent:x.strong,front:8,tiles:[6]}];
-    x.b.observeFronts(x.me,groups,300);
-    assert(x.b.military(x.me,[]).strongest>0);
-    x.setTick(399);
-    assert.equal(x.b.military(x.me,[]).strongest,0,
-      'old peak must decay when the frontier is no longer visible');
   });
   await check('1.20.6 Duo lock survives benign strategy change, but invasion cancels',()=>{
     const x=boot();
@@ -3728,14 +3637,10 @@ function boot(benchmarkOptions={}) {
     x.me.hasEmbargoAgainst=p=>p===x.strong&&embargoed;
     x.me.actions=async()=>({interaction:{canEmbargo:!embargoed}});
     x.b.setWar('strong','strong');
-    assert.equal(await x.b.tradePolicy(x.me,300),false,
-      'planned war by itself is not an economic reason for embargo');
-    x.out.push({targetID:'strong',troops:1200,retreating:false});
-    x.setTick(500);x.b.setLastEmission(0);
-    assert.equal(await x.b.tradePolicy(x.me,500),true);
+    assert.equal(await x.b.tradePolicy(x.me,300),true);
     assert.equal(x.sent[0].action,'start');embargoed=true;
-    x.out.length=0;x.b.setWar(null,'—');x.setTick(700);x.b.setLastEmission(0);
-    assert.equal(await x.b.tradePolicy(x.me,700),true);
+    x.b.setWar(null,'—');x.setTick(500);x.b.setLastEmission(0);
+    assert.equal(await x.b.tradePolicy(x.me,500),true);
     assert.equal(x.sent[1].action,'stop');
     assert.equal(x.sent[1].target,x.strong);
   });
@@ -3795,72 +3700,6 @@ function boot(benchmarkOptions={}) {
       r.kind==='attack_confirmed');
     assert.equal(confirmed.actionId,emitted[0].actionId);
     assert.equal(confirmed.evidence,'observed-change-not-causal-proof');
-  });
-  await check('1.20.11 net gold change preserves spending separately from trade and train',()=>{
-    const x=boot();let train=0,trade=0;
-    x.me.trainGold=()=>train;x.me.tradeGold=()=>trade;
-    x.setGold(1000000);x.b.sampleIncome(x.me,300);
-    x.setGold(800000);train=40000;trade=10000;
-    x.b.sampleIncome(x.me,400);
-    const report=x.b.state().incomeStatus;
-    assert.equal(report.netGold,-1200000);
-    assert.equal(report.gold,-1200000,'negative account balance movement is not zero income');
-    assert.equal(report.train,240000);
-    assert.equal(report.trade,60000);
-    assert.equal(report.otherNetAfterTradeTrain,-1500000);
-    assert.equal(report.observed,true);
-  });
-  await check('1.20.11 stale worker decision gate is present before border targets',()=>{
-    const guard=source.indexOf("decision_snapshot_expired");
-    const targets=source.indexOf("const groups=targetsFromBorder(me,tiles);");
-    assert(guard>0&&guard<targets,'stale borders must not enter candidate decisions');
-    assert.match(source,/observedTick-tick>20/);
-  });
-  await check('1.20.11 observed operation progress does not claim causality',()=>{
-    const x=boot();let land=1200;
-    x.strong.numTilesOwned=()=>land;
-    x.b.setOperation({target:'strong',type:'Front sichern',
-      since:300,initialLand:1200,lastObservedLand:1200,lastProgressTick:300,
-      successLand:900,budget:50000,spent:0});
-    land=1100;x.setTick(350);
-    x.b.planOperation(x.me,[],x.b.military(x.me,[]),350);
-    const op=x.b.state().operation;
-    assert.equal(op.lastObservedLand,1100);
-    assert.equal(op.lastProgressTick,350);
-    const proof=x.b.diagnosticSnapshot().records.find(r=>
-      r.kind==='operation_progress');
-    assert.equal(proof?.evidence,'observed-not-causal-proof');
-  });
-  await check('1.20.11 stalled operation is released only behind experiment flag',()=>{
-    const x=boot();
-    x.b.setOperation({target:'strong',type:'Front sichern',since:300,
-      initialLand:1200,lastObservedLand:1200,lastProgressTick:300,
-      successLand:900,budget:50000,spent:0});
-    x.setTick(790);x.b.opts.impossibleExperiment=false;
-    x.b.planOperation(x.me,[],x.b.military(x.me,[]),790);
-    assert.equal(x.b.state().operation?.target,'strong');
-    x.b.opts.impossibleExperiment=true;
-    x.b.planOperation(x.me,[],x.b.military(x.me,[]),790);
-    assert.equal(x.b.state().operation,null);
-  });
-  await check('1.20.11 P1 frozen decision frame captures raw state and enforces 20-tick expiry',()=>{
-    const x=boot(),groups=[{id:'strong',opponent:x.strong,tiles:[6,7],front:2}];
-    x.b.setGroups(groups);
-    const army=x.b.military(x.me,groups);
-    const frame=x.b.decisionFrame(x.me,groups,army,300);
-    assert.equal(frame.tick,300);
-    assert.equal(frame.home,90000);
-    assert.equal(frame.gold,1000000);
-    assert.equal(frame.opponents[0].id,'strong');
-    assert.equal(frame.opponents[0].front,2);
-    assert(Object.isFrozen(frame));
-    assert(Object.isFrozen(frame.opponents));
-    assert(Object.isFrozen(frame.opponents[0]));
-    assert.equal(x.b.decisionFrameFresh(frame,320),true);
-    assert.equal(x.b.decisionFrameFresh(frame,321),false);
-    assert.equal(x.b.decisionFrameFresh(frame,299),false);
-    x.me.id=()=> 'another';
-    assert.equal(x.b.decisionFrameFresh(frame,301),false);
   });
   console.log('TOTAL',pass,'passed,',fail,'failed');
   if(fail)process.exitCode=1;

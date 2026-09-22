@@ -1,6 +1,6 @@
 # OpenFront Solo AggroBot
 
-**Version 1.20.11** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) · Singleplayer, Public und Private · [offene Validierungspunkte](https://github.com/SLP-DEV1/openfront-bot/issues/12)
+**Version 1.20.10** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) · Singleplayer, Public und Private · [offene Validierungspunkte](https://github.com/SLP-DEV1/openfront-bot/issues/12)
 
 Der Bot erkennt neue spielbare Matches, wählt bei manuellem Spawn eine Position und steuert Expansion, Verteidigung, Wirtschaft, Flotte, Handel und Diplomatie. Die trainierte Neural-Policy kann optional *begrenzt* mitentscheiden; es gibt keine localhost-Brain- oder Live-Qwen-Anbindung mehr. **Es gibt keine belegte garantierte Impossible- oder Multiplayer-Siegquote.**
 
@@ -9,35 +9,6 @@ Der Bot erkennt neue spielbare Matches, wählt bei manuellem Spawn eine Position
 Der vollständige, eingereichte [mehrphasige Entwicklungsplan](docs/COMPETITIVE_PLAN_2026-09-22.md) ist archiviert. Die [laufende Statusübersicht](docs/COMPETITIVE_ROADMAP.md) zeigt **vorhandene Funktionen getrennt von abgenommenen Arbeitspaketen**. Im [Master-Issue #75](https://github.com/SLP-DEV1/openfront-bot/issues/75) sind alle Phasen P0–P6 mit eigenen abhakbaren Issues verlinkt. **P0 ist in Arbeit** (City-/Factory-Kapazitätskorrektur liegt laut 1.20.9 vor); eine vollständige Abnahme der Phasen oder eine neue Gesamt-Testmessung wird damit nicht behauptet. Die ursprüngliche Analyse bezog sich auf den älteren Commit `10e81ee` / 1.20.8.
 
 ## Schnellstart / Update
-
-**1.20.11 – Fortschritt in P0–P6, keine Gesamtphasen-Abnahme:**
-Der Bot verwirft überalterte Grenz-Worker-Ergebnisse (P1), verbucht die
-Goldbestandsänderung als **signierte Nettoänderung** statt als angebliches
-Bruttoeinkommen (P2), protokolliert den beobachteten Fortschritt einer
-Operation und bietet einen **opt-in**-Stillstandsabbruch
-(`impossibleExperiment`, P3), veröffentlicht Duo-Plan-ID/Frist im
-Relay als Diagnose (P4) und embargoiert nur Spieler mit **beobachtetem
-laufendem Kampf**, nicht allein geplante Kriegsziele (P5).
-Das neue [Experiment-Manifest](tools/benchmark/experiment-manifest.cjs)
-fixiert Match-Identität, Versionen und Hashes, wobei zwei Duo-Sessions
-**eine** Match-Stichprobe ergeben (P6).
-Die synchronisierte Impossible-Run3-Datei enthält weiterhin denselben
-Schema-4-Champion. [Abarbeitbare Roadmap](docs/COMPETITIVE_ROADMAP.md)
-und [Experimentprotokoll](docs/EXPERIMENT_PROTOCOL.md).
-**Noch nicht belegt:** grüne native Gesamtsuite, reale Engine-/Duo-
-Matches, starke Gegnerliga oder neue Siegquote.
-
-
-**P0 Prüfbarkeit:** `node tools/p0-audit.cjs` führt im sauberen Worktree
-den nativen Node-Testkatalog read-only aus und speichert vollständige
-Einzel-Logs, Git-Zustand und Quell-/Modellhashes unter
-`benchmark-results/p0-audit-.../report.json`. Zusätzlich prüft
-`node tests/capacity-reference-regression.cjs` die Kapazitätsformel
-des gepinnten offiziellen Engine-Commits einschließlich des
-Russia-Falls (939.219 rohe Truppen; UI ≈ 93.922).
-**Dieser reine Referenzformeltest ist keine vollständige Engine-Integration.**
-Die Testsuite/CI und P0–P6 bleiben bis zu den dokumentierten
-Abnahmen offen. [Status & Abnahmekriterien](docs/COMPETITIVE_ROADMAP.md).
 
 **1.20.10 – P0 Aktionsnachverfolgung:** Jeder erfolgreich an den OpenFront-EventBus
 ausgesendete Intent erhält eine eindeutige, pro Match aufsteigende `actionId`

@@ -78,7 +78,7 @@
     if(!opts.neuralEnabled||!opts.fullAuto||![3,4].includes(neuralModel?.schema)||
       !me||!s||s.home<=0)return null;
     const home=Math.max(1,s.home),max=Math.max(1,s.max||home);
-    const gold=goldAmount(me),
+    const gold=number(()=>Number(me.gold?.()),0),
       land=number(()=>me.numTilesOwned?.(),0);
     const units=ownStructures(me),groups=strategic.groups||[];
     const cities=units.filter(u=>u.type?.()==='City').length,
@@ -213,7 +213,7 @@
       clamp(s.incoming/home,0,2)/2,
       clamp(s.strongest/home,0,3)/3,
       clamp(s.committed/home,0,2)/2,
-      clamp(goldAmount(me)/1000000,0,1),
+      clamp(number(()=>Number(me.gold()),0)/1000000,0,1),
       clamp(number(()=>me.numTilesOwned(),0)/20000,0,1),
       lateGame(me)?1:0,
       strategic.groups.some(x=>x.id===null&&!x.fallout)?1:0,
@@ -298,19 +298,6 @@
   const escapeHTML = v => String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const clamp = (n,a,b) => Math.min(b,Math.max(a,Number.isFinite(+n)?+n:a));
   const number = (fn, fallback=0) => {try {const n=Number(fn());return Number.isFinite(n)?n:fallback;}catch(_){return fallback;}};
-  // BigInt gold can exceed Number's precise integer range in long games.
-  // Cap to a conservative representable balance rather than rounding upward.
-  function goldAmount(p,fallback=0){
-    try{
-      const raw=p.gold(),limit=Number.MAX_SAFE_INTEGER;
-      if(typeof raw==='bigint'){
-        if(raw>BigInt(limit))return limit;
-        if(raw<-BigInt(limit))return -limit;
-      }
-      const value=Number(raw);
-      return Number.isFinite(value)?Math.max(-limit,Math.min(limit,value)):fallback;
-    }catch(_){return fallback;}
-  }
   const nameOf = p => {try{return p.displayName?.() || p.name?.() || String(p.id());}catch(_){return '?';}};
   const safeID = p => {try{return p.id();}catch(_){return null;}};
   // OpenFront AttackUpdate.targetID/attackerID are numeric smallIDs.
@@ -354,7 +341,6 @@
   let recent=[], actions=[], cooldowns=new Map(), lastPaint=0, errors=0;
   let troopSamples=[], lastRecoveryReason='', lastBattle=null, blockedTargets=new Map();
   let troopSnapshot={home:0,max:0,committed:0,incoming:0,enemy:0,ratio:0,reserve:0,available:0};
-  let lastDecisionFrame=null;
   let lastEconomicAction=-Infinity, lastNeutralSend=-Infinity, lastEnemySend=-Infinity,lastHostilePressure=-Infinity;
   let consecutiveIdle=0;
   let economicPending=null, economicBlocked=new Map(), economicNegative=new Map(), economicStatus='Bauplanung bereit', economicLastPlan='—';
@@ -780,7 +766,7 @@
     buildCursor=0;spawnCache=null;spawnJob=null;spawnRetryAt=0;spawnAlternatives=[];spawnState={scanned:0,phase:'idle',lastSent:null,attempts:0,blocked:null,deadline:null};cooldowns.clear();rejected.clear();
     plan=null;lastSelection='';lastEmission=0;borderOffset=0;lastBorderRefresh=0;
     totalSent=0;totalFailed=0;actions=[];errors=0;troopSamples=[];
-    lastDecisionFrame=null;lastRecoveryReason='';lastBattle=null;pendingAttack=null;targetIntelCache.clear();frontMemory.clear();opponentHistory.clear();lastEconomyPosture='—';lastDirectorDecision=null;neuralPolicyCache={key:null,output:null};lastFrontWarning=-Infinity;
+    lastRecoveryReason='';lastBattle=null;pendingAttack=null;targetIntelCache.clear();frontMemory.clear();opponentHistory.clear();lastEconomyPosture='—';lastDirectorDecision=null;neuralPolicyCache={key:null,output:null};lastFrontWarning=-Infinity;
     attackReceipts={confirmed:0,unconfirmed:0,territoryGained:0};blockedTargets.clear();
     attackCommands=[];attackCommandSequence=0;observedAttacks.clear();
     actionSequence=0;lastActionId=null;
@@ -1040,7 +1026,6 @@
       target:duoID(target)?target:null,
       warTarget:duoID(warState.id)?warState.id:null,
       strikeTick:Number.isInteger(duoPlan?.strikeTick)?duoPlan.strikeTick:null,
-      planId:duoPlan?.planId??null,expiresTick:duoPlan?.expiresTick??null,
       ready:!!(state&&state.incoming===0&&
         !recentHostilePressure(number(()=>game?.ticks?.(),0))&&
         !(crisisTrend&&number(()=>game?.ticks?.(),0)<crisisTrend.expires)&&
@@ -1607,9 +1592,6 @@
       ally<Math.max(1000,enemy*.12)||own+ally<needed)return null;
     if(launch&&(!duoPlan||duoPlan.target!==id||
       !Number.isInteger(duoPlan.strikeTick)||tick<duoPlan.strikeTick||
-      tick>(Number.isInteger(duoPlan.expiresTick)?duoPlan.expiresTick:duoPlan.strikeTick+110)||
-      (Number.isInteger(info.expiresTick)&&tick>info.expiresTick&&observedOn<=0)||
-      (info.planId&&duoPlan.planId&&info.planId!==duoPlan.planId&&observedOn<=0)||
       info.target!==id||
       (info.strikeTick!==duoPlan.strikeTick&&observedOn<=0)))return null;
     return {target:id,own,ally,needed,enemy,front,
@@ -1675,10 +1657,7 @@
     const retained=duoPlan?.strikeTick!==null&&
       Number.isInteger(duoPlan?.strikeTick)&&
       tick<=duoPlan.strikeTick+110&&!invasion&&local&&
-      Number.isInteger(local.state?.tick)&&Math.abs(local.state.tick-tick)<=40&&
-      (local.state?.ready===true||
-        (local.player?.outgoingAttacks?.()||[]).some(a=>
-          !a.retreating&&attackTargets(a.targetID,duoPlan.target)))&&
+      (tick>=duoPlan.strikeTick||local.state?.ready===true||(active?.on||0)>0)&&
       actualFriendly(local.player,me)&&local.state?.allied===true&&
       Array.isArray(local.state?.fronts)&&
       local.state.fronts.includes(duoPlan.target)&&
@@ -1724,9 +1703,6 @@
       partnerCommitted:active?.on||0,partnerIncoming:incoming,
       partnerHome,needHelp:partnerNeeds,partnerWarning,
       partnerReady:!!local?.state?.ready,strikeTick,
-      planId:strikeTick===null||!shared?null:
-        String(safeID(shared)).slice(0,96)+':'+String(strikeTick),
-      expiresTick:strikeTick===null?null:strikeTick+110,
       strikeStatus:strikeTick===null?'none':
         !sharedJoint?'locked-awaiting-safe-budget':
         tick<strikeTick?'locked-preparing':'locked-launch-window',
@@ -1756,28 +1732,10 @@
         tick-operation.since>1100?'Operationsfrist erreicht':
         number(()=>p.numTilesOwned?.(),Infinity)<=operation.successLand?
           'Gebietsziel beobachtet':null;
-      if(!reason&&p){
-        const land=number(()=>p.numTilesOwned?.(),Infinity);
-        if(Number.isFinite(land)&&
-          land<(operation.lastObservedLand??operation.initialLand)){
-          const gained=(operation.lastObservedLand??operation.initialLand)-land;
-          operation.lastObservedLand=land;operation.lastProgressTick=tick;
-          telemetry('operation_progress','Beobachteter Zielgebietsverlust',
-            {target:operation.target,observedTiles:land,
-              delta:gained,operationSince:operation.since,
-              evidence:'observed-not-causal-proof'});
-        }
-      }
-      const stall=!reason&&opts.impossibleExperiment&&
-        tick-(operation.lastProgressTick??operation.since)>440&&
-        !s.out.some(a=>!a.retreating&&
-          attackTargets(a.targetID,operation.target))&&
-        !pendingAttack&&s.incoming===0;
-      if(reason||stall){
-        const finishedReason=reason||(stall?'Operation ohne beobachteten Fortschritt':null);
-        if(stall||reason==='Truppenbudget ausgeschöpft')
+      if(reason){
+        if(reason==='Truppenbudget ausgeschöpft')
           operationCooldown.set(operation.target,tick+160);
-        decisionNote('operation','Operation '+operation.type+' beendet: '+finishedReason,
+        decisionNote('operation','Operation '+operation.type+' beendet: '+reason,
           ['Nächste sichere Gelegenheit neu prüfen'],tick);
         operation=null;
       }
@@ -1816,8 +1774,7 @@
       since:tick,until:tick+1100,initialLand:land,
       successLand:type==='Gegner ausschalten'?0:
         Math.max(0,Math.floor(land*.90)),
-      budget,spent:0,lastObservedLand:land,lastProgressTick:tick,
-      abort:'Verlust des Ziels, Heimatinvasion oder Frist; experimentell auch Stillstand'};
+      budget,spent:0,abort:'Verlust des Ziels, Heimatinvasion oder Frist'};
     decisionNote('operation',type+' → '+operation.targetName+
       ' · Budget '+budget+' · Ziel ≤ '+operation.successLand+' Felder',
       eligible.filter(x=>x.id!==chosen.id).slice(0,3).map(x=>
@@ -1844,21 +1801,14 @@
     }
   }
   function sampleIncome(me,tick){
-    const cur={tick,gold:goldAmount(me),
+    const cur={tick,gold:number(()=>Number(me.gold()),0),
       train:number(()=>me.trainGold?.(),NaN),trade:number(()=>me.tradeGold?.(),NaN)};
     const previous=goldSamples[goldSamples.length-1];
     if(previous&&tick>previous.tick&&tick-previous.tick>=80){
       const rate=(v)=>Number.isFinite(cur[v])&&Number.isFinite(previous[v])?
         Math.max(0,(cur[v]-previous[v])/(tick-previous.tick)*600):null;
-      // Gold-stock movement includes purchases, donations and conquest:
-      // it is a signed NET change, not gross income (negative != zero).
-      const netGold=(cur.gold-previous.gold)/(tick-previous.tick)*600;
-      const train=rate('train'),trade=rate('trade');
-      incomeStatus={train,trade,gold:netGold,netGold,
-        otherNetAfterTradeTrain:
-          train!==null&&trade!==null?netGold-train-trade:null,
-        // Residual includes spending and other receipts; NEVER assign it
-        // to one building or label it as additional earned gold.
+      incomeStatus={train:rate('train'),trade:rate('trade'),
+        gold:Math.max(0,(cur.gold-previous.gold)/(tick-previous.tick)*600),
         observed:true};
       goldSamples.shift();
     }
@@ -2059,15 +2009,6 @@
         frontMemory.delete(id);
     }
   }
-  // A vanished front is remembered briefly, never treated as a current
-  // 240-tick enemy peak. Current observed armies retain full priority.
-  function rememberedFrontStrength(id,tick,observed=0){
-    const old=frontMemory.get(id);
-    if(!old)return observed;
-    const age=Math.max(0,tick-old.lastTick);
-    const tail=age>=90?0:old.peak*.72*(1-age/90);
-    return Math.max(observed,tail);
-  }
   // Retain short-lived border pressure across transient missing border scans.
   function observeFronts(me,items,tick){
     // Human multiplayer pressure must not disappear merely because native
@@ -2101,8 +2042,8 @@
       !friendly(g.opponent,me)).map(g=>{
       const now=Math.max(0,number(()=>g.opponent.troops(),0));
       const prior=frontMemory.get(g.id);
-      const recent=rememberedFrontStrength(g.id,tick,now);
-      return {id:g.id,troops:recent};
+      const recent=prior&&tick-prior.lastTick<=240?prior.peak*.72:0;
+      return {id:g.id,troops:Math.max(now,recent)};
     }).sort((a,b)=>b.troops-a.troops);
     const primary=fronts[0]?.troops||0,secondary=fronts[1]?.troops||0;
     const trend=armyTrend(tick),lost=trend&&trend.ticks>=80?
@@ -2130,8 +2071,8 @@
     const hostile=items.filter(t=>t.id!==null && t.opponent?.isAlive?.() &&
       !friendly(t.opponent,me) && !me.isOnSameTeam?.(t.opponent));
     const tick=number(()=>game?.ticks?.(),0);
-    const historical=[...frontMemory].reduce((v,[id,x])=>
-      Math.max(v,rememberedFrontStrength(id,tick)),0);
+    const historical=[...frontMemory.values()].reduce((v,x)=>
+      Math.max(v,tick-x.lastTick<=240?x.peak*.72:0),0);
     const strongest=Math.max(historical,
       hostile.reduce((v,t)=>Math.max(v,number(()=>t.opponent.troops())),0));
     const ratio=home/max;
@@ -2647,7 +2588,7 @@
     if(!hardMode())return {ready:true,reason:'Normal'};
     const units=ownStructures(me),cities=units.filter(x=>x.type?.()==='City').length,
       factories=units.filter(x=>x.type?.()==='Factory').length,
-      tiles=number(()=>me.numTilesOwned()),gold=goldAmount(me);
+      tiles=number(()=>me.numTilesOwned()),gold=number(()=>Number(me.gold()));
     const neutral=items.some(x=>x.id===null),late=lateGame(me);
     if(s.incoming>s.home*.085)return {ready:false,reason:'Eingehender Angriff'};
     if(s.activeEnemy && !isWar())return {ready:false,reason:'Laufende andere Offensive'};
@@ -2681,7 +2622,7 @@
     const coolingDown=recentHostilePressure(tick);
     const trend=armyTrend(tick), neutral=items.some(x=>x.id===null);
     const enemies=items.filter(x=>x.id!==null&&x.opponent?.isAlive?.());
-    const gold=goldAmount(me),tiles=number(()=>me.numTilesOwned());
+    const gold=number(()=>Number(me.gold())),tiles=number(()=>me.numTilesOwned());
     const factoryCount=number(()=>me.units().filter(u=>u.isActive?.()&&u.type?.()==='Factory').length);
     const cityCount=number(()=>me.units().filter(u=>u.isActive?.()&&u.type?.()==='City').length);
     const danger=s.incoming>0 || s.strongest>s.home*.95 ||
@@ -3487,7 +3428,7 @@
   }
   function economicNeeds(me,units,tiles) {
     const mine=number(()=>me.numTilesOwned(),0);
-    const gold=goldAmount(me);
+    const gold=number(()=>Number(me.gold()),0);
     const cap=Math.max(1,troopSnapshot.max||number(()=>game.config().maxTroops(me),1));
     const troops=number(()=>me.troops(),0);
     const threatened=troopSnapshot.incoming>0 || troopSnapshot.strongest>troops*.6;
@@ -3621,15 +3562,13 @@
         // Provisional saving begins only after a productive core exists;
         // otherwise early harbor hoarding delays essential income buildings.
         cities>=2&&factories>=2&&!hardMode()?500000:0):0;
-    const firstPortWindow=portMilestone&&(!capStalled||pressure<.95);
-    const savingsTarget=immediate?0:samFund>0?samFund:
-      capStalled&&!firstPortWindow&&!enemyNukes?0:portFund>0?portFund:
+    const savingsTarget=immediate?0:samFund>0?samFund:portFund>0?portFund:
       portMilestone||(threat&&intel.uncovered.length>0&&wantedSAM>0)?0:
       saveForSilo?1150000:saveForNuke?firstRocketFund:0;
     investmentStatus=immediate?'Verteidigung vor Investitionen':startup?'Erste Stadt/Fabrik':
+      capStalled&&!enemyNukes?'Truppenlimit: Stadt/City-Upgrade oder Landgewinn priorisiert':
       samFund>0&&gold<samFund?'SAM-Schutz '+Math.round(samFund).toLocaleString()+' Gold':
       threat&&intel.uncovered.length>0&&wantedSAM>0?'SAM-Schutz vor Raketenfonds':
-      capStalled&&!firstPortWindow&&!enemyNukes?'Truppenlimit: Stadt/City-Upgrade oder Landgewinn priorisiert':
       portFund>0&&gold<portFund?'Hafen-Fonds '+Math.round(portFund).toLocaleString()+' Gold':
       portMilestone?'Hafen vor Silo':basic?'Zwei Städte und zwei Fabriken':
       saveForSilo?'Silo-Fonds 1,15 Mio.':saveForNuke?'Raketen-Fonds '+firstRocketFund.toLocaleString():'Wirtschaft & Offensive';
@@ -3640,7 +3579,7 @@
       'SAM Launcher':0,
       'Missile Silo':(neural?.nuclearPriority||0)*75};
     return {list:value,policyBiases,threatened,gold,cities,factories,mine,pressure,nuclearThreat:threat,incomingNukes:enemyNukes,intel,
-      startup,basic,emergency,immediate,capStalled,firstPortWindow,savingsTarget,saveForSilo,saveForNuke,siloCount,
+      startup,basic,emergency,immediate,capStalled,savingsTarget,saveForSilo,saveForNuke,siloCount,
       enemySilos,proactiveSAM,wantedDefense,wantedSAM,portMilestone,coastSites:coastSites.length,portProbeFailures,
       samQuotedCost,portQuotedCost,posture,samSearchBlocked};
   }
@@ -3654,7 +3593,7 @@
       if(!missing.includes(type))coreQuotes.delete(type);
     const live=[...coreQuotes].filter(([type,q])=>missing.includes(type)&&
       Number.isFinite(q.cost)&&q.cost>0&&tick-q.tick<=300);
-    const gold=goldAmount(me);
+    const gold=number(()=>Number(me.gold()),0);
     const price=live.length?Math.min(...live.map(([,q])=>q.cost)):null;
     coreFunding={tick,missing,gold,quotes:Object.fromEntries(coreQuotes),
       needed:price,shortfall:price===null?null:Math.max(0,price-gold),
@@ -3668,7 +3607,7 @@
   function spendBudget(me,cost,purpose,emergency=false,tiles=[]){
     const infinite=game.config().infiniteGold?.()===true;
     if(infinite)return true;
-    const cash=goldAmount(me,NaN);
+    const cash=number(()=>Number(me.gold()),NaN);
     if(!Number.isFinite(cash)||!Number.isFinite(cost)||cost<0)return false;
     const tick=number(()=>game.ticks(),0);
     budgetCommitments=budgetCommitments.filter(c=>
@@ -3680,8 +3619,7 @@
     // A real, still-required SAM quote outranks discretionary fleet/nukes.
     const samFund=needs.nuclearThreat&&needs.wantedSAM>0&&
       needs.intel.uncovered.length>0&&!needs.samSearchBlocked&&
-      Number.isFinite(needs.samQuotedCost)&&needs.samQuotedCost>0&&
-      tick-samQuotedTick<=300?needs.samQuotedCost:0;
+      needs.savingsTarget===needs.samQuotedCost?needs.samQuotedCost:0;
     let floor=needs.savingsTarget;
     if(purpose==='Warship')floor=samFund;
     if(purpose==='SAM Launcher'||purpose==='Port'&&needs.portMilestone&&
@@ -3698,7 +3636,7 @@
       ['City','Factory'].includes(purpose))floor=0;
     // After repeated unsuccessful builds, release ONLY speculative silo/nuke
     // savings for a productive core. Never consume the observed SAM quote.
-    if(needs.capStalled&&purpose==='City'&&!needs.incomingNukes&&!samFund)floor=0;
+    if(needs.capStalled&&purpose==='City'&&!needs.incomingNukes)floor=0;
     if(!samFund&&!needs.nuclearThreat&&failedEconomyProbes>=5&&
       ['City','Factory'].includes(purpose)&&
       (needs.cities<3||needs.factories<3)&&
@@ -3720,7 +3658,7 @@
   function commitGoldSpend(me,cost,purpose){
     if(game.config().infiniteGold?.()===true)return;
     budgetCommitments.push({tick:number(()=>game.ticks(),0),
-      startGold:goldAmount(me),cost,purpose});
+      startGold:number(()=>Number(me.gold()),0),cost,purpose});
   }
   function economicAnchors(me,tiles,units,tick) {
     const w=game.width(),h=game.height(),anchors=[],seen=new Set();
@@ -4061,7 +3999,7 @@
     const urgentSAM=requirements.nuclearThreat&&requirements.wantedSAM>0&&
       requirements.intel.uncovered.length>0;
     const urgentLand=requirements.immediate&&requirements.wantedDefense>0;
-    if(requirements.capStalled&&!requirements.firstPortWindow&&!urgentSAM&&!urgentLand){
+    if(requirements.capStalled&&!urgentSAM&&!urgentLand){
       // The worker loop stops as soon as any legal proposal appears.
       // Without a City-first probe, a cheaper Port can win before a legal
       // capacity-building City is ever examined.
@@ -4073,12 +4011,12 @@
       work.sort((a,b)=>(b.entry.type==='City'?1:0)-
         (a.entry.type==='City'?1:0));
     }
-    if(requirements.firstPortWindow&&!urgentSAM&&!urgentLand){
+    if(requirements.portMilestone&&!requirements.capStalled&&!urgentSAM&&!urgentLand){
       const portWork=work.filter(x=>x.entry.type==='Port'&&!x.entry.upgrade);
       if(portWork.length)work.splice(0,work.length,...portWork,
         ...work.filter(x=>x.entry.type!=='Port'||x.entry.upgrade));
     }
-    if(requirements.firstPortWindow && !urgentSAM && !urgentLand && coastal.length &&
+    if(requirements.portMilestone && !requirements.capStalled && !urgentSAM && !urgentLand && coastal.length &&
       !work.some(x=>x.entry.type==='Port'&&!x.entry.upgrade)){
       const portEntry=entries.find(x=>x.type==='Port'&&!x.upgrade);
       const portSite=portEntry&&rankedCoast.filter(x=>
@@ -4108,7 +4046,7 @@
         const quoted=Number(quote?.cost);
         if(!quote)probe.workerNoOfferByType[entry.type]=
           (probe.workerNoOfferByType[entry.type]||0)+1;
-        const funds=goldAmount(me);
+        const funds=number(()=>Number(me.gold()),0);
         if(['City','Factory'].includes(entry.type)&&!entry.upgrade&&
           Number.isFinite(quoted)&&quoted>0){
           const old=probe.quoteByType[entry.type];
@@ -4169,7 +4107,7 @@
           const key=(isUpgrade?'upgrade':'build')+':'+item.type+':'+tile;
           if((economicBlocked.get(key)??0)>tick)continue;
           const cost=Number(isUpgrade?(b.upgradeCosts?.[0]??b.cost):b.cost);
-          const gold=goldAmount(me);
+          const gold=number(()=>Number(me.gold()),0);
           const infinite=game.config().infiniteGold?.()===true;
           if(Number.isFinite(cost))probe.lowestCost=Math.min(probe.lowestCost,cost);
           if(Number.isFinite(cost)&&cost>0){
@@ -4194,7 +4132,7 @@
           // Fund the first economic structures before buying defensive posts,
           // ports or upgrades. Emergency SAM / defense remain possible.
           if(requirements.startup && (!economicCore || isUpgrade) && !essential)continue;
-          if(requirements.firstPortWindow&&!requirements.immediate&&
+          if(requirements.portMilestone&&!requirements.capStalled&&!requirements.immediate&&
             probe.portLegal>0 && item.type!=='Port' &&
             !(item.type==='SAM Launcher'&&requirements.nuclearThreat))
             continue;
@@ -4309,16 +4247,13 @@
           unaffordable:probe.unaffordable,invalidSite:probe.invalidSite,
           lowestCost:Number.isFinite(probe.lowestCost)?probe.lowestCost:null});
       economicLastPlan=entries.slice(0,3).map(x=>x.type).join(' › ');return false;}
-    // Economy has its own async scheduler. Its action ranking must use the
-    // currently observed army, not a potentially uninitialized combat tick.
-    const rankingMilitary=military(me,strategic.groups);
     for(const item of proposals){
       item.baseScore=item.siteValue;
-      item.neuralDelta=neuralActionDelta('economy',item.siteValue,me,rankingMilitary,{
+      item.neuralDelta=neuralActionDelta('economy',item.siteValue,me,troopSnapshot,{
         type:item.type,
         magnitude:clamp((STRUCTURE_TYPES.indexOf(item.type)+1)/STRUCTURE_TYPES.length,0,1),
         opportunity:clamp(item.siteValue/150,0,1),
-        cost:clamp(item.cost/Math.max(1,goldAmount(me)),0,1),
+        cost:clamp(item.cost/Math.max(1,number(()=>Number(me.gold()),0)),0,1),
         risk:item.kind==='upgrade'?0.25:0
       });
       item.siteValue+=item.neuralDelta;
@@ -4326,16 +4261,10 @@
     proposals.sort((a,b)=>b.siteValue-a.siteValue);
     // Near the troop cap, prioritize a worker-confirmed City or City upgrade,
     // not a Factory; the legal site, cost and invasion vetoes still apply.
-    const urgentSAMChoice=requirements.nuclearThreat&&
-      requirements.wantedSAM>0&&requirements.intel.uncovered.length>0?
-      proposals.find(x=>x.type==='SAM Launcher'):null;
-    const legalFirstPort=!urgentSAMChoice&&requirements.firstPortWindow?
-      proposals.find(x=>x.type==='Port'&&x.kind==='build'):null;
-    const capCity=requirements.capStalled&&!requirements.incomingNukes&&
-      !urgentSAMChoice&&!legalFirstPort?
+    const capCity=requirements.capStalled&&!requirements.incomingNukes?
       proposals.find(x=>x.type==='City'&&x.kind==='upgrade')||
       proposals.find(x=>x.type==='City'):null;
-    const chosen=urgentSAMChoice||legalFirstPort||capCity||proposals[0];
+    const chosen=capCity||proposals[0];
     const withoutPolicy=[...proposals].sort((a,b)=>
       (b.baseScore-(requirements.policyBiases[b.type]||0))-
       (a.baseScore-(requirements.policyBiases[a.type]||0)))[0];
@@ -4357,13 +4286,6 @@
       lowestCost:Number.isFinite(probe.lowestCost)?probe.lowestCost:null,
       selected:chosen.type,coreFunding:coreFundingStatus(me,units,tick)};
     if(!live(serial))return false;
-    // Revalidate the *selected* worker option after the async site scan.
-    // A candidate may have lost its tile, upgrade ID or price meanwhile.
-    const freshTick=number(()=>game.ticks(),tick);
-    if(freshTick<tick||freshTick-tick>12){
-      telemetry('build_stale_skip','Bauplan zu alt; frischen Worker-Zustand abwarten',
-        {type:chosen.type,plannedTick:tick,freshTick});return false;
-    }
     const currentMilitary=military(me,strategic.groups);
     if(economicDefensePressure(me,currentMilitary)&&
       !['Defense Post','SAM Launcher'].includes(chosen.type)){
@@ -4371,43 +4293,8 @@
         {type:chosen.type,incoming:currentMilitary.incoming,home:currentMilitary.home});
       return false;
     }
-    const liveNeeds=economicNeeds(me,ownStructures(me),tiles);
-    if(chosen.type!=='SAM Launcher'&&chosen.type!=='Defense Post'&&
-      liveNeeds.nuclearThreat&&liveNeeds.wantedSAM>0&&liveNeeds.intel.uncovered.length>0&&
-      !requirements.nuclearThreat){
-      telemetry('build_stale_skip','Neue Nuklearbedrohung: Bau neu priorisieren',
-        {type:chosen.type,plannedTick:tick,freshTick});return false;
-    }
-    let verified;
-    try{verified=await me.actions(chosen.requestTile,[chosen.type]);}
-    catch(e){telemetry('build_stale_skip','Worker-Verifikation fehlgeschlagen',
-      {type:chosen.type,error:String(e?.message||e).slice(0,90)});return false;}
-    if(!live(serial)||number(()=>game.ticks(),tick)-tick>12)return false;
-    const finalMilitary=military(me,strategic.groups);
-    if(economicDefensePressure(me,finalMilitary)&&
-      !['Defense Post','SAM Launcher'].includes(chosen.type)){
-      telemetry('build_crisis_skip','Angriff waehrend finaler Worker-Pruefung',
-        {type:chosen.type,incoming:finalMilitary.incoming,home:finalMilitary.home});
-      return false;
-    }
-    const worker=verified?.buildableUnits?.find(x=>x.type===chosen.type);
-    const isUpgrade=chosen.kind==='upgrade';
-    const freshCost=Number(isUpgrade?(worker?.upgradeCosts?.[0]??worker?.cost):worker?.cost);
-    const actualTile=isUpgrade?chosen.requestTile:worker?.canBuild;
-    const validWorker=worker&&(isUpgrade?
-      worker.canUpgrade!==false&&worker.canUpgrade!==undefined&&
-        worker.canUpgrade===chosen.unitId:
-      Number.isInteger(worker.canBuild)&&
-        (worker.canUpgrade===false||worker.canUpgrade===undefined));
-    if(!validWorker||!Number.isFinite(freshCost)||freshCost<0||
-      actualTile!==chosen.tile||!ownedTile(chosen.tile,me)){
-      telemetry('build_stale_skip','Bauplatz, Upgrade oder Preis nicht mehr bestätigt',
-        {type:chosen.type,tile:chosen.tile,plannedCost:chosen.cost,freshCost});
-      return false;
-    }
-    chosen.cost=freshCost;
+    const args=chosen.kind==='upgrade'?[chosen.unitId,chosen.type,1]:[chosen.type,chosen.requestTile];
     if(!spendBudget(me,chosen.cost,chosen.type,false,tiles))return false;
-    const args=isUpgrade?[chosen.unitId,chosen.type,1]:[chosen.type,chosen.requestTile];
     if(send(chosen.kind,args,`${chosen.kind==='upgrade'?'UPGRADE':'BAU'} ${chosen.type} · ${chosen.cost.toLocaleString()} Gold`)){
       commitGoldSpend(me,chosen.cost,chosen.type);
       economicPending={...chosen,tick,actionId:lastActionId};
@@ -4640,7 +4527,7 @@
     const intel=nuclearIntel(me),silos=ownStructures(me).filter(u=>u.type?.()==='Missile Silo' &&
       !u.isUnderConstruction?.() && !u.isInCooldown?.());
     if(!silos.length){nukeStatus='Kein geladener Silo';return;}
-    const gold=goldAmount(me),infinite=game.config().infiniteGold?.()===true;
+    const gold=number(()=>Number(me.gold()),0),infinite=game.config().infiniteGold?.()===true;
     // Hold funds for defensive anti-nuke infrastructure unless already rich.
     const choices=['MIRV','Hydrogen Bomb','Atom Bomb'].filter(t=>!game.config().isUnitDisabled?.(t) &&
       (infinite||gold>=(t==='MIRV'?26000000:t==='Hydrogen Bomb'?6400000:1100000)));
@@ -5220,7 +5107,7 @@
       clamp((number(()=>me.numTilesOwned(),0)>=15000?2:1)+
         Math.round(neuralChannel('fleetPriority',me)*1.5),1,3);
     if(ownWarships.length>=desired)return false;
-    const gold=goldAmount(me);
+    const gold=number(()=>Number(me.gold()),0);
     if(!active && gold<450000 && !game.config().infiniteGold?.())return false;
     let probes=0,legalFound=0;
     for(const port of ports.slice(0,3)){
@@ -5321,15 +5208,11 @@
         }
       }catch(_){tradeStats.skipped++;}
     }
-    // An intended target is not yet a proven trade adversary.
-    // Embargo costs our own port income too; require observed fighting.
     const hostile=players.filter(p=>{
-      const id=safeID(p);
-      if(friendly(p,me)||me.hasEmbargoAgainst?.(p))return false;
-      return (me.outgoingAttacks?.()||[]).some(a=>
-        !a.retreating&&attackTargets(a.targetID,p))||
-        (me.incomingAttacks?.()||[]).some(a=>
-          !a.retreating&&attackTargetID(a.attackerID)===id);
+      const id=safeID(p);if(friendly(p,me)||me.hasEmbargoAgainst?.(p))return false;
+      return id===warState.id||id===plan?.id||id===operation?.target||
+        (me.outgoingAttacks?.()||[]).some(a=>!a.retreating&&attackTargets(a.targetID,p))||
+        (me.incomingAttacks?.()||[]).some(a=>!a.retreating&&attackTargetID(a.attackerID)===id);
     });
     if(hostile.length){
       const p=hostile.sort((a,b)=>number(()=>b.troops?.(),0)-number(()=>a.troops?.(),0))[0],
@@ -5347,10 +5230,9 @@
     for(const id of [...botEmbargoes]){
       const p=players.find(x=>safeID(x)===id);
       if(!p){botEmbargoes.delete(id);continue;}
-      const active=(me.outgoingAttacks?.()||[]).some(a=>
-        !a.retreating&&attackTargets(a.targetID,p))||
-        (me.incomingAttacks?.()||[]).some(a=>
-          !a.retreating&&attackTargetID(a.attackerID)===id);
+      const active=id===warState.id||id===plan?.id||id===operation?.target||
+        (me.outgoingAttacks?.()||[]).some(a=>!a.retreating&&attackTargets(a.targetID,p))||
+        (me.incomingAttacks?.()||[]).some(a=>!a.retreating&&attackTargetID(a.attackerID)===id);
       if(active||!me.hasEmbargoAgainst?.(p))continue;
       const tile=tradeAnchor(p);if(!Number.isInteger(tile))continue;
       lastTradeTick=tick;try{
@@ -5428,7 +5310,7 @@
       // Independent instances cannot ping-pong gold when the wealth gap
       // criterion and one-match cooldown are enforced.
       const cfg=game?.config?.().gameConfig?.()||{};
-      const ownGold=goldAmount(me);
+      const ownGold=number(()=>Number(me.gold()),0);
       const partnerGold=number(()=>Number(partner.gold?.()),Infinity);
       if(!ownDanger&&cfg.donateGold!==false&&ctors.donateGold&&
         (!me.canDonateGold||me.canDonateGold(partner))&&
@@ -5476,7 +5358,7 @@
       send('donateTroops',[needy.p,amount],'TEAMHILFE → '+nameOf(needy.p))){
       lastDonation=tick;return true;
     }
-    const gold=goldAmount(me);
+    const gold=number(()=>Number(me.gold()),0);
     const reserve=economicNeeds(me,ownStructures(me),[]).savingsTarget;
     const amountGold=Math.floor(Math.min(gold*.06,250000));
     if(ctors.donateGold && gold>1200000 && amountGold>=50000 &&
@@ -5761,7 +5643,7 @@
            navalCommitmentRatio(me,current,tick) ||
           fresh.ratio<.47)continue;
         const ship=legal?.buildableUnits?.find(x=>x.type==='Transport'&&Number.isInteger(x.canBuild));
-        if(!ship || (goldAmount(me)<Number(ship.cost)&&!game.config().infiniteGold?.()))continue;
+        if(!ship || (Number(me.gold())<Number(ship.cost)&&!game.config().infiniteGold?.()))continue;
         const routeRisk=navalRouteRisk(me,ship.canBuild,dest);
         if(routeRisk||navalHomeRisk(me,number(()=>game.ticks(),tick))){
           decisionNote('marine-pause','Landung nach Sicherheitsprüfung zurückgestellt',
@@ -5825,7 +5707,7 @@
           continue;
         }
         if(!game.config().infiniteGold?.() &&
-          goldAmount(me)<Number(ship.cost))continue;
+          Number(me.gold())<Number(ship.cost))continue;
         if(navalHomeRisk(me,number(()=>game.ticks(),tick))||navalRouteRisk(me,ship.canBuild,dest))continue;
         const area=neutralIslandEstimate(dest);
         if(area!==null&&area<24){
@@ -5849,31 +5731,6 @@
       }
     }
     return false;
-  }
-  // P1 diagnostic observation: a frozen, cycle-specific snapshot of raw state.
-  // It never grants additional attack/build permissions.
-  function decisionFrame(me,groups,s,tick=number(()=>game?.ticks?.(),-1)){
-    const opponents=(groups||[]).filter(g=>g.id!==null&&
-      g.opponent?.isAlive?.()).slice(0,16).map(g=>Object.freeze({
-        id:g.id,front:g.tiles?.length||0,
-        troops:number(()=>g.opponent.troops(),0),
-        land:number(()=>g.opponent.numTilesOwned(),0),
-        friendly:friendly(g.opponent,me)
-      }));
-    return Object.freeze({
-      tick,player:safeID(me),gameID:String(game?.gameID?.()??'unknown'),
-      home:s.home,reserve:s.reserve,available:s.available,
-      committed:s.committed,incoming:s.incoming,
-      maxTroops:s.max,gold:goldAmount(me),
-      land:number(()=>me.numTilesOwned(),0),
-      duoPartner:duoTrustedPeer()?.id||null,
-      opponents:Object.freeze(opponents)
-    });
-  }
-  function decisionFrameFresh(frame,tick=number(()=>game?.ticks?.(),-1)){
-    return !!frame&&Number.isInteger(tick)&&
-      tick>=frame.tick&&tick-frame.tick<=20&&
-      frame.player===safeID(myPlayer());
   }
   async function step() {
     const found=discover();
@@ -5976,23 +5833,12 @@
       if(emergencyRetreat(me,tick,immediateState))return;
       const tiles=await borders(me,tick);
       if(!live(serial))return;
-      // Refuse a slow worker result from an older decision window.
-      const observedTick=number(()=>game?.ticks?.(),-1);
-      if(observedTick<tick||observedTick-tick>20||
-        safeID(myPlayer())!==safeID(me)){
-        telemetry('decision_snapshot_expired',
-          'Worker-Ergebnis veraltet; neue Entscheidungsrunde abwarten',
-          {requestedTick:tick,observedTick,player:safeID(me),
-            currentPlayer:safeID(myPlayer())});
-        return;
-      }
       const groups=targetsFromBorder(me,tiles);
       observeFronts(me,groups,tick);
       observeOpponents(me,tick);
       observeHumanProfiles(me,tick);
       observeVictoryThreat(me,tick);
       let s=military(me,groups);rememberHostilePressure(s,tick);troopSnapshot=s;
-      lastDecisionFrame=decisionFrame(me,groups,s,tick);
       strategic.groups=groups;
       coordinateDuo(me,s,tick);
       manageWar(me,groups,s,tick);
@@ -6004,7 +5850,6 @@
       if(tick-lastDiagnosticTick>=80){lastDiagnosticTick=tick;
         telemetry('snapshot','Spielzustand',{difficulty:game.config().gameConfig().difficulty,
           gameType:game.config().gameConfig().gameType,matchContext:matchContext(me),
-          decisionFrame:lastDecisionFrame,
           investment:investmentStatus,
           cities:ownStructures(me).filter(u=>u.type?.()==='City').length,
           factories:ownStructures(me).filter(u=>u.type?.()==='Factory').length,
