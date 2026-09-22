@@ -44,6 +44,10 @@ function validate(v){
       q.expiresTick<=q.strikeTick+180))&&
     (q.expiresTick==null||(q.planId!=null&&
       Number.isInteger(q.expiresTick)))&&
+    (q.ackPlanId==null||(idOK(q.ackPlanId)&&
+      q.ackPlanId===q.planId&&q.ready===true&&
+      q.strikeTick!==null&&q.expiresTick!==null&&
+      q.tick!==null&&q.tick<=q.expiresTick))&&
     typeof q.ready==='boolean'&&typeof q.needHelp==='boolean'&&
     typeof q.allied==='boolean'&&
     (q.available===null||Number.isFinite(q.available)&&q.available>=0)&&
