@@ -408,13 +408,27 @@ function boot(benchmarkOptions={}) {
     const s={home:2032444,reserve:600000,incoming:0};
     assert(x.b.globalNavalHomeGuard(x.me,x.weak,s,585343,[]).amount<585343);
   });
-  await check('1.19.1 unresolved landing requires escort at this departure or destination',()=>{
+  await check('P5 recent local landing loss requires nearby escort but not a global lock',()=>{
     const x=boot();x.game.x=t=>t%1000;x.game.y=t=>Math.floor(t/1000);
+    // A cumulative unresolved counter is diagnostic, not evidence that all
+    // future routes are dangerous. Only a recent, nearby observed landing
+    // failure activates the escort gate.
     x.b.state().marineStats.transportUnresolved=1;
     let tile=900900;
     x.game.units=()=>[{...asset('Warship',0,5),tile:()=>tile,owner:()=>x.me}];
-    assert.equal(x.b.navalRouteRisk(x.me,100100,100800),'no-local-escort-after-unresolved-landing');
-    tile=100150;assert.equal(x.b.navalRouteRisk(x.me,100100,100800),null);
+    assert.equal(x.b.navalRouteRisk(x.me,100100,100800),null);
+    x.b.landingFailure({key:'local-regression',dest:100800},
+      x.game.ticks(),100800,'unresolved');
+    assert.equal(x.b.navalRouteRisk(x.me,100100,100800),
+      'no-local-escort-after-unresolved-landing');
+    assert.equal(x.b.navalRouteRisk(x.me,500500,500900),null,
+      'unrelated route cannot inherit a global escort lock');
+    tile=100150;
+    assert.equal(x.b.navalRouteRisk(x.me,100100,100800),null,
+      'a local ship escorts departure');
+    tile=900900;x.setTick(1201);
+    assert.equal(x.b.navalRouteRisk(x.me,100100,100800),null,
+      'an old failure expires rather than blocking forever');
   });
   await check('1.19.1 nuke appearing during naval worker await stops dispatch',async()=>{
     const x=boot();x.b.setBoatCtor(class {});
