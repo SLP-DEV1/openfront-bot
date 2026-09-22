@@ -22,6 +22,12 @@ const {spawnSync} = require('node:child_process');
 //   - the evaluation-v2 gate contract the driver relies on (victory
 //     primary, collapse guard, right-censored tick limits, fail-closed
 //     on short/unpaired/invalid samples)
+//   - candidate materialization: a completed train() writes every candidate
+//     policy into models-source/<label>.json (the layout the holdout phase
+//     consumes) and records matching SHAs in training-candidates.json
+//   - report pairing: comparePaired() must map rows through gateRow before
+//     pairing, or valid samples collapse to N=0 (regression: the gate
+//     reported 0 pairs despite 480 verified holdout matches)
 
 const ROOT = path.join(__dirname, '..');
 const DRIVER = path.join(ROOT, 'tools', 'benchmark', 'v4-early-campaign.mjs');
@@ -172,6 +178,156 @@ const base = (suffix) => Array.from({length: N},
   const badExit = short.map((r, i) => i === 1 ? {...r, exitCode: 1} : r);
   assert.equal(evaluationV2.compare(short, badExit).valid, false,
     'non-zero exit code must invalidate');
+}
+
+// ---- candidate materialization (train phase, completed-training path) ----
+// The holdout phase consumes every model from models-source/<label>.json,
+// but training only produces training/provisional.json (+ champion.json).
+// A completed train() must materialize each candidate into that layout and
+// record the matching SHA in training-candidates.json (regression: all
+// V4-prov holdout matches failed with "Missing model V4-prov.json").
+{
+  const os = require('node:os');
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'v4-train-'));
+  const training = path.join(out, 'training');
+  fs.mkdirSync(training, {recursive: true});
+  fs.writeFileSync(path.join(out, 'campaign.json'), JSON.stringify({
+    engineCommit: EXPECTED.engineCommit,
+    botSHA256: EXPECTED.botSHA256,
+    references: EXPECTED.references,
+  }));
+  // Completed-training marker state: plan + full history + final model.
+  const provModel = policyV4.validate(policyV4.zero());
+  const champModel = policyV4.mutate(provModel, 'v4-regression-champ', 0.3);
+  fs.writeFileSync(path.join(training, 'plan.json'), JSON.stringify({fixture: true}));
+  fs.writeFileSync(path.join(training, 'history.json'), JSON.stringify({
+    history: Array.from({length: 10}, (_, i) => ({generation: i + 1})),
+  }));
+  fs.writeFileSync(path.join(training, 'provisional.json'), JSON.stringify(provModel));
+  fs.writeFileSync(path.join(training, 'champion.json'), JSON.stringify(champModel));
+
+  const r = spawnSync(process.execPath, [DRIVER, 'train', '--out', out],
+    {cwd: ROOT, encoding: 'utf8'});
+  assert.equal(r.status, 0, `driver train (completed path) failed:\n${r.stdout}\n${r.stderr}`);
+
+  const state = JSON.parse(fs.readFileSync(path.join(out, 'training-candidates.json'), 'utf8'));
+  const byLabel = Object.fromEntries(state.candidates.map((c) => [c.label, c]));
+  assert.deepEqual(Object.keys(byLabel).sort(), ['V4-champ', 'V4-prov'],
+    'candidate list must cover provisional and diverged champion');
+  assert.equal(byLabel['V4-prov'].policySHA256, policyV4.sha(provModel),
+    'V4-prov SHA must be the final provisional policy digest');
+  assert.equal(byLabel['V4-champ'].policySHA256, policyV4.sha(champModel),
+    'V4-champ SHA must be the in-loop champion digest');
+  // Holdout layout: every candidate must exist under models-source/<label>.json.
+  for (const [label, model] of [['V4-prov', provModel], ['V4-champ', champModel]]) {
+    const file = path.join(out, 'models-source', `${label}.json`);
+    assert.ok(fs.existsSync(file), `models-source/${label}.json must be materialized`);
+    const loaded = policyV4.validate(JSON.parse(fs.readFileSync(file, 'utf8')));
+    assert.equal(policyV4.sha(loaded), byLabel[label].policySHA256,
+      `models-source/${label}.json must match the recorded candidate SHA`);
+  }
+  fs.rmSync(out, {recursive: true, force: true});
+}
+
+// ---- report phase pairing (regression: pairs must not collapse to 0) ----
+// A synthetic 480-match holdout OUT where the candidate beats every
+// reference on identical pairings. comparePaired() must map rows through
+// gateRow before pairing; raw rows lack `validSample`, so the old code
+// skipped every pair and reported N=0 despite 480 verified matches.
+{
+  const os = require('node:os');
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'v4-report-'));
+  const provSha = 'c'.repeat(64); // stand-in digest for the candidate policy
+  const shaFor = (model) => model === 'V4-prov' ? provSha : EXPECTED.references[model];
+  fs.writeFileSync(path.join(out, 'campaign.json'), JSON.stringify({
+    engineCommit: EXPECTED.engineCommit,
+    botSHA256: EXPECTED.botSHA256,
+    references: EXPECTED.references,
+  }));
+  fs.writeFileSync(path.join(out, 'training-candidates.json'), JSON.stringify({
+    candidates: [{
+      label: 'V4-prov', file: 'training/provisional.json',
+      policySHA256: provSha, origin: 'regression fixture',
+    }],
+  }));
+  const h = plan.holdout; // frozen grid: 12 seeds x 2 maps x 2 nations
+  const models = [...Object.keys(EXPECTED.references), 'V4-prov'];
+  for (const difficulty of h.difficulties)
+    for (const model of models)
+      h.seeds.forEach((seed, i) => {
+        for (const map of h.maps)
+          for (const nation of h.nations) {
+            const dir = path.join(out, 'holdout', `difficulty-${difficulty}`,
+              'matches', model, `${seed}-${map}-${nation}`);
+            fs.mkdirSync(dir, {recursive: true});
+            const land = model === 'V4-prov' ? 22000 : 20000; // +2000/seed
+            fs.writeFileSync(path.join(dir, 'holdout-verified.json'), JSON.stringify({
+              valid: true,
+              policySHA256: shaFor(model),
+              botSHA256: EXPECTED.botSHA256,
+              engineCommit: EXPECTED.engineCommit,
+            }));
+            fs.writeFileSync(path.join(dir, 'match.json'), JSON.stringify({
+              run: {tick: 4000 + i, termination: 'game-over'},
+              gameEnd: {outcome: 'defeat'},
+              victory: {progress: 10},
+              engineWinner: null,
+              trajectory: {summary: {
+                endLand: land, peakLand: land + 500, meanLand: land,
+                firstLand: 1500, landChange: land - 1500, retention: 0.9,
+                peakHome: 100000, meanHome: 100000,
+                meanEnemyLand: 1000, finalEnemyLand: 1000, sampleCount: 10,
+              }},
+              attackReceipts: {territoryGained: 0, confirmed: 0},
+              income: {gold: 1000, trade: 0, train: 0},
+              recording: {counts: {
+                build_confirmed: 1, build_stalled: 1, attack_command: 1,
+                decision_timeline: 1,
+              }},
+              marine: {stats: {
+                transportArrived: 0, bridgeheadHeld: 0,
+                bridgeheadLost: 0, warshipSent: 0,
+              }},
+            }));
+          }
+      });
+
+  // report() also copies holdout/summary.json into docs/ — keep the repo clean.
+  const docsFile = path.join(ROOT, 'docs', 'training-analysis-neural-v4-early',
+    'evaluation-summary.json');
+  const docsBackup = fs.existsSync(docsFile) ? fs.readFileSync(docsFile) : null;
+  try {
+    const r = spawnSync(process.execPath, [DRIVER, 'report', '--out', out],
+      {cwd: ROOT, encoding: 'utf8'});
+    assert.equal(r.status, 0, `driver report failed:\n${r.stdout}\n${r.stderr}`);
+
+    const decision = JSON.parse(fs.readFileSync(
+      path.join(out, 'holdout', 'decision.json'), 'utf8'));
+    assert.deepEqual(decision.candidates, ['V4-prov']);
+    assert.equal(decision.comparisons.length, 4,
+      'candidate must be gated vs both references on both difficulties');
+    for (const c of decision.comparisons) {
+      assert.equal(c.pairs, h.matchesPerModelPerDifficulty,
+        `pairing must be full for ${c.reference} ${c.difficulty} ` +
+        '(regression: pairs collapsed to 0)');
+      assert.equal(c.valid, true, `comparison ${c.reference} ${c.difficulty} must be valid`);
+      assert.equal(c.promoted, true,
+        'equal wins, 0 regressions and >= 10000 area gain must promote through the driver path');
+    }
+    assert.match(decision.verdict, /promoted on 4 comparison/,
+      'decision must aggregate the promoted comparisons');
+    for (const d of h.difficulties)
+      assert.ok(fs.existsSync(path.join(out, 'holdout', `difficulty-${d}`, 'evaluation.json')),
+        `evaluation.json must be written for ${d}`);
+    assert.ok(fs.existsSync(docsFile), 'docs evaluation-summary copy must be written');
+  } finally {
+    if (docsBackup === null) {
+      if (fs.existsSync(docsFile)) fs.unlinkSync(docsFile);
+    } else {
+      fs.writeFileSync(docsFile, docsBackup);
+    }
+    fs.rmSync(out, {recursive: true, force: true});
+  }
 }
 
 console.log('v4-early-campaign-regression: all checks passed');

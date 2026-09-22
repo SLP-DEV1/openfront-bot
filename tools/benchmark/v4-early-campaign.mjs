@@ -318,15 +318,18 @@ function train(opts2) {
   // Candidates: the final provisional policy (always) and, if the in-loop
   // champion diverged from it and from the start model, that champion too.
   const prov = loadModel(provFile);
+  const modelByLabel = {'V4-prov': prov.model};
   const candidates = [{label: 'V4-prov', file: path.relative(OUT, provFile),
     policySHA256: prov.sha, origin: 'training/provisional.json (final generation)'}];
   const champ = readJson(champFile);
   if (champ) {
     const champModel = policyV4.validate(champ);
     const champSha = digest(JSON.stringify(champModel));
-    if (champSha !== prov.sha && champSha !== CAMPAIGN.references['A-champ'])
+    if (champSha !== prov.sha && champSha !== CAMPAIGN.references['A-champ']) {
+      modelByLabel['V4-champ'] = champModel;
       candidates.push({label: 'V4-champ', file: path.relative(OUT, champFile),
         policySHA256: champSha, origin: 'training/champion.json (in-loop promotion)'});
+    }
   }
   writeJson(path.join(OUT, 'training-candidates.json'), {
     generatedAt: new Date().toISOString(),
@@ -336,6 +339,17 @@ function train(opts2) {
     published: hist.published === true,
     candidates,
   });
+  // Materialize candidate policies where the holdout phase consumes every
+  // model from a single layout: models-source/<label>.json.
+  const modelsDir = path.join(OUT, 'models-source');
+  for (const c of candidates) {
+    const dest = path.join(modelsDir, `${c.label}.json`);
+    if (!fs.existsSync(dest)) writeJsonWx(dest, modelByLabel[c.label]);
+    else {
+      const loaded = policyV4.validate(JSON.parse(fs.readFileSync(dest, 'utf8')));
+      requireSha(digest(JSON.stringify(loaded)), c.policySHA256, `models-source ${c.label}`);
+    }
+  }
   console.log('training candidates: ' + candidates.map((c) => `${c.label}=${c.policySHA256.slice(0, 12)}`).join(', '));
   return candidates;
 }
@@ -568,7 +582,10 @@ function comparePaired(refRows, candRows) {
       m.set([r.difficulty, r.map, r.nation, r.seed].join('|'), r);
     return m;
   };
-  const a = byKey(refRows), b = byKey(candRows);
+  // Map through gateRow first: it is where validSample is derived
+  // (raw holdout rows do not carry that field).
+  const a = byKey(refRows.map((r) => gateRow({...r})));
+  const b = byKey(candRows.map((r) => gateRow({...r})));
   const pairs = [];
   for (const [key, ra] of a) {
     const rb = b.get(key);
@@ -576,9 +593,8 @@ function comparePaired(refRows, candRows) {
     if (!ra.validSample || !rb.validSample) continue;
     pairs.push([ra, rb]);
   }
-  const ref = pairs.map(([x]) => gateRow({...x}));
-  const cand = pairs.map(([, x]) => gateRow({...x}));
-  return {pairs: pairs.length, result: evaluationV2.compare(ref, cand)};
+  return {pairs: pairs.length, result: evaluationV2.compare(
+    pairs.map(([x]) => x), pairs.map(([, x]) => x))};
 }
 function report(opts2) {
   const campaign = loadCampaign();
