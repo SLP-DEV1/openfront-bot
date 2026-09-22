@@ -265,6 +265,7 @@
     const connectedPeer=duoTrustedPeer();
     const local=connectedPeer&&actualFriendly(connectedPeer.player,me)?
       connectedPeer:null;
+    if(local?.id)diagnosticV2.lastVerifiedPartnerId=local.id;
     if(!duo&&local){
       const enemies=(game.playerViews?.()||[]).filter(p=>p?.isPlayer?.()&&
         p.isAlive?.()&&!friendly(p,me));
@@ -309,8 +310,8 @@
     const partnerWarning=Math.max(duoWarningLevel(
       {home:partnerHome,incoming,strongest:0},tick),
       local?.state?.warning||0);
-    const partnerNeeds=incoming>Math.max(1200,partnerHome*.10)||
-      local?.state?.warning===2;
+    const partnerNeeds=incoming>Math.max(1200,partnerHome*.035)||
+      local?.state?.earlyCrisis===true||local?.state?.warning===2;
     const invasion=danger||partnerNeeds||
       (crisisTrend&&tick<crisisTrend.expires&&
         (crisisTrend.lostLand>0||crisisTrend.lostAssets>0));
@@ -399,6 +400,8 @@
       targetName:shared?nameOf(shared):'Kein Gegner',role,
       partnerCommitted:active?.on||0,partnerIncoming:incoming,
       partnerHome,needHelp:partnerNeeds,partnerWarning,
+      partnerEarlyCrisis:local?.state?.earlyCrisis===true,
+      partnerLand:local?.state?.land??null,
       partnerReady:!!local?.state?.ready,separatedFronts,
       teamDecision,strikeTick,
       partnerAck:!!(planId&&local?.state?.ackPlanId===planId),
@@ -1698,12 +1701,28 @@
         enemyHome:number(()=>x.opponent?.troops?.(),null)};
     });
     const counts={};for(const row of rows)counts[row.reason]=(counts[row.reason]||0)+1;
-    attackBlockReport={tick,ranked:ranked.length,home:s.home,
+    attackBlockReport={tick,ranked:ranked.length,
+      lastEnemyAttackTick:Number.isFinite(lastEnemySend)?lastEnemySend:null,
+      lastNeutralAttackTick:Number.isFinite(lastNeutralSend)?lastNeutralSend:null,
+      lastAttackAgeTicks:tick-Math.max(lastEnemySend,lastNeutralSend),home:s.home,
       available:s.available,reserve:s.reserve,incoming:s.incoming,
       reserveShare:s.reserveShare??null,
       reserveReason:s.reserveReason??null,
       reserveFloors:s.reserveFloors??null,
       committed:s.committed,readiness:readiness.reason,counts,targets:rows.slice(0,8)};
+    if(rows.length&&tick-Math.max(lastEnemySend,lastNeutralSend)>=240&&
+      tick-lastOffenseDroughtReport>=180){
+      lastOffenseDroughtReport=tick;
+      telemetry('offense_drought','Keine neuen Angriffs-Intents trotz sichtbarer Front',{
+        ...attackBlockReport,rankedTargets:ranked.slice(0,5).map(x=>({
+          id:x.id,amount:x.amount,score:x.score,
+          forecast:x.forecast??null})),
+        blockers:counts,activeOutgoing:s.activeEnemy,
+        pendingAttack:pendingAttack?.id??null,
+        warLock:warState.id??null,warWaitSince,
+        safety:'observation-only-no-attack-permission',
+        interpretation:'ranked-target-does-not-imply-safe-legal-send'});
+    }
     if(!ranked.some(x=>x.id!==null)&&rows.length){
       telemetry('attack_block_report','Kein Landkriegsziel freigegeben',
         {attackBlockReport});
