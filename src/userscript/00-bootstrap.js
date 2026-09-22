@@ -768,10 +768,12 @@ function predict(model,input){
       semantics:'sent-is-not-confirmed; confirmations are observations; effect unknown'};
     details.diagnosticV2={schemaVersion:2,matchId:String(game?.gameID?.()??'unknown'),
       playerId:safeID(myPlayer()),playerName:nameOf(myPlayer()),
-      partnerId:duoTrustedPeer()?.id??diagnosticV2.lastVerifiedPartnerId??null,
-      partnerIdEvidence:duoTrustedPeer()?'verified-current-peer':
+      partnerId:opts.duoEnabled?
+        duoTrustedPeer()?.id??diagnosticV2.lastVerifiedPartnerId??null:null,
+      partnerIdEvidence:!opts.duoEnabled?'local-duo-off':
+        duoTrustedPeer()?'verified-current-peer':
         diagnosticV2.lastVerifiedPartnerId?'last-verified-this-match':'unknown',
-      duoRoom:opts.duoRoom||null,
+      duoRoom:opts.duoEnabled?opts.duoRoom||null:null,
       personalEliminationTick:gameEnd?.personalEliminated?gameEnd.tick:null,
       matchEndTick:game?.gameOver?.()?number(()=>game.ticks(),null):null,
       donationCapture:{...donationCapture},

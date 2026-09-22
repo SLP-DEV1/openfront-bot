@@ -1147,7 +1147,8 @@
           enemyLand:p.enemyLand,ownLand:p.ownLand,
           forecast:p.forecast||null,amount:p.amount,minimumObservedStack:null};
         if(coordinatedWar()&&warState.id===null){
-          warState={id:p.id,name:p.name,since:tick,blockedUntil:-Infinity};
+          warState={id:p.id,name:p.name,since:tick,blockedUntil:-Infinity,
+            origin:'confirmed-land-attack'};
           log('HAUPTKRIEGSZIEL BESTÄTIGT → '+p.name);
         }
       }
@@ -1204,7 +1205,9 @@
           s.incoming===0&&!recentHostilePressure(tick)){
           blockedTargets.set(warState.id,Math.max(warState.blockedUntil,tick+160));
           telemetry('war_replan','Festgefahrene Front freigegeben',
-            {oldTarget:warState.id,alternatives:alternatives.map(x=>x.id)});
+            {oldTarget:warState.id,warLockOrigin:warState.origin??'unknown',
+              heldTicks:tick-warState.since,
+              alternatives:alternatives.map(x=>x.id)});
           warState={id:null,name:'—',since:tick,blockedUntil:-Infinity};plan=null;
         } else strategic.reason='Front nach Verlusten stabilisieren';
       } else if(!active.some(a=>attackTargets(a.targetID,warState.id)) &&
@@ -1249,7 +1252,8 @@
     }
     if(warState.id===null && active.length) {
       const a=active.sort((a,b)=>b.troops-a.troops)[0],p=attackTargetPlayer(a.targetID);
-      if(p){warState={id:safeID(p),name:nameOf(p),since:tick,blockedUntil:-Infinity};
+      if(p){warState={id:safeID(p),name:nameOf(p),since:tick,blockedUntil:-Infinity,
+          origin:'observed-active-land-stack'};
         log('KRIEGSZIEL ÜBERNOMMEN: '+warState.name);}
     }
   }
@@ -1719,7 +1723,12 @@
           forecast:x.forecast??null})),
         blockers:counts,activeOutgoing:s.activeEnemy,
         pendingAttack:pendingAttack?.id??null,
-        warLock:warState.id??null,warWaitSince,
+        warLock:warState.id??null,warLockOrigin:warState.origin??null,
+        warLockAgeTicks:warState.id===null?null:tick-warState.since,
+        provisionalMarine:pendingBoat?.seen?{actionId:pendingBoat.actionId??null,
+          target:pendingBoat.playerID??null,
+          observationLostTick:pendingBoat.observationLostTick??null}:null,
+        warWaitSince,
         safety:'observation-only-no-attack-permission',
         interpretation:'ranked-target-does-not-imply-safe-legal-send'});
     }

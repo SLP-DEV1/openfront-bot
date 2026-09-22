@@ -768,10 +768,12 @@ function predict(model,input){
       semantics:'sent-is-not-confirmed; confirmations are observations; effect unknown'};
     details.diagnosticV2={schemaVersion:2,matchId:String(game?.gameID?.()??'unknown'),
       playerId:safeID(myPlayer()),playerName:nameOf(myPlayer()),
-      partnerId:duoTrustedPeer()?.id??diagnosticV2.lastVerifiedPartnerId??null,
-      partnerIdEvidence:duoTrustedPeer()?'verified-current-peer':
+      partnerId:opts.duoEnabled?
+        duoTrustedPeer()?.id??diagnosticV2.lastVerifiedPartnerId??null:null,
+      partnerIdEvidence:!opts.duoEnabled?'local-duo-off':
+        duoTrustedPeer()?'verified-current-peer':
         diagnosticV2.lastVerifiedPartnerId?'last-verified-this-match':'unknown',
-      duoRoom:opts.duoRoom||null,
+      duoRoom:opts.duoEnabled?opts.duoRoom||null:null,
       personalEliminationTick:gameEnd?.personalEliminated?gameEnd.tick:null,
       matchEndTick:game?.gameOver?.()?number(()=>game.ticks(),null):null,
       donationCapture:{...donationCapture},
@@ -3216,7 +3218,8 @@ function predict(model,input){
           enemyLand:p.enemyLand,ownLand:p.ownLand,
           forecast:p.forecast||null,amount:p.amount,minimumObservedStack:null};
         if(coordinatedWar()&&warState.id===null){
-          warState={id:p.id,name:p.name,since:tick,blockedUntil:-Infinity};
+          warState={id:p.id,name:p.name,since:tick,blockedUntil:-Infinity,
+            origin:'confirmed-land-attack'};
           log('HAUPTKRIEGSZIEL BESTÄTIGT → '+p.name);
         }
       }
@@ -3273,7 +3276,9 @@ function predict(model,input){
           s.incoming===0&&!recentHostilePressure(tick)){
           blockedTargets.set(warState.id,Math.max(warState.blockedUntil,tick+160));
           telemetry('war_replan','Festgefahrene Front freigegeben',
-            {oldTarget:warState.id,alternatives:alternatives.map(x=>x.id)});
+            {oldTarget:warState.id,warLockOrigin:warState.origin??'unknown',
+              heldTicks:tick-warState.since,
+              alternatives:alternatives.map(x=>x.id)});
           warState={id:null,name:'—',since:tick,blockedUntil:-Infinity};plan=null;
         } else strategic.reason='Front nach Verlusten stabilisieren';
       } else if(!active.some(a=>attackTargets(a.targetID,warState.id)) &&
@@ -3318,7 +3323,8 @@ function predict(model,input){
     }
     if(warState.id===null && active.length) {
       const a=active.sort((a,b)=>b.troops-a.troops)[0],p=attackTargetPlayer(a.targetID);
-      if(p){warState={id:safeID(p),name:nameOf(p),since:tick,blockedUntil:-Infinity};
+      if(p){warState={id:safeID(p),name:nameOf(p),since:tick,blockedUntil:-Infinity,
+          origin:'observed-active-land-stack'};
         log('KRIEGSZIEL ÜBERNOMMEN: '+warState.name);}
     }
   }
@@ -3788,7 +3794,12 @@ function predict(model,input){
           forecast:x.forecast??null})),
         blockers:counts,activeOutgoing:s.activeEnemy,
         pendingAttack:pendingAttack?.id??null,
-        warLock:warState.id??null,warWaitSince,
+        warLock:warState.id??null,warLockOrigin:warState.origin??null,
+        warLockAgeTicks:warState.id===null?null:tick-warState.since,
+        provisionalMarine:pendingBoat?.seen?{actionId:pendingBoat.actionId??null,
+          target:pendingBoat.playerID??null,
+          observationLostTick:pendingBoat.observationLostTick??null}:null,
+        warWaitSince,
         safety:'observation-only-no-attack-permission',
         interpretation:'ranked-target-does-not-imply-safe-legal-send'});
     }
@@ -5999,7 +6010,7 @@ function predict(model,input){
     navalSiteNegative.set(tile,Math.max(navalSiteNegative.get(tile)||0,
       tick+Math.min(1600,750+count*200)));
     navalBackoffUntil=Math.max(navalBackoffUntil,tick+Math.min(480,120+count*100));
-    telemetry('landing_failure_guard','Landungsziel nach Verlust vorübergehend gesperrt',
+    telemetry('landing_failure_guard','Landungsziel nach unbestätigter Landung vorübergehend gesperrt',
       {key,tile,count,until,reason,evidence:'observed-no-confirmed-arrival'});
   }
   // Prefer the visible, engine-produced grid MotionPlan for an active ship.
@@ -6071,6 +6082,12 @@ function predict(model,input){
         const resolved=observed.targetTile?.();
         if(Number.isInteger(resolved))boat.resolvedDest=resolved;
         if(!boat.shipIds.includes(id))boat.shipIds.push(id);
+        if(boat.observationLostTick!=null){
+          telemetry('boat_observation_resumed','Transport wieder sichtbar',{
+            actionId:boat.actionId??null,ship:id,
+            lostTicks:tick-boat.observationLostTick});
+          boat.observationLostTick=null;
+        }
         if(!boat.seen){
           boat.seen=true;marineStats.transportConfirmed++;
           fleetStatus='Transport im Spiel sichtbar';
@@ -6078,14 +6095,13 @@ function predict(model,input){
             {actionId:boat.actionId??null,dest:boat.dest,resolvedDest:boat.resolvedDest??null,
               target:boat.target,ship:id,troops:boat.troops,
               eta:boat.eta??null});
-          if(boat.playerID&&coordinatedWar()&&warState.id===null){
-            const target=game.playerViews?.().find(p=>safeID(p)===boat.playerID);
-            if(target?.isAlive?.()&&!friendly(target,me)){
-              warState={id:boat.playerID,name:nameOf(target),since:tick,blockedUntil:-Infinity};
-              telemetry('naval_war_lock','Bestätigte Landung als Hauptkriegsziel gebunden',
-                {target:boat.playerID,resolvedDest:boat.resolvedDest??null});
-            }
-          }
+          // An observed ship is not an observed landing. It must never
+          // monopolize the land-war lock before a real bridgehead exists.
+          telemetry('naval_target_provisional','Marine-Ziel vorgemerkt; Landkrieg bleibt unabhängig',{
+            actionId:boat.actionId??null,target:boat.playerID??null,
+            resolvedDest:boat.resolvedDest??null,
+            warLock:warState.id??null,evidence:'ship-only-no-bridgehead'});
+
         }
       }
       const landingTile=Number.isInteger(boat.resolvedDest)?boat.resolvedDest:boat.dest;
@@ -6097,6 +6113,18 @@ function predict(model,input){
             target:boat.target,shipIds:boat.shipIds,
             eta:boat.eta??null,status:'coast-owned-after-ship-observation',
             evidence:'ship-plus-destination-ownership-not-causal'});
+        // Only confirmed own coastal territory may promote the provisional
+        // marine objective. Never overwrite an independent active land war.
+        if(boat.playerID&&coordinatedWar()&&warState.id===null){
+          const target=game.playerViews?.().find(p=>safeID(p)===boat.playerID);
+          if(target?.isAlive?.()&&!friendly(target,me)){
+            warState={id:boat.playerID,name:nameOf(target),since:tick,
+              blockedUntil:-Infinity,origin:'confirmed-bridgehead'};
+            telemetry('naval_war_lock','Bestätigter Brückenkopf als Kriegsziel gebunden',{
+              actionId:boat.actionId??null,target:boat.playerID,
+              resolvedDest:landingTile,evidence:'ship-plus-own-coast'});
+          }
+        }
         landingAudits.push({actionId:boat.actionId??null,
           shipIds:[...boat.shipIds],eta:boat.eta??null,
           tile:landingTile,target:boat.target,key:boat.key,tick,
@@ -6107,13 +6135,38 @@ function predict(model,input){
         pendingBoat=null;
       }else if(boat.seen && tick-boat.tick>40 &&
         !ships.some(u=>boat.shipIds.includes(u.id?.()))){
-        marineStats.transportUnresolved++;
-        fleetStatus='Transport verschwunden – Landung nicht bestätigt';
-        telemetry('boat_unresolved','Transport nicht mehr sichtbar; kein eigener Zielbesitz',
-          {actionId:boat.actionId??null,dest:boat.dest,resolvedDest:landingTile,
-            target:boat.target,shipIds:boat.shipIds,eta:boat.eta??null,
-            reason:'ship-disappeared',status:'unresolved-not-proven-destroyed'});
-        landingFailure(boat,tick,landingTile,'ship-disappeared');pendingBoat=null;
+        if(boat.observationLostTick==null){
+          boat.observationLostTick=tick;
+          fleetStatus='Transport nicht sichtbar – Küste wird nachbeobachtet';
+          telemetry('boat_observation_lost',fleetStatus,{
+            actionId:boat.actionId??null,dest:boat.dest,resolvedDest:landingTile,
+            target:boat.playerID??null,shipIds:boat.shipIds,
+            lastShipTile:boat.lastShipTile??null,
+            lastProgressTick:boat.lastProgressTick,
+            coastOwner:safeID(game.owner?.(landingTile)),
+            eta:boat.eta??null,evidence:'ship-absent-not-proven-destroyed'});
+        }
+        // Watch briefly after disappearance. MotionPlan ETA is a moving
+        // estimate, not proof of arrival; cap the watch to avoid starvation.
+        const grace=Math.min(360,Math.max(120,
+          Number.isFinite(boat.eta?.arrivalTick)?
+            boat.eta.arrivalTick-boat.observationLostTick+120:120));
+        if(tick-boat.observationLostTick>=grace){
+          marineStats.transportUnresolved++;
+          fleetStatus='Transport weiterhin ungeklärt; Küste nicht übernommen';
+          telemetry('boat_unresolved',fleetStatus,{
+            actionId:boat.actionId??null,dest:boat.dest,resolvedDest:landingTile,
+            target:boat.playerID??null,shipIds:boat.shipIds,
+            lastShipTile:boat.lastShipTile??null,
+            lastProgressTick:boat.lastProgressTick,
+            observationLostTick:boat.observationLostTick,
+            coastOwner:safeID(game.owner?.(landingTile)),
+            eta:boat.eta??null,grace,
+            reason:'ship-disappeared-no-observed-bridgehead',
+            status:'unresolved-not-proven-destroyed'});
+          landingFailure(boat,tick,landingTile,'ship-disappeared-unresolved');
+          pendingBoat=null;
+        }
       }else if(boat.seen && tick-boat.tick>650 && !boat.delayed){
         boat.delayed=true;fleetStatus='Transport noch unterwegs / Landung ungeklärt';
         telemetry('boat_delayed',fleetStatus,{
@@ -6122,6 +6175,7 @@ function predict(model,input){
           lastProgressTick:boat.lastProgressTick,
           status:'in-transit-arrival-unknown'});
       }else if(tick-boat.tick>(boat.seen?1350:90) &&
+        (!boat.seen||boat.observationLostTick==null)&&
         (!boat.seen||tick-boat.lastProgressTick>260)){
         if(boat.seen)marineStats.transportUnresolved++;
         else marineStats.transportUnconfirmed++;
@@ -6168,7 +6222,8 @@ function predict(model,input){
       key:targetKey,target:label,
       playerID:targetKey.startsWith('player:')?targetKey.slice(7):null,
       resolvedDest:null,beforeIds,shipIds:[],seen:false,
-      lastShipTile:null,lastProgressTick:tick,delayed:false,
+      lastShipTile:null,lastProgressTick:tick,observationLostTick:null,
+      delayed:false,
       route:route?{distance:route.distance,etaTicks:route.etaTicks,
         risk:route.risk,uncertaintyUntil:route.uncertaintyUntil}:null};
     marineStats.transportSent++;
