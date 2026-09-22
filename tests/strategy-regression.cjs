@@ -739,8 +739,11 @@ function boot(benchmarkOptions={}) {
     assert(Object.isFrozen(frame.opponents[0].history));
     assert.equal(x.b.opponentWindows(x.weak,781)[360],null,
       'expired observations must never masquerade as live');
-    assert.equal(x.b.opponentWindows(x.strong,660)[360],null,
-      'new opponents must not inherit another identity history');
+    assert.equal(x.b.opponentWindows(x.strong,660)[360].troopsChange,0,
+      'independently tracked strong opponent must not inherit weak changes');
+    const newcomer={...x.weak,id:()=> 'newcomer'};
+    assert.equal(x.b.opponentWindows(newcomer,660)[360],null,
+      'unobserved new opponent must not inherit another identity history');
   });
   await check('naval landing rejects an adjacent stronger third-party player', () => {
     const x=boot();
