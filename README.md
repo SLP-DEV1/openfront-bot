@@ -1,6 +1,6 @@
 # OpenFront Solo AggroBot
 
-**Version 1.21.0** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) · Singleplayer, Public und Private · [offene Validierungspunkte](https://github.com/SLP-DEV1/openfront-bot/issues/12)
+**Version 1.21.1** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) · Singleplayer, Public und Private · [offene Validierungspunkte](https://github.com/SLP-DEV1/openfront-bot/issues/12)
 
 Der Bot erkennt neue spielbare Matches, wählt bei manuellem Spawn eine Position und steuert Expansion, Verteidigung, Wirtschaft, Flotte, Handel und Diplomatie. Die trainierte Neural-Policy kann optional *begrenzt* mitentscheiden; es gibt keine localhost-Brain- oder Live-Qwen-Anbindung mehr. **Es gibt keine belegte garantierte Impossible- oder Multiplayer-Siegquote.**
 
@@ -9,6 +9,11 @@ Der Bot erkennt neue spielbare Matches, wählt bei manuellem Spawn eine Position
 Der vollständige, eingereichte [mehrphasige Entwicklungsplan](docs/COMPETITIVE_PLAN_2026-09-22.md) ist archiviert. Die [laufende Statusübersicht](docs/COMPETITIVE_ROADMAP.md) zeigt **vorhandene Funktionen getrennt von Testnachweisen**. Im [Master-Issue #75](https://github.com/SLP-DEV1/openfront-bot/issues/75) sind alle Phasen P0–P6 mit eigenen Issues verlinkt. Der implementierbare Umfang ist mit 1.21.0 geliefert; die auf Nutzerwunsch ausgelassenen Langzeit-, Zwei-Client-, Liga- und Wirkungsmessungen bleiben ausdrücklich ohne Ergebnis. Die ursprüngliche Analyse bezog sich auf den älteren Commit `10e81ee` / 1.20.8.
 
 ## Schnellstart / Update
+
+**1.21.1 – Handels- und Gegnerkorrekturen:** Nach asynchronen Handelsabfragen
+prüft der Bot Match, Spieler, Allianz und laufende Kämpfe erneut. Der
+Spielerpanel-Ausweichweg berücksichtigt Pause, Replay und Aktionslimits.
+Eigene Angriffe zählen auch mit textförmigen Spieler-IDs nicht als Drittpartei.
 
 **1.21.0 – Implementierungsumfang P0–P6:** Der Entscheidungszyklus
 vergleicht begrenzt bis zu acht Handlungsalternativen samt Halten,

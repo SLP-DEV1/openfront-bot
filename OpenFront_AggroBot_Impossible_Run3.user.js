@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         OpenFront AggroBot Impossible Run3 Neural
 // @namespace    https://openfront.io/
-// @version      1.21.0
-// @description  AggroBot 1.21.0 with bundled Impossible Run3 schema-4 champion (experimental); no external Brain or Qwen.
+// @version      1.21.1
+// @description  AggroBot 1.21.1 with bundled Impossible Run3 schema-4 champion (experimental); no external Brain or Qwen.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
 // @run-at       document-start
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.21.0', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.21.1', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -2050,12 +2050,12 @@
   function adversaryWindow(me,enemy) {
     if(!enemy || !me || friendly(enemy,me))return {
       elsewhere:0,incomingOthers:0,ratio:0,exposed:false,human:false};
-    const home=Math.max(1,number(()=>enemy.troops?.(),0)),ourSmall=number(()=>me.smallID?.(),-1);
+    const home=Math.max(1,number(()=>enemy.troops?.(),0));
     const outgoing=(()=>{try{return enemy.outgoingAttacks?.()||[];}catch(_){return [];}})();
     const incoming=(()=>{try{return enemy.incomingAttacks?.()||[];}catch(_){return [];}})();
     const elsewhere=outgoing.filter(a=>!a.retreating && !attackTargets(a.targetID,me))
       .reduce((n,a)=>n+Math.max(0,number(()=>a.troops,0)),0);
-    const incomingOthers=incoming.filter(a=>!a.retreating && a.attackerID!==ourSmall)
+    const incomingOthers=incoming.filter(a=>!a.retreating && !attackTargets(a.attackerID,me))
       .reduce((n,a)=>n+Math.max(0,number(()=>a.troops,0)),0);
     const ratio=elsewhere/home,underPressure=incomingOthers/home;
     return {elsewhere,incomingOthers,ratio,home,
@@ -5557,8 +5557,11 @@
       typeof p.handleStopEmbargoClick==='function'?'player-panel':null;
   }
   function sendTradeToggle(me,target,action,label){
+    if(!opts.enabled||!connected()||!permittedMatch(game)||
+      !actionBudget()||Date.now()-lastEmission<410||me!==myPlayer())return false;
     if(!target?.isAlive?.()||safeID(target)===safeID(me)||
       !['start','stop'].includes(action))return false;
+    if(action==='start'&&friendly(target,me))return false;
     if(typeof ctors.embargo==='function')
       return send('embargo',[target,action],label);
     const p=document.querySelector('player-panel');
@@ -5603,6 +5606,9 @@
   }
   async function tradePolicy(me,tick){
     if(!opts.economy||tick-lastTradeTick<80||!actionBudget())return false;
+    const serial=generation,tradeGame=game;
+    const current=()=>live(serial)&&game===tradeGame&&me===myPlayer()&&opts.economy;
+    if(!current())return false;
     if(!tradeIntentPath()){
       tradeStatus='Handel automatisch · Embargo-Intent noch nicht erkannt';
       tradeStats.skipped++;return false;
@@ -5614,7 +5620,8 @@
       const tile=tradeAnchor(p);if(!Number.isInteger(tile))continue;
       lastTradeTick=tick;try{
         await me.actions(tile,null);
-        if(safeID(game.owner(tile))===safeID(p)&&me.hasEmbargoAgainst?.(p)&&
+        if(!current())return false;
+        if(actualFriendly(p,me)&&safeID(game.owner(tile))===safeID(p)&&me.hasEmbargoAgainst?.(p)&&
           sendTradeToggle(me,p,'stop','HANDEL ÖFFNEN → '+nameOf(p))){
           botEmbargoes.delete(safeID(p));tradeStats.opened++;
           tradeStatus='Handel geöffnet mit '+nameOf(p);return true;
@@ -5640,7 +5647,9 @@
         tile=p?tradeAnchor(p):null;
       if(Number.isInteger(tile)){lastTradeTick=tick;try{
         const a=await me.actions(tile,null);
-        if(a?.interaction?.canEmbargo===true&&
+        if(!current())return false;
+        if(a?.interaction?.canEmbargo===true&&!friendly(p,me)&&
+          tradeImpactAssessment(me,p,number(()=>game.ticks(),tick)).worthwhile&&
           safeID(game.owner(tile))===safeID(p)&&!me.hasEmbargoAgainst?.(p)&&
           sendTradeToggle(me,p,'start','HANDEL STOPPEN → '+nameOf(p))){
           botEmbargoes.add(safeID(p));tradeStats.embargoed++;
@@ -5660,7 +5669,10 @@
       const tile=tradeAnchor(p);if(!Number.isInteger(tile))continue;
       lastTradeTick=tick;try{
         await me.actions(tile,null);
-        if(me.hasEmbargoAgainst?.(p)&&sendTradeToggle(me,p,'stop',
+        if(!current())return false;
+        const fresh=tradeImpactAssessment(me,p,number(()=>game.ticks(),tick));
+        if(fresh.incoming===0&&fresh.outgoing===0&&
+          safeID(game.owner(tile))===id&&me.hasEmbargoAgainst?.(p)&&sendTradeToggle(me,p,'stop',
           'HANDEL WIEDER ÖFFNEN → '+nameOf(p))){
           botEmbargoes.delete(id);tradeStats.opened++;
           tradeStatus='Handel wieder geöffnet mit '+nameOf(p);return true;
