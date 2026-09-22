@@ -7,10 +7,12 @@ function normalizeDecision(row,expectedEngine){
   if(!row||!sha(row.engineCommit)||row.engineCommit.toLowerCase()!==
     String(expectedEngine||'').toLowerCase())return {usable:false,reason:'engine-mismatch'};
   if(!Number.isInteger(row.tick)||row.tick<0||!row.visibleState||
-    typeof row.visibleState!=='object')return {usable:false,reason:'missing-visible-state'};
+    typeof row.visibleState!=='object'||Array.isArray(row.visibleState))
+    return {usable:false,reason:'missing-visible-state'};
   const s=row.visibleState,required=['home','gold','land','incoming','committed'];
-  if(required.some(k=>!finite(s[k])))return {usable:false,reason:'incomplete-visible-state'};
-  if(!row.action||typeof row.action.type!=='string')
+  if(required.some(k=>!finite(s[k])||s[k]<0))
+    return {usable:false,reason:'incomplete-visible-state'};
+  if(!row.action||typeof row.action.type!=='string'||!row.action.type.trim())
     return {usable:false,reason:'missing-action'};
   return {usable:true,record:{engineCommit:row.engineCommit.toLowerCase(),
     matchId:String(row.matchId||''),tick:row.tick,
