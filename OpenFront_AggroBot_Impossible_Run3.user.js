@@ -435,6 +435,118 @@
   // intent is NOT proof the worker accepted it or that it achieved a result.
   let actionSequence=0,lastActionId=null;
   let monitorSession='';
+  let actionLedger=[];
+  let diagnosticLastPeerTick=-Infinity;
+  let diagnosticHelpSequence=0,diagnosticHelpId=null,diagnosticHelpSince=null;
+  let diagnosticLastReceivedHelp=null,diagnosticLastHelpAck=null;
+  // Diagnostic v2: preserve critical events independently of the 1400-record UI ring.
+  // Session storage is tab-scoped and never shares another bot's player identity.
+  const diagnosticV2={schemaVersion:2,critical:[],dropped:0,lastDuoStatus:null,
+    lastDuoPeer:null,lastDuoAt:null};
+  const DIAGNOSTIC_CRITICAL_LIMIT=1200;
+  function diagnosticCritical(record){
+    const frozen=jsonCopy(record);
+    diagnosticV2.critical.push(frozen);
+    if(diagnosticV2.critical.length>DIAGNOSTIC_CRITICAL_LIMIT){
+      diagnosticV2.critical.shift();diagnosticV2.dropped++;
+    }
+    // Full history is journaled to IndexedDB; no megabyte sessionStorage writes.
+    // The compact tab-scoped checkpoint permits same-player reload recovery.
+  }
+  function diagnosticDuoTransition(status,peer,reason){
+    const id=peer?.id??null;
+    if(diagnosticV2.lastDuoStatus===status&&diagnosticV2.lastDuoPeer===id)return;
+    diagnosticV2.lastDuoStatus=status;diagnosticV2.lastDuoPeer=id;
+    diagnosticV2.lastDuoAt=new Date().toISOString();
+    telemetry('duo_transition','Duo-Statuswechsel',{
+      duoStatus:status,peerId:id,reason:reason??null,
+      ownId:safeID(myPlayer()),matchId:String(game?.gameID?.()??'unknown'),
+      duoRoom:opts.duoRoom||null});
+  }
+  // IndexedDB journals every telemetry record, not just the last UI-ring entries.
+  // On unavailable/quota-blocked storage the export reports the missing range.
+  const diagnosticStore={queue:[],opening:null,flushing:null,timer:null,
+    persisted:0,lost:0,error:null};
+  function diagnosticOpen(){
+    if(diagnosticStore.opening)return diagnosticStore.opening;
+    diagnosticStore.opening=new Promise(resolve=>{
+      if(!window.indexedDB){diagnosticStore.error='indexeddb-unavailable';resolve(null);return;}
+      try{
+        const request=window.indexedDB.open('aggrobot-diagnostic-v2',1);
+        request.onupgradeneeded=()=>{
+          const db=request.result;
+          if(!db.objectStoreNames.contains('events'))
+            db.createObjectStore('events',{keyPath:['session','seq']});
+        };
+        request.onsuccess=()=>resolve(request.result);
+        request.onerror=()=>{diagnosticStore.error='open-failed';resolve(null);};
+        request.onblocked=()=>{diagnosticStore.error='open-blocked';resolve(null);};
+      }catch(_){diagnosticStore.error='open-exception';resolve(null);}
+    });
+    return diagnosticStore.opening;
+  }
+  function diagnosticEnqueue(record){
+    diagnosticStore.queue.push(jsonCopy(record));
+    if(diagnosticStore.queue.length>10000){
+      const excess=diagnosticStore.queue.length-10000;
+      diagnosticStore.queue.splice(0,excess);diagnosticStore.lost+=excess;
+    }
+    try{sessionStorage.setItem('aggrobot-diagnostic-v2-meta',JSON.stringify({
+      session:monitorSession,matchId:String(game?.gameID?.()??'unknown'),
+      playerId:safeID(myPlayer()),seq:recordSequence}));}catch(_){}
+    if(!diagnosticStore.timer)
+      diagnosticStore.timer=setTimeout(()=>{diagnosticStore.timer=null;
+        void diagnosticFlush();},500);
+  }
+  async function diagnosticFlush(){
+    if(diagnosticStore.flushing)return diagnosticStore.flushing;
+    diagnosticStore.flushing=(async()=>{
+      const db=await diagnosticOpen();
+      if(!db){diagnosticStore.lost+=diagnosticStore.queue.length;
+        diagnosticStore.queue=[];return;}
+      while(diagnosticStore.queue.length){
+        const batch=diagnosticStore.queue.splice(0,200);
+        const ok=await new Promise(resolve=>{
+          try{
+            const tx=db.transaction('events','readwrite');
+            const store=tx.objectStore('events');
+            for(const entry of batch)store.put(entry);
+            tx.oncomplete=()=>resolve(true);
+            tx.onerror=()=>resolve(false);
+            tx.onabort=()=>resolve(false);
+          }catch(_){resolve(false);}
+        });
+        if(ok)diagnosticStore.persisted+=batch.length;
+        else{diagnosticStore.lost+=batch.length;
+          diagnosticStore.error='transaction-failed';}
+      }
+    })();
+    try{await diagnosticStore.flushing;}finally{diagnosticStore.flushing=null;}
+  }
+  async function diagnosticReadAll(session=monitorSession){
+    if(diagnosticStore.timer){if(typeof clearTimeout==='function')clearTimeout(diagnosticStore.timer);
+      diagnosticStore.timer=null;}
+    await diagnosticFlush();
+    const db=await diagnosticOpen();
+    if(!db)return diagnostics.map(jsonCopy);
+    return new Promise(resolve=>{
+      const entries=[];
+      try{
+        const tx=db.transaction('events','readonly');
+        const range=IDBKeyRange.bound([session,0],
+          [session,Number.MAX_SAFE_INTEGER]);
+        const request=tx.objectStore('events').openCursor(range);
+        request.onsuccess=()=>{
+          const cursor=request.result;
+          if(cursor){entries.push(cursor.value);cursor.continue();}
+          else resolve(entries);
+        };
+        request.onerror=()=>{diagnosticStore.error='read-failed';
+          resolve(diagnostics.map(jsonCopy));};
+      }catch(_){diagnosticStore.error='read-exception';
+        resolve(diagnostics.map(jsonCopy));}
+    });
+  }
   let budgetCommitments=[];
   let attackBlockReport=null,lastAttackBlockReport=-Infinity;
   let crisisTrend=null,lastCrisisReport=-Infinity;
@@ -465,6 +577,25 @@
     record.time=new Date().toISOString();record.tick=tick;
     record.kind=kind;record.message=message;
     diagnostics.push(record);
+    diagnosticEnqueue(record);
+    if(/^(game_over|duo_|attack_confirmed|attack_unconfirmed|build_confirmed|build_unconfirmed|boat_|transport_|action)$/.test(kind))
+      diagnosticCritical(record);
+    if(kind==='action'&&record.actionId){
+      actionLedger.push({actionId:record.actionId,decisionId:record.decisionId,
+        tick:record.tick,intent:record.intent,description:message,
+        requestedTroops:record.requestedTroops??null,
+        quotedCost:record.quotedCost??null,emission:'event-bus',
+        homeBefore:record.home,goldBefore:record.gold,
+        actualTroopOutflow:'unknown',actualGoldCost:'unknown',
+        observed:'unknown',effect:'unknown'});
+      if(actionLedger.length>300)actionLedger.shift();
+    }else if(record.actionId&&/^(attack|build|boat|transport)_(confirmed|unconfirmed|arrived|unresolved)$/.test(kind)){
+      const action=actionLedger.find(x=>x.actionId===record.actionId);
+      if(action){action.observed=kind;action.observedTick=record.tick;
+        action.homeAfterObserved=record.home;
+        action.goldAfterObserved=record.gold;
+        action.effect='unknown';}
+    }
     recordCounts[kind]=(recordCounts[kind]||0)+1;
     if(benchmark && typeof benchmark.onRecord==='function'){
       try{benchmark.onRecord(jsonCopy(record));}catch(_){streamErrors++;}
@@ -547,18 +678,107 @@
       rockets:{confirmed:nukeShots,attempts:nukeAttempts,unconfirmed:nukeUnconfirmed,pending:nukePending},
       diplomacy:{status:diplomacyStatus,stats:diplomacyStats,pending:[...diplomacyPending.values()]},records:diagnostics,createdAt:new Date().toISOString()};
     details.actionTrace={nextSequence:actionSequence+1,lastActionId,
-      semantics:'sent-is-not-confirmed; confirmations are observations'};
+      ledger:actionLedger.map(v=>({...v})),
+      semantics:'sent-is-not-confirmed; confirmations are observations; effect unknown'};
+    details.diagnosticV2={schemaVersion:2,matchId:String(game?.gameID?.()??'unknown'),
+      playerId:safeID(myPlayer()),playerName:nameOf(myPlayer()),
+      partnerId:duoTrustedPeer()?.id??null,duoRoom:opts.duoRoom||null,
+      personalEliminationTick:gameEnd?.personalEliminated?gameEnd.tick:null,
+      matchEndTick:game?.gameOver?.()?number(()=>game.ticks(),null):null,
+      critical:diagnosticV2.critical,dropped:diagnosticV2.dropped,
+      journal:{persisted:diagnosticStore.persisted,queued:diagnosticStore.queue.length,
+        lost:diagnosticStore.lost,error:diagnosticStore.error},
+      lastDuoTransitionAt:diagnosticV2.lastDuoAt,
+      helpRequestId:diagnosticHelpId,helpSinceTick:diagnosticHelpSince,
+      helpAckObserved:diagnosticLastHelpAck===diagnosticHelpId&&
+        diagnosticHelpId!==null,
+      evidence:'event-bus emission is not confirmed effect'};
     details.recording={total:recordSequence,counts:{...recordCounts},dropped:recordsDropped,
       firstSequence:diagnostics[0]?.seq??null,streamErrors};
     return jsonCopy(details);
   }
-  function exportDiagnostics() {
-    const details=diagnosticSnapshot();
-    const blob=new Blob([JSON.stringify(details,null,2)],{type:'application/json'});
-    const url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download='OpenFront_AggroBot_'+VERSION+'_Diagnose.json';document.body.append(a);a.click();a.remove();
-    setTimeout(()=>URL.revokeObjectURL(url),2000);
+
+  // Stored ZIP: a single download avoids multi-download browser blocking.
+  function diagnosticZip(files){
+    const encoder=new TextEncoder(),locals=[],central=[];
+    const table=new Uint32Array(256);
+    for(let n=0;n<256;n++){let c=n;for(let j=0;j<8;j++)
+      c=c&1?0xedb88320^(c>>>1):c>>>1;table[n]=c>>>0;}
+    const crc32=bytes=>{let c=0xffffffff;for(const b of bytes)
+      c=table[(c^b)&255]^(c>>>8);return (c^0xffffffff)>>>0;};
+    const put16=(view,at,n)=>view.setUint16(at,n,true);
+    const put32=(view,at,n)=>view.setUint32(at,n,true);
+    let offset=0,centralSize=0;
+    if(files.length>65535)throw Error('ZIP entry limit');
+    for(const [name,body] of files){
+      const filename=encoder.encode(name),bytes=encoder.encode(body);
+      if(bytes.length>0xffffffff||offset+bytes.length>0xffffffff)
+        throw Error('Diagnostic ZIP too large');
+      const crc=crc32(bytes),local=new Uint8Array(30),lv=new DataView(local.buffer);
+      put32(lv,0,0x04034b50);put16(lv,4,20);put16(lv,6,0x0800);
+      put16(lv,8,0);put32(lv,14,crc);put32(lv,18,bytes.length);
+      put32(lv,22,bytes.length);put16(lv,26,filename.length);
+      locals.push(local,filename,bytes);
+      const header=new Uint8Array(46),cv=new DataView(header.buffer);
+      put32(cv,0,0x02014b50);put16(cv,4,20);put16(cv,6,20);
+      put16(cv,8,0x0800);put32(cv,16,crc);put32(cv,20,bytes.length);
+      put32(cv,24,bytes.length);put16(cv,28,filename.length);
+      put32(cv,42,offset);
+      central.push(header,filename);
+      offset+=local.length+filename.length+bytes.length;
+      centralSize+=header.length+filename.length;
+    }
+    const ending=new Uint8Array(22),ev=new DataView(ending.buffer);
+    put32(ev,0,0x06054b50);put16(ev,8,files.length);
+    put16(ev,10,files.length);put32(ev,12,centralSize);
+    put32(ev,16,offset);
+    return new Blob([...locals,...central,ending],{type:'application/zip'});
   }
+  function diagnosticDownload(blob,filename){
+    const url=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=url;a.download=filename;document.body.append(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),60000);
+  }
+  let diagnosticAutoExported=false;
+  async function exportDiagnosticPackage(automatic=false){
+    if(automatic){
+      if(diagnosticAutoExported)return;
+      diagnosticAutoExported=true;
+    }
+    const session=monitorSession,summary=diagnosticSnapshot();
+    const rows=await diagnosticReadAll(session);
+    const complete=rows.length===summary.recording.total&&
+      rows.every((row,i)=>row.session===session&&row.seq===i+1)&&
+      diagnosticStore.lost===0&&!diagnosticStore.error;
+    summary.diagnosticV2.journal={
+      ...summary.diagnosticV2.journal,storedRows:rows.length,
+      expectedRows:summary.recording.total,complete,
+      note:complete?'IndexedDB timeline complete':
+        'Timeline incomplete or storage unavailable; do not use as complete evidence'};
+    const sorted=rows.sort((a,b)=>a.seq-b.seq);
+    const jsonl=items=>items.map(x=>JSON.stringify(x)).join('\n')+
+      (items.length?'\n':'');
+    const duo=sorted.filter(x=>/^duo_/.test(x.kind)||
+      x.kind==='action'&&/^DUO/.test(x.message||''));
+    const snapshot=sorted.filter(x=>x.kind==='snapshot');
+    // Compact overview includes the old diagnostic for existing consumers.
+    // No statement of action success is inferred from gold/land deltas.
+    const files=[
+      ['summary.json',JSON.stringify(summary,null,2)],
+      ['events.jsonl',jsonl(sorted)],
+      ['snapshots.jsonl',jsonl(snapshot)],
+      ['duo.jsonl',jsonl(duo)],
+      ['README.txt','OpenFront diagnostic v2 | session='+session+
+        '\ncomplete='+complete+' | event bus emission is not effect proof.'+
+        '\nZIP uses stored entries. Merge browsers by matchId, then playerId and session.\n']
+    ];
+    if(session!==monitorSession)return; // Never label a new match as old.
+    try{diagnosticDownload(diagnosticZip(files),
+      'OpenFront_'+VERSION+'_'+String(summary.diagnosticV2.playerId||'unknown')+
+      '_DiagnoseV2.zip');}
+    catch(e){console.warn(PREFIX,'Diagnosepaket konnte nicht exportiert werden',e);}
+  }
+  function exportDiagnostics(){void exportDiagnosticPackage();}
 
 
   const log = message => {recent.unshift(message);recent=recent.slice(0,7);console.info(PREFIX,message);telemetry('decision',message);};
@@ -773,7 +993,13 @@
   }
   function reset(g,b) {
     generation++; game=g;bus=b;ctors=recognize(b);busy=false;lastWinnerSignal=null;
-    monitorSession='match-'+Date.now().toString(36)+'-'+
+    const matchId=String(g?.gameID?.()??'unknown'),playerId=safeID(myPlayer());
+    let prior=null;try{prior=JSON.parse(
+      sessionStorage.getItem('aggrobot-diagnostic-v2-meta')||'null');}catch(_){}
+    const resumed=matchId!=='unknown'&&prior?.matchId===matchId&&
+      (!prior.playerId||!playerId||prior.playerId===playerId)&&
+      /^match-[a-z0-9-]+$/.test(prior.session||'');
+    monitorSession=resumed?prior.session:'match-'+Date.now().toString(36)+'-'+
       Math.floor(Math.random()*0xffffffff).toString(36).padStart(8,'0');
     budgetCommitments=[];attackBlockReport=null;lastAttackBlockReport=-Infinity;
     crisisTrend=null;lastCrisisReport=-Infinity;landingFailures.clear();
@@ -789,7 +1015,13 @@
     lastDecisionFrame=null;lastRecoveryReason='';lastBattle=null;pendingAttack=null;targetIntelCache.clear();frontMemory.clear();opponentHistory.clear();lastEconomyPosture='—';lastDirectorDecision=null;planningState={tick:-Infinity,candidates:[],selected:null,rejected:null,durationMs:0,budgetMs:50,truncated:false};investmentAssessments=[];neuralPolicyCache={key:null,output:null};lastFrontWarning=-Infinity;
     attackReceipts={confirmed:0,unconfirmed:0,territoryGained:0};blockedTargets.clear();
     attackCommands=[];attackCommandSequence=0;observedAttacks.clear();
-    actionSequence=0;lastActionId=null;
+    actionSequence=0;lastActionId=null;actionLedger=[];
+    diagnosticAutoExported=false;diagnosticLastPeerTick=-Infinity;
+    diagnosticHelpSequence=0;diagnosticHelpId=null;diagnosticHelpSince=null;
+    diagnosticLastReceivedHelp=null;diagnosticLastHelpAck=null;
+    diagnosticV2.critical=[];diagnosticV2.dropped=0;
+    diagnosticV2.lastDuoStatus=null;diagnosticV2.lastDuoPeer=null;
+    diagnosticV2.lastDuoAt=null;
     failedEconomyProbes=0;successfulEconomyTick=-Infinity;warWaitSince=-Infinity;
     coreQuotes.clear();coreFunding=null;lastCoreFundingReport=-Infinity;
     lastEconomyProbeReport=null;neuralDecisionEvidence=null;
@@ -816,7 +1048,7 @@
     opponentProfiles.clear();operation=null;operationCooldown.clear();duoPlan=null;victoryThreat=null;decisionTimeline=[];decisionKeys.clear();
     duoLocal.peer=null;duoLocal.match=null;duoLocal.status=opts.duoEnabled?'Neue Partie · verbinde':'AUS';
     duoLocal.lastPublished=0;duoLocal.lastAt=0;duoLocal.lastPromise=null;
-    warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};diagnostics=[];recordSequence=0;recordCounts={};recordsDropped=0;streamErrors=0;lastDiagnosticTick=-Infinity;gameEnd=null;forecastAudits=[];lastForecastAudit=null;incomeAttribution=[];
+    warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};diagnostics=[];recordSequence=resumed?Math.max(0,Math.floor(prior.seq||0)):0;recordCounts={};recordsDropped=0;streamErrors=0;lastDiagnosticTick=-Infinity;gameEnd=null;forecastAudits=[];lastForecastAudit=null;incomeAttribution=[];
     investmentStatus='Grundaufbau';lastWarReview=-Infinity;
     defenseStatus='Keine Bedrohung';lastEmergencyRetreat=-Infinity;lastDefenseLog=-Infinity;
     retreatRequests.clear();defenseStats={retreatsOrdered:0,retreatsObserved:0,unknown:0,unconfirmed:0};
@@ -958,7 +1190,9 @@
       }
       log(description);telemetry('action',description,
         {intent:kind,actionId,decisionId,emission:'event-bus',
-          effect:'unconfirmed'});return true;
+          requestedTroops:['attack','boat','donateTroops'].includes(kind)?
+            Number(args[1]):null,quotedCost:null,
+          effect:'unknown'});return true;
     } catch(e) {totalFailed++;log('Event fehlgeschlagen: '+String(e.message));return false;}
   }
   function valid(x,y) {return x>=0&&y>=0&&x<game.width()&&y<game.height();}
@@ -1041,6 +1275,23 @@
     const target=duoPlan?.strikeTick?duoPlan.target:
       operation?.target??duoPlan?.target??warState.id;
     const candidate=spawnCache?.tile??null,spawn=me?.state?.spawnTile;
+    const tick=number(()=>game?.ticks?.(),0);
+    const help=!!(state&&state.incoming>Math.max(1200,state.home*.1));
+    if(help&&!diagnosticHelpId){
+      diagnosticHelpId=monitorSession+':h'+(++diagnosticHelpSequence);
+      diagnosticHelpSince=tick;diagnosticLastHelpAck=null;
+      telemetry('duo_help_request','Eigene Heimat unter Angriff; Duo-Hilfe angefragt',{
+        requestId:diagnosticHelpId,partnerId:trusted?.id??null,
+        home:state.home,incoming:state.incoming,
+        estimatedShortfall:Math.max(0,Math.ceil(state.incoming-state.home)),
+        status:'sent-not-acknowledged',evidence:'visible-incoming-attack'});
+    }else if(!help&&diagnosticHelpId){
+      telemetry('duo_help_resolved','Akute Duo-Hilfeanforderung beendet',{
+        requestId:diagnosticHelpId,status:'no-longer-requested',
+        evidence:'no-longer-above-threshold-not-proof-of-relief'});
+      diagnosticHelpId=null;diagnosticHelpSince=null;
+      diagnosticLastHelpAck=null;
+    }
     return {tick:Number.isInteger(game?.ticks?.())?game.ticks():null,
       spawn:Number.isSafeInteger(spawn)?spawn:null,
       candidate:Number.isSafeInteger(candidate)?candidate:null,
@@ -1065,6 +1316,11 @@
         state.ratio>=.38&&!state.activeEnemy&&
         state.available>=Math.max(1200,state.home*.09)),
       needHelp:!!(state&&state.incoming>Math.max(1200,state.home*.1)),
+      helpRequestId:diagnosticHelpId,helpSinceTick:diagnosticHelpSince,
+      helpShortfall:diagnosticHelpId&&state?
+        Math.max(0,Math.ceil(state.incoming-state.home)):null,
+      ackHelpRequestId:trusted?.state?.needHelp===true?
+        trusted.state.helpRequestId??null:null,
       warning:duoWarningLevel(state),
       allied:!!(peer&&actualFriendly(peer,me)),
       allies:duoOwnAllies(me),
@@ -1110,10 +1366,38 @@
           room!==opts.duoRoom||ownID!==safeID(myPlayer()))return;
         duoLocal.peer=data.partner||null;
         duoLocal.lastAt=data.partner?Date.now():0;
+        const helpRequest=data.partner?.state?.needHelp?
+          data.partner.state.helpRequestId??null:null;
+        if(helpRequest&&helpRequest!==diagnosticLastReceivedHelp){
+          diagnosticLastReceivedHelp=helpRequest;
+          telemetry('duo_help_received','Partner-Hilferuf empfangen',{
+            requestId:helpRequest,partnerId:data.partner.id,
+            estimatedShortfall:data.partner.state.helpShortfall??null,
+            partnerIncoming:data.partner.state.incoming??null,
+            status:'received-not-committed'});
+        }else if(!helpRequest)diagnosticLastReceivedHelp=null;
+        if(diagnosticHelpId&&data.partner?.state?.ackHelpRequestId===
+          diagnosticHelpId&&diagnosticLastHelpAck!==diagnosticHelpId){
+          diagnosticLastHelpAck=diagnosticHelpId;
+          telemetry('duo_help_ack_seen','Partner bestätigt Empfang des Hilferufs',{
+            requestId:diagnosticHelpId,partnerId:data.partner.id,
+            status:'received-ack-only-not-support-commitment'});
+        }
+        const duoTick=number(()=>game?.ticks?.(),0);
+        if(duoTick-diagnosticLastPeerTick>=120){
+          diagnosticLastPeerTick=duoTick;
+          telemetry('duo_exchange','Duo-Relay-Zustand gesendet und Antwort empfangen',{
+            ownId:ownID,peerId:data.partner?.id??null,
+            localState:payload.state,peerState:data.partner?.state??null,
+            relayReason:data.reason??null,
+            sharedMatch:match,duoRoom:room});
+        }
         duoLocal.status=data.partner?'Erkannt · '+data.partner.id:
           data.reason==='different-match'?
           'Raumcode gleich, aber Match-Kennung unterscheidet sich':
           'Warte auf zweite Browser-Instanz';
+        diagnosticDuoTransition(duoLocal.status,data.partner,
+          data.reason??null);
         if(data.partner)duoLocal.failures=0;
       }catch(e){
         duoLocal.failures++;duoLocal.peer=null;duoLocal.lastAt=0;
@@ -1121,6 +1405,7 @@
           'Browser-Timeout (8s) – lokalen Netzwerkzugriff fuer openfront.io pruefen':
           'Relay-Fehler: '+String(e?.message||e).slice(0,65);
         duoLocal.status=reason;
+        diagnosticDuoTransition(duoLocal.status,null,reason);
         if(duoLocal.failures===1||duoLocal.failures%10===0)
           console.warn(PREFIX,'Duo-Verbindung:',reason,
             'Match:',match,'Raum:',room);
@@ -1731,7 +2016,12 @@
         p.isAlive?.()&&!friendly(p,me));
       duo={partner:local.player,partnerID:local.id,enemies,team:null};
     }
-    if(!duo){duoPlan=null;return null;}
+    if(!duo){
+      if(duoPlan)telemetry('duo_plan_abort','Duo-Plan abgebrochen',
+        {planId:duoPlan.planId??null,target:duoPlan.target,
+          reason:'no-trusted-allied-peer'});
+      duoPlan=null;return null;
+    }
     // No shared operation against a player protected by EITHER bot's
     // actual alliances; independent enemy scoring still checks friendly().
     duo.enemies=duo.enemies.filter(p=>!friendly(p,me));
@@ -1880,6 +2170,17 @@
         (strikeTick!==null?' · Tick '+strikeTick:''),
         [local?'Relay-Ziel ist nur Priorität; eigene Sicherheitsprüfung bleibt verbindlich':
           'Partner-Einsatz nur bei beobachteten Angriffen bestätigt'],tick);
+    if(!duoPlan||duoPlan.planId!==plan.planId||
+      duoPlan.strikeStatus!==plan.strikeStatus||
+      duoPlan.role!==plan.role||
+      duoPlan.needHelp!==plan.needHelp)
+      telemetry('duo_plan_state','Duo-Planstatus beobachtet',{
+        planId:plan.planId,partnerId:plan.partner,target:plan.target,
+        strikeTick:plan.strikeTick,strikeStatus:plan.strikeStatus,
+        partnerAck:plan.partnerAck,role:plan.role,
+        ownBudget:plan.ownBudget,partnerBudget:plan.partnerBudget,
+        ownReserve:plan.ownReserve,partnerIncoming:plan.partnerIncoming,
+        needHelp:plan.needHelp,permission:plan.teamDecision.permission});
     duoPlan=plan;return plan;
   }
   function operationOptions(me,items,s,tick,current=operation){
@@ -4657,6 +4958,11 @@
     if(send(chosen.kind,args,`${chosen.kind==='upgrade'?'UPGRADE':'BAU'} ${chosen.type} · ${chosen.cost.toLocaleString()} Gold`)){
       commitGoldSpend(me,chosen.cost,chosen.type);
       economicPending={...chosen,tick,actionId:lastActionId};
+      const issued=actionLedger.find(x=>x.actionId===lastActionId);
+      if(issued)issued.quotedCost=chosen.cost;
+      telemetry('build_quote','Baukosten aus Worker-Angebot',{
+        actionId:lastActionId,type:chosen.type,quotedCost:chosen.cost,
+        evidence:'worker-quote-not-observed-spending'});
       failedEconomyProbes=0;lastEconomy=tick;lastEconomicAction=tick;
       if(chosen.type==='SAM Launcher')telemetry('sam_intent','SAM-Bau angefordert',
         {tile:chosen.tile,gold:requirements.gold,cost:chosen.cost,
@@ -5364,7 +5670,7 @@
           boat.seen=true;marineStats.transportConfirmed++;
           fleetStatus='Transport im Spiel sichtbar';
           telemetry('boat_confirmed','Transport im Spielzustand beobachtet',
-            {dest:boat.dest,resolvedDest:boat.resolvedDest??null,
+            {actionId:boat.actionId??null,dest:boat.dest,resolvedDest:boat.resolvedDest??null,
               target:boat.target,ship:id,troops:boat.troops,
               eta:boat.eta??null});
           if(boat.playerID&&coordinatedWar()&&warState.id===null){
@@ -5382,7 +5688,7 @@
         marineStats.transportArrived++;
         fleetStatus='Landung / Gebiet am Ziel bestätigt';
         telemetry('boat_arrived','Transportziel nach bestätigtem Schiff übernommen',
-          {dest:boat.dest,resolvedDest:landingTile,target:boat.target,shipIds:boat.shipIds});
+          {actionId:boat.actionId??null,dest:boat.dest,resolvedDest:landingTile,target:boat.target,shipIds:boat.shipIds});
         landingAudits.push({tile:landingTile,target:boat.target,key:boat.key,tick,
           checkpoints:[]});
         navalCooldown.set(boat.key,tick+140);
@@ -5441,7 +5747,8 @@
       u.type?.()==='Transport'&&safeID(u.owner?.())===safeID(me))
       .map(u=>u.id?.());}catch(_){return [];}})();
     if(!send('boat',[dest,troops],label))return false;
-    pendingBoat={dest,tick,troops,key:targetKey,target:label,
+    pendingBoat={dest,tick,troops,actionId:lastActionId,
+      key:targetKey,target:label,
       playerID:targetKey.startsWith('player:')?targetKey.slice(7):null,
       resolvedDest:null,beforeIds,shipIds:[],seen:false,
       lastShipTile:null,lastProgressTick:tick,delayed:false,
@@ -5451,7 +5758,8 @@
     navalCooldown.set(targetKey,tick+160);
     fleetStatus='Transport angefordert · Bestätigung ausstehend';
     telemetry('boat_intent','Transport angefordert; wartet auf Spielzustand',
-      {dest,troops,target:targetKey,route:pendingBoat.route});
+      {actionId:pendingBoat.actionId,dest,troops,target:targetKey,
+        route:pendingBoat.route});
     return true;
   }
   // Protect real owned shores from visible incoming transports. BuildUnitIntentEvent
@@ -5735,7 +6043,7 @@
           'DUO · TEAMHILFE → '+nameOf(partner))){
         lastDonation=tick;
         telemetry('duo_donation','Notfallhilfe gegen beobachtete Partnerfront',
-          {partner:duo.partnerID,partnerIncoming:inbound,warning,
+          {planId:duoPlan?.planId??null,partner:duo.partnerID,partnerIncoming:inbound,warning,
             partnerHome,amount,ownHome:s.home,remaining:s.home-amount,floor,
             displayAmount:Math.round(amount/10)});
         return true;
@@ -5773,7 +6081,7 @@
           commitGoldSpend(me,amountGold,'donateGold');
           lastDonation=tick;
           telemetry('duo_gold','Goldhilfe bei eindeutigem Wirtschaftsrückstand',
-            {partner:duo.partnerID,partnerGold,ownGold,
+            {planId:duoPlan?.planId??null,partner:duo.partnerID,partnerGold,ownGold,
               amount:amountGold,cashFloor,partnerIncoming:inbound});
           return true;
         }
@@ -6314,6 +6622,7 @@
         gameEnd=gameOutcome(game,myPlayer());
         learnFinish(gameEnd.outcome);
         telemetry('game_over','Partie beendet · Bot automatisch gestoppt',{gameEnd});
+        void exportDiagnosticPackage(true);
         if(opts.enabled){opts.enabled=false;generation++;persist();}
       }
       status='Partie beendet · Bot AUS';paint();return;
@@ -6330,6 +6639,7 @@
         if(!team)learnFinish('defeat');
         telemetry('game_over',team?'Eigener Spieler eliminiert · Teamergebnis offen':
           'Eigener Spieler eliminiert · Niederlage',{gameEnd});
+        void exportDiagnosticPackage(true);
       }
       if(opts.enabled){opts.enabled=false;generation++;persist();}
       status='Spieler eliminiert · Bot AUS';paint();return;
