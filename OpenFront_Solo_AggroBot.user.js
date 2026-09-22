@@ -4356,6 +4356,7 @@ function predict(model,input){
     const wantedFactory=factoryEnabled?(hardMode()?Math.min(11,Math.max(2,2+Math.floor(mine/900))):Math.min(8,Math.max(1,1+Math.floor(mine/1350)))):0;
     const wantedPort=!portEnabled?0:opts.boats?Math.min(5,Math.max(1,Math.floor(mine/1050)+1)):
       (factories>=1 && mine>600?Math.min(2,Math.floor(mine/2700)+1):0);
+    const nowTick=number(()=>game.ticks(),0);
     const startup=(cityEnabled&&cities<1)||(factoryEnabled&&factories<1);
     // After losing the last productive buildings, do not keep the former
     // Warship/Port/SAM savings target ahead of a legal, affordable core.
@@ -4364,7 +4365,6 @@ function predict(model,input){
       troopSnapshot.incoming===0&&
       !(crisisTrend&&nowTick<crisisTrend.expires&&
         (crisisTrend.lostLand>0||crisisTrend.lostAssets>0));
-    const nowTick=number(()=>game.ticks(),0);
     // Eight failed coast scans used to disable first-port planning forever.
     // Retry after a bounded pause: territory and legal build sites can change.
     if(portProbeFailures>=8 && Number.isFinite(lastPortRetryTick) &&
