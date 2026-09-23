@@ -4,6 +4,9 @@ const {spawnSync}=require('node:child_process');
 const root=path.resolve(__dirname,'..');
 const {files,assemble}=require('../tools/build-userscript.cjs');
 const {duoStatusView,evidencePanelState}=require('../src/runtime/panel-state.cjs');
+const {archetypeRankKernel,economyRecoveryKernel,marineObservationGraceKernel,
+ candidateControlKernel,reserveResolutionKernel,actionEvidenceKernel}=
+ require('../src/runtime/decision-kernels.cjs');
 const {sampleVisible,trajectory,SEMANTICS}=require('../tools/benchmark/trajectory.cjs');
 assert.equal(files.length,6);
 assert.equal(assemble(),fs.readFileSync(
@@ -14,6 +17,19 @@ const check=spawnSync(process.execPath,['tools/build-userscript.cjs','--check'],
 assert.equal(check.status,0,check.stderr||check.stdout);
 assert.equal(duoStatusView(false,null,null,0,{}).phase,'off');
 assert.equal(evidencePanelState(null,null,null,0,[],null).workerAge,null);
+assert.equal(archetypeRankKernel([{id:'a',kind:'attack',utility:10}],
+ {attackUtility:5,firstAttackGate:0},100)[0].utility,15);
+assert.equal(economyRecoveryKernel({observed:true,train:0,trade:0,cities:2,
+ factories:1,failedEconomyProbes:5,startup:false,land:100,incoming:0,
+ nuclearThreat:false}).coreRecovery,true);
+assert.equal(marineObservationGraceKernel(1000,300),360);
+const scores=new Map([['a',1],['b',-1]]);
+assert.equal(candidateControlKernel([{id:'a',utility:0},{id:'b',utility:10}],
+ scores,18)[0].id,'a');
+const reserve=reserveResolutionKernel(1000,{baseline:200,border:600,incoming:400});
+assert.deepEqual(reserve,{reserve:600,available:400,reserveReason:'border'});
+assert.equal(actionEvidenceKernel([{observed:'attack_confirmed',effect:'unknown'}])
+ .confirmedObservations,1);
 const me={hasSpawned:()=>true,clientID:()=> 'me',
  numTilesOwned:()=>1,troops:()=>100,gold:()=>100,isFriendly:()=>false};
 const enemy={clientID:()=> 'foe',numTilesOwned:()=>2,
@@ -37,6 +53,7 @@ assert.equal(SEMANTICS,'gameview-hostile-only-v1');
    put('tools/build-run3-bundle.cjs','tools/build-run3-bundle.cjs');
    put('trainer/candidate-policy-v5.cjs','trainer/candidate-policy-v5.cjs');
    put('src/runtime/panel-state.cjs','src/runtime/panel-state.cjs');
+   put('src/runtime/decision-kernels.cjs','src/runtime/decision-kernels.cjs');
    fs.cpSync(path.join(root,'src/userscript'),path.join(temp,'src/userscript'),
      {recursive:true});
    put('OpenFront_Solo_AggroBot.user.js','OpenFront_Solo_AggroBot.user.js');
