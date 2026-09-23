@@ -83,6 +83,13 @@ jobs:
           node tests/replay-cli-regression.cjs
           node --check trainer/shadow-deploy.mjs
           node --check tools/benchmark/replay-cli.cjs
+      - name: Test P2 replay curriculum (event tags, per-match split, provenance)
+        run: |
+          node --check tools/benchmark/replay-events.cjs
+          node tests/replay-events-regression.cjs
+          node --check tools/benchmark/replay-split.cjs
+          node tests/replay-split-regression.cjs
+          node tests/replay-curriculum-regression.cjs
       - name: Check Scenario Pack and read-only Evidence Mode
         run: |
           node --check tools/benchmark/scenario-pack.cjs

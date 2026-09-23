@@ -123,6 +123,39 @@ Die zuvor offenen Punkte sind umgesetzt und als Regressionstests in
 bestanden**; sie sind **kein** eigener Liga- oder
 **reale Human-Multiplayer-Abnahme** (bleiben separat, §7 / PR #4).
 
+## P2 status — Menschliche Replays als korrektes Curriculum (DoD bestanden, 23.09.2026)
+
+**DoD bestanden. Implementiert + Tests bestanden (lokal, grün); echte
+Engine-Matches: P2 arbeitet auf sichtbaren Replay-Frames, keine neuen
+Multi-Bot-Läufe nötig.**
+
+- **Import-Gate (bereits vorhanden, DoD-Kern):** `tools/benchmark/replay-cli.cjs`
+  + `replay-visible-state.cjs` akzeptieren nur Frames mit exakt passendem
+  Engine-Pin, sichtbarem `GameView` und gültigen Anfangs-/Aktionsdaten.
+  Abgewiesene Frames bleiben unverbindliche **Szenarioideen**
+  (`scenarioIdeas[]`), keine Lernpaare; akzeptierte Frames sind
+  `kind:'learning-pair'`.
+- **10 Event-Tags mit Provenienz** (`tools/benchmark/replay-events.cjs`):
+  `early-rush`, `alliance-change`, `counterattack`, `nuke-timing`,
+  `naval-landing`, `duo-synchronized`, `retreat`, `rebuild`, `hold`,
+  `failed-attack` — jedes Tag trägt `source`, `tick`, `observation`,
+  `validity` (`observed`/`inferred`); nur sichtbare Signale, keine
+  Engine-Wahrheiten; deterministisch.
+- **Per-Partie-Split** (`tools/benchmark/replay-split.cjs`): nahe Frames
+  derselben Partie kommen nie auf Train+Holdout; die Zuordnung hängt nur von
+  `(seed, matchId)` ab, nie vom Frame-Inhalt (keine versteckten Features);
+  deterministisch; stärkere Trennung pro Spieler/Stil via `keyOf`.
+- **Provenienz + Zustimmung/Nutzungsrecht** (`replay-visible-state.cjs`,
+  `replay-cli.cjs`): `origin:'human-replay'` wird nur mit Provenienz
+  (z. B. `gameID`/`clientID`) **und** Nutzungsrecht akzeptiert; sonst Abbruch.
+- **Tests bestanden:** `replay-events`, `replay-split`, `replay-curriculum`,
+  `replay-visible-state`, `replay-cli` (lokal grün).
+- **BLOCKER (Daten):** aktuell genau **ein** menschliches Replay
+  (ProfessorSployer `cR8SRtEEcR`). Mehrere Spieler mit Siegen **und**
+  Niederlagen sind noch zu sammeln. „Menschliches Verhalten gelernt" wird
+  erst ab dieser Datengrundlage behauptet. Inventar + Policy:
+  [docs/replays/README.md](replays/README.md).
+
 ## Implementierungsstand 1.21.0 (P0–P6)
 
 ### Abschlussprüfung der implementierbaren Roadmap-Aufgaben (22.09.2026)
