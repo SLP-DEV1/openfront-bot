@@ -299,6 +299,32 @@ function predict(model,input){
       weights:model.weights.length,nonzeroWeights:model.weights.filter(v=>v!==0).length,
       fingerprint:'fnv1a-'+(hash>>>0).toString(16).padStart(8,'0')+'-'+bytes};
   }
+  function shadowModelInfo(){
+    const model=shadowV5Model;
+    if(!model)return {loaded:false,enabled:!!opts.shadowRankEnabled,
+      reason:'no-valid-candidate'};
+    // FNV-1a tracking fingerprint (not a trainer policy SHA256), mirroring
+    // neuralModelInfo for the schema-5 shadow candidate.
+    const raw=JSON.stringify(model.weights),bytes=raw.length;
+    let hash=2166136261;
+    for(let i=0;i<raw.length;i++){hash^=raw.charCodeAt(i);hash=Math.imul(hash,16777619);}
+    return {loaded:true,enabled:!!opts.shadowRankEnabled,schema:model.schema,
+      weights:model.weights.length,
+      controlEnabled:opts.candidateControlEnabled===true,
+      controlGain:opts.candidateControlGain,
+      fingerprint:'fnv1a-'+(hash>>>0).toString(16).padStart(8,'0')+'-'+bytes};
+  }
+  // Deployment identity for the panel and diagnostic export: model/script/
+  // engine hashes plus the rollback reference. The model hashes are FNV-1a
+  // tracking fingerprints; the champion model-file SHA256 is recorded by the
+  // deploy/build tooling, not recomputed here.
+  function deploymentInfo(){
+    return {
+      model:{champion:neuralModelInfo(),candidate:shadowModelInfo()},
+      script:{version:VERSION},
+      engine:{commit:window.BOOTSTRAP_CONFIG?.gitCommit??null},
+      rollback:'candidate is shadow-only (opt-in control); the NEURAL_BUNDLED_MODEL champion placeholder is never replaced by a schema-5 deploy'};
+  }
   function neuralChannel(name,me,s=troopSnapshot,tick=number(()=>game?.ticks?.(),0)){
     return neuralStrategicSignals(me,s,tick)?.[name]||0;
   }
@@ -885,6 +911,7 @@ function predict(model,input){
       neuralDecisionEvidence,
       attackBlockReport,crisisTrend,landingFailures:[...landingFailures],
       neuralEvidence:{...neuralEvidence,model:neuralModelInfo()},
+      deployment:deploymentInfo(),
       validation:{forecastAudits,incomeAttribution,
         terrainMethod:'nuke-cubic-bezier-conservative',
         railMethod:'owned-land-corridor-proxy',
