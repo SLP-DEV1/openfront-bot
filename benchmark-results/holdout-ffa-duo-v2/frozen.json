@@ -1,0 +1,236 @@
+{
+  "kind": "frozen-holdout-seeds",
+  "schema": 5,
+  "mode": "ffa-duo",
+  "maps": [
+    "World",
+    "Europe"
+  ],
+  "opponents": [
+    "opportunist",
+    "defender",
+    "balanced",
+    "rush"
+  ],
+  "minPairsPerCell": 2,
+  "engineCommit": "13b403387af01d388f8c8ed8c953b6d3a11d1457",
+  "arms": {
+    "rule-basis": {
+      "policySHA256": "f64ab52d2065175e2f441a740c41b0c56a9e09c8c9c8a93258f73a206ae5a911"
+    },
+    "run3-schema4": {
+      "policySHA256": "e0fceaef90d542d3811dcd0b261fb3284577cf319912989a2f3eaa7647d39968"
+    },
+    "candidate": {
+      "policySHA256": "6ed491fa866ee14d027a401eb108e58f0aa59e3fea0a874513cbf41009574bc0",
+      "model": "C:\\Users\\SPK\\Desktop\\openfront\\trainer\\candidate-v5-v2.json"
+    }
+  },
+  "botSHA256": "6b0d611ecd90c171957a3d29f2833fa9967bc614353a701cdb2de9f405715d08",
+  "protocol": {
+    "engineCommit": "13b403387af01d388f8c8ed8c953b6d3a11d1457",
+    "modes": [
+      "ffa-duo"
+    ],
+    "maps": [
+      "World",
+      "Europe"
+    ],
+    "opponents": [
+      "opportunist",
+      "defender",
+      "balanced",
+      "rush"
+    ],
+    "scenarios": [
+      {
+        "scenarioId": "holdout-ffa-duo-World-opportunist-p1",
+        "matchSeed": "holdout-ffa-duo-World-opportunist-p1-1",
+        "mode": "ffa-duo",
+        "map": "World",
+        "opponent": "opportunist"
+      },
+      {
+        "scenarioId": "holdout-ffa-duo-World-opportunist-p2",
+        "matchSeed": "holdout-ffa-duo-World-opportunist-p2-2",
+        "mode": "ffa-duo",
+        "map": "World",
+        "opponent": "opportunist"
+      },
+      {
+        "scenarioId": "holdout-ffa-duo-World-defender-p1",
+        "matchSeed": "holdout-ffa-duo-World-defender-p1-3",
+        "mode": "ffa-duo",
+        "map": "World",
+        "opponent": "defender"
+      },
+      {
+        "scenarioId": "holdout-ffa-duo-World-defender-p2",
+        "matchSeed": "holdout-ffa-duo-World-defender-p2-4",
+        "mode": "ffa-duo",
+        "map": "World",
+        "opponent": "defender"
+      },
+      {
+        "scenarioId": "holdout-ffa-duo-World-balanced-p1",
+        "matchSeed": "holdout-ffa-duo-World-balanced-p1-5",
+        "mode": "ffa-duo",
+        "map": "World",
+        "opponent": "balanced"
+      },
+      {
+        "scenarioId": "holdout-ffa-duo-World-balanced-p2",
+        "matchSeed": "holdout-ffa-duo-World-balanced-p2-6",
+        "mode": "ffa-duo",
+        "map": "World",
+        "opponent": "balanced"
+      },
+      {
+        "scenarioId": "holdout-ffa-duo-World-rush-p1",
+        "matchSeed": "holdout-ffa-duo-World-rush-p1-7",
+        "mode": "ffa-duo",
+        "map": "World",
+        "opponent": "rush"
+      },
+      {
+        "scenarioId": "holdout-ffa-duo-World-rush-p2",
+        "matchSeed": "holdout-ffa-duo-World-rush-p2-8",
+        "mode": "ffa-duo",
+        "map": "World",
+        "opponent": "rush"
+      },
+      {
+        "scenarioId": "holdout-ffa-duo-Europe-opportunist-p1",
+        "matchSeed": "holdout-ffa-duo-Europe-opportunist-p1-9",
+        "mode": "ffa-duo",
+        "map": "Europe",
+        "opponent": "opportunist"
+      },
+      {
+        "scenarioId": "holdout-ffa-duo-Europe-opportunist-p2",
+        "matchSeed": "holdout-ffa-duo-Europe-opportunist-p2-10",
+        "mode": "ffa-duo",
+        "map": "Europe",
+        "opponent": "opportunist"
+      },
+      {
+        "scenarioId": "holdout-ffa-duo-Europe-defender-p1",
+        "matchSeed": "holdout-ffa-duo-Europe-defender-p1-11",
+        "mode": "ffa-duo",
+        "map": "Europe",
+        "opponent": "defender"
+      },
+      {
+        "scenarioId": "holdout-ffa-duo-Europe-defender-p2",
+        "matchSeed": "holdout-ffa-duo-Europe-defender-p2-12",
+        "mode": "ffa-duo",
+        "map": "Europe",
+        "opponent": "defender"
+      },
+      {
+        "scenarioId": "holdout-ffa-duo-Europe-balanced-p1",
+        "matchSeed": "holdout-ffa-duo-Europe-balanced-p1-13",
+        "mode": "ffa-duo",
+        "map": "Europe",
+        "opponent": "balanced"
+      },
+      {
+        "scenarioId": "holdout-ffa-duo-Europe-balanced-p2",
+        "matchSeed": "holdout-ffa-duo-Europe-balanced-p2-14",
+        "mode": "ffa-duo",
+        "map": "Europe",
+        "opponent": "balanced"
+      },
+      {
+        "scenarioId": "holdout-ffa-duo-Europe-rush-p1",
+        "matchSeed": "holdout-ffa-duo-Europe-rush-p1-15",
+        "mode": "ffa-duo",
+        "map": "Europe",
+        "opponent": "rush"
+      },
+      {
+        "scenarioId": "holdout-ffa-duo-Europe-rush-p2",
+        "matchSeed": "holdout-ffa-duo-Europe-rush-p2-16",
+        "mode": "ffa-duo",
+        "map": "Europe",
+        "opponent": "rush"
+      }
+    ],
+    "minPairsPerCell": 2,
+    "arms": {
+      "rule-basis": {
+        "botSHA256": "6b0d611ecd90c171957a3d29f2833fa9967bc614353a701cdb2de9f405715d08",
+        "policySHA256": "f64ab52d2065175e2f441a740c41b0c56a9e09c8c9c8a93258f73a206ae5a911",
+        "expectedPolicySHA256": null,
+        "engineArgs": [
+          "--profile",
+          "autonomous"
+        ]
+      },
+      "run3-schema4": {
+        "botSHA256": "6b0d611ecd90c171957a3d29f2833fa9967bc614353a701cdb2de9f405715d08",
+        "policySHA256": "e0fceaef90d542d3811dcd0b261fb3284577cf319912989a2f3eaa7647d39968",
+        "expectedPolicySHA256": "e0fceaef90d542d3811dcd0b261fb3284577cf319912989a2f3eaa7647d39968",
+        "engineArgs": [
+          "--profile",
+          "autonomous",
+          "--policy",
+          "C:\\Users\\SPK\\Desktop\\openfront\\docs\\training-analysis-20260921\\schema4-impossible-world-europe-20260920-run3\\champion.json"
+        ]
+      },
+      "candidate": {
+        "botSHA256": "421ffb63bdf3ae5aa0a95fffad2be13e9f375e45e96dc846741e15ed71c05c3f",
+        "policySHA256": "6ed491fa866ee14d027a401eb108e58f0aa59e3fea0a874513cbf41009574bc0",
+        "expectedPolicySHA256": "6ed491fa866ee14d027a401eb108e58f0aa59e3fea0a874513cbf41009574bc0",
+        "engineArgs": [
+          "--profile",
+          "autonomous",
+          "--candidateControl",
+          "true",
+          "--candidateModel",
+          "C:\\Users\\SPK\\Desktop\\openfront\\trainer\\candidate-v5-v2.json",
+          "--candidateGain",
+          "18"
+        ]
+      }
+    },
+    "roleRotation": "opponent profile + unique engine seed per scenario"
+  },
+  "seeds": [
+    "holdout-ffa-duo-World-opportunist-p1-1",
+    "holdout-ffa-duo-World-opportunist-p2-2",
+    "holdout-ffa-duo-World-defender-p1-3",
+    "holdout-ffa-duo-World-defender-p2-4",
+    "holdout-ffa-duo-World-balanced-p1-5",
+    "holdout-ffa-duo-World-balanced-p2-6",
+    "holdout-ffa-duo-World-rush-p1-7",
+    "holdout-ffa-duo-World-rush-p2-8",
+    "holdout-ffa-duo-Europe-opportunist-p1-9",
+    "holdout-ffa-duo-Europe-opportunist-p2-10",
+    "holdout-ffa-duo-Europe-defender-p1-11",
+    "holdout-ffa-duo-Europe-defender-p2-12",
+    "holdout-ffa-duo-Europe-balanced-p1-13",
+    "holdout-ffa-duo-Europe-balanced-p2-14",
+    "holdout-ffa-duo-Europe-rush-p1-15",
+    "holdout-ffa-duo-Europe-rush-p2-16"
+  ],
+  "seedListSHA256": "4164e40a9a84bdef8f52a8c7cb0605601e878b0e0097f9969548c56a6fd08eca",
+  "consumed": {
+    "priorHoldoutFiles": [
+      "benchmark-results\\paired-holdout-dry\\holdout.json",
+      "benchmark-results\\paired-holdout-sample\\holdout.json",
+      "benchmark-results\\paired-holdout-smoke\\holdout.json",
+      "benchmark-results\\v5full-1v1\\holdout.json",
+      "benchmark-results\\v5full-2v2\\holdout.json",
+      "benchmark-results\\v5full-ffa\\holdout.json"
+    ],
+    "priorHoldoutSeedCount": 60,
+    "trainingFiles": [
+      "tools\\benchmark\\v5full-v2\\dataset.json"
+    ],
+    "trainingMatchCount": 28,
+    "collisions": 0
+  },
+  "note": "New ffa-duo holdout seed set. Every seed string is proven disjoint from all training-data generation matches and all prior holdout evaluations BEFORE any match was executed. Pre-registered: the execution must use exactly this protocol (mode/maps/opponents/runs).",
+  "frozen": "2026-09-23T23:20:06.085Z"
+}
