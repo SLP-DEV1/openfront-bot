@@ -4848,12 +4848,12 @@ function predict(model,input){
     // A still-standing City/Factory is not proof that the economy can
     // recover: prolonged observed train+trade income collapse needs a
     // productive rebuild too. Do not override active attacks or nukes.
-    const incomeCollapse=incomeStatus.observed===true&&
-      incomeStatus.train===0&&incomeStatus.trade===0&&
-      cities>=1&&factories>=1&&
-      (cities<2||factories<2||failedEconomyProbes>=5);
-    let coreRecovery=(startup||incomeCollapse)&&mine>0&&
-      troopSnapshot.incoming===0;
+    const recoverySeed=economyRecoveryKernel({
+      observed:incomeStatus.observed,train:incomeStatus.train,trade:incomeStatus.trade,
+      cities,factories,failedEconomyProbes,startup,land:mine,
+      incoming:troopSnapshot.incoming,nuclearThreat:false});
+    const incomeCollapse=recoverySeed.incomeCollapse;
+    let coreRecovery=recoverySeed.coreRecovery;
     // Eight failed coast scans used to disable first-port planning forever.
     // Retry after a bounded pause: territory and legal build sites can change.
     if(portProbeFailures>=8 && Number.isFinite(lastPortRetryTick) &&
@@ -4895,7 +4895,10 @@ function predict(model,input){
     const threat=!!(enemySilos||enemyNukes);
     // A confirmed nuclear threat keeps SAM funding ahead of an income-collapse
     // rebuild. Preserve the existing first-core startup path separately.
-    if(incomeCollapse&&threat&&!startup)coreRecovery=false;
+    coreRecovery=economyRecoveryKernel({
+      observed:incomeStatus.observed,train:incomeStatus.train,trade:incomeStatus.trade,
+      cities,factories,failedEconomyProbes,startup,land:mine,
+      incoming:troopSnapshot.incoming,nuclearThreat:threat}).coreRecovery;
     const wantedSAM=opts.antiNuke&&game.config().isUnitDisabled?.('SAM Launcher')!==true?
       Math.min(7,threat?Math.max(1,Math.ceil(intel.assets.length/3)+
         Math.ceil(intel.uncovered.length/3)+(enemyNukes?2:0)):
