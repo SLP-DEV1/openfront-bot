@@ -1079,6 +1079,20 @@ function predict(model,input){
     const duo=sorted.filter(x=>/^duo_/.test(x.kind)||
       x.kind==='action'&&/^DUO/.test(x.message||''));
     const snapshot=sorted.filter(x=>x.kind==='snapshot');
+    // Official Engine Team and localhost Duo are independent. Only actual
+    // engine DonateEvent receipts count as delivered support; an emitted
+    // TEAMHILFE intent is NOT evidence that a donation arrived.
+    const officialTeam=summary.benchmarkMeta?.gameMode==='Team';
+    const team=officialTeam?sorted.filter(x=>
+      x.kind==='donation_observed'||/^team_/.test(x.kind)||
+      x.kind==='game_over'||
+      x.kind==='action'&&/TEAMHILFE|TEAMGOLD/.test(x.message||'')):[];
+    summary.diagnosticV2.team={
+      officialTeam,localDuoEnabled:opts.duoEnabled===true,
+      observedDonationEvents:team.filter(x=>x.kind==='donation_observed').length,
+      personalEliminationTick:summary.diagnosticV2.personalEliminationTick,
+      teamOutcome:gameEnd?.teamOutcomePending?'unknown':gameEnd?.outcome??'unknown',
+      outcomeSemantics:'personal elimination is not proof of team defeat'};
     // Compact overview includes the old diagnostic for existing consumers.
     // No statement of action success is inferred from gold/land deltas.
     const files=[
@@ -1086,6 +1100,7 @@ function predict(model,input){
       ['events.jsonl',jsonl(sorted)],
       ['snapshots.jsonl',jsonl(snapshot)],
       ['duo.jsonl',jsonl(duo)],
+      ['team.jsonl',jsonl(team)],
       ['README.txt','OpenFront diagnostic v2 | session='+session+
         '\ncomplete='+complete+' | event bus emission is not effect proof.'+
         '\nZIP uses stored entries. Merge browsers by matchId, then playerId and session.\n']
