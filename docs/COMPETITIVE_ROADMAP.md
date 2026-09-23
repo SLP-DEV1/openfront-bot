@@ -5,7 +5,7 @@
 
 ## P0 — kanonischer DecisionFrame mit Horizon-Auflösung (1.21.2, 23.09.2026)
 
-**[Im Code + lokaler Test bestanden, CI-Ergebnis ausstehend]** Umsetzung des P0-
+**[Im Code + lokaler Test + CI bestanden]** Umsetzung des P0-
 Teils der neuralen/learning-Planungsgrundlage ([plan.md](../plan.md)) auf dem
 aktuellen 1.21.2-Stand:
 
@@ -35,10 +35,24 @@ aktuellen 1.21.2-Stand:
   verwendet pro Lauf neue Session-IDs (der Monitor behandelt die Festplatte
   als maßgeblich), damit der Test auf lokalen Checkouts idempotent bleibt.
 
+[PR #136](https://github.com/SLP-DEV1/openfront-bot/pull/136) ist mit allen
+fünf Workflows auf dem PR-Head erfolgreich: [Verify
+AggroBot](https://github.com/SLP-DEV1/openfront-bot/actions/runs/35804282936)
+(inklusive des neuen DecisionFrame-Schritts), [Deterministic
+Scenario
+Pack](https://github.com/SLP-DEV1/openfront-bot/actions/runs/35804282974),
+[Full-Bot FFA League
+Smoke](https://github.com/SLP-DEV1/openfront-bot/actions/runs/35804282988),
+[Impossible Paired
+Evaluation](https://github.com/SLP-DEV1/openfront-bot/actions/runs/35804283020)
+und [Impossible Engine
+Smoke](https://github.com/SLP-DEV1/openfront-bot/actions/runs/35804283090).
+Gemergt als [27f785a](https://github.com/SLP-DEV1/openfront-bot/commit/27f785a).
+
 **Nicht durchgeführt (ausdrücklich):** echte Engine-/Multiplayer-Matches mit
 DecisionFrame-Daten, lange Beobachtungshorizonte in realen Partien und die
-Statistik über `outcomeStatus`. Der grüne CI-Durchlauf muss nach Push bestätigt
-werden. P0 als Gesamtphase damit **nicht** abgenommen; siehe [#68](https://github.com/SLP-DEV1/openfront-bot/issues/68) und [#75](https://github.com/SLP-DEV1/openfront-bot/issues/75).
+Statistik über `outcomeStatus`. P0 als Gesamtphase damit **nicht**
+abgenommen; siehe [#68](https://github.com/SLP-DEV1/openfront-bot/issues/68) und [#75](https://github.com/SLP-DEV1/openfront-bot/issues/75).
 
 ## Implementierungsstand 1.21.0 (P0–P6)
 
