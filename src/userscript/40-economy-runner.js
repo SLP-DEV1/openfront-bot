@@ -14,6 +14,8 @@
       cityWanted:requirements.capStalled||requirements.list.some(x=>x.type==='City'),
       cityCount:requirements.cities,capStalled:requirements.capStalled,
       wantedSAM:requirements.wantedSAM,nuclearThreat:requirements.nuclearThreat,
+      incomingNukes:requirements.incomingNukes,
+      duoNuclear:requirements.duoNuclear,
       samQuote:tick-samQuotedTick<=300&&samQuotedCost>0?samQuotedCost:null,
       portMilestone:requirements.portMilestone,
       portQuote:tick-portQuotedTick<=210&&portQuotedCost>0?portQuotedCost:null,
@@ -22,7 +24,7 @@
       semantics:'shared savings target; individual build exceptions still apply'};
     // A cached price saves worker traffic while underfunded; refresh once
     // the price is funded or quotes age. Never assert a legal site from it.
-    if(!requirements.immediate&&!requirements.nuclearThreat&&
+    if(!requirements.immediate&&!requirements.samFundingUrgent&&
       funding.missing.length&&funding.needed!==null&&
       requirements.gold<funding.needed&&
       tick-Math.min(...[...coreQuotes.values()].map(q=>q.tick))<130){
@@ -48,7 +50,7 @@
     // Do not waste worker queries or count failed builds while deliberately
     // accumulating funds for the first silo / first atomic strike.
     if(requirements.savingsTarget>0 && !requirements.coreRecovery &&
-      !requirements.immediate && !requirements.nuclearThreat &&
+      !requirements.immediate && !requirements.samFundingUrgent &&
       !requirements.portMilestone && !game.config().infiniteGold?.() &&
       requirements.gold<requirements.savingsTarget){
       economicStatus='Spare: '+investmentStatus+' ('+Math.floor(requirements.gold).toLocaleString()+
@@ -166,7 +168,7 @@
     // Nuclear emergency and immediate land defense have their own lane.
     // Never discard legal SAM/defense candidates merely because the first
     // harbor also has high priority. Harbor-only probes apply only when safe.
-    const urgentSAM=requirements.nuclearThreat&&requirements.wantedSAM>0&&
+    const urgentSAM=requirements.samFundingUrgent&&requirements.wantedSAM>0&&
       requirements.intel.uncovered.length>0;
     const urgentLand=requirements.immediate&&requirements.wantedDefense>0;
     if(requirements.capStalled&&!requirements.firstPortWindow&&!urgentSAM&&!urgentLand){
@@ -296,7 +298,7 @@
           const essential=(item.type==='City'&&requirements.cities===0)||
             (item.type==='Factory'&&requirements.factories===0)||
             (item.type==='Defense Post'&&requirements.immediate)||
-            (item.type==='SAM Launcher'&&requirements.nuclearThreat)||
+            (item.type==='SAM Launcher'&&requirements.samFundingUrgent)||
             (item.type==='Missile Silo'&&opts.nukes&&lateGame(me));
           const economicCore=item.type==='City'||item.type==='Factory';
           // Fund the first economic structures before buying defensive posts,
@@ -304,16 +306,16 @@
           if(requirements.startup && (!economicCore || isUpgrade) && !essential)continue;
           if(requirements.firstPortWindow&&!requirements.immediate&&
             probe.portLegal>0 && item.type!=='Port' &&
-            !(item.type==='SAM Launcher'&&requirements.nuclearThreat))
+            !(item.type==='SAM Launcher'&&requirements.samFundingUrgent))
             continue;
           if(item.type==='Defense Post' && !requirements.immediate &&
             !requirements.incomingNukes && requirements.basic)continue;
           // While saving for a silo / first atomic strike, do not repeatedly
           // spend the whole treasury on expandable city/factory goals.
           if(!infinite && requirements.savingsTarget>0 && !requirements.immediate &&
-            !(item.type==='SAM Launcher'&&requirements.nuclearThreat) &&
+            !(item.type==='SAM Launcher'&&requirements.samFundingUrgent) &&
             !(item.type==='Defense Post'&&requirements.immediate) &&
-            !(item.type==='Missile Silo'&&requirements.saveForSilo&&!requirements.nuclearThreat) &&
+            !(item.type==='Missile Silo'&&requirements.saveForSilo) &&
             !(item.type==='Port'&&requirements.portMilestone&&!requirements.nuclearThreat) &&
             // After fully funding the first harbor, no worker-offered Port
             // should stall all other productive buildings this cycle.
@@ -437,7 +439,7 @@
     proposals.sort((a,b)=>b.siteValue-a.siteValue);
     // Near the troop cap, prioritize a worker-confirmed City or City upgrade,
     // not a Factory; the legal site, cost and invasion vetoes still apply.
-    const urgentSAMChoice=requirements.nuclearThreat&&
+    const urgentSAMChoice=requirements.samFundingUrgent&&
       requirements.wantedSAM>0&&requirements.intel.uncovered.length>0?
       proposals.find(x=>x.type==='SAM Launcher'):null;
     const legalFirstPort=!urgentSAMChoice&&requirements.firstPortWindow?
@@ -484,8 +486,8 @@
     }
     const liveNeeds=economicNeeds(me,ownStructures(me),tiles);
     if(chosen.type!=='SAM Launcher'&&chosen.type!=='Defense Post'&&
-      liveNeeds.nuclearThreat&&liveNeeds.wantedSAM>0&&liveNeeds.intel.uncovered.length>0&&
-      !requirements.nuclearThreat){
+      liveNeeds.samFundingUrgent&&liveNeeds.wantedSAM>0&&liveNeeds.intel.uncovered.length>0&&
+      !requirements.samFundingUrgent){
       telemetry('build_stale_skip','Neue Nuklearbedrohung: Bau neu priorisieren',
         {type:chosen.type,plannedTick:tick,freshTick});return false;
     }
@@ -530,7 +532,8 @@
       failedEconomyProbes=0;lastEconomy=tick;lastEconomicAction=tick;
       if(chosen.type==='SAM Launcher')telemetry('sam_intent','SAM-Bau angefordert',
         {tile:chosen.tile,gold:requirements.gold,cost:chosen.cost,
-          uncovered:requirements.intel.uncovered.length});
+          uncovered:requirements.intel.uncovered.length,
+          duoNuclear:requirements.duoNuclear});
       if(chosen.type==='Port'){
         portProbeFailures=0;
         telemetry('port_intent','Hafenbau angefordert',
@@ -735,7 +738,8 @@
       nukeShots+=added;p.confirmed=confirmed;
       nukeStatus='Raketenstart bestätigt: '+p.type+' '+confirmed+'/'+(p.amount||1);
       telemetry('nuke_confirmed',nukeStatus,{tile:p.tile,attempt:p.attempt,
-        confirmed:nukeShots,partial:confirmed<(p.amount||1)});
+        confirmed:nukeShots,partial:confirmed<(p.amount||1),
+        launchSiloIds:p.siloIds??[],siloOrigin:'unknown-unless-build-confirmed'});
       if(confirmed>=(p.amount||1)){nukePending=null;return false;}
       return true;
     }
@@ -747,6 +751,7 @@
     }
     return true;
   }
+  const siloFirstSeen=new Set();
   async function nukeStep() {
     if(nukeBusy||!opts.enabled||!opts.nukes||!connected()||!ctors.build)return;
     const me=myPlayer(),tick=number(()=>game.ticks(),-1);
@@ -754,8 +759,19 @@
     if(inspectNukeLaunch(me,tick))return;
     if(tick-lastNuke<clamp(65-Math.round(neuralChannel('nuclearPriority',me)*18),45,90) ||
       !actionBudget())return;
-    const intel=nuclearIntel(me),silos=ownStructures(me).filter(u=>u.type?.()==='Missile Silo' &&
-      !u.isUnderConstruction?.() && !u.isInCooldown?.());
+    const intel=nuclearIntel(me),ownedSilos=ownStructures(me).filter(u=>
+      u.type?.()==='Missile Silo');
+    for(const silo of ownedSilos){
+      const id=String(silo.id?.()??'tile:'+silo.tile?.());
+      const key=monitorSession+':'+id;
+      if(siloFirstSeen.has(key))continue;
+      siloFirstSeen.add(key);
+      telemetry('silo_seen','Eigenes Raketensilo im Spielzustand sichtbar',
+        {siloId:id,tile:silo.tile?.()??null,level:silo.level?.()??null,
+          origin:confirmedBuiltSilos.has(key)?'own-build-observed':
+            'unresolved: captured, preexisting, or missing build receipt'});
+    }
+    const silos=ownedSilos.filter(u=>!u.isUnderConstruction?.()&&!u.isInCooldown?.());
     if(!silos.length){nukeStatus='Kein geladener Silo';return;}
     const gold=goldAmount(me),infinite=game.config().infiniteGold?.()===true;
     // Hold funds for defensive anti-nuke infrastructure unless already rich.
@@ -795,10 +811,11 @@
           if(send('build',args,`NUKE ${kind} x${salvo.amount} → ${nameOf(o)} (${candidate.hit} Gebäude · ${candidate.value.toFixed(0)} Punkte)`)){
             commitGoldSpend(me,cost*salvo.amount,kind);
             lastNuke=tick;nukeAttempts++;
+            const siloIds=silos.map(u=>String(u.id?.()??'tile:'+u.tile?.()));
             nukePending={tile:candidate.tile,type:kind,tick,beforeIds,amount:salvo.amount,
-              beforeMatches:prior.length,attempt:nukeAttempts};
+              beforeMatches:prior.length,attempt:nukeAttempts,siloIds};
             telemetry('nuke_attempt','Raketen-Befehl abgesendet, noch nicht bestätigt',
-              {tile:candidate.tile,type:kind,attempt:nukeAttempts});
+              {tile:candidate.tile,type:kind,attempt:nukeAttempts,siloIds});
             nukeStatus='Start angefordert: '+kind+' · wartet auf Bestätigung';return;
           }
         }
