@@ -181,14 +181,25 @@ function runMatch(o,scenario,arm,armDef){
   return rowFromReport(report,arm,armDef,scenario,cfg,o,r.status,r.stderr||'');
 }
 
-// Matched-pair 95% CI (t~1.96) on the per-scenario paired difference.
+// Two-sided 95% Student-t critical values, df=1..30. Above df=30,
+// using df=30's value is conservative (never narrower than the true t CI).
+const T95=Object.freeze([null,
+  12.706204736,4.30265273,3.1824463,2.7764451,2.5705818,
+  2.4469119,2.3646243,2.3060041,2.2621572,2.2281389,
+  2.2009852,2.1788128,2.1603687,2.1447867,2.1314495,
+  2.1199053,2.1098156,2.1009220,2.0930241,2.0859634,
+  2.0796138,2.0738731,2.0686576,2.0638986,2.0595386,
+  2.0555294,2.0518305,2.0484071,2.0452296,2.0422725]);
 function pairedCi(pairs){
   const n=pairs.length;
-  if(n===0)return{n:0,mean:0,se:0,ciLow:0,ciHigh:0};
-  const mean=pairs.reduce((s,d)=>s+d,0)/n;
-  const variance=n>1?pairs.reduce((s,d)=>s+(d-mean)**2,0)/(n-1):0;
+  if(n<2)return{n,mean:n?pairs[0]:null,se:null,critical:null,
+    ciLow:null,ciHigh:null};
+  const mean=pairs.reduce((sum,d)=>sum+d,0)/n;
+  const variance=pairs.reduce((sum,d)=>sum+(d-mean)**2,0)/(n-1);
   const se=Math.sqrt(variance/n);
-  return{n,mean,se,ciLow:mean-1.96*se,ciHigh:mean+1.96*se};
+  const critical=T95[Math.min(n-1,30)];
+  return{n,mean,se,critical,ciLow:mean-critical*se,
+    ciHigh:mean+critical*se};
 }
 
 function byScenario(rows){
@@ -340,7 +351,7 @@ function main(){
     const passes=!!g?.passes;
     // Proven improvement: the gate's cell+win+land criteria pass AND the
     // paired win advantage is distinguishable from zero at the 95% CI.
-    const distinguishable=passes&&ci.win.ciLow>0;
+    const distinguishable=passes&&ci.win.n>=5&&ci.win.ciLow>0;
     paired[baseline]={n:ci.win.n,
       decisivePairs:ci.decisivePairs,censoredPairs:ci.censoredPairs,
       missingPairs:ci.missingPairs,decisiveByCell:ci.decisiveByCell,
