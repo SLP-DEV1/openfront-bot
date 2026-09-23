@@ -759,18 +759,20 @@
     if(inspectNukeLaunch(me,tick))return;
     if(tick-lastNuke<clamp(65-Math.round(neuralChannel('nuclearPriority',me)*18),45,90) ||
       !actionBudget())return;
-    const intel=nuclearIntel(me),silos=ownStructures(me).filter(u=>u.type?.()==='Missile Silo' &&
-      !u.isUnderConstruction?.() && !u.isInCooldown?.());
-    if(!silos.length){nukeStatus='Kein geladener Silo';return;}
-    for(const silo of silos){
+    const intel=nuclearIntel(me),ownedSilos=ownStructures(me).filter(u=>
+      u.type?.()==='Missile Silo');
+    for(const silo of ownedSilos){
       const id=String(silo.id?.()??'tile:'+silo.tile?.());
       const key=monitorSession+':'+id;
       if(siloFirstSeen.has(key))continue;
       siloFirstSeen.add(key);
       telemetry('silo_seen','Eigenes Raketensilo im Spielzustand sichtbar',
         {siloId:id,tile:silo.tile?.()??null,level:silo.level?.()??null,
-          origin:'unresolved: own-build, captured, or preexisting; match build receipts to verify'});
+          origin:confirmedBuiltSilos.has(key)?'own-build-observed':
+            'unresolved: captured, preexisting, or missing build receipt'});
     }
+    const silos=ownedSilos.filter(u=>!u.isUnderConstruction?.()&&!u.isInCooldown?.());
+    if(!silos.length){nukeStatus='Kein geladener Silo';return;}
     const gold=goldAmount(me),infinite=game.config().infiniteGold?.()===true;
     // Hold funds for defensive anti-nuke infrastructure unless already rich.
     const choices=['MIRV','Hydrogen Bomb','Atom Bomb'].filter(t=>!game.config().isUnitDisabled?.(t) &&
