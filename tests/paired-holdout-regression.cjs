@@ -164,4 +164,34 @@ const rawRow=holdout.rowFromReport(makeReport('FFA'),'candidate',
   candArm,scen0,cfg1v1,o,0,'');
 assert.equal(rawRow.verified,false,'raw FFA label must not verify');
 
+// #154: Censored outcomes must never be imputed as confirmed defeats.
+const censored=rowsWin.map(r=>({...r}));
+const scenario0=proto2.scenarios[0].scenarioId;
+const c0=censored.find(r=>r.scenarioId===scenario0&&r.arm==='candidate');
+c0.outcome='incomplete';c0.confirmed=false;c0.termination='tick-limit';
+let censorResult=computePaired(proto2,censored);
+for(const b of ['rule-basis','run3-schema4']){
+  assert.equal(censorResult[b].decisivePairs,7,'only confirmed pairs enter win CI');
+  assert.equal(censorResult[b].censoredPairs,1);
+  assert.equal(censorResult[b].win.n,7);
+  assert.equal(censorResult[b].win.mean,1,'incomplete vs defeat is not counted as 0');
+}
+let censorGates=computeNegativeGates(censored,byScenario(censored),proto2);
+assert.equal(censorGates.find(g=>g.gate==='insufficient-decisive-pairs').triggered,
+  true,'any cell with fewer than 2 decisive pairs is ineligible');
+assert.equal(finalEligible(proto2,censored).eligible,false,
+  'censored cell cannot pass promotion');
+const censoredVsVictory=rowsZero.map(r=>({...r}));
+const c1=censoredVsVictory.find(r=>r.scenarioId===scenario0&&r.arm==='candidate');
+c1.outcome='unknown';c1.confirmed=false;c1.termination='tick-limit';
+assert.equal(computePaired(proto2,censoredVsVictory)['rule-basis'].win.n,7,
+  'unknown candidate vs confirmed victory is not a -1 win pair');
+const doubleCensored=censoredVsVictory.map(r=>({...r}));
+const b0=doubleCensored.find(r=>r.scenarioId===scenario0&&r.arm==='rule-basis');
+b0.outcome='incomplete';b0.confirmed=false;b0.termination='tick-limit';
+assert.equal(computePaired(proto2,doubleCensored)['rule-basis'].win.n,7,
+  'incomplete vs incomplete is not a 0 win pair');
+assert.equal(computePaired(proto2,rowsWin)['rule-basis'].win.n,8,
+  'confirmed pairs remain decisive');
+
 console.log('PASS P5 paired holdout: pre-registration, same-code arms, paired CIs, negative gates and 0/0 no-promotion');
