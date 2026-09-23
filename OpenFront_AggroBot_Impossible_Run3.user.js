@@ -2439,14 +2439,8 @@ function predict(model,input){
       reason:'bestätigter Partnerbedarf'});
     // P1: die Archetyp-Politik verschiebt die Rangfolge, bevor sie gefroren
     // wird. 'legacy' hat null Werte und ändert die Rangfolge nicht.
-    for(const c of candidates){
-      if(c.kind==='attack'){
-        c.utility+=arch.attackUtility;
-        if(tick<arch.firstAttackGate)c.utility-=1000;
-      }else if(c.kind==='hold'||c.kind==='support')c.utility+=arch.holdUtility;
-      else if(c.kind==='invest')c.utility+=arch.investUtility;
-      else if(c.kind==='naval')c.utility+=arch.navalUtility;
-    }
+    const archRanked=archetypeRankKernel(candidates,arch,tick);
+    candidates.splice(0,candidates.length,...archRanked);
     if(arch.targetWeakest){
       const hostiles=(groups||[]).filter(g=>g.id!==null&&!friendly(g.opponent,me));
       const weakest=hostiles.slice().sort((a,b)=>
