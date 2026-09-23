@@ -648,7 +648,13 @@
       (tradePeer.units?.()||[]).filter(u=>u.isActive?.()&&
         u.type?.()==='Port'&&!u.isUnderConstruction?.()).length:0;
     const duoTradeReady=ports===0&&peerPorts>0;
+    // A Port used to outrank the SECOND Factory by hundreds of score points.
+    // Finish the first two productive units of each type before this
+    // discretionary harbor milestone; after repeated real site failures,
+    // allow a harbor so a blocked core cannot freeze the entire economy.
+    const coreComplete=(!cityEnabled||cities>=2)&&(!factoryEnabled||factories>=2);
     const portMilestone=!!(opts.boats&&portEnabled&&ports===0&&!startup&&
+      (coreComplete||failedEconomyProbes>=8)&&
       coastSites.length&&portProbeFailures<8);
     const tradePortMilestone=portMilestone&&duoTradeReady;
     const basic=(cityEnabled&&cities<2)||(factoryEnabled&&factories<2);
@@ -690,7 +696,7 @@
       ownId:safeID(me),peerId:peer?.id,peerValid:!!peer,
       peerCoreReady:!!(peer&&peer.state?.cities>=2&&peer.state?.factories>=2),
       peerSilos:peerUnits.filter(u=>u.isActive?.()&&u.type?.()==='Missile Silo').length,
-      coreReady:(!cityEnabled||cities>=2)&&(!factoryEnabled||factories>=2),
+      coreReady:coreComplete,
       siloAllowed,late,land:mine,silos:siloCount,nukeShots,
       ownSAM:count('SAM Launcher'),
       antiNuke:opts.antiNuke&&game.config().isUnitDisabled?.('SAM Launcher')!==true,
@@ -721,11 +727,13 @@
     const neural=neuralStrategicSignals(me,troopSnapshot,nowTick);
     const list=[
       {type:'City',desired:capacityCityDesired,score:92+
-        (coreRecovery&&cities<2?530:0)+(productiveStall&&cities<3?110:0)+(neural?.cityPriority||0)*90+econBoost/2+(posture==='recruit'?38:0)+Math.max(0,pressure-.35)*75+
+        (coreRecovery&&cities<2?530:0)+(cities<2&&basic?310:0)+
+        (productiveStall&&cities<3?110:0)+(neural?.cityPriority||0)*90+econBoost/2+(posture==='recruit'?38:0)+Math.max(0,pressure-.35)*75+
           (pressure>.80&&!immediate?30:0)+(cities===0?115:hardMode()&&cities<2?80:0)+
           (capStalled?pressure>=.98?355:pressure>=.95?295:pressure>=.90?230:135:0)},
       {type:'Factory',desired:wantedFactory,score:91+
-        (coreRecovery&&factories<2?520:0)+(productiveStall&&factories<3?110:0)+(neural?.factoryPriority||0)*90+econBoost+(posture==='bootstrap'?20:0)+
+        (coreRecovery&&factories<2?520:0)+(factories<2&&basic?340:0)+
+        (productiveStall&&factories<3?110:0)+(neural?.factoryPriority||0)*90+econBoost+(posture==='bootstrap'?20:0)+
           (factories===0?100:hardMode()&&factories<2?85:0)+
           (gold<450000?15:0)+(pressure<.60&&factories>0?10:0)+
           (factories<2&&cities>=2?24:0)-
@@ -784,7 +792,8 @@
       saveForSilo?1150000:saveForNuke?firstRocketFund:0;
     investmentStatus=immediate?'Verteidigung vor Investitionen':startup?'Erste Stadt/Fabrik':
       samFund>0&&gold<samFund?'SAM-Schutz '+Math.round(samFund).toLocaleString()+' Gold':
-      threat&&intel.uncovered.length>0&&wantedSAM>0?'SAM-Schutz vor Raketenfonds':
+      duoNuclear.samFundingUrgent&&intel.uncovered.length>0&&
+        wantedSAM>count('SAM Launcher')?'SAM-Schutz vor Raketenfonds':
       capStalled&&!firstPortWindow&&!enemyNukes?'Truppenlimit: Stadt/City-Upgrade oder Landgewinn priorisiert':
       portFund>0&&gold<portFund?'Hafen-Fonds '+Math.round(portFund).toLocaleString()+' Gold':
       portMilestone?'Hafen vor Silo':basic?'Zwei Städte und zwei Fabriken':
