@@ -63,12 +63,13 @@ async function main(argv=process.argv.slice(2)){
   const requireEngine=createRequire(path.join(o.engine,'package.json'));
   requireEngine('tsx/esm/api').register({tsconfig:path.join(o.engine,'tsconfig.json')});
   const mod=p=>import(pathToFileURL(path.join(o.engine,p)).href);
-  const [{Config},{Executor},{PlayerInfo,PlayerType,GameUpdateType},
+  const [{Config},{Executor},{PlayerInfo,PlayerType},{GameUpdateType},
     {createGame},{createNationsForGame},{loadTerrainMap},{GameRunner},
     {PseudoRandom},{GameRecordSchema},{GameView},{NodeGameMapLoader},util]=await Promise.all([
       mod('src/core/configuration/Config.ts'),
       mod('src/core/execution/ExecutionManager.ts'),
       mod('src/core/game/Game.ts'),
+      mod('src/core/game/GameUpdates.ts'),
       mod('src/core/game/GameImpl.ts'),
       mod('src/core/game/NationCreation.ts'),
       mod('src/core/game/TerrainMapLoader.ts'),
