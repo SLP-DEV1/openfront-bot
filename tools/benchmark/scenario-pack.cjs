@@ -17,7 +17,39 @@ const SCENARIOS=Object.freeze([
   {id:'europe-ffa-mixed',seed:'scenario-europe-mixed-07',map:'Europe',gameMode:'FFA',opponentProfile:'mixed'},
   {id:'world-team-rush',seed:'scenario-world-team-08',map:'World',gameMode:'Team',opponentProfile:'rush'},
   {id:'world-team-balanced',seed:'scenario-world-team-09',map:'World',gameMode:'Team',opponentProfile:'balanced'},
-  {id:'europe-team-mixed',seed:'scenario-europe-team-10',map:'Europe',gameMode:'Team',opponentProfile:'mixed'}
+  {id:'europe-team-mixed',seed:'scenario-europe-team-10',map:'Europe',gameMode:'Team',opponentProfile:'mixed'},
+  // P1: konkrete deterministische Szenario-Fälle (nur sichtbarer Zustand).
+  // Jeder Fall ist eine fest vorgegebene Seed-/Karten-/Profil-Kombination;
+  // die Semantik ist in der Beschreibung dokumentiert, die Engine wird nur
+  // mit --execute gegen die gepinnte Revision gespielt.
+  {id:'cap-stall',seed:'scenario-cap-stall-11',map:'World',gameMode:'FFA',opponentProfile:'defender',
+    description:'Cap-Stall: Verteidiger blockiert das Cap-Gebiet; Einkommen erstarrt.'},
+  {id:'destroyed-city',seed:'scenario-destroyed-city-12',map:'World',gameMode:'FFA',opponentProfile:'rush',
+    description:'Zerstörte City: Kernstadt fällt; Rückzugs- und Rebuild-Entscheidung.'},
+  {id:'collapsing-income',seed:'scenario-collapsing-income-13',map:'Europe',gameMode:'FFA',opponentProfile:'opportunist',
+    description:'Kollabierendes Einkommen: Goldfluss bricht ein; Investitionsstopp.'},
+  {id:'encirclement',seed:'scenario-encirclement-14',map:'World',gameMode:'FFA',opponentProfile:'rush',
+    description:'Einkesselung: zwei Fronten schließen sich; Flucht-/Sammelentscheidung.'},
+  {id:'attack-gap-war-lock',seed:'scenario-attack-gap-15',map:'World',gameMode:'FFA',opponentProfile:'mixed',
+    description:'Angriffslücke/War-Lock: Waffenstillstand lockt dann Angriffsfenster.'},
+  {id:'boat-disappears',seed:'scenario-boat-disappears-16',map:'World',gameMode:'FFA',opponentProfile:'balanced',
+    description:'Boot verschwindet: eigene Flotte geht verloren; Landfokus.'},
+  {id:'second-enemy-attacks',seed:'scenario-second-enemy-17',map:'World',gameMode:'FFA',opponentProfile:'mixed',
+    description:'Zweiter Gegner greift an: Mehrfront-Druck während Hauptkampf.'},
+  {id:'false-partner',seed:'scenario-false-partner-18',map:'World',gameMode:'FFA',opponentProfile:'mixed',
+    description:'Falsche Partnerzusage: erwartete Verstärkung bleibt aus.'},
+  {id:'nuke-sam-risk',seed:'scenario-nuke-sam-19',map:'World',gameMode:'FFA',opponentProfile:'rush',
+    description:'Nuke-/SAM-Risiko: schwere Waffe trifft Verteidigungscluster.'},
+  {id:'team-donation-homeland',seed:'scenario-team-donation-20',map:'Europe',gameMode:'Team',opponentProfile:'balanced',
+    description:'Teamspende bei Heimgefahr: Partner deckt Heimat, Kandidat investiert.'},
+  // P1: Allianz-/Diplomatie-Szenarien. Team-Modi üben die Team-/Allianz-
+  // Semantik (Team ≠ Duo-Relay); Diplomatie über versionierten Archetypen.
+  {id:'team-not-duo-relay',seed:'scenario-team-not-duo-21',map:'World',gameMode:'Team',opponentProfile:'balanced',
+    description:'Team-Semantik: Verbündete ≠ Duo-Relay; eigene Entscheidung bleibt eigen.'},
+  {id:'alliance-break-fresh-states',seed:'scenario-alliance-break-22',map:'World',gameMode:'Team',opponentProfile:'mixed',
+    description:'Allianzbruch: Beziehung wechselt; neue Zustände, nie alte Freund/Feind-Cacheliste.'},
+  {id:'diplomat-pressure',seed:'scenario-diplomat-23',map:'Europe',gameMode:'Team',opponentProfile:'mixed',
+    description:'Diplomatie unter Druck: Angebot/Akzeptanz mit aktueller Beziehungssemantik.'}
 ].map(x=>Object.freeze({...x,scriptedHumans:x.gameMode==='Team'?2:2})));
 
 function assertMatch(report,scenario,expected){

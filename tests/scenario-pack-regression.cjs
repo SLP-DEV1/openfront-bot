@@ -2,11 +2,18 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {SCENARIOS,assertMatch,parse,main}=require('../tools/benchmark/scenario-pack.cjs');
-assert.equal(SCENARIOS.length,10);
-assert.equal(new Set(SCENARIOS.map(x=>x.id)).size,10);
-assert.equal(new Set(SCENARIOS.map(x=>x.seed)).size,10);
-assert.equal(SCENARIOS.filter(x=>x.gameMode==='Team').length,3);
+assert.equal(SCENARIOS.length,23);
+assert.equal(new Set(SCENARIOS.map(x=>x.id)).size,23);
+assert.equal(new Set(SCENARIOS.map(x=>x.seed)).size,23);
+assert.equal(SCENARIOS.filter(x=>x.gameMode==='Team').length,7);
 assert(SCENARIOS.every(x=>x.scriptedHumans>=2));
+// P1: konkrete Szenario-Fälle + Allianz-/Diplomatie-Szenarien mit Semantik.
+for(const id of ['cap-stall','destroyed-city','collapsing-income','encirclement',
+ 'attack-gap-war-lock','boat-disappears','second-enemy-attacks','false-partner',
+ 'nuke-sam-risk','team-donation-homeland','team-not-duo-relay',
+ 'alliance-break-fresh-states','diplomat-pressure'])
+ assert.ok(SCENARIOS.some(x=>x.id===id&&x.description),
+   'missing P1 scenario case or alliance/diplomacy scenario: '+id);
 assert.throws(()=>parse(['--execute']),/requires --engine/);
 assert.throws(()=>parse(['--ticks','Infinity']),/Invalid scenario tick/);
 assert.throws(()=>parse(['--bad']),/Unknown option/);
@@ -59,7 +66,7 @@ try{
  const result=main(['--bot',bot,'--engineCommit',engineCommit,
    '--out',path.join(temp,'results')]);
  assert.equal(result.mode,'dry-run');
- assert.equal(result.scenarios.length,10);
+ assert.equal(result.scenarios.length,23);
  assert(result.scenarios.every(x=>x.status==='not-run'));
  assert(!fs.existsSync(path.join(temp,'results')),
    'dry-run must not create fabricated results');
