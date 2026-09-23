@@ -42,7 +42,22 @@
   // a later manual choice is saved under the new key as usual.
   if(!localStorage.getItem(KEY) && opts.fullAuto)opts.boats=true;
   if(opts.fullAuto)opts.autoStrategy=true;     // Full autonomy includes strategy selection.
-  const persist = () => {try {localStorage.setItem(KEY,JSON.stringify(opts));} catch (_) {}};
+  // User preferences are distinct from temporary archetype overrides.
+  const ARCHETYPE_SETTING_KEYS=['boats','diplomacy','offerAlliances','nukes'];
+  let archetypeBaseOptions=Object.fromEntries(
+    ARCHETYPE_SETTING_KEYS.map(k=>[k,opts[k]]));
+  let archetypeEffectiveOptions=null;
+  function captureBaseOptions(){
+    for(const k of ARCHETYPE_SETTING_KEYS){
+      if(!archetypeEffectiveOptions||
+         opts[k]!==archetypeEffectiveOptions[k])
+        archetypeBaseOptions[k]=opts[k];
+    }
+  }
+  const persist = () => {try {
+    captureBaseOptions();
+    localStorage.setItem(KEY,JSON.stringify({...opts,...archetypeBaseOptions}));
+  } catch (_) {}};
   if(retiredBrainSettings)persist();
 
   // P1: versionierte, überprüfbare Gegner-Archetypen. Ein Archetyp ist eine
@@ -131,12 +146,16 @@
   // Nukes), damit die gefrorene Strategie auch tatsächlich ausgeführt wird.
   // 'legacy' erzwingt nichts (alle Felder null) und bleibt der Basiswert.
   function applyArchetypeOptions(){
+    // Capture deliberate preference edits, not the previous archetype's
+    // effective overrides. Restore the base BEFORE applying any new policy.
+    captureBaseOptions();
+    for(const k of ARCHETYPE_SETTING_KEYS)opts[k]=archetypeBaseOptions[k];
     const p=archetypePolicy();
-    if(p.boats!==null)opts.boats=p.boats;
-    if(p.diplomacy!==null)opts.diplomacy=p.diplomacy;
-    if(p.offerAlliances!==null)opts.offerAlliances=p.offerAlliances;
-    if(p.nukes!==null)opts.nukes=p.nukes;
-    persist();
+    for(const k of ARCHETYPE_SETTING_KEYS)
+      if(p[k]!==null)opts[k]=p[k];
+    archetypeEffectiveOptions=Object.fromEntries(
+      ARCHETYPE_SETTING_KEYS.map(k=>[k,opts[k]]));
+    // Never persist effective archetype overrides as user preferences.
   }
 
   // Deployment replaces only the literal below; benchmark loads a signed-by-hash
