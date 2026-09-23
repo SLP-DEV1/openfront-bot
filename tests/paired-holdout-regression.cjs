@@ -66,6 +66,15 @@ const zero=pairedCi([1,-1,1,-1]);
 assert.equal(zero.mean,0);
 assert.ok(zero.ciLow<0&&zero.ciHigh>0,'balanced pairs are indistinguishable');
 
+// #161: genuine small-sample 95% Student-t, never asymptotic 1.96 for n=2.
+assert.equal(pairedCi([]).ciLow,null);
+assert.equal(pairedCi([1]).ciHigh,null);
+assert.ok(Math.abs(pairedCi([1,0.5]).critical-12.706204736)<1e-8);
+assert.ok(Math.abs(pairedCi([1,0,0.5]).critical-4.30265273)<1e-8);
+assert.ok(pairedCi(Array.from({length:100},(_,i)=>i%2)).critical>=1.96);
+assert.ok(pairedCi([1,0.5]).ciLow<0,
+  'old 1.96 CI spuriously excludes zero in a two-pair sample');
+
 // --- end-to-end eligibility: gate + paired CIs + negative gates ---
 // 2 pairs per (map x opponent) cell so the gate's minPairsPerCell=2 holds.
 const cells=[['World','balanced'],['World','rush'],['Europe','balanced'],
