@@ -453,6 +453,9 @@ function predict(model,input){
   let opponentHistory=new Map(),opponentProfiles=new Map(),lastEconomyPosture='—',lastDirectorDecision=null;
   let planningState={tick:-Infinity,candidates:[],selected:null,rejected:null,
     durationMs:0,budgetMs:50,truncated:false};
+  // P0: one canonical decision frame per planning tick (bounded), resolved
+  // against confirmations/observations at fixed horizons before export.
+  let decisionFrames=[];
   let investmentAssessments=[];
   let operation=null,operationCooldown=new Map(),duoPlan=null,victoryThreat=null,decisionTimeline=[],decisionKeys=new Map();
   // sessionStorage is tab-scoped: survives reloads but never assigns the
@@ -691,6 +694,48 @@ function predict(model,input){
       diagnostics.splice(0,dropped);
     }
   }
+  // P0: link decision frames to emitted intents and confirmations.
+  // A frame stays "pending" until the fixed observation horizon passes; if
+  // the match ends before confirmation it is "censored", never "unknown=0".
+  const DECISION_EFFECT_HORIZON=120,DECISION_RESOLVE_HORIZON=600;
+  function resolveDecisionFrames(tick){
+    if(tick===null||!Number.isFinite(tick)||tick<0)return;
+    for(const frame of decisionFrames){
+      if(frame.resolved)continue;
+      const linked=actionLedger.filter(e=>e.decisionId===frame.decisionId);
+      const seen=new Map();
+      for(const e of linked)seen.set(e.actionId,e);
+      const intents=[...seen.values()].map(e=>({actionId:e.actionId,
+        intent:e.intent,tick:e.tick,emission:e.emission,
+        observed:e.observed,observedTick:e.observedTick??null}));
+      frame.actualIntents=intents;
+      frame.actionReceipt=[...seen.values()].map(e=>({actionId:e.actionId,
+        observed:e.observed,observedTick:e.observedTick??null,
+        effect:e.effect,outcomeObservation:e.outcomeObservation??null,
+        homeAfter:e.homeAfterObserved??null,
+        goldAfter:e.goldAfterObserved??null}));
+      frame.observedEffects=[...seen.values()].map(e=>({actionId:e.actionId,
+        effect:e.effect,
+        observedOutcome:e.outcomeObservation?.observedOutcome??null}));
+      const confirmed=seen.size>0&&[...seen.values()].some(e=>
+        String(e.observed).endsWith('confirmed'));
+      const unconfirmed=seen.size>0&&[...seen.values()].some(e=>
+        e.observed==='attack_unconfirmed'||e.observed==='build_unconfirmed');
+      const horizonReached=tick>=frame.tick+DECISION_EFFECT_HORIZON;
+      if(horizonReached&&
+        (confirmed||unconfirmed||tick>=frame.tick+DECISION_RESOLVE_HORIZON)){
+        frame.outcomeStatus=confirmed?'confirmed':
+          unconfirmed?'unconfirmed':'unknown';
+        frame.resolution={atTick:tick,
+          censored:!confirmed&&!unconfirmed,
+          effectHorizon:DECISION_EFFECT_HORIZON,
+          resolveHorizon:DECISION_RESOLVE_HORIZON};
+        frame.resolved=true;
+      }
+    }
+    if(decisionFrames.length>16)
+      decisionFrames.splice(0,decisionFrames.length-16);
+  }
   function gameOutcome(g,me){
     const result={outcome:'unknown',source:'gameOver',tick:number(()=>g?.ticks?.(),-1),
       alive:me?.isAlive?.()??null,land:number(()=>me?.numTilesOwned?.(),0),
@@ -748,6 +793,7 @@ function predict(model,input){
         note:'Die Datei ist ein Spielmitschnitt; Sieg und echte Mehrkarten-Benchmarks erfordern vollständige Browser-Matches.'},
       opponents:[...opponentProfiles.values()].map(v=>({...v})),
       decisionFrame:lastDecisionFrame,planning:planningState,
+      decisionFrames:decisionFrames.map(v=>({...v})),
       economyBudgetEvidence,shadowDecisionEvidence,
       investmentAssessments,operation,duoPlan,victoryThreat,
       localDuo:{status:duoLocal.status,peer:duoLocal.peer,
@@ -1106,10 +1152,10 @@ function predict(model,input){
     buildCursor=0;spawnCache=null;spawnJob=null;spawnRetryAt=0;spawnAlternatives=[];spawnState={scanned:0,phase:'idle',lastSent:null,attempts:0,blocked:null,deadline:null};cooldowns.clear();rejected.clear();
     plan=null;lastSelection='';lastEmission=0;borderOffset=0;lastBorderRefresh=0;
     totalSent=0;totalFailed=0;actions=[];errors=0;troopSamples=[];
-    lastDecisionFrame=null;lastRecoveryReason='';lastBattle=null;pendingAttack=null;targetIntelCache.clear();frontMemory.clear();opponentHistory.clear();lastEconomyPosture='—';lastDirectorDecision=null;planningState={tick:-Infinity,candidates:[],selected:null,rejected:null,durationMs:0,budgetMs:50,truncated:false};investmentAssessments=[];neuralPolicyCache={key:null,output:null};lastFrontWarning=-Infinity;
+    lastDecisionFrame=null;lastRecoveryReason='';lastBattle=null;pendingAttack=null;targetIntelCache.clear();frontMemory.clear();opponentHistory.clear();lastEconomyPosture='—';lastDirectorDecision=null;planningState={tick:-Infinity,candidates:[],selected:null,rejected:null,rejectedCandidates:[],durationMs:0,budgetMs:50,truncated:false,decisionId:null,matchId:'unknown',clientId:null,dataAge:{requestedTick:null,borderAgeTicks:null},missingMask:{borderStale:true,opponentTroopsUnknown:0,modelEnabled:false},provenance:{bot:VERSION,engineCommit:null,gameMode:'unknown'},modelChoice:null,modelScores:null,actualIntents:null,blockReasons:null,actionReceipt:null,observedEffects:null,outcomeStatus:'pending',resolved:false};investmentAssessments=[];neuralPolicyCache={key:null,output:null};lastFrontWarning=-Infinity;
     attackReceipts={confirmed:0,unconfirmed:0,territoryGained:0};blockedTargets.clear();
     attackCommands=[];attackCommandSequence=0;observedAttacks.clear();
-    actionSequence=0;lastActionId=null;actionLedger=[];
+    actionSequence=0;lastActionId=null;actionLedger=[];decisionFrames=[];
     diagnosticAutoExported=false;diagnosticLastPeerTick=-Infinity;
     diagnosticHelpSequence=0;diagnosticHelpId=null;diagnosticHelpSince=null;
     diagnosticLastReceivedHelp=null;diagnosticLastHelpAck=null;
@@ -2127,10 +2173,41 @@ function predict(model,input){
       reason:'bestätigter Partnerbedarf'});
     candidates.sort((a,b)=>b.utility-a.utility||String(a.id).localeCompare(String(b.id)));
     const limited=candidates.slice(0,8),selected=limited[0]||null;
+    const rejectedCandidates=limited.slice(1);
     planningState={tick,candidates:limited,selected,
-      rejected:limited[1]||null,durationMs:Number((performance.now()-started).toFixed(2)),
+      rejected:limited[1]||null,rejectedCandidates,
+      durationMs:Number((performance.now()-started).toFixed(2)),
       budgetMs,truncated:candidates.length>limited.length||performance.now()-started>budgetMs,
       semantics:'bounded-ranking-only; existing legality remains authoritative'};
+    // P0 canonical decision frame (diagnostics only; it never authorizes or
+    // blocks actions). One frame per planning tick links the rule choice, the
+    // shadow model ranking and the actually emitted intent through the same
+    // decisionId that send() stamps on every action record. Rejected
+    // candidates are only ranked in this match; none is executed, so no
+    // counterfactual effect may be attributed to them here.
+    const borderAge=lastDecisionFrame?.borderAgeTicks??null;
+    planningState.decisionId=monitorSession?monitorSession+':t'+
+      number(()=>game?.ticks?.(),0):':t'+number(()=>game?.ticks?.(),0);
+    planningState.matchId=String(game?.gameID?.()??'unknown');
+    planningState.clientId=safeID(me);
+    planningState.dataAge={requestedTick:lastDecisionFrame?.requestedTick??null,
+      borderAgeTicks:borderAge};
+    planningState.missingMask={
+      borderStale:borderAge===null||borderAge>20,
+      opponentTroopsUnknown:(groups||[]).filter(g=>g.id!==null&&
+        !Number.isFinite(number(()=>g.opponent?.troops?.(),NaN))).length,
+      modelEnabled:!!(opts.shadowRankEnabled&&shadowV5Model)};
+    planningState.provenance={bot:VERSION,
+      engineCommit:window.BOOTSTRAP_CONFIG?.gitCommit??null,
+      gameMode:game?.config?.().gameConfig?.().gameMode??'unknown'};
+    planningState.modelChoice=null;
+    planningState.modelScores=null;
+    planningState.actualIntents=null;
+    planningState.blockReasons=null;
+    planningState.actionReceipt=null;
+    planningState.observedEffects=null;
+    planningState.outcomeStatus='pending';
+    planningState.resolved=false;
     // Candidate-v5 only observes the fixed rule-ranked choices; its output is
     // never read by an intent, budget, reserve, legality or target selector.
     if(opts.shadowRankEnabled&&shadowV5Model&&limited.length){
@@ -2150,6 +2227,8 @@ function predict(model,input){
         shadowDecisionEvidence={tick,ruleChoice:selected?.id??null,
           wouldPrefer:rankedShadow[0]?.id??null,ranked:rankedShadow,
           changedIntent:false,evidence:'shadow-only; not observed game effect'};
+        planningState.modelChoice=rankedShadow[0]?.id??null;
+        planningState.modelScores=rankedShadow;
         if(tick%100<4)telemetry('neural_shadow_rank',
           'Schema-5-Vorschlag nur protokolliert',shadowDecisionEvidence);
       }catch(e){shadowDecisionEvidence={tick,error:String(e?.message||e),
@@ -7245,7 +7324,7 @@ function predict(model,input){
           cities:ownStructures(me).filter(u=>u.type?.()==='City').length,
           factories:ownStructures(me).filter(u=>u.type?.()==='Factory').length,
           borders:tiles.length,tuning:{...autoTuning,enabled:!!opts.fullAuto},defense:{status:defenseStatus,incoming:s.incoming,
-            committed:s.committed,pendingRetreats:retreatRequests.size},enemies:groups.filter(g=>g.id!==null).map(g=>({name:nameOf(g.opponent),troops:number(()=>g.opponent.troops()),land:number(()=>g.opponent.numTilesOwned())})),
+            committed:s.committed,pendingRetreats:retreatRequests.size},enemies:groups.filter(g=>g.id!==null&&!me.isOnSameTeam?.(g.opponent)).map(g=>({name:nameOf(g.opponent),troops:number(()=>g.opponent.troops()),land:number(()=>g.opponent.numTilesOwned())})),
           readiness:context.readiness?.reason,ratio:s.ratio,maxTroops:s.max,growthPotential:s.growthPotential,
           victory:winStatus,victoryThreat,operation,duoPlan,
           opponentProfiles:[...opponentProfiles.values()],
@@ -7285,10 +7364,14 @@ function predict(model,input){
         ' · Reserve '+Math.round(s.reserve/10)+' · Front '+Math.round(s.committed/10);
       const ranked=rankedTargets(groups,me,tick,s,context);
       const planning=strategicCandidatePlan(me,groups,s,context,ranked,tick);
+      // P0: one canonical frame per planning tick (bounded to the last 16).
+      decisionFrames.push(planning);
+      if(decisionFrames.length>16)decisionFrames.shift();
       reportAttackBlocks(me,groups,s,context,ranked,tick);
       // Do not open a new front while the homeland is under heavy assault.
       const dangerNow=defenseAssessment(me,s,tick);
-      if(dangerNow.severe){await fleetDefense(me,tick,serial);
+      if(dangerNow.severe){planning.blockReasons=['heavy-assault-hold'];
+        await fleetDefense(me,tick,serial);
         status='NOTVERTEIDIGUNG · Heimtruppen halten / Angriffe zurückrufen';return;}
       if(await defense(me,tick,serial,groups,s))return;
       if(await fleetDefense(me,tick,serial))return;
@@ -7304,6 +7387,7 @@ function predict(model,input){
       }
       lastDirectorDecision=directive;
       if(directive.order[0]==='hold') {
+        planning.blockReasons=[directive.reason||'hold'];
         decisionNote('warte',directive.reason,[
           'Nächster Schritt: Reserve regenerieren oder Frontlage ändern'],tick);
         status='AUFBAU · Truppen regenerieren / Verteidigung halten';
@@ -7317,6 +7401,7 @@ function predict(model,input){
           await naval(me,tick,serial)){consecutiveIdle=0;return;}
       }
       consecutiveIdle++;
+      planning.blockReasons=[directive.reason||'hold','no-channel-action'];
       if(consecutiveIdle>4){status='WARTEN · '+directive.reason;
         decisionNote('warte',directive.reason,[
           ranked.length?'Ziel verworfen: Worker, Reserve oder Frontlage':'Kein sicherer Angriffskandidat',
@@ -7326,7 +7411,8 @@ function predict(model,input){
       console.warn(PREFIX,e);
       if((opts.stopOnError||opts.safeMode)&&errors>=5){
         opts.enabled=false;generation++;persist();status='Not-Aus: 5 Laufzeitfehler';
-      }} finally {runtime.combatMs=Math.round(performance.now()-t0);busy=false;paint();}
+      }} finally {runtime.combatMs=Math.round(performance.now()-t0);busy=false;
+      resolveDecisionFrames(tick);paint();}
   }
   async function economyStep() {
     if(economyBusy || !opts.enabled || !opts.economy || !connected())return;

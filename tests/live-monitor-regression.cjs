@@ -19,7 +19,10 @@ async function main(){
     }
     const token=output.match(/Tampermonkey-Token: ([a-f0-9]{64})/)[1];
     const url='http://127.0.0.1:8766/v1/events';
-    const sessionA='match-first-abc123',sessionB='match-second-def456';
+    // Session IDs persist on disk (the monitor treats disk as authoritative),
+    // so every run needs fresh IDs to stay idempotent on a local checkout.
+    const nonce='run'+Date.now().toString(36);
+    const sessionA=nonce+'-match-first-abc123',sessionB=nonce+'-match-second-def456';
     const record=(session,seq,tick=10)=>({
       session,seq,time:new Date().toISOString(),tick,kind:'snapshot',message:'test'});
     const post=async records=>fetch(url,{method:'POST',
@@ -53,7 +56,7 @@ async function main(){
     // memory. All files and per-session sequence numbers must remain intact.
     const finished=[];
     for(let i=0;i<51;i++){
-      const id='finished-match-'+String(i).padStart(4,'0');
+      const id=nonce+'-finished-match-'+String(i).padStart(4,'0');
       const result=await post([{...record(id,1,i),kind:'game_over'}]);
       assert.equal(result.status,200,'finished session '+i+' accepted');
       finished.push({id,...await result.json()});

@@ -56,10 +56,41 @@
       reason:'bestätigter Partnerbedarf'});
     candidates.sort((a,b)=>b.utility-a.utility||String(a.id).localeCompare(String(b.id)));
     const limited=candidates.slice(0,8),selected=limited[0]||null;
+    const rejectedCandidates=limited.slice(1);
     planningState={tick,candidates:limited,selected,
-      rejected:limited[1]||null,durationMs:Number((performance.now()-started).toFixed(2)),
+      rejected:limited[1]||null,rejectedCandidates,
+      durationMs:Number((performance.now()-started).toFixed(2)),
       budgetMs,truncated:candidates.length>limited.length||performance.now()-started>budgetMs,
       semantics:'bounded-ranking-only; existing legality remains authoritative'};
+    // P0 canonical decision frame (diagnostics only; it never authorizes or
+    // blocks actions). One frame per planning tick links the rule choice, the
+    // shadow model ranking and the actually emitted intent through the same
+    // decisionId that send() stamps on every action record. Rejected
+    // candidates are only ranked in this match; none is executed, so no
+    // counterfactual effect may be attributed to them here.
+    const borderAge=lastDecisionFrame?.borderAgeTicks??null;
+    planningState.decisionId=monitorSession?monitorSession+':t'+
+      number(()=>game?.ticks?.(),0):':t'+number(()=>game?.ticks?.(),0);
+    planningState.matchId=String(game?.gameID?.()??'unknown');
+    planningState.clientId=safeID(me);
+    planningState.dataAge={requestedTick:lastDecisionFrame?.requestedTick??null,
+      borderAgeTicks:borderAge};
+    planningState.missingMask={
+      borderStale:borderAge===null||borderAge>20,
+      opponentTroopsUnknown:(groups||[]).filter(g=>g.id!==null&&
+        !Number.isFinite(number(()=>g.opponent?.troops?.(),NaN))).length,
+      modelEnabled:!!(opts.shadowRankEnabled&&shadowV5Model)};
+    planningState.provenance={bot:VERSION,
+      engineCommit:window.BOOTSTRAP_CONFIG?.gitCommit??null,
+      gameMode:game?.config?.().gameConfig?.().gameMode??'unknown'};
+    planningState.modelChoice=null;
+    planningState.modelScores=null;
+    planningState.actualIntents=null;
+    planningState.blockReasons=null;
+    planningState.actionReceipt=null;
+    planningState.observedEffects=null;
+    planningState.outcomeStatus='pending';
+    planningState.resolved=false;
     // Candidate-v5 only observes the fixed rule-ranked choices; its output is
     // never read by an intent, budget, reserve, legality or target selector.
     if(opts.shadowRankEnabled&&shadowV5Model&&limited.length){
@@ -79,6 +110,8 @@
         shadowDecisionEvidence={tick,ruleChoice:selected?.id??null,
           wouldPrefer:rankedShadow[0]?.id??null,ranked:rankedShadow,
           changedIntent:false,evidence:'shadow-only; not observed game effect'};
+        planningState.modelChoice=rankedShadow[0]?.id??null;
+        planningState.modelScores=rankedShadow;
         if(tick%100<4)telemetry('neural_shadow_rank',
           'Schema-5-Vorschlag nur protokolliert',shadowDecisionEvidence);
       }catch(e){shadowDecisionEvidence={tick,error:String(e?.message||e),

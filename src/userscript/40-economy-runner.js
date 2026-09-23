@@ -2396,7 +2396,7 @@
           cities:ownStructures(me).filter(u=>u.type?.()==='City').length,
           factories:ownStructures(me).filter(u=>u.type?.()==='Factory').length,
           borders:tiles.length,tuning:{...autoTuning,enabled:!!opts.fullAuto},defense:{status:defenseStatus,incoming:s.incoming,
-            committed:s.committed,pendingRetreats:retreatRequests.size},enemies:groups.filter(g=>g.id!==null).map(g=>({name:nameOf(g.opponent),troops:number(()=>g.opponent.troops()),land:number(()=>g.opponent.numTilesOwned())})),
+            committed:s.committed,pendingRetreats:retreatRequests.size},enemies:groups.filter(g=>g.id!==null&&!me.isOnSameTeam?.(g.opponent)).map(g=>({name:nameOf(g.opponent),troops:number(()=>g.opponent.troops()),land:number(()=>g.opponent.numTilesOwned())})),
           readiness:context.readiness?.reason,ratio:s.ratio,maxTroops:s.max,growthPotential:s.growthPotential,
           victory:winStatus,victoryThreat,operation,duoPlan,
           opponentProfiles:[...opponentProfiles.values()],
@@ -2436,10 +2436,14 @@
         ' · Reserve '+Math.round(s.reserve/10)+' · Front '+Math.round(s.committed/10);
       const ranked=rankedTargets(groups,me,tick,s,context);
       const planning=strategicCandidatePlan(me,groups,s,context,ranked,tick);
+      // P0: one canonical frame per planning tick (bounded to the last 16).
+      decisionFrames.push(planning);
+      if(decisionFrames.length>16)decisionFrames.shift();
       reportAttackBlocks(me,groups,s,context,ranked,tick);
       // Do not open a new front while the homeland is under heavy assault.
       const dangerNow=defenseAssessment(me,s,tick);
-      if(dangerNow.severe){await fleetDefense(me,tick,serial);
+      if(dangerNow.severe){planning.blockReasons=['heavy-assault-hold'];
+        await fleetDefense(me,tick,serial);
         status='NOTVERTEIDIGUNG · Heimtruppen halten / Angriffe zurückrufen';return;}
       if(await defense(me,tick,serial,groups,s))return;
       if(await fleetDefense(me,tick,serial))return;
@@ -2455,6 +2459,7 @@
       }
       lastDirectorDecision=directive;
       if(directive.order[0]==='hold') {
+        planning.blockReasons=[directive.reason||'hold'];
         decisionNote('warte',directive.reason,[
           'Nächster Schritt: Reserve regenerieren oder Frontlage ändern'],tick);
         status='AUFBAU · Truppen regenerieren / Verteidigung halten';
@@ -2468,6 +2473,7 @@
           await naval(me,tick,serial)){consecutiveIdle=0;return;}
       }
       consecutiveIdle++;
+      planning.blockReasons=[directive.reason||'hold','no-channel-action'];
       if(consecutiveIdle>4){status='WARTEN · '+directive.reason;
         decisionNote('warte',directive.reason,[
           ranked.length?'Ziel verworfen: Worker, Reserve oder Frontlage':'Kein sicherer Angriffskandidat',
@@ -2477,7 +2483,8 @@
       console.warn(PREFIX,e);
       if((opts.stopOnError||opts.safeMode)&&errors>=5){
         opts.enabled=false;generation++;persist();status='Not-Aus: 5 Laufzeitfehler';
-      }} finally {runtime.combatMs=Math.round(performance.now()-t0);busy=false;paint();}
+      }} finally {runtime.combatMs=Math.round(performance.now()-t0);busy=false;
+      resolveDecisionFrames(tick);paint();}
   }
   async function economyStep() {
     if(economyBusy || !opts.enabled || !opts.economy || !connected())return;
