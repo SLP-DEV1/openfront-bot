@@ -99,6 +99,53 @@ naval 33}, `rush` {hold 121}, `turtle` {invest 102}. Das beweist die
 Archetypen als echte, abweichende Strategie – nicht denselben Bot unter
 zehn Namen. Eine kurze Smoke begründet **keine** breite Spielstärke.
 
+## Box 239 – Vollständige Liga mit tatsächlich verschieden spielenden Clients
+
+Im Gegensatz zur Smoke spielt hier **keine** fest 700-Ticks-FFA-Testpartie,
+sondern eine vollständige Liga über mehrere Seeds mit vollständigen
+Bot-Clients, die **bewusst verschiedene** versionierte Archetypen spielen
+(nicht denselben Bot unter zehn Namen). Der volle Bot-Pfad von
+`league.cjs` weist jedem Teilnehmer je Partie eine andere Archetyp-
+Politik zu: FFA `legacy` vs `rush`; 2v2 Team 0 `duo`/`legacy` gegen
+Team 1 `rush`/`turtle`. Die Beweispflicht liegt in
+`match.json → fullBots[].diagnostics.archetypeSignature.selectedByKind`,
+das pro Client die tatsächlich geplante Strategie pro Art zeigt.
+
+**Nachgewiesen ausgeführt** (lokale Engine, Commit
+`13b403387af01d388f8c8ed8c953b6d3a11d1457`, jeweils 900 Ticks,
+`status:"recorded"`, `termination:"tick-limit"`, `error:null`):
+
+- FFA (Solo `legacy` gegen Run3 `rush`):
+  `legacy` {hold 90, **naval 73**, expand 11} vs `rush` {**hold 164**,
+  expand 10, kein naval} – unterschiedliche Planningsverteilung.
+- 2v2 (Team 0 `duo`/`legacy` gegen Team 1 `rush`/`turtle`):
+  `duo` {**naval 88**}, `legacy` {hold 138, naval 33}, `rush`
+  {**hold 171**}, `turtle` {**invest 102**} – vier verschiedene
+  Strategien in einer Partie.
+
+Reproduktion:
+
+```powershell
+node tools/benchmark/league.cjs --execute --engine ../OpenFrontIO --engineCommit 13b403387af01d388f8c8ed8c953b6d3a11d1457 --bot OpenFront_Solo_AggroBot.user.js --opponentBot OpenFront_AggroBot_Impossible_Run3.user.js --seeds box239-ffa-1,box239-ffa-2 --profiles autonomous --opponents balanced --ticks 900 --out benchmark-results/box239-ffa
+node tools/benchmark/league.cjs --execute --gameMode Team --participants 4 --engine ../OpenFrontIO --engineCommit 13b403387af01d388f8c8ed8c953b6d3a11d1457 --bot OpenFront_Solo_AggroBot.user.js --opponentBot OpenFront_AggroBot_Impossible_Run3.user.js --seeds box239-2v2-1,box239-2v2-2 --profiles autonomous --opponents balanced --ticks 900 --out benchmark-results/box239-2v2
+```
+
+Dieser Lauf ist als reproduzierbarer CI-Schritt verdrahtet:
+`.github/workflows/league-archetype.yml` spielt dieselbe vollständige
+FFA- und 2v2-Liga gegen die offizielle Engine (gepinnt
+`bb8af015b515b3b717bd4d901074c5f4c16641cb`) und prüft pro Partie, dass
+die `selectedByKind`-Signaturen der Clients **nicht alle identisch** sind
+(tatsächlich verschiedene Spielweise). Ergebnis-Kategorie: **Echte
+Engine-Matches bestanden** (Kategorie 3) – keine Human-/Browser-Abnahme.
+
+Die echte **2-Browser- bzw. menschliche Multiplayer-Abnahme** (Kategorie
+„reale Human-Multiplayer-Abnahme“) wird durch diese In-Process-Läufe
+**nicht** ersetzt: das lokale Duo-Relay ist implementiert und getestet,
+die 2v2-Partien sind offizielle Team-Matches (bestätigte Engine-Team-
+zugehörigkeit, keine Engine-Befehle über das Relay), aber sie laufen
+seriell in einem Prozess. Die Durchführung mit echten Browsern bzw.
+Menschen ist gesondert dokumentiert und **wartet auf Durchführung**.
+
 ## Ein einzelnes Match mit expliziter Aufstellung
 
 `lineup.json`:
