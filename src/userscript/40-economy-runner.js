@@ -1185,6 +1185,27 @@
     const units=(()=>{try{return game.units?.()||[];}catch(_){return [];}})();
     const mine=safeID(me),own=type=>units.filter(u=>
       u.type?.()===type&&safeID(u.owner?.())===mine&&u.isActive?.());
+    marineUnresolvedWatches=marineUnresolvedWatches.filter(a=>{
+      // This is a later coast observation, never proof that the missing boat
+      // arrived or was destroyed. Keep it separate from confirmed landing
+      // and the original unresolved/censored transport count.
+      if(ownedTile(a.tile,me)){
+        telemetry('boat_late_coast_observed',
+          'Küste nach ungeklärtem Transport später im eigenen Besitz',{
+            actionId:a.actionId,shipIds:a.shipIds,tile:a.tile,
+            elapsed:tick-a.lostTick,eta:a.eta,
+            evidence:'later-coast-ownership-not-causal'});
+        return false;
+      }
+      if(tick>=a.watchUntil){
+        telemetry('boat_late_coast_unobserved',
+          'Nachbeobachtung der ungeklärten Küste beendet',{
+            actionId:a.actionId,shipIds:a.shipIds,tile:a.tile,
+            eta:a.eta,evidence:'no-observed-coast-not-proven-loss'});
+        return false;
+      }
+      return true;
+    });
     landingAudits=landingAudits.filter(a=>{
       const held=ownedTile(a.tile,me),age=tick-a.tick;
       a.checkpoints=Array.isArray(a.checkpoints)?a.checkpoints:[];
@@ -1321,7 +1342,21 @@
             // We requested cancellation because the destination became friendly.
             // Disappearance alone cannot prove cancellation, arrival or loss.
             navalCooldown.set(boat.key,tick+600);
-          }else landingFailure(boat,tick,landingTile,'ship-disappeared-unresolved');
+          }else{
+            // The immediate grace window prevents a stuck pendingBoat from
+            // blocking new legal operations. A separate bounded watcher
+            // preserves evidence until the visible MotionPlan ETA.
+            marineUnresolvedWatches.push({
+              actionId:boat.actionId??null,shipIds:[...boat.shipIds],
+              tile:landingTile,lostTick:boat.observationLostTick,
+              eta:boat.eta??null,watchUntil:Math.min(tick+7200,
+                Math.max(tick+120,(boat.eta?.arrivalTick??tick)+120))
+            });
+            if(marineUnresolvedWatches.length>24)
+              marineUnresolvedWatches.splice(0,
+                marineUnresolvedWatches.length-24);
+            landingFailure(boat,tick,landingTile,'ship-disappeared-unresolved');
+          }
           pendingBoat=null;
         }
       }else if(boat.seen && tick-boat.tick>650 && !boat.delayed){
