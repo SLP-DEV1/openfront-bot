@@ -97,7 +97,7 @@ function duoNuclearInvestmentKernel(x){
     else if(coreReady&&(x.enemySilos||0)>0&&!siloFundActive)
       wantedSAM=Math.min(silos>0&&x.nukeShots>0?3:silos>0?1:2,
         Math.max(ownSAM,Math.ceil(uncovered/3)));
-    else if(x.proactiveSAM===true&&ownSAM===0)wantedSAM=1;
+    else if(coreReady&&x.proactiveSAM===true&&ownSAM===0)wantedSAM=1;
   }
   return {primary,peerValid,firstSiloWindow,siloFundActive,firstGuard,
     wantedSAM,samFundingUrgent:incoming>0||firstGuard,
