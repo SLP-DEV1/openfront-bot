@@ -288,6 +288,36 @@ function boot(benchmarkOptions={}) {
       canUpgrade:false,cost:type==='SAM Launcher'?1500000n:125000n}))});
     return x;
   }
+  await check('#133 budget-block telemetry is reasoned and time-deduplicated',()=>{
+    const x=samScenario();x.b.setMonitorSession('budget-dedupe');
+    x.b.setTroopSnapshot(x.b.military(x.me,[]));
+    for(let i=0;i<12;i++)assert.equal(x.b.spendBudget(x.me,300000,'Warship'),false);
+    let rows=x.b.state().diagnostics.filter(d=>d.kind==='gold_budget_blocked');
+    assert.equal(rows.length,1,'same blocker must not spam diagnostics every call');
+    x.setTick(2481);
+    assert.equal(x.b.spendBudget(x.me,300000,'Warship'),false);
+    rows=x.b.state().diagnostics.filter(d=>d.kind==='gold_budget_blocked');
+    assert.equal(rows.length,2);
+    assert.equal(rows.at(-1).suppressedSinceLast,11);
+    assert.equal(rows.at(-1).purpose,'Warship');
+    assert.equal(rows.at(-1).samFund,1500000);
+  });
+  await check('#133 diagnostic summary separates intent, confirmation and effect evidence',()=>{
+    const x=boot();x.b.setMonitorSession('evidence-summary');
+    x.b.setLastEmission(0);
+    assert.equal(x.b.send('attack',['weak',10000],'evidence test'),true);
+    let summary=x.b.diagnosticSnapshot().actionEvidence;
+    assert.equal(summary.intents,1);
+    assert.equal(summary.confirmedObservations,0);
+    assert.equal(summary.effectsObserved,0);
+    assert.equal(summary.stillUnknown,1);
+    const action=x.b.diagnosticSnapshot().actionTrace.ledger[0];
+    x.b.telemetry('attack_confirmed','confirmed',{actionId:action.actionId,tick:301});
+    summary=x.b.diagnosticSnapshot().actionEvidence;
+    assert.equal(summary.confirmedObservations,1);
+    assert.equal(summary.effectsObserved,0,
+      'confirmation is not silently upgraded to observed effect');
+  });
   await check('audit monitor bridge preserves fresh decision metrics and session',()=>{
     const events=[];
     const x=boot({__OF_LOCAL_MONITOR_ACTIVE__:true,dispatchEvent:e=>events.push(e)});
