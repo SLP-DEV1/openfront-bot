@@ -82,7 +82,8 @@ function duoNuclearInvestmentKernel(x){
   const incoming=Math.max(0,x.incomingNukes||0);
   const uncovered=Math.max(0,x.uncovered||0);
   const ownSAM=Math.max(0,x.ownSAM||0),silos=Math.max(0,x.silos||0);
-  const firstGuard=uncovered>0&&ownSAM===0&&
+  const firstGuard=x.antiNuke===true&&!x.samSearchBlocked&&
+    uncovered>0&&ownSAM===0&&
     ((x.enemySilos||0)>0||x.proactiveSAM===true);
   const siloFundActive=firstSiloWindow&&silos===0&&
     !x.urgentVictory&&!incoming&&!firstGuard;
