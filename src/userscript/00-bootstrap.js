@@ -59,6 +59,7 @@
     localStorage.setItem(KEY,JSON.stringify({...opts,...archetypeBaseOptions}));
   } catch (_) {}};
   if(retiredBrainSettings)persist();
+  /* __DECISION_KERNELS__ */
 
   // P1: versionierte, überprüfbare Gegner-Archetypen. Ein Archetyp ist eine
   // GEFRORENE Strategiepolitik, die die Kandidaten-Rangfolge des Planers – und
