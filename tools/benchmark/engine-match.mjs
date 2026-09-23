@@ -188,6 +188,16 @@ vm.runInNewContext(source,context,{timeout:5000});
 const bot=win.__OF_BENCHMARK__;if(!bot)throw Error('Userscript has no loopback benchmark bridge (requires v1.10.9+)');
 let started=false,spawned=false,termination='tick-limit',failure=null,finalTick=0;
 const visibleSamples=[];
+// Step 3: optional per-decision frame capture for real training datasets.
+const planningFrames=[];
+function capturePlanning(turn,me){
+  if(!opts.planningFrames)return;
+  if(turn%100!==0)return;
+  try{
+    const pf=bot?.planningFrame?.();
+    if(pf)planningFrames.push(pf);
+  }catch(_){/* diagnostics only; never fail the match on capture */}
+}
 function sampleVisible(turn,me){
   visibleTrajectory.sampleVisible(visibleSamples,turn,me,view.playerViews?.());
 }
@@ -206,6 +216,7 @@ try{
     if(winUpdate)observedWinner=winUpdate;
     if(turn%4===0||winUpdate){await bot.pump();if(!started&&bot.status().connected){bot.start(common.profiles[opts.profile]);started=true;}}
     const me=view.myPlayer();spawned ||= !!me?.hasSpawned();
+    capturePlanning(turn,me);
     if(turn%200===0||winUpdate||!me?.isAlive?.())sampleVisible(turn,me);
     if(winUpdate){termination='game-over';break;}
     if(spawned&&me&&!me.isAlive()){termination='eliminated';break;}
@@ -228,6 +239,7 @@ finally{
     report.gameEnd={outcome:winner==null?'incomplete':ids.includes(me?.clientID())?'victory':'defeat',source:'engine-WinUpdate',tick:finalTick,land:me?.numTilesOwned()??0};
   }
   report.engineWinner=observedWinner?.winner??null;
+  if(planningFrames.length)report.planningFrames=planningFrames;
   if(visibleSamples.length)report.trajectory=visibleTrajectory.trajectory(visibleSamples);
   report.finalState={tick:finalTick,land:me?.numTilesOwned()??0,alive:me?.isAlive()??null,gold:String(me?.gold()??0),
     units:me?.units().map(u=>({type:u.type(),id:u.id()}))??[]};

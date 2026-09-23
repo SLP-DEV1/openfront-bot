@@ -665,6 +665,29 @@ function predict(model,input){
   // P0: one canonical decision frame per planning tick (bounded), resolved
   // against confirmations/observations at fixed horizons before export.
   let decisionFrames=[];
+  // Step 3: benchmark-only per-decision frame for real training capture.
+  // Mirrors the P5 runtime state EXACTLY (strategicCandidatePlan builds the
+  // same state from troopSnapshot/strategic.groups/goldAmount) and returns
+  // the full candidate list projected to the runtime candidate contract
+  // ({kind,costTroops,counterRisk,holdProbability}). Diagnostics only: it
+  // reads state, never authorizes or blocks actions.
+  function planningFrame(){
+    const me=myPlayer();
+    if(!me?.hasSpawned?.())return null;
+    const sel=planningState?.selected;
+    if(!sel||!sel.kind)return null;
+    const s=troopSnapshot,groups=strategic?.groups||[];
+    const project=c=>({kind:c.kind,costTroops:c.cost||0,
+      counterRisk:c.risk||0,
+      holdProbability:1-Math.min(1,c.risk||0)});
+    return {tick:number(()=>game?.ticks?.(),null),
+      land:number(()=>me.numTilesOwned(),0),
+      home:s.home,maxTroops:s.max,committed:s.committed,
+      incoming:s.incoming,reserve:s.reserve,gold:goldAmount(me),
+      capacityUse:s.ratio,frontCount:groups?.length||0,
+      candidate:project(sel),
+      candidates:(planningState?.candidates||[]).map(project)};
+  }
   let investmentAssessments=[];
   let operation=null,operationCooldown=new Map(),duoPlan=null,victoryThreat=null,decisionTimeline=[],decisionKeys=new Map();
   // sessionStorage is tab-scoped: survives reloads but never assigns the
@@ -8074,6 +8097,8 @@ function predict(model,input){
         reportIntents(true);
       },
       stop:()=>{telemetry('benchmark_stop','Lokaler Testlauf gestoppt');opts.enabled=false;autoStartGame=game;generation++;},
+      // Step 3: benchmark-only per-decision frame for real training capture.
+      planningFrame:()=>planningFrame(),
       // Engine harness awaits every cycle; ordinary browser timers stay unchanged.
       pump:async()=>{await step();await economyStep();await diplomacyTick();
         await nukeStep();if(opts.duoEnabled)await duoPublish();}

@@ -220,6 +220,8 @@
         reportIntents(true);
       },
       stop:()=>{telemetry('benchmark_stop','Lokaler Testlauf gestoppt');opts.enabled=false;autoStartGame=game;generation++;},
+      // Step 3: benchmark-only per-decision frame for real training capture.
+      planningFrame:()=>planningFrame(),
       // Engine harness awaits every cycle; ordinary browser timers stay unchanged.
       pump:async()=>{await step();await economyStep();await diplomacyTick();
         await nukeStep();if(opts.duoEnabled)await duoPublish();}
