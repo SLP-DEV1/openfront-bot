@@ -38,4 +38,27 @@ assert.deepEqual(s3.holdoutMatches,s.holdoutMatches);
 const sP=splitReplays(records.map(r=>({...r,playerId:'P1'})),
   {seed:'p2',keyOf:r=>r.matchId+'|'+r.playerId});
 assert.equal(sP.train.length+sP.holdout.length,records.length);
+// #159: custom identities must never partition two players in one match.
+const multi=[
+  {...mk('M',10),playerId:'alice',style:'rush'},
+  {...mk('M',20),playerId:'bob',style:'turtle'},
+  {...mk('N',10),playerId:'alice',style:'economy'},
+  {...mk('Q',10),playerId:'carol',style:'naval'}
+];
+for(const keyOf of [r=>r.matchId+'|'+r.playerId,r=>r.style,
+                    r=>r.playerId]){
+  for(const seed of ['p2','custom-1','custom-2','custom-3']){
+    const result=splitReplays(multi,{seed,holdoutRatio:0.5,keyOf});
+    const inTrain=new Set(result.train.map(r=>r.matchId));
+    assert.ok(result.holdout.every(r=>!inTrain.has(r.matchId)),
+      'no match leakage under custom key: '+seed);
+    assert.deepEqual(result,splitReplays(multi,{seed,holdoutRatio:0.5,keyOf}),
+      'same custom split must be deterministic');
+  }
+}
+const byPlayer=splitReplays(multi,{seed:'p2',holdoutRatio:0.5,
+  keyOf:r=>r.playerId});
+assert.equal(byPlayer.trainMatches.includes('M'),byPlayer.trainMatches.includes('N'),
+  'shared player identity joins complete match components');
+assert.throws(()=>splitReplays([{}]),/matchId/);
 console.log('PASS replay split: per-match disjoint, deterministic, content-independent');
