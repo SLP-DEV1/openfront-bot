@@ -81,3 +81,24 @@ bot code** in the P5 paired holdout
 (`tools/benchmark/paired-holdout.cjs`), where the candidate arm's bot SHA
 reflects the schema-5 model embedded into the source exactly as the harness
 embeds it.
+
+
+## Direkt testbare Policy-Kernels
+
+Neben den sechs kanonischen Userscript-Abschnitten liegen die
+entscheidungsrelevanten, browserfreien Kerne in
+`src/runtime/decision-kernels.cjs`. Direkt importierbar und ohne DOM/GameView
+testbar sind jetzt:
+
+- Archetypen-Ranking,
+- Economy-Recovery bei Income-Collapse,
+- Marine-Observation-Grace,
+- Schema-5 Candidate-Control-Ranking,
+- militärische Reserveauflösung,
+- Action-/Effect-Evidence-Aggregation.
+
+Das ausgelieferte Userscript verwendet dieselben in den Build eingebetteten
+Funktionen. Damit können Military/Economy/Marine/Neural-Kernentscheidungen
+isoliert getestet werden, ohne den Browser-Monolith per String-Rewrite zu
+booten. Der Byte-Paritätscheck des generierten Solo-Userscripts und der
+deterministische Run3-Build bleiben unverändert verbindlich.
