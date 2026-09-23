@@ -573,7 +573,7 @@ function predict(model,input){
     tradeBusy=false,tradeStats={opened:0,embargoed:0,skipped:0},
     botEmbargoes=new Set(),tradeAssessments=[];
   let pendingBoat=null,pendingWarship=null,navalCooldown=new Map(),navalBackoffUntil=-Infinity,portProbeFailures=0,lastPortRetryTick=-Infinity,navalSiteNegative=new Map();
-  let landingAudits=[];
+  let landingAudits=[],marineUnresolvedWatches=[];
   let marineStats={transportSent:0,transportConfirmed:0,transportArrived:0,bridgeheadHeld:0,
     bridgeheadHeld120:0,bridgeheadHeld600:0,bridgeheadLost:0,
     transportUnconfirmed:0,transportUnresolved:0,warshipSent:0,
@@ -982,7 +982,8 @@ function predict(model,input){
         phase:duoStatusView(opts.duoEnabled,duoTrustedPeer(),duoPlan,
           number(()=>game?.ticks?.(),-1),duoLocal)},
       decisionTimeline:decisionTimeline.map(v=>({...v})),
-      war:{...warState},gameEnd,spawn:{...spawnState,best:spawnCache?{...spawnCache}:null},victory:winStatus,income:incomeStatus,fleet:fleetStatus,marine:{stats:marineStats,pendingBoat,pendingWarship,landingAudits:landingAudits.map(a=>({...a})),portProbeFailures},strategicTelemetry,military:troopSnapshot,
+      war:{...warState},gameEnd,spawn:{...spawnState,best:spawnCache?{...spawnCache}:null},victory:winStatus,income:incomeStatus,fleet:fleetStatus,marine:{stats:marineStats,pendingBoat,pendingWarship,landingAudits:landingAudits.map(a=>({...a})),
+        marineUnresolvedWatches:marineUnresolvedWatches.map(a=>({...a})),portProbeFailures},strategicTelemetry,military:troopSnapshot,
       defense:{status:defenseStatus,stats:defenseStats,pendingRetreats:[...retreatRequests.values()]},
       rockets:{confirmed:nukeShots,attempts:nukeAttempts,unconfirmed:nukeUnconfirmed,pending:nukePending},
       diplomacy:{status:diplomacyStatus,stats:diplomacyStats,pending:[...diplomacyPending.values()]},records:diagnostics,createdAt:new Date().toISOString()};
@@ -1369,7 +1370,7 @@ function predict(model,input){
     lastEconomicAction=-Infinity;lastNeutralSend=-Infinity;lastEnemySend=-Infinity;lastHostilePressure=-Infinity;consecutiveIdle=0;
     economicPending=null;economicBlocked.clear();economicNegative.clear();economicStatus='Bauplanung bereit';economicLastPlan='—';
     samQuotedCost=0;portQuotedCost=0;samQuotedTick=-Infinity;portQuotedTick=-Infinity;
-    samAffordableFailureSince=null;landingAudits=[];
+    samAffordableFailureSince=null;landingAudits=[];marineUnresolvedWatches=[];
     economyBusy=false;borderInflight=null;legalNegative.clear();runtime={borderMs:0,combatMs:0,economyMs:0,attackProbes:0,buildProbes:0};
     strategic={mode:'EXPAND',reason:'Startphase',buildStyle:'Ausgewogen',since:-Infinity,groups:[]};
     diplomacyHandled.clear();diplomacyPending.clear();diplomacyMissingLogged.clear();lastDiplomaticEmit=0;
