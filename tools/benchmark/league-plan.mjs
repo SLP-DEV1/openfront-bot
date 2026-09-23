@@ -30,18 +30,48 @@ export function createLeaguePlan({botCommit,engineCommit,seeds=['league-01'],
       const key=JSON.stringify([botCommit.toLowerCase(),engineCommit.toLowerCase(),
         mode,map,String(seed),candidate,opponent]);
       const participantCount=mode==='1v1'?2:mode==='official-2v2'?4:3;
+      // P1: deterministische Rotation von SEAT (Position) und, bei Team-
+      // Modi, des Partnersitzes (Teampartner). Sitz/Partner variieren je
+      // Match, damit eine gepoolte Gesamtquote pro-Positionseffekte nicht
+      // verwischen; die Beobachtungseinheit bleibt das Match.
+      const seat=matches.length%participantCount,
+        partnerSeat=participantCount>2?(seat+1)%participantCount:null,
+        roles=new Array(participantCount).fill('opponent');
+      roles[seat]='candidate';
+      if(participantCount>2)roles[partnerSeat]='partner';
       matches.push({matchId:'league-'+digest(key).slice(0,16),mode,map,seed:String(seed),
-        candidate,opponent,participantClients:Array.from({length:participantCount},
-          (_,i)=>'client-'+(i+1)),observedOutcome:'unknown',result:null});
+        candidate,opponent,candidateSeat:seat,partnerSeat,
+        participantClients:Array.from({length:participantCount},
+          (_,i)=>({client:'client-'+(i+1),seat:i,role:roles[i]})),
+        rotation:{seed:String(seed),map,opponent,seat,partnerSeat},
+        observedOutcome:'unknown',result:null});
     }
   }
   return {schema:'aggrobot-league-plan-v1',createdAt,
     botCommit:botCommit.toLowerCase(),engineCommit:engineCommit.toLowerCase(),
+    modes,maps,seeds:seeds.map(String),candidate,
     observationUnit:'match',profiles:PROFILES,matches,
     promotion:{paired:true,requiredArms:['rule-basis','run3-schema4'],
-      rotate:['seed','map','opponent'],unknownIsNotLoss:true,
+      rotate:['seed','map','opponent','seat','partnerSeat'],unknownIsNotLoss:true,
       note:'Thresholds must be fixed before execution; this plan claims no result.'},
     execution:{performed:false,excludedFromGenerator:true}};
+}
+// P1: Liga-Snapshot einfrieren und BEHALTEN — jede Gegner-/Profilversion und
+// jede Liga-Definition werden unter einer von Inhalt abgeleiteten ID abgelegt
+// und nie still ersetzt. Legacy-/Champion-Snapshots bleiben so erhalten.
+export function writeLeagueSnapshot(plan,baseDir){
+  const snapshotId='league-snapshot-'+digest(JSON.stringify({
+    botCommit:plan.botCommit,engineCommit:plan.engineCommit,
+    modes:plan.modes,maps:plan.maps,seeds:plan.seeds,
+    candidate:plan.candidate,profiles:plan.profiles.map(p=>p.id)})).slice(0,12);
+  const file=path.join(baseDir,snapshotId+'.json');
+  if(fs.existsSync(file))return{file,retained:true,snapshotId};
+  fs.mkdirSync(baseDir,{recursive:true});
+  fs.writeFileSync(file,JSON.stringify({
+    schema:'aggrobot-league-snapshot-v1',frozenAt:new Date().toISOString(),
+    note:'Frozen league definition; retained, never silently replaced.',plan},
+    null,2)+'\n');
+  return{file,retained:false,snapshotId};
 }
 
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
