@@ -379,7 +379,8 @@ function main(){
     matches:rows.length,gateEligible:gate.eligible,gatesPass,
     paired:Object.fromEntries(Object.entries(paired).map(([b,p])=>
       [b,{gatePasses:p.gatePasses,distinguishable:p.distinguishable,
-        winCi:[+p.win.ciLow.toFixed(4),+p.win.ciHigh.toFixed(4)],
+        winCi:[p.win.ciLow==null?null:+p.win.ciLow.toFixed(4),
+        p.win.ciHigh==null?null:+p.win.ciHigh.toFixed(4)],
         candWins:p.candidateWins,baseWins:p.baselineWins}])),
     out:path.join(o.out,'holdout.json')}));
   process.exitCode=eligible?0:1;
