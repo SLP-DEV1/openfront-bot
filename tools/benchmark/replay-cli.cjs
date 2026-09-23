@@ -23,15 +23,22 @@ function convert(input,engineCommit){
    previous=f.tick;
    return f;
  });
- const result=importReplay(rows,engineCommit);
+ const origin=typeof input.origin==='string'?input.origin:'engine-simulation';
+ const result=importReplay(rows,engineCommit,
+   {origin,provenance:input.provenance,usageRights:input.usageRights});
  if(result.rejected.length||result.usable.length!==rows.length)
    throw Error('Incomplete/malformed visible-state frame(s): '+result.rejected.join(','));
  return {...result,matchId:input.matchId,complete:true,
-   visibility:'player-view',provenance:'input-declared; not independent replay verification',
+   visibility:'player-view',
+   // human replays keep their own provenance (gameID/clientID); engine
+   // simulations cite the commit their GameView frames were extracted from.
+   provenance:origin==='human-replay'?input.provenance
+     :'input-declared; not independent replay verification',
    note:'Only pre-extracted GameView decision frames accepted; unknown outcomes remain null.'};
 }
 function run(argv=process.argv.slice(2)){
- const opts={input:null,out:null,engineCommit:null};
+ const opts={input:null,out:null,engineCommit:null,
+   origin:null,provenance:null,usageRights:null};
  for(let i=0;i<argv.length;i++){
    const key=argv[i].replace(/^--/,'');
    if(!argv[i].startsWith('--')||!Object.hasOwn(opts,key))throw Error('Unknown option '+argv[i]);
@@ -41,7 +48,11 @@ function run(argv=process.argv.slice(2)){
  if(!opts.input||!opts.out)throw Error('Usage: --input EXTRACTED.json --out FRAMES.json --engineCommit FULL_SHA');
  const src=path.resolve(opts.input),dst=path.resolve(opts.out);
  if(src===dst||fs.existsSync(dst))throw Error('Refuse overwrite of replay input/output');
- const result=convert(JSON.parse(fs.readFileSync(src,'utf8')),opts.engineCommit);
+ const input=JSON.parse(fs.readFileSync(src,'utf8'));
+ if(opts.origin)input.origin=opts.origin;
+ if(opts.provenance)input.provenance=opts.provenance;
+ if(opts.usageRights)input.usageRights=opts.usageRights;
+ const result=convert(input,opts.engineCommit);
  fs.writeFileSync(dst,JSON.stringify(result,null,2)+'\n',{flag:'wx'});
  console.log(JSON.stringify({out:dst,frames:result.usable.length,matchId:result.matchId}));
  return result;

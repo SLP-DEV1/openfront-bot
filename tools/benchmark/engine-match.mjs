@@ -11,6 +11,7 @@ import policyModel from '../../trainer/policy.cjs';
 import actionModel from '../../trainer/action-policy.cjs';
 import strategicModel from '../../trainer/strategic-policy.cjs';
 import strategicModelV4 from '../../trainer/strategic-policy-v4.cjs';
+import candidatePolicyV5 from '../../trainer/candidate-policy-v5.cjs';
 
 const opts=common.parse(process.argv.slice(2));
 const engineCommit=common.engineInfo(opts.engine,opts.engineCommit);
@@ -30,6 +31,20 @@ if(opts.policy){
   storage.set('of-aggrobot-neural-policy-v1',JSON.stringify(policy));
   storage.set('of-solo-aggrobot-v1111',JSON.stringify({neuralEnabled:true,fullAuto:true}));
 }
+// P5: bounded candidate-v5 control arm. Embeds the schema-5 model into the
+// generated bot and enables shadow ranking + control so the model can drive
+// the channel director (legality remains authoritative downstream).
+let candidateModel=null;
+if(opts.candidateControl){
+  if(opts.policy)throw Error('--candidate-control and --policy are mutually exclusive');
+  const model=candidatePolicyV5.validate(JSON.parse(
+    fs.readFileSync(path.resolve(opts.candidateModel),'utf8')));
+  candidateModel=model;
+  policyHash=common.digest(JSON.stringify(model));
+  storage.set('of-solo-aggrobot-v1111',JSON.stringify({neuralEnabled:true,fullAuto:true,
+    shadowRankEnabled:true,candidateControlEnabled:true,
+    candidateControlGain:opts.candidateGain?Number(opts.candidateGain):18}));
+}
 globalThis.localStorage={getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,String(v)),removeItem:k=>storage.delete(k)};
 const [{createGameRunner},{Config},{GameMapType,GameMapSize,Difficulty,GameType,GameMode},
  {GameView},{loadTerrainMap},{NodeGameMapLoader},{EventBus},{GameConfigSchema,StampedIntentSchema}]=await Promise.all([
@@ -48,7 +63,16 @@ const config=GameConfigSchema.parse({gameMap:resolve(GameMapType,opts.map),gameM
   infiniteGold:false,infiniteTroops:false,instantBuild:false,
   randomSpawn:opts.scriptedHumans>0,
   ...(gameMode===GameMode.Team?{playerTeams:2}:{})});
-const dir=common.outputDir(opts),source=fs.readFileSync(opts.bot,'utf8');
+const dir=common.outputDir(opts);
+let source=fs.readFileSync(opts.bot,'utf8');
+// Embed the candidate-v5 model (marker parity with trainer/shadow-deploy.mjs).
+if(candidateModel){
+  const needle='const SHADOW_V5_BUNDLED_MODEL = null;';
+  if(source.split(needle).length!==2)
+    throw Error('Candidate-v5 marker missing/not unique in bot source');
+  source=source.replace(needle,
+    'const SHADOW_V5_BUNDLED_MODEL = '+JSON.stringify(candidateModel)+';');
+}
 const clientID='aggrobot';
 const players=[{clientID,username:'AggroBot Benchmark',clanTag:null,
   ...(gameMode===GameMode.Team?{teamIndex:0}:{})},
@@ -62,7 +86,10 @@ let update=null,fatal=null,now=0,queue=[],observedWinner=null;
 const recordsFile=fs.openSync(path.join(dir,'events.jsonl'),'wx');
 const intentsFile=fs.openSync(path.join(dir,'turns.jsonl'),'wx');
 let recordsCount=0,emitted=0;
-const meta={trajectorySemantics:visibleTrajectory.SEMANTICS,harness:'engine-gameview-v2',engineCommit,botSHA256:common.digest(source),policySHA256:policyHash,seed:opts.seed,
+const meta={trajectorySemantics:visibleTrajectory.SEMANTICS,harness:'engine-gameview-v2',engineCommit,botSHA256:common.digest(source),policySHA256:policyHash,
+  candidateControl:opts.candidateControl?true:null,
+  candidateGain:candidateModel?(opts.candidateGain?Number(opts.candidateGain):18):null,
+  seed:opts.seed,
   seedSource:'GameStartInfo.gameID',profile:opts.profile,settings:common.profiles[opts.profile],
   opponentProfile:opts.opponentProfile,scriptedHumans:opts.scriptedHumans,
   gameConfig:config,maxTicks:opts.ticks,clock:'100ms simulation clock; serial awaited bot cycles',

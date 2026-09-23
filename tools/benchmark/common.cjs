@@ -9,7 +9,8 @@ function parse(argv){
   const out={engine:null,map:'World',size:'Compact',difficulty:'Medium',bots:40,nations:8,
     seed:'aggro-train-001',ticks:18000,out:null,profile:'autonomous',bot:null,policy:null,
     port:5173,engineCommit:ENGINE_COMMIT,gameType:'Singleplayer',gameMode:'FFA',
-    scriptedHumans:0,opponentProfile:'balanced'};
+    scriptedHumans:0,opponentProfile:'balanced',candidateControl:null,
+    candidateModel:null,candidateGain:null};
   for(let i=0;i<argv.length;i++){
     const key=argv[i].replace(/^--/,'');
     if(!argv[i].startsWith('--')||!Object.hasOwn(out,key))throw Error('Unknown option '+argv[i]);
