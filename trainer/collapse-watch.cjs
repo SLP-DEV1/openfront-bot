@@ -114,14 +114,21 @@ function detect(category,match,b){
       if(!teamMode(match))
         return {flagged:false,reason:'kein 2v2-Modus',
           evidence:ev({teamMode:false})};
-      return localDuo.connected===false
-          &&isObj(localDuo.phase)
-          &&localDuo.phase.phase!=='on'
-        ?{flagged:true,reason:'Team-Mitglied, aber Duo/Allianz nicht aktiv',
+      // Official Engine teams do not require the localhost Duo relay.
+      // Only report a relay error when Duo was explicitly expected or its
+      // own observable phase shows that a connection was attempted.
+      const duoPhase=localDuo.phase?.phase;
+      const duoExpected=localDuo.enabled===true||localDuo.expected===true||
+        (typeof duoPhase==='string'&&duoPhase!=='off');
+      return duoExpected&&localDuo.connected===false
+        ?{flagged:true,reason:'Erwartetes lokales Duo-Relay nicht verbunden',
           evidence:ev({teamIndex:b.teamIndex,duoStatus:localDuo.status,
-            connected:localDuo.connected,phase:localDuo.phase?.phase})}
-        :{flagged:false,reason:'keine erkennbare Allianz-Fehlerlage',
-          evidence:ev({teamIndex:b.teamIndex,connected:localDuo.connected})};
+            connected:localDuo.connected,phase:duoPhase})}
+        :{flagged:false,reason:duoExpected
+            ?'kein nachgewiesener Duo-Fehler'
+            :'Offizielles Team ohne erwartetes lokales Duo-Relay',
+          evidence:ev({teamIndex:b.teamIndex,connected:localDuo.connected,
+            duoExpected})};
     case 'endless_war_lock':
       // Dauerkrieg seit Anfang, zensiert (Tick-Limit), immer noch am Leben.
       return inWar&&earlyWar&&censored&&b.alive===true
@@ -190,19 +197,22 @@ function watch(match,{focus=0}={}){
 //    Suchsignale (Training), nie allein entscheidend.
 //  - censored: Tick-Limit → Outcome unbekannt → nicht entscheidend.
 function assessPromotion(match,b,index=0){
-  const censored=match.run?.termination==='tick-limit'||match.gameEnd==null;
+  const tickLimited=match.run?.termination==='tick-limit';
   const outcome=match.gameEnd?.outcome??null;
-  let promotionSignal;
-  if(censored)promotionSignal='censored-tick-limit';
-  else if(outcome)promotionSignal='confirmed-'+String(outcome);
-  else promotionSignal='unknown';
+  const confirmed=(outcome==='victory'||outcome==='defeat')&&
+    (match.run?.termination==='game-over'||
+     match.run?.termination==='eliminated');
+  const decisive=confirmed&&!tickLimited;
+  const censored=!decisive;
+  const promotionSignal=tickLimited?'censored-tick-limit':
+    decisive?'confirmed-'+outcome:'unknown';
   const d=(b.diagnostics||{});
   const income=d.income||{};
   const military=d.military||{};
   return {schema:'promotion-vs-auxiliary-v1',botIndex:index,
-    censored,decisive:!censored,promotionSignal,outcome,
+    censored,decisive,promotionSignal,outcome,
     note:censored
-      ?'Tick-Limit zensiert den Outcome; nur Suchsignal, nicht release-entscheidend'
+      ?'Kein bestätigter Sieg/Niederlage-Outcome; nur Suchsignal, nicht release-entscheidend'
       :'Bestätigter Match-Outcome ist das release-entscheidende Signal',
     auxiliary:{
       heldLand:Number(b.land)||0,

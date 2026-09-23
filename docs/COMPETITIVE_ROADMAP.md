@@ -91,16 +91,37 @@ abgenommen; siehe [#68](https://github.com/SLP-DEV1/openfront-bot/issues/68) und
   nachweislich ausgeführte **Smoke**, keine breite Liga und keine lange
   Partie; sie begründen keine Spielstärke- oder Siegquote-Veränderung.
 
-**Weiterhin offen in P1** (nächster kleinster Schritt): Allianz-/Diplomatie-
-Szenarien mit garantiert aktuellen (nie veralteten) Freund/Feind-Beziehungen
-im Smoke; 1v1/2v2/FFA-Protokoll mit Karten-/Position-/Partner-/Profil-/Seed-
-Rotation; Freeze jedes Profil-/Archetyp- und Liga-Snapshots (Legacy/Champion
-behalten); die vollständige deterministische Szenario-Paket-Liste
-(Cap-Stall, zerstörte City, zusammenbrechendes Einkommen, Einkesselung,
-Angriffs-Lücke/War-Lock, fehlendes Boot, zweiter Angreifer, gebrochene
-Partner-Zusage, Nuke-/SAM-Risiko, Team-Spende unter Heimbedrohung); strikte
-Trennung `--smoke` vs echte volle Liga (Teilweise: Smoke hat feste
-Bedingungen). Reale Human-Multiplayer-Abnahme bleibt separat.
+**P1-Vervollständigung (23.09.2026) — implementiert + Tests bestanden:**
+Die zuvor offenen Punkte sind umgesetzt und als Regressionstests in
+`verify.yml` verdrahtet:
+- **Allianz-/Diplomatie (implementiert):** `friendly()`/Team-Memberschaft
+  leiten pro Tick aus dem lebenden Engine-Zustand ab (`actualFriendly` +
+  `isOnSameTeam`); Duo-Allianzen sind ein kurzes, match-gleiches Veto, kein
+  statischer Freund/Feind-Cache. Neue Szenario-Fälle `team-not-duo-relay`,
+  `alliance-break-fresh-states`, `diplomat-pressure`. Test:
+  `alliance-semantics-regression.cjs`.
+- **Getrennte Protokolle + Rotation (implementiert):**
+  `createLeaguePlan` trennt `1v1`/`ffa-duo`/`official-2v2` (2/3/4 Clients)
+  und rotiert Kandidatensitz, Partnersitz, Karte, Profil und Seed; die
+  Beobachtungseinheit bleibt das Match, es gibt keine gepoolte Gesamtquote
+  (`unknownIsNotLoss`). Test: `league-protocol-rotation-regression.cjs`.
+- **Snapshot-Freeze/-Retention (implementiert):** `writeLeagueSnapshot`
+  schreibt inhaltsadressierte Liga-/Profil-Snapshots
+  (`aggrobot-league-snapshot-v1`), die nie still überschrieben werden;
+  Legacy/Champion bleiben erhalten. Test: `league-snapshot-regression.cjs`.
+- **Vollständiges deterministisches Szenario-Pack (implementiert):** 23
+  Szenarien inkl. Cap-Stall, zerstörte City, kollabierendes Einkommen,
+  Einkesselung, Angriffslücke/War-Lock, Boot verschwindet, zweiter Angreifer,
+  gebrochene Partnerzusage, Nuke-/SAM-Risiko, Teamspende bei Heimgefahr.
+  Test: `scenario-pack-regression.cjs`.
+- **Strikter `--smoke`-Abschluss (implementiert):** `--smoke` erzwingt feste
+  FFA/full-bot-Bedingungen, lehnt Konflikt-Optionen ab und zeichnet den echten
+  Bot-SHA-256 ein; der Liga-Plan bleibt getrennt. Test:
+  `league-smoke-separation-regression.cjs`.
+
+**Kategorisierung:** Die obigen Punkte sind **implementiert + Tests
+bestanden**; sie sind **kein** eigener Liga- oder
+**reale Human-Multiplayer-Abnahme** (bleiben separat, §7 / PR #4).
 
 ## P2 status — Menschliche Replays als korrektes Curriculum (DoD bestanden, 23.09.2026)
 

@@ -41,7 +41,7 @@ const STAGES=Object.freeze([
   desc:'FFA gegen gemischte FFA-Stile'},
  {name:'two-v-two',mode:'Team',participants:4,difficulty:'Medium',
   opponents:['rush','turtle'],seeds:['p4-2v2-001'],
-  desc:'2v2 (Team) gegen gegnerisches Duo'},
+  desc:'2v2 (Team) gegen zwei Rush- oder zwei Turtle-Gegner'},
  {name:'mixed-frozen-league',mode:'FFA',participants:2,difficulty:'Hard',
   opponents:['champion','economy','naval','nuke'],
   seeds:['p4-lga-001','p4-lga-002'],
@@ -100,12 +100,16 @@ function buildMatches(){
   for(const stage of stages)for(const seed of stage.seeds)
    for(const arch of stage.opponents){
      const id=[stage.name,seed,arch].join('__');
-     matches.push({id,stage:stage.name,seed,opponentArchetype:arch,
+     const match={id,stage:stage.name,seed,opponentArchetype:arch,
        mode:stage.mode,participants:stage.participants,
        difficulty:stage.difficulty,ticks:stage.ticks,
        relativeOutput:path.join(stage.name,id),
        status:'not-run',termination:null,outcome:null,
-       collapse:null,promotion:null,error:null});
+       collapse:null,promotion:null,error:null};
+     match.expectedLineup=lineupFor(match).map(p=>({
+       teamIndex:p.teamIndex,archetype:p.archetype,
+       botSHA256:p.bot===modelFile?modelHash:opponentHash}));
+     matches.push(match);
    }
   return matches;
 }
@@ -113,12 +117,13 @@ function lineupFor(match){
   const model={bot:modelFile,profile:'autonomous',archetype:'legacy'};
   const opp={bot:opponentFile,profile:'autonomous',archetype:match.opponentArchetype};
   if(match.mode==='Team'){
-    // Team 0: Modell + Legacy-Ally (beide Modell-Bot); Team 1: zwei Gegner.
+    // Two distinctly labelled matches must execute distinctly different
+    // opponent lineups; never run rush+turtle under both labels.
     return [
      {...model,teamIndex:0},
      {...model,archetype:'legacy',teamIndex:0},
-     {...opp,archetype:'rush',teamIndex:1},
-     {...opp,archetype:'turtle',teamIndex:1}];
+     {...opp,archetype:match.opponentArchetype,teamIndex:1},
+     {...opp,archetype:match.opponentArchetype,teamIndex:1}];
   }
   return [{...model,teamIndex:0},{...opp,teamIndex:1}];
 }
@@ -138,17 +143,26 @@ function isRecorded(dir){
 
 // State-Datei (Resume): curriculum.json.
 const outputFile=path.join(out,'curriculum.json');
-if(fs.existsSync(outputFile)&&values.fresh){
-  const tmp=path.join(out,'.state-tmp');
-  if(fs.existsSync(tmp))clearDir(tmp);
-  fs.rmSync(outputFile,{force:true});
+if(values.fresh&&fs.existsSync(out)){
+  // A fresh invocation must never silently reuse prior match.json artifacts.
+  fs.rmSync(out,{recursive:true,force:true});
 }
+const runDefinition={schema:'curriculum-v1',smoke:values.smoke,
+  stageVersion:common.digest(JSON.stringify(stages)),
+  stages,modelHash,opponentHash,mixVersion,engineCommit:engineSha,
+  map:'World',size:'Compact',gameType:'Private',
+  profile:'autonomous',bot:values.bot,opponentBot:values.opponentBot};
+const runSignature=common.digest(JSON.stringify(runDefinition));
 let report=null;
 if(fs.existsSync(outputFile)&&!values.fresh){
   report=JSON.parse(fs.readFileSync(outputFile,'utf8'));
+  if(report?.runSignature!==runSignature||
+     JSON.stringify(report?.runDefinition)!==JSON.stringify(runDefinition))
+    throw Error('Curriculum resume provenance mismatch; use --fresh or a new --out directory');
 }
 if(!report){
   report={schema:'curriculum-v1',smoke:values.smoke,
+    runSignature,runDefinition,
     stageVersion:common.digest(JSON.stringify(stages)),
     model:{file:values.bot,sha256:modelHash},
     opponent:{file:values.opponentBot,sha256:opponentHash,
@@ -211,11 +225,10 @@ for(const match of pending){
   const fullBots=game?.fullBots||[];
   const hashesValid=fullBots.length===match.participants&&
     fullBots.every((p,i)=>{
-      // Team 0 = Modell-Bot (beide), Team 1 = Gegner-Bot.
-      const expected=match.mode==='Team'
-        ?(p.teamIndex===0?modelHash:opponentHash):
-        (i===0?modelHash:opponentHash);
-      return p.botSHA256===expected;
+      const expected=match.expectedLineup[i];
+      return p.botSHA256===expected.botSHA256&&
+        p.teamIndex===expected.teamIndex&&
+        p.archetype===expected.archetype;
     });
   const originValid=game?.benchmarkMeta?.engineCommit===engineSha&&
     game?.benchmarkMeta?.seed===match.seed;
@@ -237,6 +250,7 @@ for(const match of pending){
     common.writeJSON(path.join(dir,'curriculum-result.json'),
      {schema:'curriculum-result-v1',matchId:match.id,stage:match.stage,
        collapse,promotion:promo,
+       expectedLineup:match.expectedLineup,
        participants:fullBots.map(b=>({id:b.clientID,
          archetype:b.archetype,teamIndex:b.teamIndex,
          outcome:b.outcome,land:b.land,alive:b.alive}))});
