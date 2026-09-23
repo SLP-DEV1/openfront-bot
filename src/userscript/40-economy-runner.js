@@ -1313,9 +1313,15 @@
             observationLostTick:boat.observationLostTick,
             coastOwner:safeID(game.owner?.(landingTile)),
             eta:boat.eta??null,grace,
-            reason:'ship-disappeared-no-observed-bridgehead',
+            reason:boat.cancelIntent?'ship-disappeared-after-cancel-intent':
+              'ship-disappeared-no-observed-bridgehead',
+            cancelIntent:boat.cancelIntent??null,
             status:'unresolved-not-proven-destroyed'});
-          landingFailure(boat,tick,landingTile,'ship-disappeared-unresolved');
+          if(boat.cancelIntent){
+            // We requested cancellation because the destination became friendly.
+            // Disappearance alone cannot prove cancellation, arrival or loss.
+            navalCooldown.set(boat.key,tick+600);
+          }else landingFailure(boat,tick,landingTile,'ship-disappeared-unresolved');
           pendingBoat=null;
         }
       }else if(boat.seen && tick-boat.tick>650 && !boat.delayed){
@@ -1402,7 +1408,18 @@
         !u.transportShipState?.().isRetreating);
       if(unsafe&&Number.isInteger(unsafe.id?.())&&send('cancelBoat',[unsafe.id()],
         'LANDUNG ABBRECHEN: Ziel jetzt verbündet',true)){
-        lastFleet=tick;fleetStatus='Landung abgebrochen';return true;
+        const shipId=unsafe.id();
+        if(pendingBoat?.shipIds?.includes(shipId)){
+          pendingBoat.cancelIntent={actionId:lastActionId,shipId,tick,
+            reason:'destination-became-friendly',effect:'unknown'};
+          telemetry('boat_cancel_intent',
+            'Stoppbefehl gesendet; Wirkung noch nicht bestätigt',
+            {actionId:lastActionId,shipId,
+              originalActionId:pendingBoat.actionId??null,
+              destination:pendingBoat.resolvedDest??pendingBoat.dest,
+              evidence:'intent-not-cancellation-proof'});
+        }
+        lastFleet=tick;fleetStatus='Landungsabbruch angefordert';return true;
       }
     }
     const targets=all.filter(u=>u.type?.()==='Transport'&&u.isActive?.() &&
