@@ -117,6 +117,48 @@ assert.equal(resumed.out.modelSHA256, full.out.modelSHA256, 'resume must reprodu
 // The model file written by the CLI validates as a schema-5 candidate.
 const writtenModel = JSON.parse(fs.readFileSync(path.join(full.out.out, 'model.json'), 'utf8'));
 assert.equal(candidate.validate(writtenModel).weights.length, 702, 'written model validates');
+// #144: CLI must reject empty usable validation rather than emit 0/NaN.
+const invoke=args=>spawnSync(process.execPath,[trainer,...args],{encoding:'utf8'});
+const oneTrain=ds.matches.find(m=>t.sideOf(String(m.matchId),SPLIT)==='train');
+assert.ok(oneTrain,'fixture must contain a train match');
+const emptyValPath=path.join(tmp,'only-train.json');
+fs.writeFileSync(emptyValPath,JSON.stringify({...ds,matches:[oneTrain]}));
+const badValidation=invoke(['--dataset',emptyValPath,'--out',path.join(tmp,'empty-val')]);
+assert.notEqual(badValidation.status,0);
+assert.match(badValidation.stderr,/No usable validation frames/);
+assert.ok(!fs.existsSync(path.join(tmp,'empty-val','evaluation.json')));
+assert.throws(()=>t.mse(a.res.w,[],[]),/non-empty/);
+assert.throws(()=>t.nullModelMetrics([],[]),/non-empty/);
+
+// #148: a matching training bag is NOT sufficient for checkpoint resume.
+const checkpoint=path.join(partOut,'checkpoint.json');
+const resumeArgs=(dataset,out,extra=[])=>invoke(['--dataset',dataset,'--out',out,
+  '--epochs',String(EPOCHS),'--learningRate',String(LR),
+  '--split',String(SPLIT),...extra,'--resume',checkpoint]);
+const changed=JSON.parse(JSON.stringify(ds));
+const valMatch=changed.matches.find(m=>t.sideOf(String(m.matchId),SPLIT)==='validation');
+assert.ok(valMatch&&valMatch.frames.length,'fixture must contain validation frames');
+valMatch.frames[0].visibleState.home=(valMatch.frames[0].visibleState.home||1)+123;
+const changedPath=path.join(tmp,'changed-validation.json');
+fs.writeFileSync(changedPath,JSON.stringify(changed));
+const valReject=resumeArgs(changedPath,path.join(tmp,'resume-changed-val'));
+assert.notEqual(valReject.status,0);
+assert.match(valReject.stderr,/Resume provenance signature mismatch/);
+const lrReject=resumeArgs(dsPath,path.join(tmp,'resume-changed-lr'),
+  ['--learningRate','0.04']);
+assert.notEqual(lrReject.status,0);
+assert.match(lrReject.stderr,/Resume provenance signature mismatch/);
+const splitReject=resumeArgs(dsPath,path.join(tmp,'resume-changed-split'),
+  ['--split','75']);
+assert.notEqual(splitReject.status,0);
+assert.match(splitReject.stderr,/Resume provenance signature mismatch/);
+const horizonPath=path.join(tmp,'changed-horizon.json');
+fs.writeFileSync(horizonPath,JSON.stringify({...ds,
+  horizonTicks:(Number(ds.horizonTicks)||120)+1}));
+const horizonReject=resumeArgs(horizonPath,path.join(tmp,'resume-changed-horizon'));
+assert.notEqual(horizonReject.status,0);
+assert.match(horizonReject.stderr,/Resume provenance signature mismatch/);
+
 fs.rmSync(tmp, {recursive: true, force: true});
 
 console.log('PASS P3 deterministic schema-5 training (grad, determinism, split, learn, ablation, resume, no-live-deploy)');
