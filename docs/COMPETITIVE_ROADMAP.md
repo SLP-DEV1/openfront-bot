@@ -135,6 +135,56 @@ Multi-Bot-Läufe nötig.**
   erst ab dieser Datengrundlage behauptet. Inventar + Policy:
   [docs/replays/README.md](replays/README.md).
 
+## P3 status — Schema-5-Prototyp wirklich trainieren (DoD bestanden, 23.09.2026)
+
+**DoD bestanden. Implementiert + Tests bestanden (lokal, grün); keine echten
+Engine-Matches mit trainierten Labels (das ist P4); kein Live-Deployment durch
+Training allein.**
+
+- **Feature-Audit + Runtime-Parität** (`trainer/v5-features.cjs`): die 32
+  Schema-5-Inputs werden gegen den echten Runtime-Frame
+  (`src/userscript/20-military-and-planning.js`) geprüft. **13 Features sind
+  aktiv verfügbar, 19 sind konstant** und werden mit ihrem Baseline-Wert aus
+  `features({},{})` gemaskt. Neue featurisierte Schema-Version
+  `featuredSchemaVersion=1` mit index-aligned Manifest. Die Trainingsfeatures
+  sind per Konstruktion identisch zu `candidate.features` (Runtime-Parität).
+  Nachweis: `tests/v5-features-regression.cjs`.
+- **Targets operationalisiert** (`trainer/v5-labels.cjs`): `heldGain` =
+  beobachteter territorialer Nettoeffekt im festen Horizont relativ zum
+  Ausgangszustand (`clamp01`/`landScale`); `lossRisk` = vorab definierte
+  beobachtete Verlust-/Eliminations-/Abbruchereignisse. Beide sind separate
+  Heads. Nicht erreichte Horizonte bleiben `null` (Unbekannt ≠ 0). Für
+  Replay-Imitation: separates `behaviorChoice`-Label mit `selectionBias`-
+  Kennzeichnung. Nachweis: `tests/v5-labels-regression.cjs`.
+- **Deterministischer Training-/Checkpoint-/Resume-Pfad**
+  (`trainer/train-v5.cjs`): full-batch Gradientenabstieg ohne RNG; analytischer
+  Gradient gegen Finite Differenzen abgeglichen (≈7e-12); per-match disjunkte
+  Trainings-/Validation-Splits (keine Frame-Leakage); Checkpoint pro Epoche;
+  `--resume` reproduziert die Vollausführung mit **identischer Modell-SHA**.
+  Shape/Schema validiert (702 Gewichte, \|w\|≤5, endlich); Kalibrierung in
+  Bins; Null-/Regel-/Mean-Ablation; `learning-curve.json` (Validierungsloss,
+  nie Trainingsperformance als Holdout-Gewinn). Nachweis:
+  `tests/train-v5-regression.cjs`.
+- **Shadow-Anbindung ohne Intent-Änderung** (`tests/v5-shadow-regression.cjs`):
+  ein trainiertes Schema-5-Modell wird über `trainer/shadow-deploy.mjs` an das
+  existierende Shadow-Ranking angebunden; das eingebettete Modell ist exakt das
+  trainierte (SHA-geprüft), `SHADOW_V5_BUNDLED_MODEL=null` wird ersetzt, der
+  Shadow-Block bleibt `changedIntent:false` und der Promotion-Pfad
+  (Schema-4-Champion) bleibt unverändert.
+- **Reproduzierbares Modellfile mit SHA:** das geschriebene `model.json`
+  validiert als Schema-5-Kandidat; `candidate.sha(model)` ist über CLI und
+  In-Memory identisch.
+- **Tests bestanden (lokal, grün):** `tests/v5-features-regression.cjs`,
+  `tests/v5-labels-regression.cjs`, `tests/train-v5-regression.cjs`,
+  `tests/v5-shadow-regression.cjs`. Neu in der CI als P3-Schritt in
+  `verify.yml`.
+
+**Weiterhin offen in P3 (nächster Schritt P4):** outcome-basiertes
+Fine-Tuning auf echten Engine-Ligapartien; reale Human-Multiplayer-Abnahme.
+Eine neuere 48→64→32→3=5315-Architektur wird erst bei belegtem Underfitting
+gesondert versioniert geprüft (hier **nicht** durchgeführt). Echte
+Engine-Matches mit trainierten Labels sind **nicht** behauptet.
+
 ## Implementierungsstand 1.21.0 (P0–P6)
 
 ### Abschlussprüfung der implementierbaren Roadmap-Aufgaben (22.09.2026)

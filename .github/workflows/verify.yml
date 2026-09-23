@@ -90,6 +90,15 @@ jobs:
           node --check tools/benchmark/replay-split.cjs
           node tests/replay-split-regression.cjs
           node tests/replay-curriculum-regression.cjs
+      - name: Test P3 schema-5 offline training (features, labels, deterministic train, shadow)
+        run: |
+          node --check trainer/v5-features.cjs
+          node tests/v5-features-regression.cjs
+          node --check trainer/v5-labels.cjs
+          node tests/v5-labels-regression.cjs
+          node --check trainer/train-v5.cjs
+          node tests/train-v5-regression.cjs
+          node tests/v5-shadow-regression.cjs
       - name: Check Scenario Pack and read-only Evidence Mode
         run: |
           node --check tools/benchmark/scenario-pack.cjs
