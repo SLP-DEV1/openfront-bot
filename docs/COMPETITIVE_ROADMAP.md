@@ -91,16 +91,177 @@ abgenommen; siehe [#68](https://github.com/SLP-DEV1/openfront-bot/issues/68) und
   nachweislich ausgeführte **Smoke**, keine breite Liga und keine lange
   Partie; sie begründen keine Spielstärke- oder Siegquote-Veränderung.
 
-**Weiterhin offen in P1** (nächster kleinster Schritt): Allianz-/Diplomatie-
-Szenarien mit garantiert aktuellen (nie veralteten) Freund/Feind-Beziehungen
-im Smoke; 1v1/2v2/FFA-Protokoll mit Karten-/Position-/Partner-/Profil-/Seed-
-Rotation; Freeze jedes Profil-/Archetyp- und Liga-Snapshots (Legacy/Champion
-behalten); die vollständige deterministische Szenario-Paket-Liste
-(Cap-Stall, zerstörte City, zusammenbrechendes Einkommen, Einkesselung,
-Angriffs-Lücke/War-Lock, fehlendes Boot, zweiter Angreifer, gebrochene
-Partner-Zusage, Nuke-/SAM-Risiko, Team-Spende unter Heimbedrohung); strikte
-Trennung `--smoke` vs echte volle Liga (Teilweise: Smoke hat feste
-Bedingungen). Reale Human-Multiplayer-Abnahme bleibt separat.
+**P1-Vervollständigung (23.09.2026) — implementiert + Tests bestanden:**
+Die zuvor offenen Punkte sind umgesetzt und als Regressionstests in
+`verify.yml` verdrahtet:
+- **Allianz-/Diplomatie (implementiert):** `friendly()`/Team-Memberschaft
+  leiten pro Tick aus dem lebenden Engine-Zustand ab (`actualFriendly` +
+  `isOnSameTeam`); Duo-Allianzen sind ein kurzes, match-gleiches Veto, kein
+  statischer Freund/Feind-Cache. Neue Szenario-Fälle `team-not-duo-relay`,
+  `alliance-break-fresh-states`, `diplomat-pressure`. Test:
+  `alliance-semantics-regression.cjs`.
+- **Getrennte Protokolle + Rotation (implementiert):**
+  `createLeaguePlan` trennt `1v1`/`ffa-duo`/`official-2v2` (2/3/4 Clients)
+  und rotiert Kandidatensitz, Partnersitz, Karte, Profil und Seed; die
+  Beobachtungseinheit bleibt das Match, es gibt keine gepoolte Gesamtquote
+  (`unknownIsNotLoss`). Test: `league-protocol-rotation-regression.cjs`.
+- **Snapshot-Freeze/-Retention (implementiert):** `writeLeagueSnapshot`
+  schreibt inhaltsadressierte Liga-/Profil-Snapshots
+  (`aggrobot-league-snapshot-v1`), die nie still überschrieben werden;
+  Legacy/Champion bleiben erhalten. Test: `league-snapshot-regression.cjs`.
+- **Vollständiges deterministisches Szenario-Pack (implementiert):** 23
+  Szenarien inkl. Cap-Stall, zerstörte City, kollabierendes Einkommen,
+  Einkesselung, Angriffslücke/War-Lock, Boot verschwindet, zweiter Angreifer,
+  gebrochene Partnerzusage, Nuke-/SAM-Risiko, Teamspende bei Heimgefahr.
+  Test: `scenario-pack-regression.cjs`.
+- **Strikter `--smoke`-Abschluss (implementiert):** `--smoke` erzwingt feste
+  FFA/full-bot-Bedingungen, lehnt Konflikt-Optionen ab und zeichnet den echten
+  Bot-SHA-256 ein; der Liga-Plan bleibt getrennt. Test:
+  `league-smoke-separation-regression.cjs`.
+
+**Kategorisierung:** Die obigen Punkte sind **implementiert + Tests
+bestanden**; sie sind **kein** eigener Liga- oder
+**reale Human-Multiplayer-Abnahme** (bleiben separat, §7 / PR #4).
+
+## P2 status — Menschliche Replays als korrektes Curriculum (DoD bestanden, 23.09.2026)
+
+**DoD bestanden. Implementiert + Tests bestanden (lokal, grün); echte
+Engine-Matches: P2 arbeitet auf sichtbaren Replay-Frames, keine neuen
+Multi-Bot-Läufe nötig.**
+
+- **Import-Gate (bereits vorhanden, DoD-Kern):** `tools/benchmark/replay-cli.cjs`
+  + `replay-visible-state.cjs` akzeptieren nur Frames mit exakt passendem
+  Engine-Pin, sichtbarem `GameView` und gültigen Anfangs-/Aktionsdaten.
+  Abgewiesene Frames bleiben unverbindliche **Szenarioideen**
+  (`scenarioIdeas[]`), keine Lernpaare; akzeptierte Frames sind
+  `kind:'learning-pair'`.
+- **10 Event-Tags mit Provenienz** (`tools/benchmark/replay-events.cjs`):
+  `early-rush`, `alliance-change`, `counterattack`, `nuke-timing`,
+  `naval-landing`, `duo-synchronized`, `retreat`, `rebuild`, `hold`,
+  `failed-attack` — jedes Tag trägt `source`, `tick`, `observation`,
+  `validity` (`observed`/`inferred`); nur sichtbare Signale, keine
+  Engine-Wahrheiten; deterministisch.
+- **Per-Partie-Split** (`tools/benchmark/replay-split.cjs`): nahe Frames
+  derselben Partie kommen nie auf Train+Holdout; die Zuordnung hängt nur von
+  `(seed, matchId)` ab, nie vom Frame-Inhalt (keine versteckten Features);
+  deterministisch; stärkere Trennung pro Spieler/Stil via `keyOf`.
+- **Provenienz + Zustimmung/Nutzungsrecht** (`replay-visible-state.cjs`,
+  `replay-cli.cjs`): `origin:'human-replay'` wird nur mit Provenienz
+  (z. B. `gameID`/`clientID`) **und** Nutzungsrecht akzeptiert; sonst Abbruch.
+- **Tests bestanden:** `replay-events`, `replay-split`, `replay-curriculum`,
+  `replay-visible-state`, `replay-cli` (lokal grün).
+- **BLOCKER (Daten):** aktuell genau **ein** menschliches Replay
+  (ProfessorSployer `cR8SRtEEcR`). Mehrere Spieler mit Siegen **und**
+  Niederlagen sind noch zu sammeln. „Menschliches Verhalten gelernt" wird
+  erst ab dieser Datengrundlage behauptet. Inventar + Policy:
+  [docs/replays/README.md](replays/README.md).
+
+## P3 status — Schema-5-Prototyp wirklich trainieren (DoD bestanden, 23.09.2026)
+
+**DoD bestanden. Implementiert + Tests bestanden (lokal, grün); keine echten
+Engine-Matches mit trainierten Labels (das ist P4); kein Live-Deployment durch
+Training allein.**
+
+- **Feature-Audit + Runtime-Parität** (`trainer/v5-features.cjs`): die 32
+  Schema-5-Inputs werden gegen den echten Runtime-Frame
+  (`src/userscript/20-military-and-planning.js`) geprüft. **13 Features sind
+  aktiv verfügbar, 19 sind konstant** und werden mit ihrem Baseline-Wert aus
+  `features({},{})` gemaskt. Neue featurisierte Schema-Version
+  `featuredSchemaVersion=1` mit index-aligned Manifest. Die Trainingsfeatures
+  sind per Konstruktion identisch zu `candidate.features` (Runtime-Parität).
+  Nachweis: `tests/v5-features-regression.cjs`.
+- **Targets operationalisiert** (`trainer/v5-labels.cjs`): `heldGain` =
+  beobachteter territorialer Nettoeffekt im festen Horizont relativ zum
+  Ausgangszustand (`clamp01`/`landScale`); `lossRisk` = vorab definierte
+  beobachtete Verlust-/Eliminations-/Abbruchereignisse. Beide sind separate
+  Heads. Nicht erreichte Horizonte bleiben `null` (Unbekannt ≠ 0). Für
+  Replay-Imitation: separates `behaviorChoice`-Label mit `selectionBias`-
+  Kennzeichnung. Nachweis: `tests/v5-labels-regression.cjs`.
+- **Deterministischer Training-/Checkpoint-/Resume-Pfad**
+  (`trainer/train-v5.cjs`): full-batch Gradientenabstieg ohne RNG; analytischer
+  Gradient gegen Finite Differenzen abgeglichen (≈7e-12); per-match disjunkte
+  Trainings-/Validation-Splits (keine Frame-Leakage); Checkpoint pro Epoche;
+  `--resume` reproduziert die Vollausführung mit **identischer Modell-SHA**.
+  Shape/Schema validiert (702 Gewichte, \|w\|≤5, endlich); Kalibrierung in
+  Bins; Null-/Regel-/Mean-Ablation; `learning-curve.json` (Validierungsloss,
+  nie Trainingsperformance als Holdout-Gewinn). Nachweis:
+  `tests/train-v5-regression.cjs`.
+- **Shadow-Anbindung ohne Intent-Änderung** (`tests/v5-shadow-regression.cjs`):
+  ein trainiertes Schema-5-Modell wird über `trainer/shadow-deploy.mjs` an das
+  existierende Shadow-Ranking angebunden; das eingebettete Modell ist exakt das
+  trainierte (SHA-geprüft), `SHADOW_V5_BUNDLED_MODEL=null` wird ersetzt, der
+  Shadow-Block bleibt `changedIntent:false` und der Promotion-Pfad
+  (Schema-4-Champion) bleibt unverändert.
+- **Reproduzierbares Modellfile mit SHA:** das geschriebene `model.json`
+  validiert als Schema-5-Kandidat; `candidate.sha(model)` ist über CLI und
+  In-Memory identisch.
+- **Tests bestanden (lokal, grün):** `tests/v5-features-regression.cjs`,
+  `tests/v5-labels-regression.cjs`, `tests/train-v5-regression.cjs`,
+  `tests/v5-shadow-regression.cjs`. Neu in der CI als P3-Schritt in
+  `verify.yml`.
+
+**Weiterhin offen in P3 (nächster Schritt P4):** outcome-basiertes
+Fine-Tuning auf echten Engine-Ligapartien; reale Human-Multiplayer-Abnahme.
+Eine neuere 48→64→32→3=5315-Architektur wird erst bei belegtem Underfitting
+gesondert versioniert geprüft (hier **nicht** durchgeführt). Echte
+Engine-Matches mit trainierten Labels sind **nicht** behauptet.
+
+## P4 status — Curriculum, Liga, Self-Play und Collapse-Wächter (DoD bestanden, 23.09.2026)
+
+**DoD bestanden. Implementiert + Tests bestanden (lokal, grün); reale
+protokollierte Engine-Läufe auf unterschiedlichen Gegnerstilen; dokumentierte
+fehlschlagende Kategorie; keine Ableitung aus einer einzelnen „leichten" Liga.**
+
+- **Gefrorene, gestufte Gegnerliga** (`tools/benchmark/curriculum.cjs`): 6
+  Stufen (Mechanik/Niedrig-Gegner → 1v1 gegen Champion → Öko-/Marine-/
+  Nuke-Spezialisten → FFA → 2v2/Team → gemischte FROZEN-E-Liga) mit je eigenen
+  Opponent-/Seed-/Modus-/Schwierigkeits-/Tick-Konfigurationen. Der
+  **FROZEN-E Gegner-Mix** nutzt den Run3-Champion-Bot + Legacy + mehrere ältere
+  Archetyp-Stile (`mixArchetypes` mit 7 Stilen, `mixVersion`-Hash) **gegen den
+  separaten Solo-Modell-Bot** — nicht ausschließlich das jeweils jüngste eigene
+  Modell (Overfitting-/Collapse-Vermeidung). Der Plan-Modus (Default) schreibt
+  nur `curriculum.json` (18 Matches, 6 Stufen); `--execute` spielt aus.
+  Nachweis: `tests/curriculum-regression.cjs`.
+- **Collapse-Wächter über alle 8 Kategorien** (`trainer/collapse-watch.cjs`):
+  deterministische Erkennung auf echten Diagnostic-Feldern für passives
+  `HOLD`-Spamming, blindes Rushen, Goldhorten, ausbleibenden City-Bau,
+  Allianzfehler, endlosen War-Lock, scheinbar sichere reine Überlebensstrategie
+  und fehlerhafte Marine-ETAs. `teamMode` wird über
+  `benchmarkMeta.gameConfig.gameMode` entschieden (FFA-Lineups tragen
+  trotzdem `teamIndex` 0/1 → nicht als Team-Signal verwenden). Nachweis:
+  `tests/collapse-watch-regression.cjs`.
+- **Trainings-/Suchsignal von Promotion getrennt** (P4.5,
+  `trainer/collapse-watch.cjs` `assessPromotion`): das **bestätigte
+  Match-Ergebnis** ist das release-entscheidende Signal
+  (`confirmed-<outcome>`); bei Tick-Limit wird der Outcome als **zensiert**
+  behandelt (`censored-tick-limit`, nicht entscheidend). Gehaltene Land-,
+  wirtschaftliche, Verlust- und Überlebens-Größen sind nur **auxiliary**
+  Suchsignale (`heldLand`, `economicEffect`, `troopLosses`, `survival`) — nie
+  allein release-entscheidend.
+- **Pro-Stufen-Versions-Pinning + Resume:** `curriculum.json` pinnt
+  `model.sha256`, `opponent.mixVersion`, `engineCommit`, `stageVersion` pro
+  Stufe. Bereits protokollierte Matches (`status:'recorded'`) werden bei Resume
+  übersprungen und neu ausgewertet, ohne die Engine neu zu spielen (idempotent).
+- **Reale protokollierte Läufe (DoD):**
+  `node tools/benchmark/curriculum.cjs --execute --smoke --engine
+  ../OpenFrontIO --out benchmark-results/curriculum-p4` hat 3 Matches gegen
+  **3 verschiedene gefrorene Archetyp-Stile** (Legacy, Economy, Naval) an der
+  gepinnten Engine (SHA `13b40338`) protokolliert — nicht aus einer einzelnen
+  leichten Liga abgeleitet.
+- **Dokumentierte fehlschlagende Kategorie:** `missing_city_building` auf allen
+  3 Läufen — bei Tick 1200 spart der Bot noch für seine erste City/Factory
+  (`coreFunding.missing=["City","Factory"]`, kein pending Bau), eine echte,
+  nachvollziehbare Degenerationskategorie, die der Wächter meldet.
+- **Tests bestanden (lokal, grün):** `tests/collapse-watch-regression.cjs`
+  (alle 8 Kategorien deterministisch + Promotions-/Suchsignal-Trennung,
+  Tick-Limit zensiert) und `tests/curriculum-regression.cjs` (18-Match-Plan,
+  6 Stufen, gefrorener 7-Stil-Mix, Modell≠Gegner, Versions-Pinning, idempotente
+  Replanung, Resume). Neu in der CI als P4-Schritt in `verify.yml`.
+
+**Abgrenzung / weiterhin offen:** Dies ist das gestufte Curriculum + Liga +
+Collapse-Wächter (P4). Das **unabhängige** Final-Holdout, Shadow-Ranking und
+die Promotion-Gate sind **P5** und hier nicht angefasst. Echte Engine-Matches:
+ja (3 protokollierte Läufe). Reale Human-Multiplayer-Abnahme bleibt offen.
 
 ## Implementierungsstand 1.21.0 (P0–P6)
 

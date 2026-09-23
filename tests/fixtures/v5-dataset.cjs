@@ -1,0 +1,29 @@
+'use strict';
+// Deterministic synthetic dataset for P3 regression tests. No RNG: every
+// match/frame is a pure function of its index, so features+labels are stable
+// across runs (required for a reproducible training test).
+function makeMatch(m){
+  const frames = [];
+  const n = 12; // frames per match
+  const base = 4 + m;
+  const trend = (m % 3 === 0) ? 1 : -0.5; // some matches gain land, some lose
+  for (let f = 0; f < n; f++){
+    const land = Math.max(0, base + trend * f + (f % 2));
+    frames.push({
+      tick: f * 10,
+      visibleState: {
+        home: 60 + m, maxTroops: 120, committed: 4 + (f % 3), incoming: 2 + (f % 2),
+        reserve: 8, gold: 30000 + m * 1000 + f * 500, land: Math.round(land),
+        capacityUse: 0.4, frontCount: 1 + (f % 2), costTroops: 3, counterRisk: 0.2,
+        holdProbability: 0.8
+      },
+      action: {type: f % 4 === 0 ? 'attack' : (f % 4 === 2 ? 'investment' : 'naval')}
+    });
+  }
+  return {matchId: 'M' + m, outcome: trend < 0 ? 'defeat' : 'victory', frames};
+}
+function makeDataset(matches = 16){
+  return {horizonTicks: 60, landScale: 8,
+    matches: Array.from({length: matches}, (_, m) => makeMatch(m))};
+}
+module.exports = { makeDataset, makeMatch };
