@@ -615,7 +615,15 @@
     // After losing the last productive buildings, do not keep the former
     // Warship/Port/SAM savings target ahead of a legal, affordable core.
     // An observed incoming nuke or currently active invasion keeps priority.
-    const coreRecovery=startup&&mine>0&&troopSnapshot.incoming===0;
+    // A still-standing City/Factory is not proof that the economy can
+    // recover: prolonged observed train+trade income collapse needs a
+    // productive rebuild too. Do not override active attacks or nukes.
+    const incomeCollapse=incomeStatus.observed===true&&
+      incomeStatus.train===0&&incomeStatus.trade===0&&
+      cities>=1&&factories>=1&&
+      (cities<2||factories<2||failedEconomyProbes>=5);
+    const coreRecovery=(startup||incomeCollapse)&&mine>0&&
+      troopSnapshot.incoming===0;
     // Eight failed coast scans used to disable first-port planning forever.
     // Retry after a bounded pause: territory and legal build sites can change.
     if(portProbeFailures>=8 && Number.isFinite(lastPortRetryTick) &&
@@ -683,11 +691,11 @@
     const neural=neuralStrategicSignals(me,troopSnapshot,nowTick);
     const list=[
       {type:'City',desired:capacityCityDesired,score:92+
-        (coreRecovery&&cities===0?530:0)+(productiveStall&&cities<3?110:0)+(neural?.cityPriority||0)*90+econBoost/2+(posture==='recruit'?38:0)+Math.max(0,pressure-.35)*75+
+        (coreRecovery&&cities<2?530:0)+(productiveStall&&cities<3?110:0)+(neural?.cityPriority||0)*90+econBoost/2+(posture==='recruit'?38:0)+Math.max(0,pressure-.35)*75+
           (pressure>.80&&!immediate?30:0)+(cities===0?115:hardMode()&&cities<2?80:0)+
           (capStalled?pressure>=.98?355:pressure>=.95?295:pressure>=.90?230:135:0)},
       {type:'Factory',desired:wantedFactory,score:91+
-        (coreRecovery&&factories===0?520:0)+(productiveStall&&factories<3?110:0)+(neural?.factoryPriority||0)*90+econBoost+(posture==='bootstrap'?20:0)+
+        (coreRecovery&&factories<2?520:0)+(productiveStall&&factories<3?110:0)+(neural?.factoryPriority||0)*90+econBoost+(posture==='bootstrap'?20:0)+
           (factories===0?100:hardMode()&&factories<2?85:0)+
           (gold<450000?15:0)+(pressure<.60&&factories>0?10:0)+
           (factories<2&&cities>=2?24:0)-
@@ -757,7 +765,7 @@
       'SAM Launcher':0,
       'Missile Silo':(neural?.nuclearPriority||0)*75};
     return {list:value,policyBiases,threatened,gold,cities,factories,mine,pressure,nuclearThreat:threat,incomingNukes:enemyNukes,intel,
-      startup,coreRecovery,basic,emergency,immediate,capStalled,firstPortWindow,savingsTarget,saveForSilo,saveForNuke,siloCount,
+      startup,coreRecovery,incomeCollapse,basic,emergency,immediate,capStalled,firstPortWindow,savingsTarget,saveForSilo,saveForNuke,siloCount,
       enemySilos,proactiveSAM,wantedDefense,wantedSAM,portMilestone,coastSites:coastSites.length,portProbeFailures,
       samQuotedCost,portQuotedCost,posture,samSearchBlocked};
   }
