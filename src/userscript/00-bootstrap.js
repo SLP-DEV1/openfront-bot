@@ -991,25 +991,7 @@ function predict(model,input){
     details.actionTrace={nextSequence:actionSequence+1,lastActionId,
       ledger:actionLedger.map(v=>({...v})),
       semantics:'sent-is-not-confirmed; confirmations are observations; effect unknown'};
-    const confirmedActions=actionLedger.filter(v=>
-      String(v.observed||'').endsWith('_confirmed')||
-      v.observed==='engine-donate-event');
-    const unconfirmedActions=actionLedger.filter(v=>
-      String(v.observed||'').endsWith('_unconfirmed'));
-    const observedEffects=actionLedger.filter(v=>
-      v.effect!=null&&v.effect!=='unknown');
-    details.actionEvidence={
-      intents:actionLedger.length,
-      confirmedObservations:confirmedActions.length,
-      unconfirmedObservations:unconfirmedActions.length,
-      stillUnknown:actionLedger.filter(v=>!v.observed||v.observed==='unknown').length,
-      effectsObserved:observedEffects.length,
-      ratios:{
-        confirmedPerIntent:actionLedger.length?
-          confirmedActions.length/actionLedger.length:null,
-        effectPerIntent:actionLedger.length?
-          observedEffects.length/actionLedger.length:null},
-      semantics:'intent -> confirmation observation -> effect observation; missing evidence is never failure or success'};
+    details.actionEvidence=actionEvidenceKernel(actionLedger);
     details.diagnosticV2={schemaVersion:2,matchId:String(game?.gameID?.()??'unknown'),
       playerId:safeID(myPlayer()),playerName:nameOf(myPlayer()),
       partnerId:opts.duoEnabled?
