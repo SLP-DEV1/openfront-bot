@@ -137,6 +137,7 @@ function boot(benchmarkOptions={}) {
       'normal income must not trigger collapse recovery');
     x.b.setIncomeStatus({observed:true,train:0,trade:0});
     x.game.units=()=>[{...asset('Missile Silo',6,19),owner:()=>x.weak}];
+    x.setTick(2830); // expire the bounded 24-tick nuclear-intel cache
     assert.equal(x.b.economicNeeds(x.me,units,[]).coreRecovery,false,
       'visible enemy silo retains anti-nuclear funding before rebuild');
     x.game.units=()=>[];
