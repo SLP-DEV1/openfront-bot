@@ -81,9 +81,10 @@ function boot() {
   const expose = [
     'window.__test={',
     'setup:(g,b,c)=>{game=g;bus=b;ctors=c;opts.enabled=true;},',
-    'step,resolveDecisionFrames,telemetry,send,diagnosticSnapshot,',
+    'step,resolveDecisionFrames,censorPendingDecisionFrames,telemetry,send,diagnosticSnapshot,',
     'setMonitorSession:x=>monitorSession=x,setLastEmission:n=>lastEmission=n,',
     'frames:()=>decisionFrames.map(f=>({...f})),',
+    'injectFrame:f=>decisionFrames.push(f),',,
     'ledger:()=>actionLedger.map(e=>({...e})),',
     'opts};'
   ].join('\n');
@@ -179,6 +180,46 @@ const lastLedger = x => x.b.ledger()[x.b.ledger().length - 1];
     assert.ok(receipt, 'receipt missing for unconfirmed action');
     assert.equal(receipt.observed, 'unknown');
     assert.equal(receipt.effect, 'unknown', 'absent effect must stay unknown');
+  });
+  await check('P0 #137: pending survives 20 planning frames through full 600 ticks',async()=>{
+    const x=boot();
+    x.b.setMonitorSession('p0-horizon');
+    x.b.setLastEmission(0);
+    await x.b.step();
+    const original=lastFrame(x);
+    for(let i=0;i<20;i++){
+      const tick=305+i*10;
+      x.b.injectFrame({...original,decisionId:'p0-horizon:t'+tick,
+        tick,resolved:false,outcomeStatus:'pending',resolution:null});
+      x.setTick(tick);
+      x.b.resolveDecisionFrames(tick);
+    }
+    assert.ok(x.b.frames().some(f=>f.decisionId===original.decisionId),
+      'old unresolved frame cannot be evicted by sixteen newer frames');
+    x.setTick(original.tick+600);
+    x.b.resolveDecisionFrames(original.tick+600);
+    const old=x.b.frames().find(f=>f.decisionId===original.decisionId);
+    assert.ok(old,'frame must still exist when horizon resolves');
+    assert.equal(old.resolved,true);
+    assert.equal(old.outcomeStatus,'unknown');
+    assert.equal(old.resolution.censored,true);
+    x.b.censorPendingDecisionFrames(901,'match-end');
+    assert.ok(x.b.frames().every(f=>f.resolved));
+    assert.ok(x.b.frames().length<=16,'resolved history remains bounded');
+  });
+  await check('P0 #137: pending storage bounded without silent eviction',async()=>{
+    const x=boot();
+    x.b.setMonitorSession('p0-cap');
+    x.b.setLastEmission(0);
+    await x.b.step();
+    const original=lastFrame(x);
+    for(let i=0;i<1500;i++)
+      x.b.injectFrame({...original,decisionId:'capacity-'+i,
+        tick:300,resolved:false,outcomeStatus:'pending',resolution:null});
+    x.b.resolveDecisionFrames(301);
+    assert.ok(x.b.frames().length<=1040,'pending+resolved storage is bounded');
+    assert.ok(x.b.frames().some(f=>f.resolution?.reason==='pending-capacity'),
+      'excess frames are explicitly censored rather than silently lost');
   });
   console.log('TOTAL', pass, 'passed,', fail, 'failed');
   if (fail) process.exitCode = 1;
