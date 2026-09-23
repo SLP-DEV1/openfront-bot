@@ -7,12 +7,15 @@ const source=fs.readFileSync(path.join(__dirname,'..','OpenFront_Solo_AggroBot.u
 const start=source.indexOf('  function diagnosticZip(files){');
 const end=source.indexOf('  function diagnosticDownload(',start);
 assert(start>0&&end>start,'ZIP implementation must exist in userscript');
+assert(source.includes("['team.jsonl',jsonl(team)]"),
+  'official Team and local Duo must have separate diagnostic exports');
 const zip=vm.runInNewContext('(()=>{'+source.slice(start,end)+';return diagnosticZip})()',
   {Uint8Array,Uint32Array,DataView,TextEncoder,Blob,Error});
 (async()=>{
   const inputs=[['summary.json','{"schemaVersion":2}'],
     ['events.jsonl','{"seq":1}\n{"seq":2}\n'],
-    ['snapshots.jsonl','{"tick":80}\n'],['duo.jsonl','{"peerId":"x"}\n']];
+    ['snapshots.jsonl','{"tick":80}\n'],['duo.jsonl','{"peerId":"x"}\n'],
+    ['team.jsonl','{"kind":"donation_observed"}\n']];
   const bytes=new Uint8Array(await zip(inputs).arrayBuffer());
   const crcKnown=new DataView((await zip([['known.txt','123456789']]).arrayBuffer()));
   assert.equal(crcKnown.getUint32(14,true),0xcbf43926,'standard CRC-32 test vector');
