@@ -6534,7 +6534,9 @@ function predict(model,input){
           shipIds:boat.shipIds,eta:boat.eta??null,
           lastProgressTick:boat.lastProgressTick,
           status:'in-transit-arrival-unknown'});
-      }else if(tick-boat.tick>(boat.seen?1350:90) &&
+      }else if(tick-boat.tick>(boat.seen?
+        Math.max(1350,Number.isFinite(boat.eta?.arrivalTick)?
+          Math.min(7200,boat.eta.arrivalTick-boat.tick+120):1350):90) &&
         (!boat.seen||boat.observationLostTick==null)&&
         (!boat.seen||tick-boat.lastProgressTick>260)){
         if(boat.seen)marineStats.transportUnresolved++;
