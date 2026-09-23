@@ -20,6 +20,7 @@ if(i<0||!argv[i+1])throw Error('--lineup JSON required');
 const lineup=JSON.parse(fs.readFileSync(path.resolve(argv[i+1]),'utf8'));
 if(!Array.isArray(lineup)||lineup.length<2||lineup.length>8||lineup.some(x=>
  !x||typeof x.bot!=='string'||!common.profiles[x.profile]||
+ !(x.archetype===undefined||common.ARCHETYPES[x.archetype])||
  ![0,1].includes(x.teamIndex??0)))throw Error('Invalid full-bot lineup (2-8 members)');
 const opts=common.parse(argv.filter((_,j)=>j!==i&&j!==i+1));
 if(opts.gameType==='Singleplayer')throw Error('Multiple human clients require --gameType Private');
@@ -79,7 +80,8 @@ const intentsFile=fs.openSync(path.join(dir,'turns.jsonl'),'wx');
 let recordsCount=0,emitted=0;
 const meta={trajectorySemantics:visibleTrajectory.SEMANTICS,harness:'engine-gameview-multibot-v1',engineCommit,
  botSHA256:common.digest(source),fullBots:members.map(m=>({clientID:m.clientID,
- profile:m.profile,teamIndex:m.teamIndex??0,botSHA256:common.digest(m.source)})),
+ profile:m.profile,archetype:m.archetype??'legacy',teamIndex:m.teamIndex??0,
+ botSHA256:common.digest(m.source)})),
  policySHA256:policyHash,seed:opts.seed,
   seedSource:'GameStartInfo.gameID',profile:opts.profile,settings:common.profiles[opts.profile],
   opponentProfile:opts.opponentProfile,scriptedHumans:opts.scriptedHumans,
@@ -237,6 +239,7 @@ try{
       globalThis.localStorage=m.localStorage;
       await m.bot.pump();if(!m.started&&m.bot.status().connected){
         m.bot.start({...common.profiles[m.profile],
+          archetype:m.archetype??'legacy',
           ...(gameMode===GameMode.Team?{duoEnabled:true,
             duoRoom:'BENCH_DUO_TEAM'+(m.teamIndex??0)}:{})});
         m.started=true;}}
@@ -258,8 +261,8 @@ finally{
     const me=m.view.myPlayer(),data=reports[i];
     const outcome=observedWinner?winnerOutcome(observedWinner.winner,me):
       m.spawned&&me?.isAlive?.()===false?'defeat':'unknown';
-    return {clientID:m.clientID,profile:m.profile,teamIndex:m.teamIndex??0,
-      botSHA256:common.digest(m.source),outcome,
+    return {clientID:m.clientID,profile:m.profile,archetype:m.archetype??'legacy',
+      teamIndex:m.teamIndex??0,botSHA256:common.digest(m.source),outcome,
       started:m.started,spawned:m.spawned,emitted:m.emitted,
       land:me?.numTilesOwned?.()??null,alive:me?.isAlive?.()??null,
       // Snapshot a plain copy BEFORE assigning report.fullBots: the first

@@ -89,13 +89,17 @@ for(const match of matches){
  let command,argv;
  if(values.fullBots){
    fs.mkdirSync(dir,{recursive:true});
+   // P1: der Smoke belegt bewusst UNTERSCHIEDLICHE Strategien — verschiedene
+   // versionierte Archetypen (nicht nur Profile/Slider), je ein vollst鋘diger
+   // Bot-Client pro Teilnehmer. FFA: legacy vs rush. 2v2: Team 0 (duo/legacy)
+   // gegen Team 1 (rush/turtle).
    const lineup=participants===4?[
-     {bot,profile:match.profile,teamIndex:0},
-     {bot,profile:match.profile,teamIndex:0},
-     {bot:opponentBot,profile:match.opponent,teamIndex:1},
-     {bot:opponentBot,profile:match.opponent,teamIndex:1}]:[
-     {bot,profile:match.profile,teamIndex:0},
-     {bot:opponentBot,profile:match.opponent,teamIndex:1}];
+     {bot,profile:match.profile,teamIndex:0,archetype:'duo'},
+     {bot,profile:match.profile,teamIndex:0,archetype:'legacy'},
+     {bot:opponentBot,profile:match.opponent,teamIndex:1,archetype:'rush'},
+     {bot:opponentBot,profile:match.opponent,teamIndex:1,archetype:'turtle'}]:[
+     {bot,profile:match.profile,teamIndex:0,archetype:'legacy'},
+     {bot:opponentBot,profile:match.opponent,teamIndex:1,archetype:'rush'}];
    const lineupFile=path.join(dir,'lineup.json');
    fs.writeFileSync(lineupFile,JSON.stringify(lineup,null,2)+'\n');
    command=path.join(__dirname,'engine-multibot.mjs');
@@ -132,8 +136,8 @@ for(const match of matches){
    game.run?.spawned===true&&allSpawned?'recorded':'failed';
  match.outcome=game?.gameEnd?.outcome??'unknown';
  match.fullBots=game?.fullBots?.map(m=>({clientID:m.clientID,
-   botSHA256:m.botSHA256,profile:m.profile,teamIndex:m.teamIndex,
-   outcome:m.outcome,land:m.land,alive:m.alive}))??null;
+   botSHA256:m.botSHA256,profile:m.profile,archetype:m.archetype,
+   teamIndex:m.teamIndex,outcome:m.outcome,land:m.land,alive:m.alive}))??null;
  match.termination=game?.run?.termination??'unknown';
  match.tick=game?.run?.tick??null;
  match.error=!originValid&&game?'game provenance mismatch':

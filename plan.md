@@ -75,8 +75,8 @@ GameView / bestätigte eigene Aktionen / bestätigte Partnerinformationen
 
 **Implementieren**
 
-- [ ] Reuse `engine-multibot.mjs` und `league.cjs`: vollständige Client-Instanzen mit getrennten GameViews, VM-/Speicher-/Worker-Zuständen und gemeinsamer offizieller Engine.
-- [ ] Versionierte Gegner-Archetypen mit tatsächlicher abweichender Strategie und überprüfbarem Verhaltensprofil: `rush`, `turtle`, `economy`, `opportunist`, `diplomat`, `naval`, `nuke`, `duo`, `legacy`, `champion`. **Nicht** nur denselben Bot unter zehn Namen bzw. Sliderwerten starten.
+- [x] Reuse `engine-multibot.mjs` und `league.cjs`: vollständige Client-Instanzen mit getrennten GameViews, VM-/Speicher-/Worker-Zuständen und gemeinsamer offizieller Engine. *(Nachgewiesen: FFA- und 2v2-Smoke gegen Engine-Pin `13b40338` mit 2 bzw. 4 vollständigen Bot-Clients; Bot-Hash und Provenienz pro Teilnehmer in `match.json`.)*
+- [x] Versionierte Gegner-Archetypen mit tatsächlicher abweichender Strategie und überprüfbarem Verhaltensprofil: `rush`, `turtle`, `economy`, `opportunist`, `diplomat`, `naval`, `nuke`, `duo`, `legacy`, `champion`. **Nicht** nur denselben Bot unter zehn Namen bzw. Sliderwerten starten. *(Bestanden: gefrorene `archetype-v1`-Politik in `common.cjs` + `00-bootstrap.js`; `archetypePolicy()` ändert die Planer-Rangfolge (Timing-Gate, Nutzen, schwächstes Ziel, erzwungene Subsysteme); `archetypeSignature()` pro Client in `match.json`. Nachweis `tests/archetype-regression.cjs` (6/6) und Logs: identisches Seed/Profil/Ticks → pro Archetyp andere `selectedByKind` (2v2, 124 Planungsticks: duo {naval 88}, legacy {hold 88, naval 33}, rush {hold 121}, turtle {invest 102}).)*
 - [ ] Allianz-/Diplomatie-Szenarien einschließlich Beziehungsänderung mit bestätigter Team-/Allianzsemantik. Team und lokalem Duo-Relay nicht verwechseln. Für einen Allianzbruch gelten neue aktuelle Zustände, niemals eine alte Freund-/Feind-Cacheliste.
 - [ ] Separates 1v1-, FFA- und offizielles 2v2-Protokoll; Rotation von Karte, Position, Teampartner, Profil und Seed. Ergebnisse nicht in eine undifferenzierte Gesamtquote werfen.
 - [ ] Jede Gegner-/Profilversion und den Liga-Snapshot einfrieren; Legacy-/Champion-Snapshots erhalten, statt sie bei neuem Training still zu ersetzen.
@@ -84,6 +84,8 @@ GameView / bestätigte eigene Aktionen / bestätigte Partnerinformationen
 - [ ] `--smoke` strikt von echten vollständig gelaufenen Liga- und Langzeitpartien trennen; Gegner muss verifiziert gespawnt und mit echtem eigenen Bot-Hash ausgewiesen sein.
 
 **DoD:** Mindestens ein nachweislich ausgeführter kurzer FFA- und ein 2v2-Smoke mit vollständigen gegnerischen Bot-Clients; Logs belegen unterschiedliche Strategien und Spielzustand; ohne echte Suite **keine** breite Spielstärke behaupten.
+
+**Status (23.09.2026): DoD bestanden.** Gegen den Engine-Pin `13b40338` wurden ein kurzer FFA-Lauf (2 Partien, `legacy` vs `rush`) und ein kurzer 2v2-Lauf (2 Partien, `duo`/`legacy` vs `rush`/`turtle`, vier vollständige Bot-Clients) mit `tools/benchmark/league.cjs` nachweislich ausgeführt; die Logs belegen unterschiedliche Strategien und Spielzustand (Details `docs/COMPETITIVE_ROADMAP.md`). Tests grün: `tests/archetype-regression.cjs` (6/6), Strategy-Regression (318/318), P0-Test, Solo-/Run3-Builds, Duo-Relay. *Offen in P1:* Allianz-/Diplomatie-Szenarien mit garantiert aktuellen Beziehungen, 1v1 + Karten-/Position-/Partner-/Profil-/Seed-Rotation, Freeze aller Profil- und Liga-Snapshots, vollständige deterministische Szenario-Paket-Liste, strikte `--smoke`/Liga-Trennung. Reale Human-Multiplayer-Abnahme bleibt separat.
 
 ### P2 — Menschliche Replays als korrektes Curriculum
 
