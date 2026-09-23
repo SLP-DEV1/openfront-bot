@@ -7622,9 +7622,9 @@ function predict(model,input){
         ' · Reserve '+Math.round(s.reserve/10)+' · Front '+Math.round(s.committed/10);
       const ranked=rankedTargets(groups,me,tick,s,context);
       const planning=strategicCandidatePlan(me,groups,s,context,ranked,tick);
-      // P0: one canonical frame per planning tick (bounded to the last 16).
+      // P0: preserve pending frames until receipt/horizon resolution.
+      // resolveDecisionFrames() compacts ONLY resolved history in finally.
       decisionFrames.push(planning);
-      if(decisionFrames.length>16)decisionFrames.shift();
       reportAttackBlocks(me,groups,s,context,ranked,tick);
       // Do not open a new front while the homeland is under heavy assault.
       const dangerNow=defenseAssessment(me,s,tick);
