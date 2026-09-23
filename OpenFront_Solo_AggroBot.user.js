@@ -3412,17 +3412,16 @@ function predict(model,input){
     const profileFloor=observedRaider?Math.min(home*.86,policyBaseline+home*.06):0;
     const crisisFloor=crisisTrend&&tick<crisisTrend.expires&&
       (incoming>0||strongest>home*.50)?Math.min(home*.90,home*.12+policyBaseline):0;
-    const reserve=Math.min(home,Math.ceil(Math.max(defensiveFloor,forecastFloor,profileFloor,crisisFloor)));
-    const available=Math.max(0,Math.floor(home-reserve));
+    const resolvedReserve=reserveResolutionKernel(home,{policyBaseline,borderFloor,
+      incomingFloor,capFloor,forecastFloor,profileFloor,crisisFloor});
+    const reserve=resolvedReserve.reserve,available=resolvedReserve.available;
     const total=home+committed;
     const activeEnemy=out.filter(a=>a.targetID!==0 && a.targetID!==null).length;
     const activeNeutral=out.filter(a=>a.targetID===0||a.targetID===null).length;
     const reserveFloors={ruleBaseline:baseline,neuralAdjustment:policyBaseline-baseline,
       policyBaseline,borderFloor,incomingFloor,capFloor,forecastFloor,
       profileFloor,crisisFloor,winningFloor:reserve};
-    const reserveReason=Object.entries({policyBaseline,borderFloor,incomingFloor,capFloor,
-      forecastFloor,profileFloor,crisisFloor})
-      .filter(([,value])=>value>=reserve-.501).map(([name])=>name).join('+')||'baseline';
+    const reserveReason=resolvedReserve.reserveReason;
     return {home,max,committed,incoming,strongest,ratio,reserve,available,total,
       reserveFloors,reserveReason,reserveShare:home>0?reserve/home:0,
       growthPotential:Math.max(0,(10+Math.pow(home,.73)/4)*(1-ratio)),
