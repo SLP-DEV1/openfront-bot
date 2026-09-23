@@ -74,12 +74,13 @@ function gradient(w, xs, ys){
   return grad;
 }
 function mse(w, xs, ys){
+  if (!xs.length || xs.length !== ys.length) throw Error('MSE requires non-empty aligned samples');
   let sum = 0;
   for (let s = 0; s < xs.length; s++){
     const o = predictArray(w, xs[s]);
     sum += (o[0] - ys[s][0]) ** 2 + (o[1] - ys[s][1]) ** 2;
   }
-  return xs.length ? sum / (xs.length * OUTPUTS) : 0;
+  return sum / (xs.length * OUTPUTS);
 }
 
 // Deterministic per-match split: stable hash of matchId -> train if
@@ -138,6 +139,8 @@ function makeModel(w){
 function train(dataset, plan){
   splitPctGlobal = plan.splitPct;
   const {train: T, validation: V, trainMatches, valMatches} = buildSamples(dataset);
+  if (!T.x.length) throw Error('No usable training frames');
+  if (!V.x.length) throw Error('No usable validation frames');
   let w = plan.resume ? Float64Array.from(plan.resume.weights) : new Float64Array(LENGTH);
   const startEpoch = plan.resume ? plan.resume.epoch : 0;
   const curve = plan.resume ? plan.resume.curve.slice() : [];
@@ -156,15 +159,18 @@ function train(dataset, plan){
 
 // Baselines for ablation (all deterministic, no learned weights).
 function meanModelMetrics(x, y){
+  if(!y.length || x.length!==y.length) throw Error('Mean baseline requires non-empty aligned samples');
   const m = [0, 1].map(k => y.reduce((s, r) => s + r[k], 0) / Math.max(1, y.length));
   const loss = y.reduce((s, r) => s + (r[0] - m[0]) ** 2 + (r[1] - m[1]) ** 2, 0) / (y.length * OUTPUTS);
   return {kind: 'mean-constant', mse: loss};
 }
 function nullModelMetrics(x, y){
+  if(!y.length || x.length!==y.length) throw Error('Null baseline requires non-empty aligned samples');
   const loss = y.reduce((s, r) => s + (r[0] - 0.5) ** 2 + (r[1] - 0.5) ** 2, 0) / (y.length * OUTPUTS);
   return {kind: 'zero-weights-null', mse: loss};
 }
 function ruleModel(x, y){
+  if(!y.length || x.length!==y.length) throw Error('Rule baseline requires non-empty aligned samples');
   // A fixed deterministic heuristic mapping features -> targets (documented,
   // not learned). Used only as an ablation reference.
   const pred = xi => [clamp01(0.5 + 0.3 * (xi[1] - 0.5) - 0.2 * (xi[3] - 0.5)),
@@ -216,14 +222,26 @@ function main(argv){
   const dataset = JSON.parse(fs.readFileSync(cfg.dataset, 'utf8'));
   const {train: T, validation: V, trainMatches, valMatches} = buildSamples(dataset);
   const plan = {epochs, lr, splitPct, dataset: cfg.dataset,
-    dataHash: hashBag(T), trainSamples: T.x.length, valSamples: V.x.length,
+    dataHash: hashBag(T),validationHash:hashBag(V),
+    trainSamples: T.x.length, valSamples: V.x.length,
     trainMatches: [...trainMatches].sort(), valMatches: [...valMatches].sort(),
     featuredSchemaVersion: feat.FEATURED_SCHEMA_VERSION};
+  // Epoch target is excluded: a partial run may resume longer. Both splits,
+  // hyperparameters, and feature/label configuration remain pinned.
+  const resumeContract={trainHash:plan.dataHash,valHash:plan.validationHash,
+    trainMatches:plan.trainMatches,valMatches:plan.valMatches,
+    splitPct,lr,featuredSchemaVersion:plan.featuredSchemaVersion,
+    modelArch:'32x20x2-tanh',horizonTicks:Number(dataset.horizonTicks)||120,
+    landScale:Number(dataset.landScale)||20};
+  plan.resumeSignature=crypto.createHash('sha256')
+    .update(JSON.stringify(resumeContract)).digest('hex');
   if (cfg.dryRun === 'true'){ console.log(JSON.stringify(plan, null, 2)); return; }
   if (trainMatches.size && valMatches.size &&
       [...trainMatches].some(m => valMatches.has(m)))
     throw Error('Train/validation matches overlap');
   if (T.x.length === 0) throw Error('No usable training frames');
+  if (V.x.length === 0 || valMatches.size===0) throw Error('No usable validation frames');
+  if (trainMatches.size===0) throw Error('No usable training match set');
   const out = path.resolve(cfg.out);
   if (cfg.resume){
     if (fs.existsSync(out)) throw Error('Output directory already exists: ' + out);
@@ -235,7 +253,8 @@ function main(argv){
   let resume = null;
   if (cfg.resume){
     const r = JSON.parse(fs.readFileSync(path.resolve(cfg.resume), 'utf8'));
-    if (r.dataHash !== plan.dataHash) throw Error('Resume data hash mismatch');
+    if (r.dataHash !== plan.dataHash || r.resumeSignature !== plan.resumeSignature)
+      throw Error('Resume provenance signature mismatch (train/validation/parameters)');
     if (!r.weights || r.weights.length !== LENGTH) throw Error('Invalid checkpoint weights');
     resume = {weights: r.weights, epoch: r.epoch, curve: r.curve};
   }
@@ -244,11 +263,11 @@ function main(argv){
     onEpoch: (e, point, w, curve) => {
       if (e % Math.max(1, Math.floor(epochs / 20)) === 0 || e === epochs)
         writeJSON('checkpoint.json', {epoch: e, weights: Array.from(w), lr,
-          epochs, dataHash: plan.dataHash, curve});
+          epochs, dataHash: plan.dataHash,resumeSignature:plan.resumeSignature, curve});
     }});
   // Final checkpoint always written for resume.
   writeJSON('checkpoint.json', {epoch: epochs, weights: Array.from(res.w), lr,
-    epochs, dataHash: plan.dataHash, curve: res.curve});
+    epochs, dataHash: plan.dataHash,resumeSignature:plan.resumeSignature, curve: res.curve});
   const model = makeModel(res.w);
   writeJSON('model.json', model);
   const metrics = {
