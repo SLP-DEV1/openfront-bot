@@ -37,16 +37,22 @@ const generated = fs.readFileSync(out, 'utf8');
 const expected = 'const SHADOW_V5_BUNDLED_MODEL = ' + JSON.stringify(model) + ';';
 assert.ok(generated.includes(expected), 'exact trained model embedded');
 assert.ok(!generated.includes('const SHADOW_V5_BUNDLED_MODEL = null;'), 'null replaced');
-// Game intents unchanged: the shadow block is still shadow-only and the
-// neural/promotion state is untouched by training alone.
-assert.ok(generated.includes('changedIntent:false'), 'shadow block unchanged (no intent)');
+// Game intents unchanged: by default the schema-5 model only observes
+// (no intent change); it can only override a bounded candidate when the
+// explicit candidateControlEnabled flag is on, and the neural/promotion
+// state is untouched by training alone.
+assert.ok(generated.includes('changedIntent:false'), 'no-intent fallback preserved');
+assert.ok(generated.includes('shadow-only; not observed game effect'),
+  'shadow-only (no intent) evidence branch still present');
+assert.ok(generated.includes('candidate-v5 bounded control override; legality still authoritative'),
+  'bounded control override evidence branch present');
+assert.ok(generated.includes('candidateControlEnabled'),
+  'control gated on explicit candidateControlEnabled');
 const neuralLine = generated.split('\n').find(l => l.includes('const NEURAL_BUNDLED_MODEL ='));
 assert.ok(neuralLine, 'neural/promotion marker still present');
 const neuralJson = neuralLine
   .slice(neuralLine.indexOf('const NEURAL_BUNDLED_MODEL = ') + 'const NEURAL_BUNDLED_MODEL = '.length, -1);
 if (neuralJson !== 'null') assert.equal(JSON.parse(neuralJson).schema, 4,
   'promotion path still uses schema-4 champion (not the trained schema-5)');
-assert.ok(generated.includes('evidence:\'shadow-only; not observed game effect\''),
-  'shadow evidence semantics unchanged');
 fs.rmSync(tmp, {recursive: true, force: true});
 console.log('PASS P3 shadow connection (trained model -> existing shadow ranking, no intent change)');

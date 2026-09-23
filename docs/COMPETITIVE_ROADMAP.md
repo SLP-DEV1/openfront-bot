@@ -242,6 +242,65 @@ Collapse-Wächter (P4). Das **unabhängige** Final-Holdout, Shadow-Ranking und
 die Promotion-Gate sind **P5** und hier nicht angefasst. Echte Engine-Matches:
 ja (3 protokollierte Läufe). Reale Human-Multiplayer-Abnahme bleibt offen.
 
+## P5 status — Shadow, unabhängiger Holdout und Promotion ([PR #150](https://github.com/SLP-DEV1/openfront-bot/pull/150), DoD bestanden, 23.09.2026)
+
+- **3-Arm-Paar-Testbank** (`tools/benchmark/paired-holdout.cjs`): drei Arme auf
+  **demselben Run3-Bot-Code** — `rule-basis` (kein Modell, `--profile
+  autonomous`), `run3-schema4` (`--policy` Schema-4-Champion) und
+  `candidate-v5` (`--candidateControl true` + eingebetttes Schema-5-Modell,
+  Bot-SHA = eingebettte Quelle). Vorregistriertes Protokoll
+  (`buildProtocol`): feste, deterministische Holdout-Seeds pro Szenario,
+  2+ Karten (World/Europe), 2+ Gegner, `minPairsPerCell` und unveränderliche
+  Arm-/Policy-Hashes (HEX64) im Protokoll abgelegt. `runMatch`/`rowFromReport`
+  bauen pro Partie eine verifizierte Zeile (EngineCommit, Bot-/Policy-SHA,
+  Seed, Modus, Karte, Termination, Outcome, Land/Tick, Recording).
+- **Gate als Mindestbasis (advisory):** `trainer/promotion-gate-v5.cjs` wird
+  unverändert wiederverwendet (`gateEvaluate`); es prüft alle drei Arme pro
+  Szenario, eindeutige Match-IDs, Provenienz und saubere, entscheidende
+  Aufzeichnungen. `eligible` bedeutet nur „zur manuellen Prüfung geeignet".
+- **Gepaarte Match-Ebene-Effekte + 95%-CIs gegen BEIDE Baselines:**
+  `computePaired`/`pairedCi` auf Sieg- und Land-Unterschieden (getrennte
+  Paare). **Negative Gates** (`computeNegativeGates`): `unconfirmed-win`,
+  `non-reproducible-engine-policy`, `missing-run-or-visible-state-data`,
+  `untenable-regression-fixed-scenario`.
+- **P5-Kontrollarm:** `candidateControlEnabled` in
+  `src/userscript/20-military-and-planning.js` + `00-bootstrap.js`;
+  `candidateControlEnabled:true` verschiebt die Kandidaten-Utility um
+  `gain*score` (Gain clamp [0,60], Default 18) und sortiert neu.
+  `changedIntent` ist per Definition `controlActive && selected.id!==ruleChoice`
+  und damit bei ausgeschalteter Steuerung **nachweisbar false** (Ausgabe wird
+  von keinem Intent/Reserve/Legalität/Target-Selektor gelesen).
+  `trainer/shadow-deploy.mjs` (Shadow-only) bleibt unverändert beibehalten.
+  Dokumentiert in `docs/MODULAR_BUILD_AND_SHADOW.md`.
+- **Tests bestanden:** `tests/paired-holdout-regression.cjs` (offline:
+  Protokoll/Arme/CI/Negative-Gates/Eligibility/`rowFromReport` mit echten
+  Report-Feldern) grün; CI-Schritt in `verify.yml` ergänzt.
+- **Echte Engine-Matches:** 24 Smoke-Partien
+  (`benchmark-results/paired-holdout-smoke/`) + 36 1v1-Sample-Partien
+  (`benchmark-results/paired-holdout-sample/`), alle Provenienz-verifiziert
+  (`verified:true`).
+- **Ergebnis (DoD-konform):** Der Schema-5-Kandidat ist gegen `run3-schema4`
+  **nicht unterscheidbar** (gepaarte Sieg-CI über 0) und gegen `rule-basis` im
+  Land identisch → **kein nachgewiesener Vorteil → KEINE Promotion** („0/0 oder
+  nicht unterscheidbar → keine Promotion"); alle Negative Gates bestanden.
+- **Dokumentierter Befund:** Die echten Engine-Partien werfen Aufnahmeframes
+  ab (`recording.dropped>0`), während das Gate `recording.dropped===0`
+  verlangt, und mehrere 1v1-Szenarien sind tick-limit-zensiert
+  (`confirmed:false`); das Gate meldet daher konservativ `not-eligible` /
+  `incomplete-recording-or-unverified`. Die gepaarten CIs (auf allen
+  Match-Paaren) sind die eigentliche Entscheidungsevidenz.
+
+**Abgrenzung / weiterhin offen:** Dies ist der unabhängige 3-Arm-Holdout +
+gepaarte Match-Ebene-Auswertung + advisory Promotion-Gate (P5). **Verbrauchtes
+Final-Holdout-Set:** dieses Holdout-Set wurde für die P5-Bewertung genutzt und
+gilt als verbraucht; ein nachfolgender Kandidat benötigt ein **neues, neu
+eingefrorenes** Holdout-Set (neuer Seed-Offset), nicht eine iterative
+Re-Selektion gegen dieses Set. **Weiterhin offen:** FFA/2v2 separat +
+~100-Szenarien-Ausbaustufe (gleiche CLI); echte Browser-/Human-Multiplayer-
+Abnahme sowie Live-Latenz- und Browser/Engine-Inferenz-Checks sind P6. Echte
+Engine-Matches: ja (24 + 36 Partien, provenienzverifiziert). Reale
+Human-Multiplayer-Abnahme bleibt offen.
+
 ## Implementierungsstand 1.21.0 (P0–P6)
 
 ### Abschlussprüfung der implementierbaren Roadmap-Aufgaben (22.09.2026)

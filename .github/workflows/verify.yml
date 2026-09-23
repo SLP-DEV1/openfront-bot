@@ -105,6 +105,11 @@ jobs:
           node tests/collapse-watch-regression.cjs
           node --check tools/benchmark/curriculum.cjs
           node tests/curriculum-regression.cjs
+      - name: Test P5 paired shadow/holdout promotion runner (dry run)
+        run: |
+          node --check tools/benchmark/paired-holdout.cjs
+          node tests/paired-holdout-regression.cjs
+          node tools/benchmark/paired-holdout.cjs --bot OpenFront_AggroBot_Impossible_Run3.user.js --run3Policy docs/training-analysis-20260921/schema4-impossible-world-europe-20260920-run3/champion.json --candidateModel trainer/candidate-v5-holdout.json --engineCommit 13b403387af01d388f8c8ed8c953b6d3a11d1457 --out .ci/p5-holdout --mode 1v1 --maps World,Europe --opponents balanced,rush --runs 2
       - name: Check Scenario Pack and read-only Evidence Mode
         run: |
           node --check tools/benchmark/scenario-pack.cjs

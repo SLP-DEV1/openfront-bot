@@ -53,3 +53,31 @@ existing rule-ranked plan, outgoing intent, reserve, economy spend,
 diplomacy, legal worker checks or schema-4 champion. The diagnostics
 report `wouldPrefer`, observed rule choice and `changedIntent:false`.
 This is **not** a promotion gate or evidence of improved play.
+
+## V5 bounded candidate control (P5)
+
+P5 adds a **bounded** control arm on top of the shadow scorer, selected
+per-run (it is *not* a default and does not replace the schema-4 champion).
+The engine harness (`tools/benchmark/engine-match.mjs`) or a userscript can
+set, in the `of-solo-aggrobot-v1111` store:
+
+- `shadowRankEnabled:true` — the schema-5 ranker scores every bounded
+  candidate (identical in both modes below).
+- `candidateControlEnabled:true` — **only** when this is `true`, each
+  candidate's utility is shifted by `gain * score` where `gain` is clamped
+  to `[0, 60]` (default 18) and the candidate list is re-sorted, so the model
+  can drive the channel director. Downstream legality (director + planners)
+  remains authoritative in every case.
+- `candidateControlEnabled:false` (the shadow default) — the model only
+  observes; `changedIntent` is provably `false` because it is defined as
+  `controlActive && selected?.id !== ruleChoice` with `controlActive` false.
+  Its output is never read by any intent, budget, reserve, legality or
+  target selector.
+
+With control on, `changedIntent` is `true` exactly when the re-ranking
+changes the pick (`selected` differs from the pure-rule choice); otherwise
+the model agrees with the rule ranking. Both arms are compared on the **same
+bot code** in the P5 paired holdout
+(`tools/benchmark/paired-holdout.cjs`), where the candidate arm's bot SHA
+reflects the schema-5 model embedded into the source exactly as the harness
+embeds it.

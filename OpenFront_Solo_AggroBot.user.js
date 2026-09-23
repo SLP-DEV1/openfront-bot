@@ -20,6 +20,10 @@
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
     autoStrategy:true, diplomacy:true, offerAlliances:true, nukes:true, antiNuke:true, lateOffense:true,
     impossibleMode:true,impossibleExperiment:false,neuralEnabled:false,evidenceMode:false,shadowRankEnabled:false,
+    // P5: bounded candidate-v5 control. Off by default (shadow-only). When on,
+    // the schema-5 ranker shifts the bounded candidate ranking so it can drive
+    // the channel director; legality downstream remains authoritative.
+    candidateControlEnabled:false,candidateControlGain:18,
     duoEnabled:false,duoPartnerID:'',duoPartnerName:'',duoRoom:'',archetype:'legacy'};
   let opts;
   try { opts = {...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; }
@@ -2288,6 +2292,43 @@ function predict(model,input){
         if(c.kind==='attack')c.utility+=c.target===weakest.id?500:-250;
     }
     candidates.sort((a,b)=>b.utility-a.utility||String(a.id).localeCompare(String(b.id)));
+    const ruleSelected=candidates[0]||null;
+    // P5: bounded candidate-v5 control + shadow scoring. The schema-5 ranker
+    // scores every bounded candidate. When opts.candidateControlEnabled the
+    // score shifts each utility by a bounded gain*score and the ranking is
+    // recomputed, so the model can drive the channel director; downstream
+    // legality (director + planners) remains authoritative. Otherwise this is
+    // shadow-only (the model only observes, it never changes the pick).
+    let v5Scores=null,controlActive=false;
+    if(opts.shadowRankEnabled&&shadowV5Model){
+      try{
+        const state={home:s.home,maxTroops:s.max,committed:s.committed,
+          incoming:s.incoming,reserve:s.reserve,gold:goldAmount(me),
+          land:number(()=>me.numTilesOwned(),0),capacityUse:s.ratio,
+          frontCount:groups?.length||0};
+        const v5Score=candidate=>{
+          const f=shadowV5.features(state,{kind:candidate.kind,
+            costTroops:candidate.cost||0,counterRisk:candidate.risk||0,
+            holdProbability:1-Math.min(1,candidate.risk||0)});
+          const outcome=shadowV5.predict(shadowV5Model,f);
+          return outcome.heldGain-outcome.lossRisk;
+        };
+        v5Scores=new Map(candidates.map(c=>[c.id,v5Score(c)]));
+        if(opts.candidateControlEnabled===true){
+          const gain=Number.isFinite(+opts.candidateControlGain)?
+            Math.min(60,Math.max(0,+opts.candidateControlGain)):18;
+          for(const c of candidates){
+            const score=v5Scores.get(c.id);
+            if(Number.isFinite(score))
+              c.utility=Math.round(c.utility+gain*score);
+          }
+          candidates.sort((a,b)=>b.utility-a.utility||
+            String(a.id).localeCompare(String(b.id)));
+          controlActive=true;
+        }
+      }catch(e){shadowDecisionEvidence={tick,error:String(e?.message||e),
+        changedIntent:false};}
+    }
     const limited=candidates.slice(0,8),selected=limited[0]||null;
     const rejectedCandidates=limited.slice(1);
     archetypeRecord(selected,groups,me,tick);
@@ -2325,31 +2366,31 @@ function predict(model,input){
     planningState.observedEffects=null;
     planningState.outcomeStatus='pending';
     planningState.resolved=false;
-    // Candidate-v5 only observes the fixed rule-ranked choices; its output is
-    // never read by an intent, budget, reserve, legality or target selector.
+    // Candidate-v5 shadow evidence (and bounded control override marker).
+    // When control is off the model only observes and changedIntent stays
+    // false; its output is never read by an intent, budget, reserve, legality
+    // or target selector. When control is on, `selected` already reflects the
+    // v5-influenced re-ranking computed above.
     if(opts.shadowRankEnabled&&shadowV5Model&&limited.length){
-      try{
-        const state={home:s.home,maxTroops:s.max,committed:s.committed,
-          incoming:s.incoming,reserve:s.reserve,gold:goldAmount(me),
-          land:number(()=>me.numTilesOwned(),0),capacityUse:s.ratio,
-          frontCount:groups?.length||0};
-        const rankedShadow=limited.map(candidate=>{
-          const f=shadowV5.features(state,{kind:candidate.kind,
-            costTroops:candidate.cost||0,counterRisk:candidate.risk||0,
-            holdProbability:1-Math.min(1,candidate.risk||0)});
-          const outcome=shadowV5.predict(shadowV5Model,f);
-          return {id:candidate.id,heldGain:outcome.heldGain,
-            lossRisk:outcome.lossRisk,score:outcome.heldGain-outcome.lossRisk};
-        }).sort((a,b)=>b.score-a.score||String(a.id).localeCompare(String(b.id)));
-        shadowDecisionEvidence={tick,ruleChoice:selected?.id??null,
-          wouldPrefer:rankedShadow[0]?.id??null,ranked:rankedShadow,
-          changedIntent:false,evidence:'shadow-only; not observed game effect'};
-        planningState.modelChoice=rankedShadow[0]?.id??null;
-        planningState.modelScores=rankedShadow;
-        if(tick%100<4)telemetry('neural_shadow_rank',
-          'Schema-5-Vorschlag nur protokolliert',shadowDecisionEvidence);
-      }catch(e){shadowDecisionEvidence={tick,error:String(e?.message||e),
-        changedIntent:false};}
+      const ruleChoice=ruleSelected?.id??null;
+      const changedIntent=controlActive&&selected?.id!==ruleChoice;
+      const rankedShadow=(v5Scores?
+        limited.map(c=>({id:c.id,score:v5Scores.get(c.id)??0})):[]).sort((a,b)=>
+          b.score-a.score||String(a.id).localeCompare(String(b.id)));
+      const wouldPrefer=controlActive?selected?.id??null:
+        rankedShadow[0]?.id??null;
+      shadowDecisionEvidence={tick,ruleChoice,wouldPrefer,ranked:rankedShadow,
+        changedIntent,
+        evidence:controlActive
+          ?(changedIntent
+            ?'candidate-v5 bounded control override; legality still authoritative'
+            :'candidate-v5 control active; model agrees with rule ranking')
+          :'shadow-only; not observed game effect'};
+      planningState.modelChoice=rankedShadow[0]?.id??null;
+      planningState.modelScores=rankedShadow;
+      if(tick%100<4)telemetry('neural_shadow_rank',
+        changedIntent?'Schema-5 Kandidatensteuerung aktiv':'Schema-5 nur protokolliert',
+        shadowDecisionEvidence);
     }
     return planningState;
   }
