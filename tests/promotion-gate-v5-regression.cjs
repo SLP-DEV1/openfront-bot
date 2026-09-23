@@ -94,4 +94,29 @@ assert.equal(run(rows,{...protocol,maps:['World']}).valid,false,
 assert.equal(run(rows,{...protocol,opponents:['balanced']}).valid,false,
   'single-opponent protocol is not a mixed holdout');
 assert.equal(evaluate().eligible,false,'missing data fails closed');
-console.log('PASS P6 paired promotion: complete verified matches, provenance, rotation and fail-closed gates');
+
+// Box 243: "Kandidat uebertrifft vorab festgelegte Baselines ... andernfalls
+// alte Policy behalten." The gate's `eligible` maps 1:1 to the decision:
+// verified improvement -> promote the candidate; otherwise -> keep old policy.
+const decisionOf=r=>(r.eligible?'promote-candidate':'keep-old-policy');
+// (a) Genuine verified paired improvement -> promote.
+assert.equal(decisionOf(run(rows)),'promote-candidate',
+  'verified paired improvement promotes the candidate');
+assert.equal(run(rows).reason,'paired-holdout-gate-passed');
+// (b) Equal performance vs BOTH baselines (no win or land gain) is NOT a
+//     verified improvement -> keep the old policy.
+const tie=clone(rows);
+for(const r of tie)if(r.arm==='candidate'){r.outcome='defeat';r.endLand=1000;}
+const tieResult=run(tie);
+assert.equal(tieResult.valid,true,'tie rows are a complete valid holdout');
+assert.equal(tieResult.eligible,false,
+  'equal performance vs baselines is not a verified improvement');
+assert.equal(tieResult.reason,'no-verified-improvement');
+assert.equal(decisionOf(tieResult),'keep-old-policy',
+  'without a verified improvement the old policy is kept');
+assert.equal(tieResult.observationUnit,'match',
+  'the paired gate is advisory and decides at match level');
+// (c) Missing/invalid evidence also keeps the old policy (fail closed).
+assert.equal(decisionOf(evaluate()),'keep-old-policy',
+  'missing/invalid evidence keeps the old policy');
+console.log('PASS P6 paired promotion: complete verified matches, provenance, rotation, fail-closed gates and explicit promote/keep-old-policy decision');

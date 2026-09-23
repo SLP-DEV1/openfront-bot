@@ -58,6 +58,23 @@ jobs:
             --bots 0 --nations 1 --seed run3-ci-001 --ticks 2200 \
             --profile autonomous --out benchmark-results/run3-ci
           node -e "const fs=require('fs'),crypto=require('crypto'),m=require('./benchmark-results/run3-ci/match.json'),expected=crypto.createHash('sha256').update(fs.readFileSync('OpenFront_AggroBot_Impossible_Run3.user.js')).digest('hex');if(m.benchmarkMeta.botSHA256!==expected||!m.trajectory?.samples?.length||!m.trajectory.summary)process.exit(1)"
+      - name: Reproducibility - identical Run3 policy, same seed twice, must match (box 238)
+        run: |
+          node tools/benchmark/engine-match.mjs \
+            --engine ../OpenFrontIO \
+            --engineCommit bb8af015b515b3b717bd4d901074c5f4c16641cb \
+            --bot OpenFront_AggroBot_Impossible_Run3.user.js \
+            --map World --size Compact --difficulty Impossible \
+            --bots 0 --nations 1 --seed run3-repro --ticks 1000 \
+            --profile autonomous --out benchmark-results/run3-repro-a
+          node tools/benchmark/engine-match.mjs \
+            --engine ../OpenFrontIO \
+            --engineCommit bb8af015b515b3b717bd4d901074c5f4c16641cb \
+            --bot OpenFront_AggroBot_Impossible_Run3.user.js \
+            --map World --size Compact --difficulty Impossible \
+            --bots 0 --nations 1 --seed run3-repro --ticks 1000 \
+            --profile autonomous --out benchmark-results/run3-repro-b
+          node -e "const a=require('./benchmark-results/run3-repro-a/match.json'),b=require('./benchmark-results/run3-repro-b/match.json');const c=m=>JSON.stringify({s:m.trajectory?.samples,sum:m.trajectory?.summary,b:m.benchmarkMeta?.botSHA256});if(!a.trajectory?.samples?.length||!b.trajectory?.samples?.length)process.exit(1);if(c(a)!==c(b)){console.error('Run3 policy NOT reproducible: two same-seed trajectories differ');process.exit(1)}console.log('Run3 policy reproducible: two same-seed runs produced identical trajectories');"
       - name: Run scripted-human Public FFA smoke
         run: |
           node tools/benchmark/engine-match.mjs \
@@ -84,6 +101,8 @@ jobs:
           path: |
             benchmark-results/impossible-ci
             benchmark-results/run3-ci
+            benchmark-results/run3-repro-a
+            benchmark-results/run3-repro-b
             benchmark-results/multiplayer-ci
             benchmark-results/neural-ci
           if-no-files-found: ignore
