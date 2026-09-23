@@ -111,6 +111,13 @@ jobs:
         run: |
           node --check tools/benchmark/league-plan.mjs
           node tests/league-plan-regression.cjs
+      - name: Test P1 league completion (protocols, rotation, snapshot, smoke, alliance)
+        run: |
+          node --check tools/benchmark/scenario-pack.cjs
+          node tests/league-protocol-rotation-regression.cjs
+          node tests/league-snapshot-regression.cjs
+          node tests/league-smoke-separation-regression.cjs
+          node tests/alliance-semantics-regression.cjs
       - name: Test visible browser backend
         run: |
           node --check tools/benchmark/serve-browser.mjs
