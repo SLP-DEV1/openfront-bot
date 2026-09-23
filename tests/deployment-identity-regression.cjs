@@ -39,6 +39,18 @@ const run3=fs.readFileSync(path.join(root,'OpenFront_AggroBot_Impossible_Run3.us
    run3.includes('Deployment: Modell'),
    'Run3 bundle must carry the same deployment identity logic');
 
+ // #153: live UI must not call active candidate control shadow-only.
+ for(const bundle of [solo,run3]){
+   assert(bundle.includes('CONTROL AKTIV (Gain '),
+     'active control must be visible in both userscripts');
+   assert(bundle.includes('Fallback Regelbasis: '),
+     'fail-closed rule fallback must be visible in both userscripts');
+   assert(bundle.includes('Auswahl durch Modell verändert'),
+     'changed-intent must be visibly distinguishable');
+   assert(bundle.includes('opts.shadowRankEnabled&&opts.candidateControlEnabled'),
+     'control status must derive from runtime activation, not model load');
+ }
+
  // 4. The Run3 champion reference is unchanged: the embedded champion is the
  //    reviewed schema-4 champion and the candidate placeholder stays empty.
  const modelLine=(s,name)=>{
