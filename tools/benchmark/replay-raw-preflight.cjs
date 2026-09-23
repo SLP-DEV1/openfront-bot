@@ -16,6 +16,7 @@ function audit(record,expectedEngine){
      !record.turns.length)
     throw Error('Invalid/incomplete raw GameRecord schema');
   let previous=-1,hashAnchors=0,totalIntents=0,missingTurns=0;
+  const unlistedActors=new Set();
   const clientIDs=new Set(record.info.players.map(p=>p.clientID));
   if(clientIDs.has(undefined)||clientIDs.size!==record.info.players.length)
     throw Error('Invalid/duplicate GameRecord clientID');
@@ -33,8 +34,9 @@ function audit(record,expectedEngine){
     }
     for(const intent of turn.intents){
       if(!intent||typeof intent.type!=='string'||!intent.type||
-         !clientIDs.has(intent.clientID))
+         typeof intent.clientID!=='string'||!intent.clientID.trim())
         throw Error('Raw replay intent identity invalid at '+turn.turnNumber);
+      if(!clientIDs.has(intent.clientID))unlistedActors.add(intent.clientID);
       totalIntents++;
     }
   }
@@ -45,9 +47,11 @@ function audit(record,expectedEngine){
     archiveVersion:record.version,declaredTicks:record.info.num_turns,
     recordedTurns:record.turns.length,omittedTurns:missingTurns,
     hashAnchors,totalIntents,participantCount:clientIDs.size,
+    unlistedActorCount:unlistedActors.size,
     visibility:'omniscient-raw-turns-not-player-GameView',
     engineHashesVerified:false,visibleLearningPairs:0,
     status:'structurally-validated-only',
+    identityWarning:unlistedActors.size?'Some archived intents use client IDs absent from info.players; player-level reconstruction requires independent verification':null,
     next:'Re-run exact official engine, verify per-turn hashes, reconstruct the selected player GameView and audit actions before allowing training'};
 }
 function main(argv=process.argv.slice(2)){
