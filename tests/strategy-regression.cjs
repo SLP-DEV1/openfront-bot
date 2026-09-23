@@ -136,6 +136,10 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.b.economicNeeds(x.me,units,[]).incomeCollapse,false,
       'normal income must not trigger collapse recovery');
     x.b.setIncomeStatus({observed:true,train:0,trade:0});
+    x.game.units=()=>[{...asset('Missile Silo',6,19),owner:()=>x.weak}];
+    assert.equal(x.b.economicNeeds(x.me,units,[]).coreRecovery,false,
+      'visible enemy silo retains anti-nuclear funding before rebuild');
+    x.game.units=()=>[];
     x.b.setTroopSnapshot({...x.b.military(x.me,[]),incoming:50000});
     assert.equal(x.b.economicNeeds(x.me,units,[]).coreRecovery,false,
       'observed incoming pressure retains emergency priority');
