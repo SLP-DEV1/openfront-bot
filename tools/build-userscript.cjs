@@ -14,16 +14,18 @@ function assemble(){
  let source=files.map(name=>fs.readFileSync(
    path.join(root,'src/userscript',name),'utf8')).join('');
  const panel=fs.readFileSync(path.join(root,'src/runtime/panel-state.cjs'),'utf8');
+ const kernels=fs.readFileSync(path.join(root,'src/runtime/decision-kernels.cjs'),'utf8');
  const segments=[
-   ['/* __DUO_STATUS_VIEW__ */','// DUO-STATUS-BEGIN','// DUO-STATUS-END'],
-   ['/* __EVIDENCE_PANEL_STATE__ */','// EVIDENCE-STATE-BEGIN','// EVIDENCE-STATE-END']
+   [panel,'/* __DUO_STATUS_VIEW__ */','// DUO-STATUS-BEGIN','// DUO-STATUS-END'],
+   [panel,'/* __EVIDENCE_PANEL_STATE__ */','// EVIDENCE-STATE-BEGIN','// EVIDENCE-STATE-END'],
+   [kernels,'/* __DECISION_KERNELS__ */','// DECISION-KERNELS-BEGIN','// DECISION-KERNELS-END']
  ];
- for(const [marker,start,end] of segments){
+ for(const [moduleSource,marker,start,end] of segments){
    const placeholder='  '+marker+nl,open=start+nl;
-   if(panel.split(open).length!==2||source.split(placeholder).length!==2)
+   if(moduleSource.split(open).length!==2||source.split(placeholder).length!==2)
      throw Error('Duplicate or missing canonical selector: '+marker);
-   const selector=panel.split(open)[1].split(end)[0];
-   if(!selector.includes('function '))throw Error('Missing panel function: '+marker);
+   const selector=moduleSource.split(open)[1].split(end)[0];
+   if(!selector.includes('function '))throw Error('Missing runtime function block: '+marker);
    source=source.replace(placeholder,selector);
  }
  return source;
