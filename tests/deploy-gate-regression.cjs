@@ -3,7 +3,7 @@
 // an explicit Schema/Runtime/Feature/SHA contract and a passed release gate,
 // and it is always embedded into the SHADOW_V5_BUNDLED_MODEL placeholder so
 // the champion (NEURAL_BUNDLED_MODEL) is never replaced by a candidate.
-const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os'),crypto=require('node:crypto');
 const {spawnSync}=require('node:child_process');
 const root=path.resolve(__dirname,'..');
 const candidate=require(path.join(root,'trainer','candidate-policy-v5.cjs'));
@@ -18,6 +18,10 @@ try{
  const model=candidate.zero();
  const sha=candidate.sha(model);
  fs.writeFileSync(modelFile,JSON.stringify(model));
+ const sourceText=fs.readFileSync(source,'utf8');
+ const embedded=sourceText.replace('const SHADOW_V5_BUNDLED_MODEL = null;',
+   'const SHADOW_V5_BUNDLED_MODEL = '+JSON.stringify(model)+';');
+ const expectedBotSHA256=crypto.createHash('sha256').update(embedded).digest('hex');
  const writeGate=(arms,over={})=>fs.writeFileSync(gateFile,JSON.stringify(Object.assign(
    {protocol:{},rows:[],gate:{valid:true,eligible:true,reason:'ok'},
     gatesPass:true,eligible:true},over,{arms})));
@@ -56,7 +60,7 @@ try{
 
  // 5. schema-5 behind a passing gate embeds into SHADOW_V5_BUNDLED_MODEL and
  //    leaves the champion placeholder untouched.
- writeGate({candidate:{botSHA256:'a'.repeat(64),policySHA256:sha}});
+ writeGate({candidate:{botSHA256:expectedBotSHA256,policySHA256:sha}});
  p=run('--gate',gateFile);
  assert.equal(p.status,0,p.stderr);
  const info=JSON.parse(p.stdout);
@@ -81,6 +85,27 @@ try{
    {cwd:root,encoding:'utf8',timeout:30000});
  assert.notEqual(p.status,0);
  assert.match(p.stderr,/runtime contract/i);
+
+ // #152: Same model + passing gate must reject any changed source/runtime,
+ // even when all SHADOW-V5 module markers and the candidate slot survive.
+ const changedSource=path.join(dir,'changed-source.user.js');
+ fs.writeFileSync(changedSource,sourceText.replace(
+   '// @description  ','// @description  modified-runtime-'));
+ const changedOut=path.join(dir,'changed-out.user.js');
+ p=spawnSync(process.execPath,['trainer/deploy.mjs','--model',modelFile,
+   '--source',changedSource,'--out',changedOut,'--gate',gateFile],
+   {cwd:root,encoding:'utf8',timeout:30000});
+ assert.notEqual(p.status,0);
+ assert.match(p.stderr,/runtime\/source SHA/);
+ assert.equal(fs.existsSync(changedOut),false);
+ // Missing runtime provenance must also fail closed.
+ writeGate({candidate:{policySHA256:sha}});
+ p=spawnSync(process.execPath,['trainer/deploy.mjs','--model',modelFile,
+   '--source',source,'--out',changedOut,'--gate',gateFile],
+   {cwd:root,encoding:'utf8',timeout:30000});
+ assert.notEqual(p.status,0);
+ assert.match(p.stderr,/runtime\/source SHA/);
+ assert.equal(fs.existsSync(changedOut),false);
 
  // 7. schema-4 champion still embeds into NEURAL_BUNDLED_MODEL (champion path
  //    unchanged) and does not require a gate.
