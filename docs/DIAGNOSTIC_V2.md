@@ -19,6 +19,10 @@ The package contains:
 - `snapshots.jsonl`: the `snapshot` subset (normally every 80 game ticks).
 - `duo.jsonl`: Duo connection, exchange, help, plan, donation and Duo-labelled
   action events, in sequence order.
+- `team.jsonl`: official Team-mode timeline of observed Engine DonateEvents,
+  Team-labelled intents and match-end observations. Only `donation_observed`
+  proves delivery; a personal elimination does not prove team defeat. Local
+  Duo and official Engine teams remain separate.
 - `README.txt`: session and integrity warning.
 
 IndexedDB stores full journal events continuously in batches rather than
