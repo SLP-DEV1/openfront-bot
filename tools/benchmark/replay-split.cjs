@@ -1,12 +1,10 @@
 'use strict';
 // P2 – deterministic train/holdout separation for replay learning pairs.
 //
-// Hard rule: every frame that shares a group key stays on one side, so near
-// frames of the same match are never distributed across train and holdout.
-// The default key is `matchId`; pass a custom `keyOf` (e.g. matchId+player or
-// matchId+style) for stronger separation "as far as possible". Assignment
-// depends only on `(seed, key)` and never on frame content, so no hidden
-// engine truth or feature can leak through the partition itself.
+// Hard rule: matchId is atomic even when keyOf returns a player/style key.
+// Shared custom keys join *whole matches* into connected components; never
+// split a match because two players or styles give it different custom keys.
+// Assignment depends only on seed and component identity, not frame content.
 
 const crypto=require('node:crypto');
 const normKey=r=>String(r&&r.matchId!=null?r.matchId:'unknown');
@@ -18,34 +16,57 @@ function splitReplays(records,opts){
   if(!Number.isFinite(ratio)||ratio<0||ratio>1)
     throw Error('holdoutRatio must be a finite number in [0,1]');
   const keyOf=o.keyOf||normKey;
-  const byKey=new Map();
-  for(const r of (records||[])){
-    const k=keyOf(r);
-    if(!byKey.has(k))byKey.set(k,[]);
-    byKey.get(k).push(r);
+  const byMatch=new Map(),customOwner=new Map(),parent=new Map();
+  const find=k=>{
+    const p=parent.get(k);
+    if(p===k)return k;
+    const root=find(p);
+    parent.set(k,root);
+    return root;
+  };
+  const unite=(a,b)=>{
+    const x=find(a),y=find(b);
+    if(x!==y){const low=x<y?x:y,high=x<y?y:x;parent.set(high,low);}
+  };
+  for(const r of records||[]){
+    if(r?.matchId==null||String(r.matchId)==='')
+      throw Error('Replay split requires a non-empty matchId for every frame');
+    const matchId=normKey(r);
+    if(!byMatch.has(matchId)){byMatch.set(matchId,[]);parent.set(matchId,matchId);}
+    byMatch.get(matchId).push(r);
   }
-  const keys=[...byKey.keys()].sort();
-  const trainKeys=[];
-  const holdoutKeys=[];
-  for(const k of keys){
-    const h=crypto.createHash('sha256').update(seed+'|'+k,'utf8').digest();
-    const u=h.readUInt32LE(0)/0x100000000; // uniform in [0,1)
-    if(u<ratio)holdoutKeys.push(k);
-    else trainKeys.push(k);
+  // First ingest every match; then join matches sharing a custom identity.
+  // A single match with several players remains atomic by construction.
+  for(const [matchId,rows] of byMatch){
+    for(const row of rows){
+      const k=String(keyOf(row));
+      if(customOwner.has(k))unite(matchId,customOwner.get(k));
+      else customOwner.set(k,matchId);
+    }
   }
-  const train=[];
-  const holdout=[];
-  for(const k of keys){
-    (holdoutKeys.includes(k)?holdout:train).push(...byKey.get(k));
+  const components=new Map();
+  for(const [matchId,rows] of byMatch){
+    const root=find(matchId);
+    if(!components.has(root))components.set(root,{matchIds:[],rows:[]});
+    components.get(root).matchIds.push(matchId);
+    components.get(root).rows.push(...rows);
   }
+  const train=[],holdout=[],trainMatches=[],holdoutMatches=[];
+  for(const key of [...components.keys()].sort()){
+    const group=components.get(key);
+    const h=crypto.createHash('sha256').update(seed+'|'+key,'utf8').digest();
+    const u=h.readUInt32LE(0)/0x100000000;
+    const target=u<ratio?holdout:train;
+    const ids=u<ratio?holdoutMatches:trainMatches;
+    target.push(...group.rows);ids.push(...group.matchIds.sort());
+  }
+  trainMatches.sort();holdoutMatches.sort();
+  const trainSet=new Set(trainMatches);
+  if(holdoutMatches.some(k=>trainSet.has(k)))
+    throw Error('Replay split leaked a match across train and holdout');
   return {
-    seed,
-    holdoutRatio:ratio,
-    train,
-    holdout,
-    trainMatches:trainKeys,
-    holdoutMatches:holdoutKeys,
-    note:'All frames sharing a key stay on one side; assignment depends only on (seed, key), never on frame content.'
+    seed,holdoutRatio:ratio,train,holdout,trainMatches,holdoutMatches,
+    note:'Atomic match groups; shared custom player/style keys join entire matches, never frames.'
   };
 }
 
