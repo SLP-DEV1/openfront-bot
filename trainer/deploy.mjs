@@ -9,6 +9,7 @@
 // the existing Run3 champion.
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import policy from './policy.cjs';
 import actionPolicy from './action-policy.cjs';
@@ -32,11 +33,13 @@ const chosen=policies.get(input?.schema);
 if(!chosen)throw Error('Unsupported model schema: '+String(input?.schema));
 // Schema contract: the model must validate for its declared schema/arch.
 const model=chosen.validate(input);
+let releaseGate=null;
 if(isCandidate){
   // Release gate: a candidate may only be deployed behind a passed gate.
   if(!args.gate)
     throw Error('Schema-5 candidate requires a passed --gate <holdout.json>');
   const gate=JSON.parse(fs.readFileSync(path.resolve(args.gate),'utf8'));
+  releaseGate=gate;
   const g=gate?.gate??{};
   if(g.valid!==true||g.eligible!==true)
     throw Error('Release gate not passed: '+
@@ -71,6 +74,16 @@ if(isCandidate&&(!script.includes('GENERATED-SHADOW-V5-BEGIN')||
 const markerName=isCandidate?'SHADOW_V5_BUNDLED_MODEL':'NEURAL_BUNDLED_MODEL';
 const next=script.replace(placeholder,'const '+markerName+' = '+
   JSON.stringify(model)+';');
+// The P5 holdout already freezes the SHA256 of the fully embedded candidate
+// source in arms.candidate.botSHA256. Bind that SAME evaluated artifact to
+// deployment: a model-only hash cannot protect against changed runtime code.
+if(isCandidate){
+  const expected=releaseGate?.arms?.candidate?.botSHA256;
+  const actual=crypto.createHash('sha256').update(next).digest('hex');
+  if(!/^[a-f0-9]{64}$/i.test(expected??'')||
+     expected.toLowerCase()!==actual)
+    throw Error('Candidate deployment runtime/source SHA does not match release gate');
+}
 fs.writeFileSync(out,next,{flag:'wx'});
 const test=spawnSync(process.execPath,['--check',out],{encoding:'utf8'});
 if(test.status!==0){
