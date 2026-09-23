@@ -200,19 +200,37 @@ function byScenario(rows){
   return m;
 }
 
+// A missing/tick-limited outcome is censored, NOT a confirmed loss.
+function decisive(row){
+  return row?.confirmed===true &&
+    (row.outcome==='victory'||row.outcome==='defeat');
+}
 function computePaired(protocol,rows){
   const groups=byScenario(rows);
   const out={};
   for(const baseline of ['rule-basis','run3-schema4']){
     const winPairs=[],landPairs=[];
+    let censoredPairs=0,missingPairs=0;
+    const decisiveByCell={};
     for(const scenario of protocol.scenarios){
       const g=groups.get(scenario.scenarioId);
-      if(!g?.candidate||!g[baseline])continue;
+      if(!g?.candidate||!g[baseline]){missingPairs++;continue;}
+      // Land at tick-limit remains a descriptive observation, not evidence
+      // that the game ended in victory or defeat.
+      if(Number.isFinite(g.candidate.endLand)&&
+         Number.isFinite(g[baseline].endLand))
+        landPairs.push(g.candidate.endLand-g[baseline].endLand);
+      if(!decisive(g.candidate)||!decisive(g[baseline])){
+        censoredPairs++;
+        continue;
+      }
       winPairs.push(Number(g.candidate.outcome==='victory')-
         Number(g[baseline].outcome==='victory'));
-      landPairs.push(g.candidate.endLand-g[baseline].endLand);
+      const key=JSON.stringify([scenario.mode,scenario.map,scenario.opponent]);
+      decisiveByCell[key]=(decisiveByCell[key]??0)+1;
     }
-    out[baseline]={win:pairedCi(winPairs),land:pairedCi(landPairs)};
+    out[baseline]={win:pairedCi(winPairs),land:pairedCi(landPairs),
+      decisivePairs:winPairs.length,censoredPairs,missingPairs,decisiveByCell};
   }
   return out;
 }
@@ -233,14 +251,36 @@ function computeNegativeGates(rows,groups,protocol){
   gates.push({gate:'missing-run-or-visible-state-data',
     triggered:missing.length>0,
     detail:`${missing.length} row(s) with missing run/result data`});
+  // Require sufficient CONFIRMED pairs in every pre-registered cell,
+  // even if the upstream advisory gate accepts tick-limit observations.
+  const paired=computePaired(protocol,rows);
+  const cells=new Map();
+  for(const scenario of protocol.scenarios){
+    const key=JSON.stringify([scenario.mode,scenario.map,scenario.opponent]);
+    cells.set(key,scenario);
+  }
+  const shortfalls=[];
+  for(const baseline of ['rule-basis','run3-schema4']){
+    const p=paired[baseline];
+    for(const key of cells.keys()){
+      const n=p.decisiveByCell[key]??0;
+      if(n<protocol.minPairsPerCell)
+        shortfalls.push({baseline,cell:JSON.parse(key),decisive:n,
+          required:protocol.minPairsPerCell});
+    }
+  }
+  gates.push({gate:'insufficient-decisive-pairs',
+    triggered:shortfalls.length>0,
+    detail:shortfalls});
   const untenable=[];
   for(const scenario of protocol.scenarios){
     const g=groups.get(scenario.scenarioId);
     if(!g?.candidate)continue;
-    const candWin=g.candidate.outcome==='victory';
+    const candWin=decisive(g.candidate)&&
+      g.candidate.outcome==='victory';
     const bothBaseWin=['rule-basis','run3-schema4'].every(b=>
-      g[b]?.outcome==='victory');
-    if(!candWin&&bothBaseWin)
+      decisive(g[b])&&g[b].outcome==='victory');
+    if(decisive(g.candidate)&&!candWin&&bothBaseWin)
       untenable.push(`${scenario.scenarioId}: candidate lost while both baselines won`);
   }
   gates.push({gate:'untenable-regression-fixed-scenario',
@@ -302,6 +342,8 @@ function main(){
     // paired win advantage is distinguishable from zero at the 95% CI.
     const distinguishable=passes&&ci.win.ciLow>0;
     paired[baseline]={n:ci.win.n,
+      decisivePairs:ci.decisivePairs,censoredPairs:ci.censoredPairs,
+      missingPairs:ci.missingPairs,decisiveByCell:ci.decisiveByCell,
       candidateWins:g?.candidateWins??null,
       baselineWins:g?.baselineWins??null,
       candidateMeanLand:g?.candidateMeanLand??null,
