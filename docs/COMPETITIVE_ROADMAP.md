@@ -1,7 +1,44 @@
 # AggroBot: Multiplayer-/Duo-Umbau — lebender Fortschrittstracker
 
-> **Master-Issue:** [#75 – Gesamtübersicht](https://github.com/SLP-DEV1/openfront-bot/issues/75) · **[Vollständiger eingereichter Entwicklungsplan](COMPETITIVE_PLAN_2026-09-22.md)** (neun Abschnitte einschließlich Befunde, Architektur, P0–P6, Messverfahren und Quellen).  
+> **Master-Issue:** [#75 – Gesamtübersicht](https://github.com/SLP-DEV1/openfront-bot/issues/75) · **[Vollständiger eingereichter Entwicklungsplan](COMPETITIVE_PLAN_2026-09-22.md)** (neun Abschnitte einschließlich Befunde, Architektur, P0–P6, Messverfahren und Quellen).
 > **Erstellt:** 22.09.2026. Ursprüngliche Analyse: Commit `10e81ee` / 1.20.8; beim Anlegen des Trackers war das GitHub-Hauptskript laut README **1.20.9**; zwischenzeitlich wurde **1.20.10** mit Action-Trace erstellt. **Keine neue Gesamt-Testausführung** für 1.20.9 wurde für diese Plananlage durchgeführt.
+
+## P0 — kanonischer DecisionFrame mit Horizon-Auflösung (1.21.2, 23.09.2026)
+
+**[Im Code + lokaler Test bestanden, CI-Ergebnis ausstehend]** Umsetzung des P0-
+Teils der neuralen/learning-Planungsgrundlage ([plan.md](../plan.md)) auf dem
+aktuellen 1.21.2-Stand:
+
+- **Kanonischer DecisionFrame:** `planningState` trägt pro Planungstick
+  `decisionId` (gleiche Kennung, die `send()` auf jede Aktionszeile stempelt),
+  `matchId`, `clientId`, `dataAge`/`missingMask` (Maskierung statt 0),
+  `provenance` (Bot-Version, Engine-Commit, GameMode), `modelChoice`/
+  `modelScores` (Shadow-only), `actualIntents`, `blockReasons`,
+  `actionReceipt`, `observedEffects`, `outcomeStatus`, `resolved`.
+- **Verworfene Kandidaten:** `rejectedCandidates` (maximal die 7 nach dem
+  gewählten Kandidaten) werden erfasst; sie tragen **keine** Wirkungslabel.
+- **Horizont-Auflösung:** `resolveDecisionFrames(tick)` verknüpft Frame und
+  `actionLedger` über `decisionId`; Wirkungshorizont 120, Auflösungshorizont
+  600 Ticks. Nicht erreichte Horizonten bleiben `unknown`/`censored` und
+  werden nie 0 gesetzt. Frames sind auf die letzten 16 begrenzt und werden in
+  der Diagnose als `decisionFrames` exportiert.
+- **Reine Diagnose:** kein neuer Freigabe- oder Sperre-Pfad. Einzige sichtbare
+  Änderung: die Feind-Liste des Status-Fields blendet Teamkollegen aus
+  (`isOnSameTeam`), wie von P0 gefordert.
+- **Nachweis:** `tests/decision-frame-regression.cjs` (Fixture auf dem
+  gebündelten Solo-Skript: Kandidaten + echte Wahl + bestätigte Wirkung
+  verknüpft; abwesende Wirkung bleibt `unknown`) als eigener CI-Schritt in
+  `verify.yml`. `build-userscript.cjs --check`, `build-run3-bundle.cjs --check`
+  und `bundled-run3-regression.cjs` bestanden; der **unveränderte** Schema-4-
+  1000-Gewichte-Champion bleibt im Run3-Bundle (Champion-SHA geprüft).
+- **Weitere Anpassungen in diesem PR:** `tests/live-monitor-regression.cjs`
+  verwendet pro Lauf neue Session-IDs (der Monitor behandelt die Festplatte
+  als maßgeblich), damit der Test auf lokalen Checkouts idempotent bleibt.
+
+**Nicht durchgeführt (ausdrücklich):** echte Engine-/Multiplayer-Matches mit
+DecisionFrame-Daten, lange Beobachtungshorizonte in realen Partien und die
+Statistik über `outcomeStatus`. Der grüne CI-Durchlauf muss nach Push bestätigt
+werden. P0 als Gesamtphase damit **nicht** abgenommen; siehe [#68](https://github.com/SLP-DEV1/openfront-bot/issues/68) und [#75](https://github.com/SLP-DEV1/openfront-bot/issues/75).
 
 ## Implementierungsstand 1.21.0 (P0–P6)
 

@@ -59,6 +59,10 @@ jobs:
           node tests/diagnostic-evidence-regression.cjs
       - name: Test bot strategy
         run: node tests/strategy-regression.cjs
+      - name: Test P0 decision frame linkage
+        run: |
+          node --check tests/decision-frame-regression.cjs
+          node tests/decision-frame-regression.cjs
       - name: Test match auto-start and panel
         run: |
           node --check tests/autostart-regression.cjs
