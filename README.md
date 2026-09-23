@@ -1,6 +1,6 @@
 # OpenFront Solo AggroBot
 
-**Version 1.21.1** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) (Singleplayer, Public, Private).
+**Version 1.21.2** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) (Singleplayer, Public, Private).
 Der Bot steuert Spawn, Expansion, Wirtschaft, Marine, Verteidigung, Handel und Diplomatie mit Sicherheitsprüfungen vor ausgesendeten Befehlen. **Eine garantierte Impossible- oder echte Multiplayer-Siegquote ist nicht belegt.** Ein Engine-Smoke ersetzt keinen Mehrspieler-Langzeittest.
 
 ## Installation und Update
