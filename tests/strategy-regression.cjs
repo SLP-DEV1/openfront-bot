@@ -4177,6 +4177,31 @@ function boot(benchmarkOptions={}) {
       'a visible long-route ship must not be censored at a hard 1350 ticks');
     assert.equal(x.b.state().marineStats.transportUnresolved,0);
   });
+  await check('#133 unresolved long-route ship keeps late coast audit until ETA',()=>{
+    const x=boot();x.b.setBoatCtor(class {});
+    assert(x.b.sendMarineTransport(x.me,6,12000,300,
+      'LANDUNG -> strong','player:strong'));
+    x.game.ownerID=t=>t===6?3:1;
+    const ship={id:()=>91,type:()=> 'Transport',owner:()=>x.me,
+      targetTile:()=>6,tile:()=>42,isActive:()=>true};
+    x.game.units=()=>[ship];
+    x.game.motionPlans=()=>new Map([[91,{startTick:300,
+      ticksPerStep:20,path:Array(121).fill(42),planId:'far-route'}]]);
+    x.b.inspectMarine(x.me,310);
+    x.game.units=()=>[];
+    x.b.inspectMarine(x.me,360);
+    x.b.inspectMarine(x.me,720);
+    assert.equal(x.b.state().marineStats.transportUnresolved,1);
+    assert.equal(x.b.state().pendingBoat,null);
+    assert.equal(x.b.diagnosticSnapshot().marine.marineUnresolvedWatches.length,1);
+    x.game.ownerID=()=>1;
+    x.b.inspectMarine(x.me,2700);
+    assert(x.b.state().diagnostics.some(e=>e.kind==='boat_late_coast_observed'),
+      'later observed coast ownership must be recorded independently');
+    assert.equal(x.b.state().marineStats.transportArrived,0,
+      'late coast ownership must not imply this ship arrived');
+    assert.equal(x.b.diagnosticSnapshot().marine.marineUnresolvedWatches.length,0);
+  });
   await check('#133 disappeared ship may own coast during observation window',()=>{
     const x=boot();x.b.setBoatCtor(class {});
     assert(x.b.sendMarineTransport(x.me,6,12000,300,
