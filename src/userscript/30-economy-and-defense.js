@@ -679,7 +679,8 @@
       peerCoreReady:!!(peer&&peer.state?.cities>=2&&peer.state?.factories>=2),
       peerSilos:peerUnits.filter(u=>u.isActive?.()&&u.type?.()==='Missile Silo').length,
       coreReady:(!cityEnabled||cities>=2)&&(!factoryEnabled||factories>=2),
-      siloAllowed,late,land:mine,silos:siloCount,ownSAM:count('SAM Launcher'),
+      siloAllowed,late,land:mine,silos:siloCount,nukeShots,
+      ownSAM:count('SAM Launcher'),
       antiNuke:opts.antiNuke&&game.config().isUnitDisabled?.('SAM Launcher')!==true,
       enemySilos,incomingNukes:enemyNukes,uncovered:intel.uncovered.length,
       proactiveSAM,samSearchBlocked,urgentVictory:winStatus.urgent});
@@ -842,13 +843,15 @@
       Number.isFinite(needs.samQuotedCost)&&needs.samQuotedCost>0&&
       tick-samQuotedTick<=300?needs.samQuotedCost:0;
     let floor=needs.savingsTarget;
-    if(purpose==='Warship')floor=samFund;
+    if(purpose==='Warship')floor=needs.saveForSilo||needs.saveForNuke?
+      Math.max(needs.savingsTarget,samFund):samFund;
     if(needs.coreRecovery&&['City','Factory'].includes(purpose)){
       // Only when no current troop invasion exists; final worker legality,
       // real quote and shared pending-gold checks still apply below.
       floor=0;
     }
-    if(purpose==='SAM Launcher'||purpose==='Port'&&needs.portMilestone&&
+    if(purpose==='SAM Launcher'&&needs.samFundingUrgent||
+      purpose==='Port'&&needs.portMilestone&&
       needs.savingsTarget===needs.portQuotedCost||
       purpose==='Missile Silo'&&needs.saveForSilo||
       ['Atom Bomb','Hydrogen Bomb','MIRV'].includes(purpose)&&needs.saveForNuke&&
@@ -870,7 +873,8 @@
     // Do not spend the known price of the first productive building on
     // ships, nukes or donations. This never blocks actual emergency defense.
     const productive=purpose==='City'||purpose==='Factory';
-    const urgent=['Defense Post','SAM Launcher'].includes(purpose)||
+    const urgent=purpose==='Defense Post'||
+      purpose==='SAM Launcher'&&needs.samFundingUrgent||
       emergency&&purpose==='Warship';
     // Unknown prices are never invented. Preserve unrelated legal actions
     // until the worker supplies a real price, then protect that quote.
