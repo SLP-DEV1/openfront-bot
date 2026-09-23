@@ -92,6 +92,10 @@ jobs:
           node tests/replay-curriculum-regression.cjs
           node --check tools/benchmark/replay-raw-preflight.cjs
           node tests/replay-raw-preflight-regression.cjs
+          node --check tools/benchmark/replay-engine-extract.mjs
+          node tests/replay-engine-extract-regression.cjs
+          node --check tools/benchmark/schema4-ablation.cjs
+          node tests/issue121-133-acceptance-regression.cjs
           node --check tools/benchmark/replay-reconstruct.mjs
           node tests/replay-reconstruct-regression.mjs
       - name: Test P3 schema-5 offline training (features, labels, deterministic train, shadow)
