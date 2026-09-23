@@ -1,0 +1,83 @@
+name: Vollständige Gegnerliga – verschiedene Bot-Clients (Box 239)
+on:
+  pull_request:
+    paths:
+      - 'OpenFront_Solo_AggroBot.user.js'
+      - 'OpenFront_AggroBot_Impossible_Run3.user.js'
+      - 'tools/benchmark/**'
+      - 'tests/benchmark-regression.cjs'
+      - '.github/workflows/league-archetype.yml'
+  workflow_dispatch:
+
+jobs:
+  full-league-archetypes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install exact official OpenFront engine
+        run: |
+          git clone --depth 1 https://github.com/openfrontio/OpenFrontIO.git ../OpenFrontIO
+          git -C ../OpenFrontIO fetch --depth 1 origin bb8af015b515b3b717bd4d901074c5f4c16641cb
+          git -C ../OpenFrontIO checkout --detach bb8af015b515b3b717bd4d901074c5f4c16641cb
+          cd ../OpenFrontIO
+          npm ci --ignore-scripts
+      - name: Execute full FFA league with differing archetypes (legacy vs rush)
+        run: |
+          node tools/benchmark/league.cjs --execute \
+            --engine ../OpenFrontIO \
+            --engineCommit bb8af015b515b3b717bd4d901074c5f4c16641cb \
+            --bot OpenFront_Solo_AggroBot.user.js \
+            --opponentBot OpenFront_AggroBot_Impossible_Run3.user.js \
+            --seeds box239-ffa-1,box239-ffa-2 \
+            --profiles autonomous --opponents balanced \
+            --ticks 900 \
+            --out benchmark-results/box239-ffa
+      - name: Execute full 2v2 league with differing archetypes (duo/legacy vs rush/turtle)
+        run: |
+          node tools/benchmark/league.cjs --execute --gameMode Team --participants 4 \
+            --engine ../OpenFrontIO \
+            --engineCommit bb8af015b515b3b717bd4d901074c5f4c16641cb \
+            --bot OpenFront_Solo_AggroBot.user.js \
+            --opponentBot OpenFront_AggroBot_Impossible_Run3.user.js \
+            --seeds box239-2v2-1,box239-2v2-2 \
+            --profiles autonomous --opponents balanced \
+            --ticks 900 \
+            --out benchmark-results/box239-2v2
+      - name: Assert leagues recorded and per-client planning signatures differ
+        run: |
+          node -e '
+          const fs=require("fs");
+          function check(base,mode){
+            const r=JSON.parse(fs.readFileSync(base+"/league.json","utf8"));
+            if(!r.matches.length||!r.matches.every(m=>m.status==="recorded")){
+              console.error("league not fully recorded: "+base);process.exit(1);}
+            for(const m of r.matches){
+              const j=JSON.parse(fs.readFileSync(base+"/"+m.relativeOutput+"/match.json","utf8"));
+              const cfg=j.benchmarkMeta&&j.benchmarkMeta.gameConfig;
+              const modeOk=mode==="FFA"
+                ?["FFA","Free For All"].includes(cfg&&cfg.gameMode)
+                :!!(cfg&&cfg.gameMode==="Team");
+              if(!modeOk){console.error("wrong gameMode in "+m.id);process.exit(1);}
+              const sigs=(j.fullBots||[]).map(b=>JSON.stringify(
+                (b.diagnostics&&b.diagnostics.archetypeSignature&&
+                 b.diagnostics.archetypeSignature.selectedByKind)||{}));
+              if(new Set(sigs).size<2){
+                console.error("clients not playing differently in "+m.id);process.exit(1);}
+            }
+          }
+          check("benchmark-results/box239-ffa","FFA");
+          check("benchmark-results/box239-2v2","Team");
+          console.log("PASS box239: full FFA + 2v2 leagues recorded with differing per-client planning signatures");
+          '
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: league-archetype-results
+          path: |
+            benchmark-results/box239-ffa
+            benchmark-results/box239-2v2
+          if-no-files-found: ignore

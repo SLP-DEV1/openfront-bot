@@ -123,7 +123,7 @@ function flagged(match,b,i=0){return watchBot(match,b,i).flaggedCategories;}
     'missing city building');
 }
 
-// 5) alliance_errors: 2v2-Team, aber Duo nicht verbunden.
+// 5) Engine-Team is NOT the same as an expected localhost Duo relay.
 {
   const bot=makeBot({teamIndex:0,diagnostics:{
     localDuo:{status:'AUS',peer:null,partnerID:'',resolvedPartnerID:null,
@@ -132,7 +132,12 @@ function flagged(match,b,i=0){return watchBot(match,b,i).flaggedCategories;}
         reason:'Duo deaktiviert'}}}});
   const match=makeMatch(bot,{},null,
     {gameConfig:{gameMode:'Team'}});
-  assert.ok(flagged(match,bot).includes('alliance_errors'),'alliance errors');
+  assert.ok(!flagged(match,bot).includes('alliance_errors'),
+    'official team without Duo relay is healthy');
+  bot.diagnostics.localDuo.expected=true;
+  bot.diagnostics.localDuo.phase.phase='timeout';
+  assert.ok(flagged(match,bot).includes('alliance_errors'),
+    'explicitly expected Duo with relay timeout is an observable error');
 }
 
 // 6) endless_war_lock: Dauerkrieg seit Anfang, zensiert, immer noch alive.
@@ -218,5 +223,23 @@ for(const c of CATEGORIES){
   assert.equal(p.decisive,true);
   assert.equal(p.promotionSignal,'confirmed-defeat');
 }
+
+// #149: observed WinUpdate without an actual victory/defeat is NOT decisive.
+for(const outcome of ['incomplete','unknown']){
+  const bot=makeBot();
+  const match=makeMatch(bot,{termination:'game-over'},
+    {outcome,source:'engine-WinUpdate'});
+  const p=assessPromotion(match,bot,0);
+  assert.equal(p.decisive,false,'ambiguous '+outcome+' is not decisive');
+  assert.equal(p.censored,true);
+  assert.equal(p.promotionSignal,'unknown');
+}
+const noOutcome=assessPromotion(makeMatch(makeBot(),
+  {termination:'game-over'},null),makeBot(),0);
+assert.equal(noOutcome.decisive,false);
+const tickVictory=assessPromotion(makeMatch(makeBot(),
+  {termination:'tick-limit'},{outcome:'victory'}),makeBot(),0);
+assert.equal(tickVictory.decisive,false);
+assert.equal(tickVictory.promotionSignal,'censored-tick-limit');
 
 console.log('PASS P4 collapse-watcher regression (8 categories + promotion split)');
