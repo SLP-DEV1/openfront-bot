@@ -334,6 +334,7 @@
   // interchangeable. Own tiles INSIDE the country matter more than border-only probes.
   const STRUCTURE_TYPES=['City','Factory','Port','Defense Post','SAM Launcher','Missile Silo'];
   const ECON_PENDING_TTL=100; // 10 game seconds; new builds appear before construction completes.
+  const confirmedBuiltSilos=new Set(); // match-scoped, observed own construction only
   function ownStructures(me) {
     try {return me.units().filter(u=>u?.isActive?.()&&STRUCTURE_TYPES.includes(u.type?.()));}
     catch (_) {return [];}
@@ -359,6 +360,17 @@
       telemetry('build_confirmed',economicStatus,
         {actionId:economicPending.actionId??null,type:economicPending.type,
           kind:economicPending.kind,evidence:'structure-or-level-observed'});
+      if(economicPending.type==='Missile Silo'&&economicPending.kind==='build'){
+        const built=units.find(u=>u.type?.()==='Missile Silo'&&
+          u.tile?.()===economicPending.tile);
+        if(built){
+          const id=String(built.id?.()??'tile:'+built.tile?.());
+          confirmedBuiltSilos.add(monitorSession+':'+id);
+          telemetry('silo_origin','Eigener Raketensilobau bestaetigt',
+            {actionId:economicPending.actionId??null,siloId:id,
+              tile:built.tile?.()??null,origin:'own-build-observed'});
+        }
+      }
       if(economicPending.type==='Port')telemetry('port_confirmed','Hafen im Spielzustand bestätigt',
         {tile:economicPending.tile,buildKind:economicPending.kind});
       if(['City','Factory','Port'].includes(economicPending.type)){
