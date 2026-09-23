@@ -158,7 +158,7 @@ GameView / bestätigte eigene Aktionen / bestätigte Partnerinformationen
 - [ ] Erst gesondertes Shadow-Skript, dann ausdrücklich opt-in begrenzte Kandidatensteuerung, dann optional als Default nach gesonderter echter Human-/Browser-Abnahme.
 - [ ] Stufenweises Rollout, Fail-closed: bei ungültigem Modell, Feature-Drift, Worker-Timeout, fehlendem sichtbaren Zustand, fehlender Legalität → deterministischer regelbasierter Fallback. Notverteidigung wird nicht durch Modelllatenz verzögert.
 - [ ] Modell-/Skript-/Engine-Hash im Panel und Export sichtbar; Rollback zur unveränderten Referenz möglich. Vorhandenes Solo/Run3-Generierungsverfahren und beide Userscripts auf gemeinsame Logik prüfen.
-- [ ] Echte Browser-Matches und offizielle Team-Matches separat evaluieren. Der In-Process-Runner ersetzt **keine** Zwei-Browser-/Human-Multiplayer-Prüfung.
+- [ ] Echte Browser-Matches und offizielle Team-Matches separat evaluieren. Der In-Process-Runner ersetzt **keine** Zwei-Browser-/Human-Multiplayer-Prüfung. *(PR #4: In-Process-Relay implementiert + getestet; offizielle Team-Matches werden über die 2v2-Liga der Box 239 evaluiert. Die echte 2-Browser-/Human-Abnahme (Kategorie „reale Human-Multiplayer-Abnahme“) ist in `docs/LEAGUE_RUNNER.md` dokumentiert und wartet auf Durchführung – In-Process-Läufe ersetzen sie nicht.)*
 
 **DoD:** Verifizierte, optionale Live-Aktivierung mit bekanntem Rollback; der alte Champion bleibt unangetastet; keine neuen Sicherheitsverletzungen oder unerklärte Diskrepanzen zwischen Test-/Live-Featurevektoren.
 
@@ -226,7 +226,7 @@ Nächster kleinster implementierbarer Schritt:
 ## 7. Gesamtabnahme — nicht mit „Code existiert“ verwechseln
 
 - [ ] Gleiches aktuelles Bot-Verhalten ohne Neural bzw. mit identischer alter Run3-Policy reproduzierbar.
-- [ ] Vollständige Gegnerliga mit tatsächlichen **verschieden spielenden** Bot-Clients läuft nachweislich, einschließlich FFA und 2v2.
+- [x] Vollständige Gegnerliga mit tatsächlichen **verschieden spielenden** Bot-Clients läuft nachweislich, einschließlich FFA und 2v2. *(PR #4: vollständige FFA- und 2v2-Liga mit `legacy` vs `rush` bzw. `duo`/`legacy` vs `rush`/`turtle` auf der Engine `13b40338`; `.github/workflows/league-archetype.yml` prüft pro Partie unterschiedliche `selectedByKind`-Signaturen. Kategorie: echte Engine-Matches.)*
 - [ ] Verlässliche sichtbare Trainingsdaten ohne Engine-Informationsleakage und ohne Doppelzählung von Duo-Matches.
 - [ ] Schema-5-Modell besitzt reale Trainings-, Validation- und Holdout-Ergebnisse, nicht nur 702 oder mehr Gewichte.
 - [ ] Shadow verändert keinerlei gesendeten Intent; Beobachtung ist vollständig und richtig als nicht-kausal beschriftet.
