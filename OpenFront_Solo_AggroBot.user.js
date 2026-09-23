@@ -4790,7 +4790,7 @@ function predict(model,input){
       incomeStatus.train===0&&incomeStatus.trade===0&&
       cities>=1&&factories>=1&&
       (cities<2||factories<2||failedEconomyProbes>=5);
-    const coreRecovery=(startup||incomeCollapse)&&mine>0&&
+    let coreRecovery=(startup||incomeCollapse)&&mine>0&&
       troopSnapshot.incoming===0;
     // Eight failed coast scans used to disable first-port planning forever.
     // Retry after a bounded pause: territory and legal build sites can change.
@@ -4831,6 +4831,9 @@ function predict(model,input){
       troopSnapshot.incoming<troops*.10&&
       (hostileFronts>0||late);
     const threat=!!(enemySilos||enemyNukes);
+    // A confirmed nuclear threat keeps SAM funding ahead of an income-collapse
+    // rebuild. Preserve the existing first-core startup path separately.
+    if(incomeCollapse&&threat&&!startup)coreRecovery=false;
     const wantedSAM=opts.antiNuke&&game.config().isUnitDisabled?.('SAM Launcher')!==true?
       Math.min(7,threat?Math.max(1,Math.ceil(intel.assets.length/3)+
         Math.ceil(intel.uncovered.length/3)+(enemyNukes?2:0)):
