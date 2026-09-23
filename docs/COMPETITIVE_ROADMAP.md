@@ -316,11 +316,58 @@ gepaarte Match-Ebene-Auswertung + advisory Promotion-Gate (P5). **Verbrauchtes
 Final-Holdout-Set:** dieses Holdout-Set wurde für die P5-Bewertung genutzt und
 gilt als verbraucht; ein nachfolgender Kandidat benötigt ein **neues, neu
 eingefrorenes** Holdout-Set (neuer Seed-Offset), nicht eine iterative
-Re-Selektion gegen dieses Set. **Weiterhin offen:** FFA/2v2 separat +
-~100-Szenarien-Ausbaustufe (gleiche CLI); echte Browser-/Human-Multiplayer-
-Abnahme sowie Live-Latenz- und Browser/Engine-Inferenz-Checks sind P6. Echte
-Engine-Matches: ja (24 + 36 Partien, provenienzverifiziert). Reale
-Human-Multiplayer-Abnahme bleibt offen.
+Re-Selektion gegen dieses Set. **Weiterhin offen:** ~100-Szenarien-Ausbaustufe
+(gleiche CLI); echte Browser-/Human-Multiplayer-Abnahme sowie Live-Latenz- und
+Browser/Engine-Inferenz-Checks sind P6. Echte Engine-Matches: ja (24 + 36
+Partien, provenienzverifiziert, **zuzüglich des vollständigen 3-Modus-Vergleichs
+unten**). Reale Human-Multiplayer-Abnahme bleibt offen.
+
+## P5-Ergänzung — Vollständiger 3-Modus-Holdout-Vergleich (1v1 + 2v2 + ffa-duo), 23.09.2026
+
+**Kategorie: Echte Engine-Matches bestanden (Kategorie 3).** Der oben als
+*weiterhin offen* ausgewiesene FFA-/2v2-Ausbauschritt wurde durchgeführt:
+derselbe gepaarte 3-Arm-Holdout (`tools/benchmark/paired-holdout.cjs`) über
+**alle drei Modi** — `1v1`, `official-2v2`, `ffa-duo` — je 16 Szenarien
+(4 Archetypen × 2 Karten World/Europe × 2 Replikate) × 3 Arme = **48 Partien
+pro Modus**, deterministische Holdout-Seeds, identischer Run3-Bot-Code in allen
+drei Armen (verifiziert: `rule-basis` und `run3-schema4` teilen denselben
+Bot-SHA; der Kandidat trägt den eingebetteten Schema-5-Modell-SHA).
+Ergebnisdateien: `benchmark-results/v5full-1v1/holdout.json`,
+`benchmark-results/v5full-2v2/holdout.json`,
+`benchmark-results/v5full-ffa/holdout.json`.
+
+**Gepaarte Match-Ebene-Effekte (95 %-CI, getrennte Paare) gegen beide Baselines:**
+
+| Modus | vs `rule-basis` (Sieg / Land) | vs `run3-schema4` (Sieg / Land) | unterscheidbar? |
+|---|---|---|---|
+| `1v1` | 0 / 0 (identisch) | [-0.24, +0.74] / [-67613, +57653] | nein |
+| `official-2v2` | 0 / 0 (identisch) | [0, 0] / [-6623, +47061] | nein |
+| `ffa-duo` | 0 / 0 (identisch) | [-0.658, +0.213] / [-74200, +41678] | nein |
+
+**Befund:**
+- Der Schema-5-Holdout-Kandidat ist in **allen drei Modi der reinen Regelbasis
+  identisch** (Sieg- und Land-Differenz mean 0, se 0): sein nahezu nullgewichtetes
+  Modell verändert das Verhalten nicht messbar.
+- Gegen `run3-schema4` ist der Kandidat in **keinem Modus statistisch
+  unterscheidbar** (jede Sieg- und Land-CI spannt über 0). In `ffa-duo` liegt der
+  mittlere Unterschied sogar leicht negativ (Sieg −0.22, Land −16261), bleibt aber
+  nicht-signifikant.
+- Advisory-Gate: alle drei Modi `not-eligible` / `incomplete-recording-or-unverified`
+  (`recording.dropped=542` Warm-up-Frames, P5-bekanntes Gate-Verhalten); die
+  gepaarten CIs sind die Entscheidungsevidenz. Negativ-Gate
+  `insufficient-decisive-pairs` ausgelöst (einzelne Zellen < 2 decisive Paare);
+  `unconfirmed-win`, `non-reproducible-engine-policy` und
+  `missing-run-or-visible-state-data` in allen drei Modi **nicht** ausgelöst.
+- **Entscheidung (vorab festgelegtes Protokoll): keine Promotion → alte Policy
+  bleibt aktiv.** Run3-Champion unverändert (SHA256 `65589febcf…7ff3`, während
+  des gesamten Laufs bestätigt). „0/0 oder nicht unterscheidbar → keine
+  Promotion."
+
+**Vierstufige Einordnung:** Implementiert (ja) / Tests bestanden (ja,
+`tests/paired-holdout-regression.cjs`) / **Echte Engine-Matches bestanden
+(ja — 3 × 48 Partien, deterministisch, provenienzverifiziert)** / Reale
+Human-Multiplayer-Abnahme (**offen**). Der Nachweis ist ein vollständiger
+gepaarter Engine-Holdout-Vergleich, **keine** menschliche Multiplayer-Abnahme.
 
 ## P6 status — Gated Live-Runtime, Bundle-Parität und Rollback ([PR #151](https://github.com/SLP-DEV1/openfront-bot/pull/151), DoD bestanden, 23.09.2026)
 
