@@ -2460,15 +2460,9 @@ function predict(model,input){
         };
         v5Scores=new Map(candidates.map(c=>[c.id,v5Score(c)]));
         if(opts.candidateControlEnabled===true){
-          const gain=Number.isFinite(+opts.candidateControlGain)?
-            Math.min(60,Math.max(0,+opts.candidateControlGain)):18;
-          for(const c of candidates){
-            const score=v5Scores.get(c.id);
-            if(Number.isFinite(score))
-              c.utility=Math.round(c.utility+gain*score);
-          }
-          candidates.sort((a,b)=>b.utility-a.utility||
-            String(a.id).localeCompare(String(b.id)));
+          const controlled=candidateControlKernel(candidates,v5Scores,
+            opts.candidateControlGain);
+          candidates.splice(0,candidates.length,...controlled);
           controlActive=true;
         }
       }catch(e){
