@@ -53,6 +53,31 @@ invalid frame rejects the **entire** export without writing an output.
 Unobserved outcomes are `null`, never invented losses or victories.
 Raw OpenFront JSON files or unverifiable extractions are explicitly rejected.
 
+## Original-Roh-Replay: nur Strukturvorprüfung, keine Lernframes
+
+`tools/benchmark/replay-raw-preflight.cjs` nimmt ein originales
+`v0.0.2`-GameRecord mit `gitCommit`, `info` und archivierten
+`turns` entgegen. Der gewählte vollständige 40-stellige Engine-SHA muss
+exakt übereinstimmen. Der Validator prüft geordnete Turnnummern, die
+Anzahl ausgelassener (sparse) Turns, Intents, Spieleridentitäten und
+gespeicherte Hash-Anker. Abweichende/nicht aufgeführte Client-IDs
+werden **nur als Warnsignal** ausgewiesen; es werden keine Spieler-
+beobachtungen daraus abgeleitet.
+
+```sh
+node tools/benchmark/replay-raw-preflight.cjs \
+  --input original-record.json --engineCommit FULL_40_HEX_SHA
+```
+
+**Wichtig:** `engineHashesVerified:false`,
+`visibleLearningPairs:0`. Der Validator rekonstruiert weder
+`GameView` noch verifiziert er die gespeicherten Hashes durch eine
+wirklich ausgeführte offizielle Engine. Das Roh-Replay darf weiterhin
+**nicht** als menschliche Train-/Holdout-Evidenz durch
+`replay-cli.cjs` importiert werden. Für die vollständige Abnahme
+stehen die exakte Engine-Rekonstruktion, per-turn-Hashverifikation,
+ausgewählte Player-GameView und beobachtete Aktionen weiterhin aus.
+
 ## Liga-Smoke
 
 ```sh
