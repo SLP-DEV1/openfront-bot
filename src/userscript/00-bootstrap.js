@@ -20,6 +20,10 @@
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
     autoStrategy:true, diplomacy:true, offerAlliances:true, nukes:true, antiNuke:true, lateOffense:true,
     impossibleMode:true,impossibleExperiment:false,neuralEnabled:false,evidenceMode:false,shadowRankEnabled:false,
+    // P5: bounded candidate-v5 control. Off by default (shadow-only). When on,
+    // the schema-5 ranker shifts the bounded candidate ranking so it can drive
+    // the channel director; legality downstream remains authoritative.
+    candidateControlEnabled:false,candidateControlGain:18,
     duoEnabled:false,duoPartnerID:'',duoPartnerName:'',duoRoom:'',archetype:'legacy'};
   let opts;
   try { opts = {...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; }
