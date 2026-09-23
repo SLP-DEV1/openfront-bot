@@ -4129,6 +4129,23 @@ function boot(benchmarkOptions={}) {
     x.me.id=()=> 'another';
     assert.equal(x.b.decisionFrameFresh(frame,301),false);
   });
+  await check('#133 long official MotionPlan ETA outranks old fixed transport timeout',()=>{
+    const x=boot();x.b.setBoatCtor(class {});
+    assert(x.b.sendMarineTransport(x.me,6,12000,300,
+      'LANDUNG -> strong','player:strong'));
+    x.game.ownerID=t=>t===6?3:1;
+    const ship={id:()=>91,type:()=> 'Transport',owner:()=>x.me,
+      targetTile:()=>6,tile:()=>42,isActive:()=>true};
+    x.game.units=()=>[ship];
+    x.game.motionPlans=()=>new Map([[91,{startTick:300,
+      ticksPerStep:20,path:Array(121).fill(42),planId:'far-route'}]]);
+    x.b.inspectMarine(x.me,310);
+    assert.equal(x.b.state().pendingBoat.eta.arrivalTick,2700);
+    x.b.inspectMarine(x.me,1700);
+    assert(x.b.state().pendingBoat,
+      'a visible long-route ship must not be censored at a hard 1350 ticks');
+    assert.equal(x.b.state().marineStats.transportUnresolved,0);
+  });
   await check('#133 disappeared ship may own coast during observation window',()=>{
     const x=boot();x.b.setBoatCtor(class {});
     assert(x.b.sendMarineTransport(x.me,6,12000,300,
