@@ -305,16 +305,15 @@ function main(argv){
     const modelPath=path.join(out,'schema5-model.json');
     const metricsPath=path.join(out,'schema5-metrics.json');
     fs.writeFileSync(modelPath,JSON.stringify(model));
-    fs.writeFileSync(metricsPath,JSON.stringify({
-      ...summary,
-      fileSha256:{model:shaOf(model),metrics:null}
-    }));
-    // stamp metrics file sha after writing (self-excluded)
-    const finalMetrics={...summary,fileSha256:{model:shaOf(model),metrics:null}};
+    // A file cannot contain its own SHA-256 of its final bytes. Record the
+    // metrics checksum in a sidecar, after the metrics file has been finalized.
+    const finalMetrics={...summary,fileSha256:{model:shaOf(model)}};
     fs.writeFileSync(metricsPath,JSON.stringify(finalMetrics));
-    finalMetrics.fileSha256.metrics=shaOf(finalMetrics);
-    fs.writeFileSync(metricsPath,JSON.stringify(finalMetrics));
-    summary.fileSha256=finalMetrics.fileSha256;
+    const metricsSha256=crypto.createHash('sha256')
+      .update(fs.readFileSync(metricsPath)).digest('hex');
+    fs.writeFileSync(metricsPath+'.sha256',metricsSha256+'  schema5-metrics.json\n');
+    summary.fileSha256={model:shaOf(model),metrics:metricsSha256};
+    summary.metricsChecksumFile='schema5-metrics.json.sha256';
   }
   console.log(JSON.stringify(summary,null,2));
 }
