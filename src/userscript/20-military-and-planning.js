@@ -2,6 +2,10 @@
     const started=performance.now(),budgetMs=50,candidates=[];
     const home=Math.max(1,s.home),waitGrowth=Math.max(0,s.growthPotential||0);
     const holdRisk=clamp(Math.max(s.incoming,s.strongest)/home,0,2);
+    // P1: versionierte Archetyp-Politik. Sie verschiebt die Kandidaten-
+    // Rangfolge (Timing, Zielauswahl, Subsysteme) und ändert damit die
+    // tatsächlich gewählte Aktion. 'legacy' (keine Politik) bleibt identisch.
+    const arch=archetypePolicy();
     candidates.push({id:'hold',channel:'hold',kind:'hold',target:null,
       utility:Math.round(35+holdRisk*85-waitGrowth/Math.max(1,home)*900),
       cost:0,risk:holdRisk,waitCost:Math.round(waitGrowth),
@@ -43,7 +47,7 @@
           time:Number.isFinite(forecast.time)?forecast.time:null,method:forecast.method},
         reason:'Frontziel gegen Halten, Gegenangriff und Drittpartei verglichen'});
     }
-    if(opts.boats&&ctors.boat&&!pendingBoat&&s.incoming===0)
+    if((arch.boats??opts.boats)&&ctors.boat&&!pendingBoat&&s.incoming===0)
       candidates.push({id:'naval',channel:'naval',kind:'naval',target:null,
         utility:Math.round((ranked||[]).length?36:82-holdRisk*55),cost:null,
         risk:holdRisk,waitCost:Math.round(waitGrowth*.5),
@@ -54,9 +58,27 @@
       kind:'support',target:peer.id,utility:90,risk:holdRisk,cost:null,waitCost:0,
       scenarios:{holds:40,counter:s.incoming,thirdParty:s.strongest},
       reason:'bestätigter Partnerbedarf'});
+    // P1: die Archetyp-Politik verschiebt die Rangfolge, bevor sie gefroren
+    // wird. 'legacy' hat null Werte und ändert die Rangfolge nicht.
+    for(const c of candidates){
+      if(c.kind==='attack'){
+        c.utility+=arch.attackUtility;
+        if(tick<arch.firstAttackGate)c.utility-=1000;
+      }else if(c.kind==='hold'||c.kind==='support')c.utility+=arch.holdUtility;
+      else if(c.kind==='invest')c.utility+=arch.investUtility;
+      else if(c.kind==='naval')c.utility+=arch.navalUtility;
+    }
+    if(arch.targetWeakest){
+      const hostiles=(groups||[]).filter(g=>g.id!==null&&!friendly(g.opponent,me));
+      const weakest=hostiles.slice().sort((a,b)=>
+        number(()=>a.opponent?.troops?.(),0)-number(()=>b.opponent?.troops?.(),0))[0];
+      if(weakest)for(const c of candidates)
+        if(c.kind==='attack')c.utility+=c.target===weakest.id?500:-250;
+    }
     candidates.sort((a,b)=>b.utility-a.utility||String(a.id).localeCompare(String(b.id)));
     const limited=candidates.slice(0,8),selected=limited[0]||null;
     const rejectedCandidates=limited.slice(1);
+    archetypeRecord(selected,groups,me,tick);
     planningState={tick,candidates:limited,selected,
       rejected:limited[1]||null,rejectedCandidates,
       durationMs:Number((performance.now()-started).toFixed(2)),

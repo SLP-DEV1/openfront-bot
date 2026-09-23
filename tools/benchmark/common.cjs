@@ -35,6 +35,12 @@ const profiles=Object.freeze({autonomous:{fullAuto:true},
   balanced:{fullAuto:false,aggressive:80,reserve:35,actionsPerMinute:72,maxTargets:16},
   cautious:{fullAuto:false,aggressive:65,reserve:50,actionsPerMinute:60,maxTargets:16},
   expansion:{fullAuto:false,aggressive:95,reserve:25,actionsPerMinute:90,maxTargets:20}});
+// P1: versionierte Gegner-Archetypen (identisch zu src/userscript/00-bootstrap.js).
+// Der Harness validiert jede Lineup-Instanz gegen diese gefrorene Menge.
+const ARCHETYPE_VERSION='archetype-v1';
+const ARCHETYPES=Object.freeze(Object.fromEntries(
+ ['legacy','rush','turtle','economy','naval','opportunist','diplomat','nuke',
+  'duo','champion'].map(a=>[a,ARCHETYPE_VERSION])));
 function engineInfo(dir,expected=ENGINE_COMMIT){
   if(!/^[a-f0-9]{40}$/.test(expected))throw Error('Invalid pinned Engine SHA');
   const commit=execFileSync('git',['-C',dir,'rev-parse','HEAD'],{encoding:'utf8'}).trim();
@@ -51,4 +57,4 @@ function outputDir(opts){
   return dir;
 }
 function writeJSON(file,data){fs.writeFileSync(file,JSON.stringify(data,(_,v)=>typeof v==='bigint'?v.toString():v,2)+'\n');}
-module.exports={parse,profiles,engineInfo,digest,outputDir,writeJSON,ENGINE_COMMIT,IMPOSSIBLE_REFERENCE_COMMIT};
+module.exports={parse,profiles,engineInfo,digest,outputDir,writeJSON,ENGINE_COMMIT,IMPOSSIBLE_REFERENCE_COMMIT,ARCHETYPES,ARCHETYPE_VERSION};

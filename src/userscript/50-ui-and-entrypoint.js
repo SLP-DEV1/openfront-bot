@@ -207,10 +207,13 @@
           if(key==='duoEnabled'&&typeof value==='boolean')continue;
           if(key==='duoRoom'&&typeof value==='string'&&
             /^[a-zA-Z0-9_-]{6,64}$/.test(value))continue;
+          if(key==='archetype'&&typeof value==='string'&&
+            Object.prototype.hasOwnProperty.call(ARCHETYPES,value))continue;
           if(!allowed[key]||typeof value!=='number'||!Number.isFinite(value)||value<allowed[key][0]||value>allowed[key][1])
             throw new Error('Invalid benchmark setting: '+key);
         }
         Object.assign(opts,settings);if(opts.fullAuto)opts.autoStrategy=true;
+        applyArchetypeOptions();
         autoTuning.tick=-Infinity;opts.enabled=true;autoStartGame=game;generation++;
         telemetry('benchmark_start','Lokaler Testlauf gestartet',{settings});
         reportIntents(true);

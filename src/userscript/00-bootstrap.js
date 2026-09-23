@@ -20,7 +20,7 @@
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
     autoStrategy:true, diplomacy:true, offerAlliances:true, nukes:true, antiNuke:true, lateOffense:true,
     impossibleMode:true,impossibleExperiment:false,neuralEnabled:false,evidenceMode:false,shadowRankEnabled:false,
-    duoEnabled:false,duoPartnerID:'',duoPartnerName:'',duoRoom:''};
+    duoEnabled:false,duoPartnerID:'',duoPartnerName:'',duoRoom:'',archetype:'legacy'};
   let opts;
   try { opts = {...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; }
   catch (_) {opts = {...defaults};}
@@ -40,6 +40,100 @@
   if(opts.fullAuto)opts.autoStrategy=true;     // Full autonomy includes strategy selection.
   const persist = () => {try {localStorage.setItem(KEY,JSON.stringify(opts));} catch (_) {}};
   if(retiredBrainSettings)persist();
+
+  // P1: versionierte, überprüfbare Gegner-Archetypen. Ein Archetyp ist eine
+  // GEFRORENE Strategiepolitik, die die Kandidaten-Rangfolge des Planers – und
+  // damit die tatsächlich gesendete Aktion – ändert. Die Unterscheidbarkeit
+  // liegt in Timing, Zielauswahl und aktivierten Subsystemen, NICHT nur in
+  // Slider-Werten. Die Version wird in jeder Liga festgehalten; ein unbekanntes
+  // oder fehlendes Feld ist 'legacy' (der exakte Basiswert ohne Zusatzpolitik).
+  const ARCHETYPE_VERSION='archetype-v1';
+  const ARCHETYPES=Object.freeze({
+    legacy:{version:ARCHETYPE_VERSION,kind:'baseline',
+      note:'aktueller deterministischer Regel-Basiswert ohne Zusatzpolitik'},
+    rush:{version:ARCHETYPE_VERSION,kind:'offensive-early',
+      note:'frühe Angriffe und frühe Front; geringe Wartezeit'},
+    turtle:{version:ARCHETYPE_VERSION,kind:'defensive-late',
+      note:'hohe Reserve, späte Angriffe, defensive Festigung'},
+    economy:{version:ARCHETYPE_VERSION,kind:'economic-growth',
+      note:'Einkommensbau und Goldsparen vor Angriffen'},
+    naval:{version:ARCHETYPE_VERSION,kind:'naval-operations',
+      note:'Marine-/Flotten-Operationen priorisieren'},
+    opportunist:{version:ARCHETYPE_VERSION,kind:'weakest-target',
+      note:'schwächsten Feind bevorzugen'},
+    diplomat:{version:ARCHETYPE_VERSION,kind:'alliance-builder',
+      note:'proaktive Bündnisangebote'},
+    nuke:{version:ARCHETYPE_VERSION,kind:'nuclear-strike',
+      note:'Nuke-Kapazitäten priorisieren'},
+    duo:{version:ARCHETYPE_VERSION,kind:'coordinated-team',
+      note:'bestätigte Duo-/Team-Koordination über Relay'},
+    champion:{version:ARCHETYPE_VERSION,kind:'frozen-champion',
+      note:'eingefrorener Run3 Schema-4-Champion (Policy)'}
+  });
+  // Reine Abfrage der gefrorenen Politik für das aktuelle opts.archetype.
+  function archetypePolicy(){
+    const id=ARCHETYPES[opts.archetype]?opts.archetype:'legacy';
+    const base={id,version:ARCHETYPES[id].version,kind:ARCHETYPES[id].kind,
+      firstAttackGate:0,attackUtility:0,holdUtility:0,investUtility:0,
+      navalUtility:0,targetWeakest:false,
+      boats:null,diplomacy:null,offerAlliances:null,nukes:null};
+    if(id==='rush')return {...base,firstAttackGate:1,attackUtility:24,
+      investUtility:-20,boats:false,offerAlliances:false};
+    if(id==='turtle')return {...base,firstAttackGate:640,attackUtility:-28,
+      holdUtility:16,investUtility:8,boats:false};
+    if(id==='economy')return {...base,firstAttackGate:420,attackUtility:-22,
+      investUtility:28,holdUtility:8,nukes:false};
+    if(id==='naval')return {...base,firstAttackGate:180,navalUtility:36,
+      investUtility:8,attackUtility:-6,boats:true};
+    if(id==='opportunist')return {...base,firstAttackGate:120,targetWeakest:true,
+      attackUtility:10};
+    if(id==='diplomat')return {...base,firstAttackGate:300,attackUtility:-12,
+      holdUtility:8,diplomacy:true,offerAlliances:true};
+    if(id==='nuke')return {...base,firstAttackGate:240,attackUtility:4,nukes:true};
+    return base;
+  }
+  // Überprüfbares Verhaltensprofil: wird pro Planungstick befüllt und in der
+  // Diagnose exponiert. Beweist, dass Archetypen tatsächlich verschiedene
+  // Strategien fahren (Timing, Zielauswahl, Subsysteme), nicht nur Namen.
+  const archetypeStats={version:ARCHETYPE_VERSION,id:null,
+    firstAttackTick:null,plannedTicks:0,
+    selectedByKind:{attack:0,hold:0,invest:0,naval:0,expand:0,support:0},
+    attackTargetTotal:0,attackWeakestTarget:0};
+  function archetypeRecord(selected,groups,me,tick){
+    archetypeStats.plannedTicks++;
+    archetypeStats.id=archetypePolicy().id;
+    const kind=selected?.kind;
+    if(kind&&archetypeStats.selectedByKind[kind]!==undefined)
+      archetypeStats.selectedByKind[kind]++;
+    if(kind==='attack'){
+      archetypeStats.attackTargetTotal++;
+      if(archetypeStats.firstAttackTick===null)archetypeStats.firstAttackTick=tick;
+      const hostiles=(groups||[]).filter(g=>g.id!==null&&!friendly(g.opponent,me));
+      const weakest=hostiles.slice().sort((a,b)=>
+        number(()=>a.opponent?.troops?.(),0)-number(()=>b.opponent?.troops?.(),0))[0];
+      if(weakest&&selected.target===weakest.id)archetypeStats.attackWeakestTarget++;
+    }
+  }
+  function archetypeSignature(){
+    const s=archetypeStats;
+    return {version:s.version,archetype:s.id,firstAttackTick:s.firstAttackTick,
+      plannedTicks:s.plannedTicks,selectedByKind:{...s.selectedByKind},
+      attackTargetTotal:s.attackTargetTotal,
+      weakestTargetFraction:s.attackTargetTotal>0?
+        s.attackWeakestTarget/s.attackTargetTotal:null,
+      semantics:'observed-planner-choice; sent-is-not-confirmed-effect'};
+  }
+  // Erzwinge die vom Archetypen geforderten Subsysteme (Marine, Diplomatie,
+  // Nukes), damit die gefrorene Strategie auch tatsächlich ausgeführt wird.
+  // 'legacy' erzwingt nichts (alle Felder null) und bleibt der Basiswert.
+  function applyArchetypeOptions(){
+    const p=archetypePolicy();
+    if(p.boats!==null)opts.boats=p.boats;
+    if(p.diplomacy!==null)opts.diplomacy=p.diplomacy;
+    if(p.offerAlliances!==null)opts.offerAlliances=p.offerAlliances;
+    if(p.nukes!==null)opts.nukes=p.nukes;
+    persist();
+  }
 
   // Deployment replaces only the literal below; benchmark loads a signed-by-hash
   // local model from its isolated loopback storage. No browser network fetches.
@@ -778,7 +872,8 @@ function predict(model,input){
         seed:config.seed??null,engineCommit:window.BOOTSTRAP_CONFIG?.gitCommit??null,
         matchEndObserved:gameEnd!==null,resultsVerifiedByBrowser:false},
       matchContext:matchContext(),
-      options:{...opts,enabled:false},intents:intentHealth(),tuning:{...autoTuning,enabled:!!opts.fullAuto,
+      options:{...opts,enabled:false},archetype:archetypePolicy(),archetypeSignature:archetypeSignature(),
+      intents:intentHealth(),tuning:{...autoTuning,enabled:!!opts.fullAuto,
         effective:{aggressive:setting('aggressive'),reserve:setting('reserve'),
           actionsPerMinute:setting('actionsPerMinute'),maxTargets:setting('maxTargets')}},attackReceipts, pendingAttack, attackCommands, attackOrigins:[...observedAttacks.values()],
       construction:{pending:economicPending,blocked:[...economicBlocked.entries()],failedProbes:failedEconomyProbes,lastConfirmed:successfulEconomyTick,investment:investmentStatus,

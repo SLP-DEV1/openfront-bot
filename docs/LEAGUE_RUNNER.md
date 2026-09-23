@@ -9,6 +9,32 @@ Es sind keine geskripteten Spieler, sofern `--scripted` nicht ausdrücklich
 gewählt wird. Die Botzyklen werden seriell ausgeführt, nicht parallel in
 echten Browserprozessen.
 
+## Versionierte Gegner-Archetypen (P1)
+
+`common.cjs` und `src/userscript/00-bootstrap.js` definieren dieselbe,
+gefrorene Archetypmenge `archetype-v1`:
+`legacy`, `rush`, `turtle`, `economy`, `naval`, `opportunist`, `diplomat`,
+`nuke`, `duo`, `champion`. Ein Archetyp ist **kein** anderer Slider-Wert
+desselben Bots: `archetypePolicy()` ändert die **Kandidaten-Rangfolge** des
+Planers (Angriffs-Timing-Gate, Nutzenverschiebungen pro Strategieart,
+Neu-Rangfolge des schwächsten Ziels und erzwungene Subsysteme
+`boats`/`diplomacy`/`offerAlliances`/`nukes`). `legacy`/`duo`/`champion`
+sind der exakte Basiswert ohne Zusatzpolitik.
+
+Der Archetyp wird pro Bot-Client über das Bridge-`start()`-Feld
+`archetype` gesetzt (whitelist-gesetzt in `50-ui-and-entrypoint.js`) und in
+`engine-multibot.mjs` über das Lineup-Feld `archetype` je Teilnehmer.
+Jede Planungsrunde wird in `archetypeSignature()` protokolliert
+(`plannedTicks`, `firstAttackTick`, `selectedByKind`,
+`weakestTargetFraction`) und über `diagnosticSnapshot` in
+`match.json → fullBots[].diagnostics` gespeichert. Damit ist pro Client
+nachweisbar, **welche** Strategie tatsächlich gewählt wurde – nicht nur
+unter welchem Namen der Bot gestartet wurde.
+
+`tools/benchmark/league.cjs --smoke` belegt diese Unterschiede bewusst:
+FFA-Teilnehmer bekommen `legacy` vs `rush`, die 2v2-Teilnehmer
+`duo`/`legacy` gegen `rush`/`turtle`.
+
 ## Liga planen – führt keine Partien aus
 
 ```powershell
@@ -45,6 +71,33 @@ stellt nur ihre Strategie-/ACK-Nachrichten bereit und erlaubt keine
 Engine-Befehle. Die separaten GameViews und die echten Allianz- und
 Legalitätsprüfungen bleiben maßgeblich. Das ist **keine echte Zwei-Browser-
 oder menschliche Multiplayer-Abnahme**.
+
+## Smoke (P1: kurzer FFA- und 2v2-Lauf mit vollständigen Bot-Clients)
+
+`--smoke` spielt **keine** breite Liga und keine lange Partie: zwei kurze
+FFA-Partien (700 Ticks, zwei vollständige Bot-Clients je Partie) mit den
+Archetypen `legacy` vs `rush`.
+
+```powershell
+node tools/benchmark/league.cjs --smoke --execute --engine ../OpenFrontIO --out benchmark-results/p1-smoke-ffa
+```
+
+Ein kurzer 2v2-Lauf (700 Ticks, vier vollständige Bot-Clients,
+`duo`/`legacy` gegen `rush`/`turtle`):
+
+```powershell
+node tools/benchmark/league.cjs --execute --gameMode Team --participants 4 --seeds p1-smoke-2v2-01,p1-smoke-2v2-02 --profiles autonomous --opponents balanced --ticks 700 --engine ../OpenFrontIO --out benchmark-results/p1-smoke-2v2
+```
+
+Beide Läufe sind **nachgewiesen ausgeführt** (Engine-Commit
+`13b403387af01d388f8c8ed8c953b6d3a11d1457`): Die Logs belegen
+unterschiedliche Strategien und Spielzustand. In `match.json` zeigt
+`fullBots[].diagnostics.archetypeSignature.selectedByKind` pro Client
+andere Planningsverteilungen bei identischem Seed/Profil/Ticks – z. B. im
+2v2-Lauf bei 124 Planungsticks: `duo` {naval 88}, `legacy` {hold 88,
+naval 33}, `rush` {hold 121}, `turtle` {invest 102}. Das beweist die
+Archetypen als echte, abweichende Strategie – nicht denselben Bot unter
+zehn Namen. Eine kurze Smoke begründet **keine** breite Spielstärke.
 
 ## Ein einzelnes Match mit expliziter Aufstellung
 

@@ -54,6 +54,54 @@ DecisionFrame-Daten, lange Beobachtungshorizonte in realen Partien und die
 Statistik über `outcomeStatus`. P0 als Gesamtphase damit **nicht**
 abgenommen; siehe [#68](https://github.com/SLP-DEV1/openfront-bot/issues/68) und [#75](https://github.com/SLP-DEV1/openfront-bot/issues/75).
 
+## P1 — versionierte, überprüfbare Gegner-Archetypen (23.09.2026)
+
+**Implementiert + Tests bestanden + echte Engine-Matches (FFA- und 2v2-Smoke) ausgeführt.** Kernlücke von P1 („nicht nur denselben Bot unter zehn Namen bzw. Sliderwerten starten"):
+
+- **Gefrorene Archetypmenge `archetype-v1`:** `legacy`, `rush`, `turtle`,
+  `economy`, `naval`, `opportunist`, `diplomat`, `nuke`, `duo`, `champion`
+  sind in `common.cjs` und `src/userscript/00-bootstrap.js` identisch
+  definiert. `archetypePolicy()` ändert die **Kandidaten-Rangfolge** des
+  Planers (Angriffs-Timing-Gate, Nutzenverschiebungen, Neu-Rangfolge des
+  schwächsten Ziels, erzwungene Subsysteme) — `legacy`/`duo`/`champion`
+  sind der exakte Basiswert ohne Zusatzpolitik.
+- **Pro-Client-Wahl und Signatur:** der Archetyp wird pro Bot-Client über
+  das Bridge-`start()`-Feld `archetype` (whitelist-gesetzt) und je
+  `engine-multibot.mjs`-Lineup gesetzt. `archetypeSignature()`
+  (`plannedTicks`, `firstAttackTick`, `selectedByKind`,
+  `weakestTargetFraction`) wird in `diagnosticSnapshot` und damit in
+  `match.json → fullBots[].diagnostics` protokolliert.
+- **Tests bestanden:** `tests/archetype-regression.cjs` (6/6) belegt auf dem
+  realen Bundle die exakte gefrorene Politik, den Legacy-Fallback, das
+  Timing-Gate (turtle hält @300, greift @700 an), die erzwungenen
+  Subsysteme und die pro-Tick-Plannerwahl. P0-Test (`decision-frame-
+  regression.cjs`, 3/3), Solo-/Run3-Builds und Duo-Relay-Tests weiterhin grün.
+- **Echte Engine-Matches bestanden (Smoke):** gegen den gepinnten
+  Engine-Checkout `13b403387af01d388f8c8ed8c953b6d3a11d1457` wurden ein kurzer
+  FFA-Lauf (2 Partien, `legacy` vs `rush`) und ein kurzer 2v2-Lauf (2 Partien,
+  `duo`/`legacy` vs `rush`/`turtle`, vier vollständige Bot-Clients) mit
+  `tools/benchmark/league.cjs` ausgeführt. Die Logs belegen **unterschiedliche
+  Strategien und Spielzustand**: bei identischem Seed/Profil/Ticks zeigt
+  `selectedByKind` pro Client andere Verteilungen (2v2, 124 Planungsticks:
+  `duo` {naval 88}, `legacy` {hold 88, naval 33}, `rush` {hold 121},
+  `turtle` {invest 102}). Artefakte (lokal, gitignored):
+  `benchmark-results/p1-smoke-ffa-run/` und
+  `benchmark-results/p1-smoke-2v2-run/`.
+- **Nachweis, keine Spielstärke-Behauptung:** Die kurzen Läufe sind
+  nachweislich ausgeführte **Smoke**, keine breite Liga und keine lange
+  Partie; sie begründen keine Spielstärke- oder Siegquote-Veränderung.
+
+**Weiterhin offen in P1** (nächster kleinster Schritt): Allianz-/Diplomatie-
+Szenarien mit garantiert aktuellen (nie veralteten) Freund/Feind-Beziehungen
+im Smoke; 1v1/2v2/FFA-Protokoll mit Karten-/Position-/Partner-/Profil-/Seed-
+Rotation; Freeze jedes Profil-/Archetyp- und Liga-Snapshots (Legacy/Champion
+behalten); die vollständige deterministische Szenario-Paket-Liste
+(Cap-Stall, zerstörte City, zusammenbrechendes Einkommen, Einkesselung,
+Angriffs-Lücke/War-Lock, fehlendes Boot, zweiter Angreifer, gebrochene
+Partner-Zusage, Nuke-/SAM-Risiko, Team-Spende unter Heimbedrohung); strikte
+Trennung `--smoke` vs echte volle Liga (Teilweise: Smoke hat feste
+Bedingungen). Reale Human-Multiplayer-Abnahme bleibt separat.
+
 ## Implementierungsstand 1.21.0 (P0–P6)
 
 ### Abschlussprüfung der implementierbaren Roadmap-Aufgaben (22.09.2026)
