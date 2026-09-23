@@ -172,6 +172,31 @@ const FROZEN = {
     assert.equal(diplomat.b.opts.diplomacy, true, 'diplomat erzwingt Diplomatie');
     assert.equal(diplomat.b.opts.offerAlliances, true, 'diplomat erzwingt Allianzangebote');
   });
+  await check('P1 #140: Same-runtime archetype transitions restore base preferences',async()=>{
+    const x=boot('legacy'),b=x.b;
+    const go=id=>{b.opts.archetype=id;b.applyArchetypeOptions();};
+    b.opts.boats=true;b.opts.diplomacy=true;
+    b.opts.offerAlliances=true;b.opts.nukes=true;
+    go('rush');
+    assert.equal(b.opts.boats,false);
+    assert.equal(b.opts.offerAlliances,false);
+    go('legacy');
+    assert.equal(b.opts.boats,true,'rush -> legacy restores marine');
+    assert.equal(b.opts.offerAlliances,true,'rush -> legacy restores offers');
+    go('rush');go('turtle');
+    assert.equal(b.opts.boats,false,'turtle keeps its own marine override');
+    assert.equal(b.opts.offerAlliances,true,'rush -> turtle drops only rush offer override');
+    go('economy');
+    assert.equal(b.opts.nukes,false);
+    go('naval');
+    assert.equal(b.opts.nukes,true,'economy -> naval restores base nukes');
+    assert.equal(b.opts.boats,true,'naval overrides boats');
+    go('diplomat');go('legacy');
+    assert.equal(b.opts.diplomacy,true);
+    assert.equal(b.opts.offerAlliances,true);
+    go('legacy');go('legacy');
+    assert.equal(b.opts.boats,true,'repeated transitions idempotent');
+  });
   await check('P1: Verhaltenssignatur belegt pro Tick die gesendete Plannerwahl', async () => {
     const x = boot('legacy', 300);
     await x.b.step();
