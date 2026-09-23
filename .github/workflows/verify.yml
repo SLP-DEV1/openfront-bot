@@ -99,6 +99,12 @@ jobs:
           node --check trainer/train-v5.cjs
           node tests/train-v5-regression.cjs
           node tests/v5-shadow-regression.cjs
+      - name: Test P4 curriculum league and collapse watcher
+        run: |
+          node --check trainer/collapse-watch.cjs
+          node tests/collapse-watch-regression.cjs
+          node --check tools/benchmark/curriculum.cjs
+          node tests/curriculum-regression.cjs
       - name: Check Scenario Pack and read-only Evidence Mode
         run: |
           node --check tools/benchmark/scenario-pack.cjs

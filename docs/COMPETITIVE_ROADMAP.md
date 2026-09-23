@@ -206,6 +206,63 @@ Eine neuere 48→64→32→3=5315-Architektur wird erst bei belegtem Underfittin
 gesondert versioniert geprüft (hier **nicht** durchgeführt). Echte
 Engine-Matches mit trainierten Labels sind **nicht** behauptet.
 
+## P4 status — Curriculum, Liga, Self-Play und Collapse-Wächter (DoD bestanden, 23.09.2026)
+
+**DoD bestanden. Implementiert + Tests bestanden (lokal, grün); reale
+protokollierte Engine-Läufe auf unterschiedlichen Gegnerstilen; dokumentierte
+fehlschlagende Kategorie; keine Ableitung aus einer einzelnen „leichten" Liga.**
+
+- **Gefrorene, gestufte Gegnerliga** (`tools/benchmark/curriculum.cjs`): 6
+  Stufen (Mechanik/Niedrig-Gegner → 1v1 gegen Champion → Öko-/Marine-/
+  Nuke-Spezialisten → FFA → 2v2/Team → gemischte FROZEN-E-Liga) mit je eigenen
+  Opponent-/Seed-/Modus-/Schwierigkeits-/Tick-Konfigurationen. Der
+  **FROZEN-E Gegner-Mix** nutzt den Run3-Champion-Bot + Legacy + mehrere ältere
+  Archetyp-Stile (`mixArchetypes` mit 7 Stilen, `mixVersion`-Hash) **gegen den
+  separaten Solo-Modell-Bot** — nicht ausschließlich das jeweils jüngste eigene
+  Modell (Overfitting-/Collapse-Vermeidung). Der Plan-Modus (Default) schreibt
+  nur `curriculum.json` (18 Matches, 6 Stufen); `--execute` spielt aus.
+  Nachweis: `tests/curriculum-regression.cjs`.
+- **Collapse-Wächter über alle 8 Kategorien** (`trainer/collapse-watch.cjs`):
+  deterministische Erkennung auf echten Diagnostic-Feldern für passives
+  `HOLD`-Spamming, blindes Rushen, Goldhorten, ausbleibenden City-Bau,
+  Allianzfehler, endlosen War-Lock, scheinbar sichere reine Überlebensstrategie
+  und fehlerhafte Marine-ETAs. `teamMode` wird über
+  `benchmarkMeta.gameConfig.gameMode` entschieden (FFA-Lineups tragen
+  trotzdem `teamIndex` 0/1 → nicht als Team-Signal verwenden). Nachweis:
+  `tests/collapse-watch-regression.cjs`.
+- **Trainings-/Suchsignal von Promotion getrennt** (P4.5,
+  `trainer/collapse-watch.cjs` `assessPromotion`): das **bestätigte
+  Match-Ergebnis** ist das release-entscheidende Signal
+  (`confirmed-<outcome>`); bei Tick-Limit wird der Outcome als **zensiert**
+  behandelt (`censored-tick-limit`, nicht entscheidend). Gehaltene Land-,
+  wirtschaftliche, Verlust- und Überlebens-Größen sind nur **auxiliary**
+  Suchsignale (`heldLand`, `economicEffect`, `troopLosses`, `survival`) — nie
+  allein release-entscheidend.
+- **Pro-Stufen-Versions-Pinning + Resume:** `curriculum.json` pinnt
+  `model.sha256`, `opponent.mixVersion`, `engineCommit`, `stageVersion` pro
+  Stufe. Bereits protokollierte Matches (`status:'recorded'`) werden bei Resume
+  übersprungen und neu ausgewertet, ohne die Engine neu zu spielen (idempotent).
+- **Reale protokollierte Läufe (DoD):**
+  `node tools/benchmark/curriculum.cjs --execute --smoke --engine
+  ../OpenFrontIO --out benchmark-results/curriculum-p4` hat 3 Matches gegen
+  **3 verschiedene gefrorene Archetyp-Stile** (Legacy, Economy, Naval) an der
+  gepinnten Engine (SHA `13b40338`) protokolliert — nicht aus einer einzelnen
+  leichten Liga abgeleitet.
+- **Dokumentierte fehlschlagende Kategorie:** `missing_city_building` auf allen
+  3 Läufen — bei Tick 1200 spart der Bot noch für seine erste City/Factory
+  (`coreFunding.missing=["City","Factory"]`, kein pending Bau), eine echte,
+  nachvollziehbare Degenerationskategorie, die der Wächter meldet.
+- **Tests bestanden (lokal, grün):** `tests/collapse-watch-regression.cjs`
+  (alle 8 Kategorien deterministisch + Promotions-/Suchsignal-Trennung,
+  Tick-Limit zensiert) und `tests/curriculum-regression.cjs` (18-Match-Plan,
+  6 Stufen, gefrorener 7-Stil-Mix, Modell≠Gegner, Versions-Pinning, idempotente
+  Replanung, Resume). Neu in der CI als P4-Schritt in `verify.yml`.
+
+**Abgrenzung / weiterhin offen:** Dies ist das gestufte Curriculum + Liga +
+Collapse-Wächter (P4). Das **unabhängige** Final-Holdout, Shadow-Ranking und
+die Promotion-Gate sind **P5** und hier nicht angefasst. Echte Engine-Matches:
+ja (3 protokollierte Läufe). Reale Human-Multiplayer-Abnahme bleibt offen.
+
 ## Implementierungsstand 1.21.0 (P0–P6)
 
 ### Abschlussprüfung der implementierbaren Roadmap-Aufgaben (22.09.2026)
