@@ -138,3 +138,10 @@ jobs:
           node --check trainer/evaluation-v2.cjs
           node --check tests/neural-v2-regression.cjs
           node tests/neural-v2-regression.cjs
+      - name: Test §7 Gesamtabnahme (reproducible baseline, visible data, schema-5, shadow non-causal)
+        run: |
+          node --check trainer/train-schema5.cjs
+          node tests/schema5-training-regression.cjs
+          node tests/visible-training-data-regression.cjs
+          node tests/reproducible-baseline-regression.cjs
+          node tests/shadow-v5-noncausal-regression.cjs

@@ -250,7 +250,18 @@ Auf Nutzerwunsch sind lokale Langzeit-, vollständige Zwei-Client-, Liga- und Wi
 - **Offen:** Phase als Gesamtpaket bislang nicht abgenommen. Bestehende Einzelbausteine sind im Feld „Vorhanden“ notiert.
 - **Abgenommen:** Checkbox im Phasen-Issue nur nach verlinktem Commit, fachlich begründeten Tests und nachvollziehbaren Vergleichsdaten schließen. Keine grünen Assertions durch bloßes Verbiegen der Erwartung.
 
-**Abgenommen: 0/7 Phasen (noch keine neue Abnahme durch diesen Tracker).** Die historische Angabe „265 bestanden / 17 fehlgeschlagen“ stammt ausschließlich von `10e81ee` / 1.20.8 aus dem Originalplan. Sie darf nicht als aktueller CI-Status oder Ergebnis von 1.20.9 erscheinen.
+**Abgenommen: 0/7 Phasen (noch keine neue Abnahme durch diesen Tracker).** Die historische Angabe „265 bestanden / 17 fehlgeschlagen" stammt ausschließlich von `10e81ee` / 1.20.8 aus dem Originalplan. Sie darf nicht als aktueller CI-Status oder Ergebnis von 1.20.9 erscheinen.
+
+## Ergebnis-Kategorien — vierstufige Kennzeichnung (§7, Box 245)
+
+Jedes gemeldete Ergebnis wird in **exakt eine** dieser vier Kategorien eingestuft. Eine höhere Kategorie wird durch eine niedrigere **nicht** mitgeliefert; fehlt der Nachweis für eine höhere Stufe, bleibt diese ausdrücklich als *nicht durchgeführt* benannt und wird nicht aus der niedrigeren geerbt:
+
+1. **Implementiert** — der Code-Pfad existiert und ist in `main` bzw. dem gebündelten Userskript integriert. Sagt **nichts** über ausgeführte Bestandsnachweise.
+2. **Tests bestanden** — lokale/CI-Regressionen (Standalone-Node-Tests, Build-Checks) laufen grün auf dem betroffenen Commit. **Keine** echten Engine-/Multiplayer-Matches.
+3. **Echte Engine-Matches bestanden** — vollständige Partien auf dem gepinnten offiziellen Engine-Checkout (deterministische Seeds, verifizierte Aufzeichnungen, `match.json`/Trajektorien vorhanden). **Keine** realen menschlichen Multiplayer-Partien.
+4. **Reale Human-Multiplayer-Abnahme bestanden** — mindestens eine echte Zwei-Browser-/Team-Engine-Partie mit menschlichem Gegenpart, die alle Definition-of-Done-Kriterien der Phase erfüllt.
+
+**Regel:** Ein Claim steht nur in der Kategorie, für die der Nachweis vorliegt. Die §7-Gesamtabnahme ([plan.md](../plan.md) Abschnitt 7) wird nach genau dieser vierstufigen Kennzeichnung ausgewiesen; dort ausgewiesene Engine-/Live-Nachweise stehen in den Kategorien 3/4, während Implementierung und Regressionstests die Kategorien 1/2 belegen.
 
 ## P0 – erster überprüfter Arbeitsstand (GitHub 1.20.9, 22.09.2026)
 
