@@ -4129,6 +4129,32 @@ function boot(benchmarkOptions={}) {
     x.me.id=()=> 'another';
     assert.equal(x.b.decisionFrameFresh(frame,301),false);
   });
+  await check('#133 cancel-intent stays linked to boat and is not counted as sunk',async()=>{
+    const x=boot();
+    x.b.setBoatCtor(class {});
+    x.b.setCtor('cancelBoat',class {constructor(shipId){this.shipId=shipId;}});
+    x.game.ownerID=t=>t===5?2:1;
+    assert(x.b.sendMarineTransport(x.me,5,12000,300,
+      'LANDUNG -> weak','player:weak'));
+    x.game.units=()=>[{id:()=>92,type:()=> 'Transport',
+      owner:()=>x.me,targetTile:()=>5,tile:()=>42,
+      isActive:()=>true}];
+    x.b.inspectMarine(x.me,310);
+    x.me.isFriendly=p=>p===x.weak;
+    assert.equal(await x.b.fleetDefense(x.me,350,0),true);
+    const linked=x.b.state().pendingBoat.cancelIntent;
+    assert.equal(linked.shipId,92);
+    assert.equal(linked.effect,'unknown');
+    assert(x.b.state().diagnostics.some(e=>e.kind==='boat_cancel_intent'));
+    x.game.units=()=>[];
+    x.b.inspectMarine(x.me,360);
+    x.b.inspectMarine(x.me,480);
+    const unresolved=x.b.state().diagnostics
+      .find(e=>e.kind==='boat_unresolved');
+    assert(unresolved,'cancelled-but-unobserved ship remains unresolved');
+    assert.equal(x.b.state().landingFailures.length,0,
+      'friendly-target cancellation must not be classified as failed hostile landing');
+  });
   await check('#133 long official MotionPlan ETA outranks old fixed transport timeout',()=>{
     const x=boot();x.b.setBoatCtor(class {});
     assert(x.b.sendMarineTransport(x.me,6,12000,300,
