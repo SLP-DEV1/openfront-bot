@@ -841,6 +841,39 @@ function predict(model,input){
   // A frame stays "pending" until the fixed observation horizon passes; if
   // the match ends before confirmation it is "censored", never "unknown=0".
   const DECISION_EFFECT_HORIZON=120,DECISION_RESOLVE_HORIZON=600;
+  const DECISION_RESOLVED_HISTORY=16,DECISION_MAX_PENDING=1024;
+  function compactDecisionFrames(tick){
+    // Retain ALL pending frames through their 600-tick observation horizon.
+    // Only already-resolved display history is a small bounded ring.
+    let pending=0;
+    for(const frame of decisionFrames)if(!frame.resolved)pending++;
+    if(pending>DECISION_MAX_PENDING){
+      let overflow=pending-DECISION_MAX_PENDING;
+      for(const frame of decisionFrames){
+        if(!overflow||frame.resolved)continue;
+        frame.resolved=true;frame.outcomeStatus='unknown';
+        frame.resolution={atTick:tick,censored:true,reason:'pending-capacity',
+          effectHorizon:DECISION_EFFECT_HORIZON,
+          resolveHorizon:DECISION_RESOLVE_HORIZON};
+        overflow--;
+      }
+    }
+    let resolved=0;
+    for(let i=decisionFrames.length-1;i>=0;i--){
+      if(!decisionFrames[i].resolved)continue;
+      if(++resolved>DECISION_RESOLVED_HISTORY)decisionFrames.splice(i,1);
+    }
+  }
+  function censorPendingDecisionFrames(tick,reason='match-end'){
+    for(const frame of decisionFrames){
+      if(frame.resolved)continue;
+      frame.resolved=true;frame.outcomeStatus='unknown';
+      frame.resolution={atTick:tick,censored:true,reason,
+        effectHorizon:DECISION_EFFECT_HORIZON,
+        resolveHorizon:DECISION_RESOLVE_HORIZON};
+    }
+    compactDecisionFrames(tick);
+  }
   function resolveDecisionFrames(tick){
     if(tick===null||!Number.isFinite(tick)||tick<0)return;
     for(const frame of decisionFrames){
@@ -876,8 +909,7 @@ function predict(model,input){
         frame.resolved=true;
       }
     }
-    if(decisionFrames.length>16)
-      decisionFrames.splice(0,decisionFrames.length-16);
+    compactDecisionFrames(tick);
   }
   function gameOutcome(g,me){
     const result={outcome:'unknown',source:'gameOver',tick:number(()=>g?.ticks?.(),-1),
@@ -1029,6 +1061,8 @@ function predict(model,input){
       if(diagnosticAutoExported)return;
       diagnosticAutoExported=true;
     }
+    if(automatic)censorPendingDecisionFrames(
+      number(()=>game?.ticks?.(),-1),'match-end-or-elimination');
     const session=monitorSession,summary=diagnosticSnapshot();
     const rows=await diagnosticReadAll(session);
     const complete=rows.length===summary.recording.total&&
