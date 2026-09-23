@@ -9,6 +9,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
+const crypto=require('node:crypto');
 const trainer=require('../trainer/train-schema5.cjs');
 const policy=require('../trainer/candidate-policy-v5.cjs');
 
@@ -87,6 +88,17 @@ try{
   const written=JSON.parse(fs.readFileSync(modelPath,'utf8'));
   policy.validate(written);
   const metrics=JSON.parse(fs.readFileSync(metricsPath,'utf8'));
+  const checksumPath=metricsPath+'.sha256';
+  assert.ok(fs.existsSync(checksumPath),'final metrics checksum sidecar required');
+  const actual=crypto.createHash('sha256').update(fs.readFileSync(metricsPath)).digest('hex');
+  assert.equal(fs.readFileSync(checksumPath,'utf8').split(/\\s+/)[0],actual,
+    'sidecar SHA must cover final metrics file bytes');
+  assert.equal(metrics.fileSha256.metrics,undefined,
+    'metrics must not falsely claim their own final-byte SHA');
+  const tampered=Buffer.from(fs.readFileSync(metricsPath));
+  tampered[0]^=1;
+  assert.notEqual(crypto.createHash('sha256').update(tampered).digest('hex'),actual,
+    'one-byte tampering must invalidate the checksum');
   assert.equal(metrics.modelSha256,policy.sha(written),'metrics SHA must match written model');
   assert.equal(metrics.modelSha256,a.metrics.modelSha256,
     'written model must be the deterministic pipeline model');
