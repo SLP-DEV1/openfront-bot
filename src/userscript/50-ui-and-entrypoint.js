@@ -95,6 +95,7 @@
       <div>${b('shadowRankEnabled',opts.shadowRankEnabled?'Schema-5 Shadow AN':'Schema-5 Shadow AUS')}</div>
       <div style="color:#9bd0e4">Shadow: ${shadowV5Model?'Schema 5 geladen, nur Vergleich':'kein Schema-5-Kandidat geladen'} · ${escapeHTML(shadowDecisionEvidence?.wouldPrefer??'—')} (ohne Aktionswirkung)</div>
       <div style="color:#9bd0e4">Inferenz: ${escapeHTML(neuralModelInfo().fingerprint||'kein Modell')} · Signale ${neuralEvidence.nonzero}/${neuralEvidence.calls} · Ranking ${neuralEvidence.actionNonzero}/${neuralEvidence.actionCalls}</div>
+      <div style="color:#9bd0e4">Deployment: Modell ${escapeHTML(deploymentInfo().model.champion.fingerprint||'—')} · Kandidat ${escapeHTML(deploymentInfo().model.candidate.fingerprint||'—')} · Skript ${escapeHTML(deploymentInfo().script.version)} · Engine ${escapeHTML(deploymentInfo().engine.commit||'—')}</div>
       <div style="color:#9bd0e4">Neurales Modell: ${neuralModel?.schema===4?'Strategische Policy v4 (24 Signale)':neuralModel?.schema===3?'Strategische Policy v3 (16 Signale)':neuralModel?.schema===2?'Aktionsranking (max. ±14 Punkte)':neuralModel?.schema===1?'Slider (max. ±8 Punkte)':'nicht geladen'} · nur bei freigegebener Partie</div>
       </details>
       <details data-section="situation"${openFor('situation')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Lage &amp; Diplomatie</summary>

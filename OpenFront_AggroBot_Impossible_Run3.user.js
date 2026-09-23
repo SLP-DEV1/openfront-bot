@@ -299,6 +299,32 @@ function predict(model,input){
       weights:model.weights.length,nonzeroWeights:model.weights.filter(v=>v!==0).length,
       fingerprint:'fnv1a-'+(hash>>>0).toString(16).padStart(8,'0')+'-'+bytes};
   }
+  function shadowModelInfo(){
+    const model=shadowV5Model;
+    if(!model)return {loaded:false,enabled:!!opts.shadowRankEnabled,
+      reason:'no-valid-candidate'};
+    // FNV-1a tracking fingerprint (not a trainer policy SHA256), mirroring
+    // neuralModelInfo for the schema-5 shadow candidate.
+    const raw=JSON.stringify(model.weights),bytes=raw.length;
+    let hash=2166136261;
+    for(let i=0;i<raw.length;i++){hash^=raw.charCodeAt(i);hash=Math.imul(hash,16777619);}
+    return {loaded:true,enabled:!!opts.shadowRankEnabled,schema:model.schema,
+      weights:model.weights.length,
+      controlEnabled:opts.candidateControlEnabled===true,
+      controlGain:opts.candidateControlGain,
+      fingerprint:'fnv1a-'+(hash>>>0).toString(16).padStart(8,'0')+'-'+bytes};
+  }
+  // Deployment identity for the panel and diagnostic export: model/script/
+  // engine hashes plus the rollback reference. The model hashes are FNV-1a
+  // tracking fingerprints; the champion model-file SHA256 is recorded by the
+  // deploy/build tooling, not recomputed here.
+  function deploymentInfo(){
+    return {
+      model:{champion:neuralModelInfo(),candidate:shadowModelInfo()},
+      script:{version:VERSION},
+      engine:{commit:window.BOOTSTRAP_CONFIG?.gitCommit??null},
+      rollback:'candidate is shadow-only (opt-in control); the NEURAL_BUNDLED_MODEL champion placeholder is never replaced by a schema-5 deploy'};
+  }
   function neuralChannel(name,me,s=troopSnapshot,tick=number(()=>game?.ticks?.(),0)){
     return neuralStrategicSignals(me,s,tick)?.[name]||0;
   }
@@ -885,6 +911,7 @@ function predict(model,input){
       neuralDecisionEvidence,
       attackBlockReport,crisisTrend,landingFailures:[...landingFailures],
       neuralEvidence:{...neuralEvidence,model:neuralModelInfo()},
+      deployment:deploymentInfo(),
       validation:{forecastAudits,incomeAttribution,
         terrainMethod:'nuke-cubic-bezier-conservative',
         railMethod:'owned-land-corridor-proxy',
@@ -2310,6 +2337,12 @@ function predict(model,input){
           const f=shadowV5.features(state,{kind:candidate.kind,
             costTroops:candidate.cost||0,counterRisk:candidate.risk||0,
             holdProbability:1-Math.min(1,candidate.risk||0)});
+          // Feature contract: 32 finite features in [0,1]. `features` clamps
+          // its output, so a violation means the live inputs drifted from the
+          // trained contract; fail closed (rule-based) rather than score.
+          if(!Array.isArray(f)||f.length!==32||
+             f.some(x=>!Number.isFinite(x)||x<0||x>1))
+            throw Error('feature-drift');
           const outcome=shadowV5.predict(shadowV5Model,f);
           return outcome.heldGain-outcome.lossRisk;
         };
@@ -2326,8 +2359,15 @@ function predict(model,input){
             String(a.id).localeCompare(String(b.id)));
           controlActive=true;
         }
-      }catch(e){shadowDecisionEvidence={tick,error:String(e?.message||e),
-        changedIntent:false};}
+      }catch(e){
+        // Fail-closed: any invalid model, feature drift, missing visible
+        // state or scoring error drops back to the deterministic rule ranking;
+        // the emergency defense is computed separately and is never delayed
+        // by this bounded, synchronous model scoring.
+        shadowDecisionEvidence={tick,
+          failClosed:String(e?.message||e),error:String(e?.message||e),
+          changedIntent:false};
+      }
     }
     const limited=candidates.slice(0,8),selected=limited[0]||null;
     const rejectedCandidates=limited.slice(1);
@@ -2357,7 +2397,14 @@ function predict(model,input){
       modelEnabled:!!(opts.shadowRankEnabled&&shadowV5Model)};
     planningState.provenance={bot:VERSION,
       engineCommit:window.BOOTSTRAP_CONFIG?.gitCommit??null,
-      gameMode:game?.config?.().gameConfig?.().gameMode??'unknown'};
+      gameMode:game?.config?.().gameConfig?.().gameMode??'unknown',
+      // Deployment identity (FNV-1a tracking fingerprints, not policy
+      // SHA256); the champion model-file SHA256 is recorded by the
+      // deploy/build tooling. The candidate is shadow-only, so rolling back
+      // to the unchanged Run3 reference is just disabling the opt-in.
+      modelHashes:{champion:neuralModelInfo().fingerprint??null,
+        candidate:shadowModelInfo().fingerprint??null},
+      scriptVersion:VERSION};
     planningState.modelChoice=null;
     planningState.modelScores=null;
     planningState.actualIntents=null;
@@ -7697,6 +7744,7 @@ function predict(model,input){
       <div>${b('shadowRankEnabled',opts.shadowRankEnabled?'Schema-5 Shadow AN':'Schema-5 Shadow AUS')}</div>
       <div style="color:#9bd0e4">Shadow: ${shadowV5Model?'Schema 5 geladen, nur Vergleich':'kein Schema-5-Kandidat geladen'} · ${escapeHTML(shadowDecisionEvidence?.wouldPrefer??'—')} (ohne Aktionswirkung)</div>
       <div style="color:#9bd0e4">Inferenz: ${escapeHTML(neuralModelInfo().fingerprint||'kein Modell')} · Signale ${neuralEvidence.nonzero}/${neuralEvidence.calls} · Ranking ${neuralEvidence.actionNonzero}/${neuralEvidence.actionCalls}</div>
+      <div style="color:#9bd0e4">Deployment: Modell ${escapeHTML(deploymentInfo().model.champion.fingerprint||'—')} · Kandidat ${escapeHTML(deploymentInfo().model.candidate.fingerprint||'—')} · Skript ${escapeHTML(deploymentInfo().script.version)} · Engine ${escapeHTML(deploymentInfo().engine.commit||'—')}</div>
       <div style="color:#9bd0e4">Neurales Modell: ${neuralModel?.schema===4?'Strategische Policy v4 (24 Signale)':neuralModel?.schema===3?'Strategische Policy v3 (16 Signale)':neuralModel?.schema===2?'Aktionsranking (max. ±14 Punkte)':neuralModel?.schema===1?'Slider (max. ±8 Punkte)':'nicht geladen'} · nur bei freigegebener Partie</div>
       </details>
       <details data-section="situation"${openFor('situation')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Lage &amp; Diplomatie</summary>

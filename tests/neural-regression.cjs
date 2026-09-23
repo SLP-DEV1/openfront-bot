@@ -230,10 +230,11 @@ try{
   assert.equal(deployed4.modelSHA256,strategicV4.sha(trained4));
   assert.equal(deployed4.modelEnabledByDefault,true);
   assert(fs.readFileSync(deployedV4,'utf8').includes('const NEURAL_BUNDLED_MODEL = {"schema":4'));
-  // The dormant v5 candidate is valid for evaluation, not for userscript bundling.
-  // Unknown/missing schemas must never fall back to the v1 validator.
+  // The v5 candidate is deployable only behind a passed release gate (P6);
+  // without --gate it is refused. Unknown/missing schemas must never fall
+  // back to the v1 validator.
   for(const [name,input,error] of [
-    ['candidate-v5',candidateV5.zero(),/Schema 5.*evaluation-only.*cannot be bundled yet/],
+    ['candidate-v5',candidateV5.zero(),/Schema-5 candidate requires a passed --gate/],
     ['unknown-v99',{schema:99},/Unsupported model schema: 99/],
     ['missing-schema',{},/Unsupported model schema: undefined/]
   ]){

@@ -301,6 +301,67 @@ Abnahme sowie Live-Latenz- und Browser/Engine-Inferenz-Checks sind P6. Echte
 Engine-Matches: ja (24 + 36 Partien, provenienzverifiziert). Reale
 Human-Multiplayer-Abnahme bleibt offen.
 
+## P6 status — Gated Live-Runtime, Bundle-Parität und Rollback ([PR #151](https://github.com/SLP-DEV1/openfront-bot/pull/151), DoD bestanden, 23.09.2026)
+
+- **Kein automatischer Run3-Austausch:** `trainer/train.mjs` ersetzt die
+  bestehenden Run3-Gewichte nicht automatisch (schreibt nur ins eigene `--out`
+  mit `flag:'wx'`, pinnt das Bot, Schema 3/4). `trainer/deploy.mjs` unterstützt
+  das **Schema-5-Kandidatenmodell** erst mit explizitem, geprüftem
+  **Schema-/Runtime-/Feature-/SHA-Vertrag** und durchlaufenem Release-Gate
+  (`--gate <holdout.json>`):
+  - Gate muss `g.valid===true && g.eligible===true` **und**
+    `g.gatesPass===true && g.eligible===true` sein.
+  - **SHA-Vertrag:** `gate.arms.candidate.policySHA256` muss dem
+    `candidatePolicy.sha(model)` des eingebetteten Modells entsprechen.
+  - **Feature-Vertrag:** `features({home:1,gold:1,land:1},{kind:'attack',
+    costTroops:0})` muss 32 Werte in [0,1] liefern (`candidatePolicy.INPUTS`).
+  - **Runtime-Vertrag:** die Quelle muss die generierten
+    `GENERATED-SHADOW-V5-BEGIN`/`-END`-Module enthalten.
+  - Schema 5 ohne `--gate` wird abgelehnt („Schema-5 candidate requires a
+    passed --gate"). Das Kandidatenmodell wird **nur** in den
+    `SHADOW_V5_BUNDLED_MODEL`-Platzhalter eingebettet (Shadow-only); der
+    Champion-Platzhalter `NEURAL_BUNDLED_MODEL` bleibt unangetastet.
+- **Stufenweiser Rollout, opt-in, fail-closed:** Defaults bleiben
+  `shadowRankEnabled:false` + `candidateControlEnabled:false` (ausdrücklich
+  opt-in). Im Kandidatenarm (`src/userscript/20-military-and-planning.js`) wird
+  vor `predict` ein **Feature-Drift**-Check gefahren (32-dim, [0,1], sonst
+  `feature-drift`); der Fail-closed-Grund wird als `failClosed` aufgezeichnet und
+  `changedIntent:false` bleibt erhalten (deterministischer regelbasierter
+  Fallback; Notverteidigung läuft getrennt und wird nicht durch Modelllatenz
+  verzögert). Rollback zur unveränderten Referenz = Opt-in ausschalten.
+- **Deployment-Identität sichtbar + Rollback:** neu `shadowModelInfo()`
+  (FNV-1a-Fingerprint + `controlEnabled`/`controlGain`) und `deploymentInfo()`
+  (`model:{champion,candidate}`, `script:{version}`, `engine:{commit}`,
+  `rollback`) in `00-bootstrap.js`. Sichtbar im Panel („Deployment:"-Zeile in
+  `50-ui-and-entrypoint.js`), im Diagnose-Export
+  (`diagnosticSnapshot().details.deployment`) und in
+  `planningState.provenance.modelHashes`/`scriptVersion`.
+- **Solo/Run3-Parität:** Beide Userscripts teilen dieselbe `VERSION`, das
+  **identische** generierte `shadowV5`-Runtime-Modul und dieselbe
+  Deployment-Identitäts-Logik; das Run3-Champion-Modell bleibt unverändert
+  (`championSha256 65589febcf…`, Review-Schema-4-Champion).
+- **Tests bestanden (lokal, grün):** neu `tests/deploy-gate-regression.cjs`
+  (Gate-/SHA-/Feature-/Runtime-Verträge, Champion- vs. Kandidaten-Embedding)
+  und `tests/deployment-identity-regression.cjs` (Deployment-Identität im
+  Panel/Export, Fail-closed-Gründe, Solo/Run3-Parität, unveränderte
+  Run3-Referenz, opt-in Defaults). `tests/neural-regression.cjs` aktualisiert
+  (Kandidat v5 verlangt jetzt `--gate`). Alle 46 Tests grün; beide Build-Checks
+  (`build-userscript.cjs --check`, `build-run3-bundle.cjs --check`) grün.
+- **Echte Engine-Matches:** keine neuen in diesem Schritt — die P6-Runtime ist
+  Code + Tests; echte Engine-/Browser-Partien sind unten offen.
+- **Reale Human-Multiplayer-Abnahme:** noch offen — die optionale
+  „Default-aktivierung" des Kandidaten erfolgt erst nach gesonderter echter
+  Human-/Browser-Abnahme; Echte Browser-Matches und offizielle Team-Matches
+  werden separat evaluiert (der In-Process-Runner ersetzt **keine**
+  Zwei-Browser-/Human-Multiplayer-Prüfung).
+
+**Abgrenzung / weiterhin offen:** DoD bestanden für die optionale
+Live-Aktivierung mit bekanntem Rollback (alter Champion unangetastet, keine
+neuen Sicherheitsverletzungen, keine unerklärten Test-/Live-Featurevektor-
+Diskrepanzen durch Gate-/SHA-/Feature-/Runtime-Verträge + Deployment-Identität).
+Weiterhin offen: gesonderte echte Browser-/Human-Multiplayer-Abnahme und die
+optionale Default-Aktivierung des Kandidaten danach (P6-Box 5).
+
 ## Implementierungsstand 1.21.0 (P0–P6)
 
 ### Abschlussprüfung der implementierbaren Roadmap-Aufgaben (22.09.2026)
