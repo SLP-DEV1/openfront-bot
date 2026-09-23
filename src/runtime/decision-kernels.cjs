@@ -30,6 +30,24 @@ function marineObservationGraceKernel(arrivalTick,observationLostTick){
     arrivalTick-observationLostTick+120:120;
   return Math.min(360,Math.max(120,projected));
 }
+function candidateControlKernel(candidates,scores,gain=18){
+  const g=Number.isFinite(+gain)?Math.min(60,Math.max(0,+gain)):18;
+  const out=(candidates||[]).map(c=>{
+    const score=scores?.get?scores.get(c.id):scores?.[c.id];
+    return Number.isFinite(score)?{...c,utility:Math.round(c.utility+g*score)}:{...c};
+  });
+  out.sort((a,b)=>b.utility-a.utility||String(a.id).localeCompare(String(b.id)));
+  return out;
+}
+function reserveResolutionKernel(home,floors){
+  const f=floors||{},entries=Object.entries(f).filter(([,v])=>Number.isFinite(v));
+  const reserve=Math.min(Math.max(0,home||0),
+    Math.ceil(Math.max(0,...entries.map(([,v])=>v))));
+  const reason=entries.filter(([,v])=>v>=reserve-.501)
+    .map(([k])=>k).join('+')||'baseline';
+  return {reserve,available:Math.max(0,Math.floor((home||0)-reserve)),
+    reserveReason:reason};
+}
 function actionEvidenceKernel(ledger){
   const rows=Array.isArray(ledger)?ledger:[];
   const confirmed=rows.filter(v=>
@@ -53,4 +71,5 @@ function actionEvidenceKernel(ledger){
 }
 // DECISION-KERNELS-END
 module.exports={archetypeRankKernel,economyRecoveryKernel,
-  marineObservationGraceKernel,actionEvidenceKernel};
+  marineObservationGraceKernel,candidateControlKernel,reserveResolutionKernel,
+  actionEvidenceKernel};
