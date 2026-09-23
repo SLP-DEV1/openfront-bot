@@ -93,13 +93,14 @@ function duoNuclearInvestmentKernel(x){
       Math.ceil(uncovered/3)+Math.min(2,incoming)));
     else if(firstGuard)wantedSAM=1;
     else if((x.enemySilos||0)>0&&!siloFundActive)
-      wantedSAM=Math.min(silos>0?3:2,Math.max(ownSAM,Math.ceil(uncovered/3)));
+      wantedSAM=Math.min(silos>0&&x.nukeShots>0?3:silos>0?1:2,
+        Math.max(ownSAM,Math.ceil(uncovered/3)));
     else if(x.proactiveSAM===true&&ownSAM===0)wantedSAM=1;
   }
   return {primary,peerValid,firstSiloWindow,siloFundActive,firstGuard,
     wantedSAM,samFundingUrgent:incoming>0||firstGuard,
     samUpgradeAllowed:uncovered>0&&
-      (incoming>0||silos>0&&(x.enemySilos||0)>0)};
+      (incoming>0||silos>0&&x.nukeShots>0&&(x.enemySilos||0)>0)};
 }
 // DECISION-KERNELS-END
 module.exports={archetypeRankKernel,economyRecoveryKernel,
