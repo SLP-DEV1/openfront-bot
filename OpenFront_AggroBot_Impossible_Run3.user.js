@@ -4962,6 +4962,21 @@ function predict(model,input){
   // One shared, short-lived spending ledger across economy, ships, missiles
   // and donations. Worker quotes are checked against current gold immediately
   // before send; unconfirmed overlapping intents cannot spend the same money.
+  const goldBudgetBlockedSeen=new Map();
+  function reportGoldBudgetBlocked(tick,purpose,data){
+    const key=String(monitorSession)+'|'+purpose+'|'+data.floor+'|'+data.samFund+
+      '|'+data.emergency;
+    const prev=goldBudgetBlockedSeen.get(key);
+    if(prev&&tick-prev.tick<80){prev.suppressed++;return;}
+    const suppressed=prev?.suppressed||0;
+    goldBudgetBlockedSeen.set(key,{tick,suppressed:0});
+    if(goldBudgetBlockedSeen.size>120){
+      for(const [k,v] of goldBudgetBlockedSeen)
+        if(tick-v.tick>600)goldBudgetBlockedSeen.delete(k);
+    }
+    telemetry('gold_budget_blocked','Gemeinsamer Goldfonds schützt '+purpose,
+      {...data,suppressedSinceLast:suppressed});
+  }
   function spendBudget(me,cost,purpose,emergency=false,tiles=[]){
     const infinite=game.config().infiniteGold?.()===true;
     if(infinite)return true;
@@ -5015,7 +5030,7 @@ function predict(model,input){
     if(core.missing.length&&!productive&&!urgent&&core.needed!==null)
       floor=Math.max(floor,core.needed);
     if(cash-pending-cost>=floor)return true;
-    telemetry('gold_budget_blocked','Gemeinsamer Goldfonds schützt '+purpose,
+    reportGoldBudgetBlocked(tick,purpose,
       {purpose,cost,cash,pending,floor,samFund,emergency});
     return false;
   }
