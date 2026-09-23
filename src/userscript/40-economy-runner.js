@@ -1320,9 +1320,8 @@
         }
         // Watch briefly after disappearance. MotionPlan ETA is a moving
         // estimate, not proof of arrival; cap the watch to avoid starvation.
-        const grace=Math.min(360,Math.max(120,
-          Number.isFinite(boat.eta?.arrivalTick)?
-            boat.eta.arrivalTick-boat.observationLostTick+120:120));
+        const grace=marineObservationGraceKernel(
+          boat.eta?.arrivalTick,boat.observationLostTick);
         if(tick-boat.observationLostTick>=grace){
           marineStats.transportUnresolved++;
           fleetStatus='Transport weiterhin ungeklärt; Küste nicht übernommen';
