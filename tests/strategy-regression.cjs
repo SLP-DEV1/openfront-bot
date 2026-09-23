@@ -120,6 +120,26 @@ function boot(benchmarkOptions={}) {
     assert.equal(danger.coreRecovery,false);
     assert(danger.list.every(v=>['Defense Post','SAM Launcher'].includes(v.type)));
   });
+  await check('#133: observed mid-game income collapse reopens safe productive core',()=>{
+    const x=boot();x.setTick(2800);x.setGold(500000);x.setLand(1200);
+    const units=[asset('City',5000,1),asset('City',5010,2),
+      asset('Factory',5020,3)];
+    x.me.units=()=>units;
+    x.b.setTroopSnapshot({...x.b.military(x.me,[]),incoming:0});
+    x.b.setIncomeStatus({observed:true,train:0,trade:0});
+    const needs=x.b.economicNeeds(x.me,units,[]);
+    assert.equal(needs.incomeCollapse,true,'standing 2 City / 1 Factory can still be economically stalled');
+    assert.equal(needs.coreRecovery,true);
+    assert.equal(needs.savingsTarget,0,'inactive discretionary funds must not block rebuild');
+    assert(needs.list.some(v=>v.type==='Factory'),'factory recovery is a candidate');
+    x.b.setIncomeStatus({observed:true,train:500,trade:500});
+    assert.equal(x.b.economicNeeds(x.me,units,[]).incomeCollapse,false,
+      'normal income must not trigger collapse recovery');
+    x.b.setIncomeStatus({observed:true,train:0,trade:0});
+    x.b.setTroopSnapshot({...x.b.military(x.me,[]),incoming:50000});
+    assert.equal(x.b.economicNeeds(x.me,units,[]).coreRecovery,false,
+      'observed incoming pressure retains emergency priority');
+  });
   await check('match cxBz9Y1WCZ: long attack drought reports blockers but emits no attack',()=>{
     const x=boot();x.setTick(1000);
     const groups=[{id:'weak',opponent:x.weak,tiles:[5],front:1}];
