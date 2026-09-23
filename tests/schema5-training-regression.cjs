@@ -91,7 +91,7 @@ try{
   const checksumPath=metricsPath+'.sha256';
   assert.ok(fs.existsSync(checksumPath),'final metrics checksum sidecar required');
   const actual=crypto.createHash('sha256').update(fs.readFileSync(metricsPath)).digest('hex');
-  assert.equal(fs.readFileSync(checksumPath,'utf8').split(/\\s+/)[0],actual,
+  assert.equal(fs.readFileSync(checksumPath,'utf8').split(/\s+/)[0],actual,
     'sidecar SHA must cover final metrics file bytes');
   assert.equal(metrics.fileSha256.metrics,undefined,
     'metrics must not falsely claim their own final-byte SHA');
