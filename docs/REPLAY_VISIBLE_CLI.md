@@ -78,6 +78,33 @@ wirklich ausgeführte offizielle Engine. Das Roh-Replay darf weiterhin
 stehen die exakte Engine-Rekonstruktion, per-turn-Hashverifikation,
 ausgewählte Player-GameView und beobachtete Aktionen weiterhin aus.
 
+## Exakte Engine-Rekonstruktion aus einem Roh-Replay
+
+`tools/benchmark/replay-engine-extract.mjs` schließt die Lücke zwischen
+Roh-GameRecord und sichtbaren Lernframes. Es verlangt einen lokalen Checkout
+des **exakten** `record.gitCommit`, spielt die archivierten Turns mit der
+offiziellen OpenFront-Engine nach, vergleicht jeden vorhandenen Hash-Checkpoint
+und hält genau einen ausgewählten `clientID` als echten `GameView`.
+
+```sh
+node tools/benchmark/replay-engine-extract.mjs \
+  --input original-record.json \
+  --out extracted-gameview.json \
+  --engine ../OpenFrontIO \
+  --engineCommit FULL_40_HEX_SHA \
+  --clientID PLAYER_CLIENT_ID \
+  --origin human-replay \
+  --provenance "gameID=...; clientID=..." \
+  --usageRights "documented permission"
+```
+
+Hash-Abweichung, unbekannte Client-ID, fehlende Hash-Anker oder fehlende
+sichtbare Entscheidungen brechen fail-closed ab. Der Export trägt
+`engineHashesVerified:true`; Zustände werden unmittelbar vor dem
+archivierten Intent aus dem ausgewählten `GameView` gelesen. Outcomes bleiben
+`null`, solange sie nicht separat beobachtet wurden. Der Output kann danach
+durch `replay-cli.cjs` laufen.
+
 ## Liga-Smoke
 
 ```sh
