@@ -237,6 +237,9 @@
       earlyCrisis,land:number(()=>me?.numTilesOwned?.(),0),
       cities:(me?.units?.()||[]).filter(u=>u.isActive?.()&&u.type?.()==='City').length,
       factories:(me?.units?.()||[]).filter(u=>u.isActive?.()&&u.type?.()==='Factory').length,
+      silos:(me?.units?.()||[]).filter(u=>u.isActive?.()&&u.type?.()==='Missile Silo').length,
+      sams:(me?.units?.()||[]).filter(u=>u.isActive?.()&&u.type?.()==='SAM Launcher').length,
+      gold:number(()=>me?.gold?.(),0),
       helpRequestId:diagnosticHelpId,helpSinceTick:diagnosticHelpSince,
       helpDeadlineTick:diagnosticHelpDeadline,
       helpShortfall:diagnosticHelpId&&state?

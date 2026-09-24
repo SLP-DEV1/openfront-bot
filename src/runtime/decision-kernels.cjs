@@ -69,7 +69,42 @@ function actionEvidenceKernel(ledger){
     semantics:'intent -> confirmation observation -> effect observation; missing evidence is never failure or success'
   };
 }
+// Shared SAM/silo policy: observed inbound nukes, not a visible enemy silo,
+// override a funded first silo. A missing/stale relay never blocks solo play.
+function duoNuclearInvestmentKernel(x){
+  const coreReady=x.coreReady===true,peerValid=x.peerValid===true;
+  const peerReady=peerValid&&x.peerCoreReady===true;
+  const primary=!peerValid || (coreReady!==peerReady?coreReady:
+    String(x.ownId)<String(x.peerId));
+  const peerHasSilo=peerValid&&x.peerSilos>0;
+  const firstSiloWindow=x.siloAllowed===true&&coreReady&&x.late===true&&
+    x.land>900&&(primary||peerHasSilo);
+  const incoming=Math.max(0,x.incomingNukes||0);
+  const uncovered=Math.max(0,x.uncovered||0);
+  const ownSAM=Math.max(0,x.ownSAM||0),silos=Math.max(0,x.silos||0);
+  // A visible enemy silo is not an incoming strike. First finish the two
+  // City/two Factory economic core; actual inbound nukes still bypass it.
+  const firstGuard=x.antiNuke===true&&!x.samSearchBlocked&&
+    coreReady&&uncovered>0&&ownSAM===0&&
+    ((x.enemySilos||0)>0||x.proactiveSAM===true);
+  const siloFundActive=firstSiloWindow&&silos===0&&
+    !x.urgentVictory&&!incoming&&!firstGuard;
+  let wantedSAM=0;
+  if(uncovered>0&&x.antiNuke===true){
+    if(incoming)wantedSAM=Math.min(7,Math.max(ownSAM+1,
+      Math.ceil(uncovered/3)+Math.min(2,incoming)));
+    else if(firstGuard)wantedSAM=1;
+    else if(coreReady&&(x.enemySilos||0)>0&&!siloFundActive)
+      wantedSAM=Math.min(silos>0&&x.nukeShots>0?3:silos>0?1:2,
+        Math.max(ownSAM,Math.ceil(uncovered/3)));
+    else if(coreReady&&x.proactiveSAM===true&&ownSAM===0)wantedSAM=1;
+  }
+  return {primary,peerValid,firstSiloWindow,siloFundActive,firstGuard,
+    wantedSAM,samFundingUrgent:incoming>0||firstGuard,
+    samUpgradeAllowed:uncovered>0&&
+      (incoming>0||silos>0&&x.nukeShots>0&&(x.enemySilos||0)>0)};
+}
 // DECISION-KERNELS-END
 module.exports={archetypeRankKernel,economyRecoveryKernel,
   marineObservationGraceKernel,candidateControlKernel,reserveResolutionKernel,
-  actionEvidenceKernel};
+  actionEvidenceKernel,duoNuclearInvestmentKernel};

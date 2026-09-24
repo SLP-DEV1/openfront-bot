@@ -334,6 +334,7 @@
   // interchangeable. Own tiles INSIDE the country matter more than border-only probes.
   const STRUCTURE_TYPES=['City','Factory','Port','Defense Post','SAM Launcher','Missile Silo'];
   const ECON_PENDING_TTL=100; // 10 game seconds; new builds appear before construction completes.
+  const confirmedBuiltSilos=new Set(); // match-scoped, observed own construction only
   function ownStructures(me) {
     try {return me.units().filter(u=>u?.isActive?.()&&STRUCTURE_TYPES.includes(u.type?.()));}
     catch (_) {return [];}
@@ -359,6 +360,17 @@
       telemetry('build_confirmed',economicStatus,
         {actionId:economicPending.actionId??null,type:economicPending.type,
           kind:economicPending.kind,evidence:'structure-or-level-observed'});
+      if(economicPending.type==='Missile Silo'&&economicPending.kind==='build'){
+        const built=units.find(u=>u.type?.()==='Missile Silo'&&
+          u.tile?.()===economicPending.tile);
+        if(built){
+          const id=String(built.id?.()??'tile:'+built.tile?.());
+          confirmedBuiltSilos.add(monitorSession+':'+id);
+          telemetry('silo_origin','Eigener Raketensilobau bestaetigt',
+            {actionId:economicPending.actionId??null,siloId:id,
+              tile:built.tile?.()??null,origin:'own-build-observed'});
+        }
+      }
       if(economicPending.type==='Port')telemetry('port_confirmed','Hafen im Spielzustand bestätigt',
         {tile:economicPending.tile,buildKind:economicPending.kind});
       if(['City','Factory','Port'].includes(economicPending.type)){
@@ -420,10 +432,9 @@
     const sams=protectedUnits.filter(u=>u.type?.()==='SAM Launcher');
     const assetType=u=>['City','Factory','Port','Missile Silo'].includes(u.type?.());
     const allyAssets=allyStructures.filter(assetType);
-    // Preserve the previous Impossible heuristic until a paired test proves
-    // changing its global asset accounting improves actual outcomes.
-    const assets=hardMode()?ourStructures.filter(assetType).concat(allyAssets):
-      ourStructures.filter(assetType);
+    // Shared allied SAM coverage counts, but allied buildings alone must
+    // never trigger an own-territory launcher purchase, including Impossible.
+    const assets=ourStructures.filter(assetType);
     const range=s=>number(()=>game.config().samRange(s.level?.()||1),70);
     const covered=a=>sams.some(s=>{
       const r=range(s),x=game.x(a.tile())-game.x(s.tile()),y=game.y(a.tile())-game.y(s.tile());
@@ -637,7 +648,13 @@
       (tradePeer.units?.()||[]).filter(u=>u.isActive?.()&&
         u.type?.()==='Port'&&!u.isUnderConstruction?.()).length:0;
     const duoTradeReady=ports===0&&peerPorts>0;
+    // A Port used to outrank the SECOND Factory by hundreds of score points.
+    // Finish the first two productive units of each type before this
+    // discretionary harbor milestone; after repeated real site failures,
+    // allow a harbor so a blocked core cannot freeze the entire economy.
+    const coreComplete=(!cityEnabled||cities>=2)&&(!factoryEnabled||factories>=2);
     const portMilestone=!!(opts.boats&&portEnabled&&ports===0&&!startup&&
+      (coreComplete||failedEconomyProbes>=8)&&
       coastSites.length&&portProbeFailures<8);
     const tradePortMilestone=portMilestone&&duoTradeReady;
     const basic=(cityEnabled&&cities<2)||(factoryEnabled&&factories<2);
@@ -669,16 +686,29 @@
       observed:incomeStatus.observed,train:incomeStatus.train,trade:incomeStatus.trade,
       cities,factories,failedEconomyProbes,startup,land:mine,
       incoming:troopSnapshot.incoming,nuclearThreat:threat}).coreRecovery;
-    const wantedSAM=opts.antiNuke&&game.config().isUnitDisabled?.('SAM Launcher')!==true?
-      Math.min(7,threat?Math.max(1,Math.ceil(intel.assets.length/3)+
-        Math.ceil(intel.uncovered.length/3)+(enemyNukes?2:0)):
-        proactiveSAM?Math.min(2,Math.ceil(intel.uncovered.length/3)):0):0;
     const siloAllowed=opts.nukes && game.config().isUnitDisabled?.('Missile Silo')!==true &&
       ['Atom Bomb','Hydrogen Bomb','MIRV'].some(t=>game.config().isUnitDisabled?.(t)!==true);
-    // Earlier requiring 1.8m *before* considering a silo caused endless
-    // reinvestment in cheap upgrades. OpenFront silo costs start at 1m.
-    const wantedSilo=siloAllowed && (!cityEnabled||cities>=2)&&(!factoryEnabled||factories>=2) && late && mine>900 ?
-      (siloCount===0?1:nukeShots>0&&gold>2500000?Math.min(3,1+Math.floor(mine/18000)):1):0;
+    const samSearchBlocked=samAffordableFailureSince!==null&&nowTick-samAffordableFailureSince>=180;
+    const trusted=duoTrustedPeer();
+    const peer=trusted&&actualFriendly(trusted.player,me)?trusted:null;
+    const peerUnits=peer?(peer.player.units?.()||[]):[];
+    const duoNuclear=duoNuclearInvestmentKernel({
+      ownId:safeID(me),peerId:peer?.id,peerValid:!!peer,
+      peerCoreReady:!!(peer&&peer.state?.cities>=2&&peer.state?.factories>=2),
+      peerSilos:peerUnits.filter(u=>u.isActive?.()&&u.type?.()==='Missile Silo').length,
+      coreReady:coreComplete,
+      siloAllowed,late,land:mine,silos:siloCount,nukeShots,
+      ownSAM:count('SAM Launcher'),
+      antiNuke:opts.antiNuke&&game.config().isUnitDisabled?.('SAM Launcher')!==true,
+      enemySilos,incomingNukes:enemyNukes,uncovered:intel.uncovered.length,
+      proactiveSAM,samSearchBlocked,urgentVictory:winStatus.urgent});
+    const wantedSAM=duoNuclear.wantedSAM;
+    // Both teammates build an initial guard when needed. Only the designated
+    // partner funds a first silo until that partner actually owns a silo;
+    // stale/untrusted relay state falls back to independent solo planning.
+    const wantedSilo=duoNuclear.firstSiloWindow?
+      (siloCount===0?1:nukeShots>0&&gold>2500000?
+        Math.min(3,1+Math.floor(mine/18000)):1):0;
     const pressure=troops/cap;
     // Only territory and COMPLETED City levels increase maxTroops in the
     // pinned OpenFront engine. A Factory is evaluated for economic returns,
@@ -697,11 +727,13 @@
     const neural=neuralStrategicSignals(me,troopSnapshot,nowTick);
     const list=[
       {type:'City',desired:capacityCityDesired,score:92+
-        (coreRecovery&&cities<2?530:0)+(productiveStall&&cities<3?110:0)+(neural?.cityPriority||0)*90+econBoost/2+(posture==='recruit'?38:0)+Math.max(0,pressure-.35)*75+
+        (coreRecovery&&cities<2?530:0)+(cities<2&&basic?310:0)+
+        (productiveStall&&cities<3?110:0)+(neural?.cityPriority||0)*90+econBoost/2+(posture==='recruit'?38:0)+Math.max(0,pressure-.35)*75+
           (pressure>.80&&!immediate?30:0)+(cities===0?115:hardMode()&&cities<2?80:0)+
           (capStalled?pressure>=.98?355:pressure>=.95?295:pressure>=.90?230:135:0)},
       {type:'Factory',desired:wantedFactory,score:91+
-        (coreRecovery&&factories<2?520:0)+(productiveStall&&factories<3?110:0)+(neural?.factoryPriority||0)*90+econBoost+(posture==='bootstrap'?20:0)+
+        (coreRecovery&&factories<2?520:0)+(factories<2&&basic?340:0)+
+        (productiveStall&&factories<3?110:0)+(neural?.factoryPriority||0)*90+econBoost+(posture==='bootstrap'?20:0)+
           (factories===0?100:hardMode()&&factories<2?85:0)+
           (gold<450000?15:0)+(pressure<.60&&factories>0?10:0)+
           (factories<2&&cities>=2?24:0)-
@@ -711,8 +743,9 @@
         (incomeStatus.observed&&incomeStatus.trade===0&&ports===0?35:0)+
         (duoTradeReady?55:0)+(ports<2&&coastSites.length?22:0)},
       {type:'Defense Post',desired:wantedDefense,score:immediate?310+defBoost:threatened?(basic?36:77)+(neural?.defensePriority||0)*90+defBoost+(posture==='defensive'?24:0):20},
-      {type:'SAM Launcher',desired:wantedSAM,score:enemyNukes?510+defBoost:threat?465+defBoost:proactiveSAM?295+defBoost:40},
-      {type:'Missile Silo',desired:wantedSilo,score:siloCount===0?305:opts.nukes?(late?131:94)+(neural?.nuclearPriority||0)*75+(gold>6000000?13:0):0}
+      {type:'SAM Launcher',desired:wantedSAM,score:enemyNukes?510+defBoost:
+        duoNuclear.firstGuard?465+defBoost:threat?175+defBoost:proactiveSAM?155+defBoost:40},
+      {type:'Missile Silo',desired:wantedSilo,score:siloCount===0?410:opts.nukes?(late?131:94)+(neural?.nuclearPriority||0)*75+(gold>6000000?13:0):0}
     ];
     const crisisAllowed=type=>!immediate||
       ['Defense Post','SAM Launcher'].includes(type)||
@@ -722,7 +755,7 @@
     // Upgrades become useful when expansion is tight or troop cap is near.
     if(opts.upgrades){
       for(const x of list.filter(x=>crisisAllowed(x.type)&&['City','Factory','Port','SAM Launcher','Missile Silo'].includes(x.type)&&count(x.type)>0 &&
-        (x.type!=='SAM Launcher'||opts.antiNuke&&(threat||proactiveSAM)) && (x.type!=='Missile Silo'||opts.nukes))){
+        (x.type!=='SAM Launcher'||opts.antiNuke&&duoNuclear.samUpgradeAllowed) && (x.type!=='Missile Silo'||opts.nukes))){
         const upgradeScore=x.score-(count(x.type)<x.desired?17:36)+
           (x.type==='City'&&pressure>.75?27:0)+
           (x.type==='City'&&capStalled?35:0)+
@@ -733,7 +766,7 @@
     }
     // Deduplicate type list for game actions, but keep separate build/upgrade priorities.
     value.sort((a,b)=>b.urgency-a.urgency);
-    const saveForSilo=siloAllowed && late && !basic && siloCount===0 && !winStatus.urgent;
+    const saveForSilo=duoNuclear.siloFundActive&&!basic;
     const saveForNuke=siloAllowed && late && siloCount>0 &&
       intel.enemy.length>0 && nukeShots===0;
     const firstRocketFund=game.config().isUnitDisabled?.('Atom Bomb')===true?
@@ -741,8 +774,8 @@
         (game.config().isUnitDisabled?.('MIRV')===true?0:26000000):6400000):1100000;
     // A former legal quote is useful for funding, but must not freeze other
     // production forever after the front or shoreline changes.
-    const samSearchBlocked=samAffordableFailureSince!==null&&nowTick-samAffordableFailureSince>=180;
-    const samFund=threat&&intel.uncovered.length>0&&wantedSAM>0&&!samSearchBlocked&&
+    const samFund=duoNuclear.samFundingUrgent&&intel.uncovered.length>0&&
+      wantedSAM>count('SAM Launcher')&&!samSearchBlocked&&
       nowTick-samQuotedTick<=300?samQuotedCost:0;
     // On Public Europe this first Port cost 500k, but a worker may omit a
     // buildable option while funds are low. Use an explicitly provisional
@@ -759,7 +792,8 @@
       saveForSilo?1150000:saveForNuke?firstRocketFund:0;
     investmentStatus=immediate?'Verteidigung vor Investitionen':startup?'Erste Stadt/Fabrik':
       samFund>0&&gold<samFund?'SAM-Schutz '+Math.round(samFund).toLocaleString()+' Gold':
-      threat&&intel.uncovered.length>0&&wantedSAM>0?'SAM-Schutz vor Raketenfonds':
+      duoNuclear.samFundingUrgent&&intel.uncovered.length>0&&
+        wantedSAM>count('SAM Launcher')?'SAM-Schutz vor Raketenfonds':
       capStalled&&!firstPortWindow&&!enemyNukes?'Truppenlimit: Stadt/City-Upgrade oder Landgewinn priorisiert':
       portFund>0&&gold<portFund?'Hafen-Fonds '+Math.round(portFund).toLocaleString()+' Gold':
       portMilestone?'Hafen vor Silo':basic?'Zwei Städte und zwei Fabriken':
@@ -773,7 +807,8 @@
     return {list:value,policyBiases,threatened,gold,cities,factories,mine,pressure,nuclearThreat:threat,incomingNukes:enemyNukes,intel,
       startup,coreRecovery,incomeCollapse,basic,emergency,immediate,capStalled,firstPortWindow,savingsTarget,saveForSilo,saveForNuke,siloCount,
       enemySilos,proactiveSAM,wantedDefense,wantedSAM,portMilestone,coastSites:coastSites.length,portProbeFailures,
-      samQuotedCost,portQuotedCost,posture,samSearchBlocked};
+      samQuotedCost,portQuotedCost,posture,samSearchBlocked,
+      duoNuclear, samFundingUrgent:duoNuclear.samFundingUrgent};
   }
   // Only actual worker quotes can establish a core funding target. A quote
   // when canBuild=false due to insufficient gold proves PRICE, not SITE.
@@ -824,18 +859,20 @@
     const needs=economicNeeds(me,units,tiles);
     const core=coreFundingStatus(me,units,tick);
     // A real, still-required SAM quote outranks discretionary fleet/nukes.
-    const samFund=needs.nuclearThreat&&needs.wantedSAM>0&&
+    const samFund=needs.samFundingUrgent&&needs.wantedSAM>0&&
       needs.intel.uncovered.length>0&&!needs.samSearchBlocked&&
       Number.isFinite(needs.samQuotedCost)&&needs.samQuotedCost>0&&
       tick-samQuotedTick<=300?needs.samQuotedCost:0;
     let floor=needs.savingsTarget;
-    if(purpose==='Warship')floor=samFund;
+    if(purpose==='Warship')floor=needs.saveForSilo||needs.saveForNuke?
+      Math.max(needs.savingsTarget,samFund):samFund;
     if(needs.coreRecovery&&['City','Factory'].includes(purpose)){
       // Only when no current troop invasion exists; final worker legality,
       // real quote and shared pending-gold checks still apply below.
       floor=0;
     }
-    if(purpose==='SAM Launcher'||purpose==='Port'&&needs.portMilestone&&
+    if(purpose==='SAM Launcher'&&needs.samFundingUrgent||
+      purpose==='Port'&&needs.portMilestone&&
       needs.savingsTarget===needs.portQuotedCost||
       purpose==='Missile Silo'&&needs.saveForSilo||
       ['Atom Bomb','Hydrogen Bomb','MIRV'].includes(purpose)&&needs.saveForNuke&&
@@ -857,7 +894,8 @@
     // Do not spend the known price of the first productive building on
     // ships, nukes or donations. This never blocks actual emergency defense.
     const productive=purpose==='City'||purpose==='Factory';
-    const urgent=['Defense Post','SAM Launcher'].includes(purpose)||
+    const urgent=purpose==='Defense Post'||
+      purpose==='SAM Launcher'&&needs.samFundingUrgent||
       emergency&&purpose==='Warship';
     // Unknown prices are never invented. Preserve unrelated legal actions
     // until the worker supplies a real price, then protect that quote.
