@@ -288,15 +288,22 @@ function boot(benchmarkOptions={}) {
       canUpgrade:false,cost:type==='SAM Launcher'?1500000n:125000n}))});
     return x;
   }
-  await check('#133 budget-block telemetry is reasoned and time-deduplicated',()=>{
+  await check('#133 budget-block telemetry is reasoned and time-deduplicated',async()=>{
     const x=samScenario();x.b.setMonitorSession('budget-dedupe');
+    // The 1.21.4 core-first policy only funds a SAM once the productive core
+    // is complete; establish that precondition plus a real current quote.
+    x.me.units=()=>[asset('City',5000,1),asset('City',5010,2),
+      asset('Factory',5020,3),asset('Factory',5030,4)];
     x.b.setTroopSnapshot(x.b.military(x.me,[]));
+    await x.b.economy(x.me,2400,0,[]);
+    const warshipBlocks=()=>x.b.state().diagnostics.filter(
+      d=>d.kind==='gold_budget_blocked'&&d.purpose==='Warship');
     for(let i=0;i<12;i++)assert.equal(x.b.spendBudget(x.me,300000,'Warship'),false);
-    let rows=x.b.state().diagnostics.filter(d=>d.kind==='gold_budget_blocked');
-    assert.equal(rows.length,1,'same blocker must not spam diagnostics every call');
+    assert.equal(warshipBlocks().length,1,
+      'same Warship blocker must not spam diagnostics every call');
     x.setTick(2481);
     assert.equal(x.b.spendBudget(x.me,300000,'Warship'),false);
-    rows=x.b.state().diagnostics.filter(d=>d.kind==='gold_budget_blocked');
+    const rows=warshipBlocks();
     assert.equal(rows.length,2);
     assert.equal(rows.at(-1).suppressedSinceLast,11);
     assert.equal(rows.at(-1).purpose,'Warship');
