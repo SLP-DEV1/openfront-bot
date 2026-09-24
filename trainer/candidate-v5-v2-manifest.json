@@ -1,0 +1,59 @@
+{
+  "candidateVersion": "schema5-v2-corrected-lr0.1-e300-xavier",
+  "schema": 5,
+  "arch": "32x20x2-tanh",
+  "outputs": [
+    "heldGain",
+    "lossRisk"
+  ],
+  "weightsFile": "trainer/candidate-v5-v2.json",
+  "modelSHA256": "6ed491fa866ee14d027a401eb108e58f0aa59e3fea0a874513cbf41009574bc0",
+  "init": "deterministic Xavier (mulberry32 seed 0x2545F491); zero-init dead start removed",
+  "source": "tools/benchmark/v5full-v2/dataset.json",
+  "datasetKind": "v5d-corrected-labels",
+  "dataHash": "83f700478661b7556536ebcd0989aa11fbf2b8da919a8316f272f777f98f24c9",
+  "validationHash": "5bcde22360581c467c37d9b9c6b446dccab52d5e9744de56dcf7a3cce9c5e7d1",
+  "labelInvariants": {
+    "totalRows": 3958,
+    "observedRows": 1555,
+    "counterfactualRows": 2403,
+    "usableLabels": 1387,
+    "note": "unchosen candidates carry null (unknown) targets; never the executed action labels"
+  },
+  "featuredSchemaVersion": 2,
+  "engineCommit": "13b403387af01d388f8c8ed8c953b6d3a11d1457",
+  "training": {
+    "epochs": 300,
+    "learningRate": 0.1,
+    "split": 80,
+    "trainSamples": 1035,
+    "valSamples": 352,
+    "trainMatches": 21,
+    "valMatches": 7
+  },
+  "validation": {
+    "trainedMSE": 0.115689909,
+    "ruleMSE": 0.2188512998558612,
+    "meanMSE": 0.1457072032959988,
+    "nullMSE": 0.23144517489346586,
+    "valLossInitial": 0.347494786,
+    "valLossFinal": 0.115689909,
+    "maxAbsWeight": 0.6344295751954343,
+    "improvedOverRule": true,
+    "improvedOverNull": true,
+    "improvedOverMean": true,
+    "note": "beats fixed-rule, null AND mean-constant baselines; the Xavier init removed the zero-init dead start that had made the prior candidate a constant mean-predictor"
+  },
+  "controlDeparture": {
+    "evidenceFile": "tools/benchmark/v5full-v2/control-departure-evidence.json",
+    "test": "tests/v5-control-departure-regression.cjs",
+    "validationFrames": 1034,
+    "evaluationDepartureRate": 0.8597678916827853,
+    "decisionDepartures": 7,
+    "discriminativeFrameRate": 0.9903288201155619,
+    "note": "model evaluations deviate from the rule basis on 86% of frames; in the explicitly-activated control arm (candidateControlKernel gain 18) the actual pick deviates on 7 frames"
+  },
+  "labelFix": "observed consequences attributed only to the chosen+executed action",
+  "liveDeployment": false,
+  "frozen": "2026-09-24"
+}

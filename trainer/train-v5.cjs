@@ -25,6 +25,40 @@ const hiddenBias = INPUTS * HIDDEN, outStart = hiddenBias + HIDDEN,
   outBias = outStart + HIDDEN * OUTPUTS, LENGTH = outBias + OUTPUTS;
 const clamp01 = v => Math.min(1, Math.max(0, v));
 
+// Deterministic weight initialization.
+//
+// Zero-init (the previous default) is a dead start for this network: with the
+// input weights at 0 the hidden layer is tanh(0)=0 for every unit, so the
+// backpropagated gradient to the first layer is 0 and it never moves — the
+// network stays at the "predict the class mean" constant. A fixed-seed Xavier
+// (Glorot-uniform) init breaks the symmetry while remaining fully
+// reproducible (no wall-clock RNG), so the determinism/resume contracts hold.
+// The seed is a pinned constant so a fresh run always starts from identical
+// weights; resume continues from checkpoint weights instead.
+const INIT_SEED = 0x2545F491;
+function mulberry32(seed){
+  let a = seed >>> 0;
+  return function(){
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function xavierInitWeights(){
+  const rng = mulberry32(INIT_SEED);
+  const w = new Float64Array(LENGTH);
+  const uniform = lim => (rng() * 2 - 1) * lim;
+  const inLim = Math.sqrt(6 / (INPUTS + HIDDEN));
+  for (let i = 0; i < INPUTS * HIDDEN; i++) w[i] = uniform(inLim);
+  for (let j = 0; j < HIDDEN; j++) w[hiddenBias + j] = uniform(0.05);
+  const outLim = Math.sqrt(6 / (HIDDEN + OUTPUTS));
+  for (let i = 0; i < HIDDEN * OUTPUTS; i++) w[outStart + i] = uniform(outLim);
+  for (let k = 0; k < OUTPUTS; k++) w[outBias + k] = uniform(0.05);
+  return w;
+}
+
 function forward(x, w){
   const h = new Float64Array(HIDDEN);
   for (let j = 0; j < HIDDEN; j++){
@@ -113,9 +147,24 @@ function buildSamples(dataset){
       const vs = frame.visibleState || {};
       const state = {home: vs.home, maxTroops: vs.maxTroops, committed: vs.committed,
         incoming: vs.incoming, reserve: vs.reserve, gold: vs.gold, land: vs.land,
-        capacityUse: vs.capacityUse, frontCount: vs.frontCount};
+        capacityUse: vs.capacityUse, frontCount: vs.frontCount,
+        // Extension fields (featuredSchemaVersion 2). Legacy frames omit
+        // them; absent fields yield the same baseline features the runtime
+        // produced when it did not provide them (absent trend -> baseline,
+        // absent 0..1 field -> 0).
+        economyRelative: vs.economyRelative ?? 0, frontReach: vs.frontReach ?? 0,
+        partnerNeed: vs.partnerNeed ?? 0, enemyBound: vs.enemyBound ?? 0,
+        landTrend: vs.landTrend, goldTrend: vs.goldTrend,
+        troopTrend: vs.troopTrend, portAccess: vs.portAccess ?? 0,
+        technologyCoverage: vs.technologyCoverage ?? 0};
       const cand = {kind: frame.action?.type, costTroops: vs.costTroops || 0,
-        counterRisk: vs.counterRisk || 0, holdProbability: vs.holdProbability ?? 1};
+        costGold: vs.costGold || 0, expectedLand: vs.expectedLand || 0,
+        duration: vs.duration || 0, returnTime: vs.returnTime || 0,
+        counterRisk: vs.counterRisk || 0, thirdPartyRisk: vs.thirdPartyRisk || 0,
+        infrastructureValue: vs.infrastructureValue || 0,
+        incomeValue: vs.incomeValue || 0, recruitmentValue: vs.recruitmentValue || 0,
+        siteRisk: vs.siteRisk || 0, holdProbability: vs.holdProbability ?? 1,
+        legalConfidence: vs.legalConfidence};
       const x = feat.buildFeatures(state, cand); // == candidate.features (parity)
       bag.x.push(x); bag.y.push([row.heldGain, row.lossRisk]);
     });
@@ -141,7 +190,7 @@ function train(dataset, plan){
   const {train: T, validation: V, trainMatches, valMatches} = buildSamples(dataset);
   if (!T.x.length) throw Error('No usable training frames');
   if (!V.x.length) throw Error('No usable validation frames');
-  let w = plan.resume ? Float64Array.from(plan.resume.weights) : new Float64Array(LENGTH);
+  let w = plan.resume ? Float64Array.from(plan.resume.weights) : xavierInitWeights();
   const startEpoch = plan.resume ? plan.resume.epoch : 0;
   const curve = plan.resume ? plan.resume.curve.slice() : [];
   const baseLoss = {train: mse(w, T.x, T.y), validation: mse(w, V.x, V.y)};
@@ -197,6 +246,7 @@ function calibration(w, x, y){
 module.exports = {
   INPUTS, HIDDEN, OUTPUTS, LENGTH, hiddenBias, outStart, outBias,
   forward, predictArray, gradient, mse,
+  INIT_SEED, mulberry32, xavierInitWeights,
   stableHash, sideOf, buildSamples, hashBag, makeModel, train,
   meanModelMetrics, nullModelMetrics, ruleModel, calibration
 };

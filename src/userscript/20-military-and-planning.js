@@ -1,3 +1,59 @@
+  // P5: schema-5 runtime feature extension (featuredSchemaVersion 2).
+  // Signed relative change per tick against an observation at least 100
+  // ticks old, bounded to [-1,1]. Visible history only (troopSamples /
+  // goldSamples); no engine truth.
+  function v5TrendValue(samples,field,tick){
+    const latest=samples[samples.length-1];
+    const old=samples.find(v=>v&&tick-v.tick>=100);
+    if(!latest||!old||!(old[field]>0))return 0;
+    return clamp((latest[field]-old[field])/old[field]/
+      ((tick-old.tick)/100),-1,1);
+  }
+  // The 9 state extension fields of the schema-5 feature contract. Every
+  // value is a visible observation (own state, own observation history,
+  // own front groups, confirmed partner report, own structures) — never
+  // hidden enemy truth. strategicCandidatePlan spreads this into the exact
+  // state that shadowV5.features scores, and planningState.v5State
+  // publishes it to planningFrame, so the captured training frame carries
+  // the very values the live inference used (parity by construction).
+  function v5StateExtension(me,s,groups,tick){
+    const home=Math.max(1,s.home),
+      land=number(()=>me.numTilesOwned(),0);
+    const income=(incomeStatus.train||0)+(incomeStatus.trade||0);
+    const hostile=(groups||[]).filter(g=>g.id!==null&&
+      g.opponent?.isAlive?.()&&!friendly(g.opponent,me));
+    const frontTiles=hostile.reduce((n,g)=>n+(g.tiles?.length||0),0);
+    const units=ownStructures(me);
+    const techTypes=new Set(units.map(u=>u.type?.()));
+    return {
+      economyRelative:clamp(income/home,0,2),
+      frontReach:clamp(frontTiles/Math.max(1,land),0,1),
+      partnerNeed:duoTrustedPeer()?.state?.needHelp?1:0,
+      enemyBound:clamp((s.strongest||0)/home,0,1),
+      landTrend:v5TrendValue(troopSamples,'tiles',tick),
+      goldTrend:v5TrendValue(goldSamples,'gold',tick),
+      troopTrend:v5TrendValue(troopSamples,'home',tick),
+      portAccess:units.some(u=>u.type?.()==='Port')?1:0,
+      technologyCoverage:clamp(techTypes.size/6,0,1)};
+  }
+  // Per-candidate schema-5 feature contract (the 14 candidate fields).
+  // cost/counterRisk/holdProbability mirror the candidate's own values so
+  // the contract and the candidate never disagree; the extra fields are
+  // bounded visible estimates for THIS candidate only.
+  function v5Contract(kind,cost,counterRisk,holdProbability,extra={}){
+    const duration=extra.duration||0;
+    return {kind,costTroops:cost||0,costGold:extra.costGold||0,
+      expectedLand:extra.expectedLand||0,duration,
+      returnTime:extra.returnTime??duration,
+      counterRisk:counterRisk||0,
+      thirdPartyRisk:clamp(extra.thirdPartyRisk||0,0,1),
+      infrastructureValue:clamp(extra.infrastructureValue||0,0,1),
+      incomeValue:clamp(extra.incomeValue||0,0,1),
+      recruitmentValue:clamp(extra.recruitmentValue||0,0,1),
+      siteRisk:clamp(extra.siteRisk||0,0,1),
+      holdProbability:clamp(holdProbability??1,0,1),
+      legalConfidence:clamp(extra.legalConfidence??1,0,1)};
+  }
   function strategicCandidatePlan(me,groups,s,context,ranked,tick){
     const started=performance.now(),budgetMs=50,candidates=[];
     const home=Math.max(1,s.home),waitGrowth=Math.max(0,s.growthPotential||0);
@@ -10,6 +66,8 @@
       utility:Math.round(35+holdRisk*85-waitGrowth/Math.max(1,home)*900),
       cost:0,risk:holdRisk,waitCost:Math.round(waitGrowth),
       scenarios:{holds:0,counter:s.incoming,thirdParty:s.strongest},
+      v5:v5Contract('hold',0,holdRisk,1-Math.min(1,holdRisk),
+        {thirdPartyRisk:clamp((s.strongest||0)/home,0,1)}),
       reason:holdRisk>=.85?'sichtbarer Druck':'Reserve und Wachstum abwarten'});
     const cap=Math.max(1,s.max),capPressure=s.home/cap;
     const observedIncome=Math.max(0,(incomeStatus.train||0)+(incomeStatus.trade||0));
@@ -17,6 +75,9 @@
       utility:Math.round(42+(capPressure>.82?48:0)+Math.min(35,observedIncome/50000)-holdRisk*55),
       cost:null,risk:holdRisk,waitCost:Math.round(waitGrowth*.6),
       scenarios:{holds:observedIncome,counter:-Math.round(s.incoming*.35),thirdParty:-Math.round(s.strongest*.1)},
+      v5:v5Contract('invest',null,holdRisk,1-Math.min(1,holdRisk),
+        {thirdPartyRisk:clamp((s.strongest||0)/home,0,1),
+         incomeValue:clamp(observedIncome/100000,0,1)}),
       reason:capPressure>.82?'Kapazität ausbauen':'beobachtetes Einkommen verstärken'});
     for(const item of (ranked||[]).slice(0,6)){
       if(performance.now()-started>budgetMs)break;
@@ -26,6 +87,10 @@
           channel:'land',kind:'expand',target:null,utility:Math.round(70+Math.min(45,item.score||0)-holdRisk*60),
           cost:amount,risk:holdRisk*.55,waitCost:Math.round(waitGrowth*.25),
           scenarios:{holds:item.tiles?.length||1,counter:-Math.round(amount*.2),thirdParty:-Math.round(s.strongest*.05)},
+          v5:v5Contract('expand',amount,holdRisk*.55,1-Math.min(1,holdRisk*.55),
+            {expectedLand:item.tiles?.length||0,
+             thirdPartyRisk:clamp((s.strongest||0)/home,0,1),
+             legalConfidence:amount>0?1:0.5}),
           reason:'neutrales Wachstum mit begrenztem Einsatz'});continue;
       }
       const enemy=Math.max(0,number(()=>item.opponent?.troops?.(),0));
@@ -39,10 +104,20 @@
       const held=Math.max(0,(item.tiles?.length||0)*18-
         (Number.isFinite(forecast.loss)?forecast.loss/Math.max(1,amount)*25:60));
       const counter=Math.max(0,enemy-amount*.7),third=Math.max(0,other-(home-amount));
+      const risk=clamp((counter+third)/home,0,2),econ=targetEconomics(item);
       candidates.push({id:'attack:'+item.id,channel:'land',kind:'attack',target:item.id,
         utility:Math.round(55+(item.score||0)+held-counter/home*90-third/home*70),
-        cost:amount,risk:clamp((counter+third)/home,0,2),waitCost:Math.round(waitGrowth*.4),
+        cost:amount,risk,waitCost:Math.round(waitGrowth*.4),
         scenarios:{holds:Math.round(held),counter:Math.round(counter),thirdParty:Math.round(third)},
+        v5:v5Contract('attack',amount,clamp(counter/Math.max(1,enemy),0,1),
+          1-Math.min(1,risk),
+          {thirdPartyRisk:clamp(third/home,0,1),
+           siteRisk:clamp(enemy/Math.max(1,home),0,1),
+           infrastructureValue:clamp(econ.posts/Math.max(1,home),0,1),
+           incomeValue:0,
+           expectedLand:item.tiles?.length||0,
+           legalConfidence:counter>0?
+             clamp(1-counter/Math.max(1,enemy),0,1):1}),
         forecast:{loss:Number.isFinite(forecast.loss)?forecast.loss:null,
           time:Number.isFinite(forecast.time)?forecast.time:null,method:forecast.method},
         reason:'Frontziel gegen Halten, Gegenangriff und Drittpartei verglichen'});
@@ -52,11 +127,15 @@
         utility:Math.round((ranked||[]).length?36:82-holdRisk*55),cost:null,
         risk:holdRisk,waitCost:Math.round(waitGrowth*.5),
         scenarios:{holds:25,counter:0,thirdParty:Math.round(s.strongest*.08)},
+        v5:v5Contract('naval',null,holdRisk,1-Math.min(1,holdRisk),
+          {thirdPartyRisk:clamp((s.strongest||0)/home,0,1)}),
         reason:'alternative Seeoperation bei begrenzter Landoption'});
     const peer=duoTrustedPeer();
     if(peer?.state?.needHelp)candidates.push({id:'support:'+peer.id,channel:'hold',
       kind:'support',target:peer.id,utility:90,risk:holdRisk,cost:null,waitCost:0,
       scenarios:{holds:40,counter:s.incoming,thirdParty:s.strongest},
+      v5:v5Contract('support',null,holdRisk,1-Math.min(1,holdRisk),
+        {thirdPartyRisk:clamp((s.strongest||0)/home,0,1)}),
       reason:'bestätigter Partnerbedarf'});
     // P1: die Archetyp-Politik verschiebt die Rangfolge, bevor sie gefroren
     // wird. 'legacy' hat null Werte und ändert die Rangfolge nicht.
@@ -78,16 +157,19 @@
     // legality (director + planners) remains authoritative. Otherwise this is
     // shadow-only (the model only observes, it never changes the pick).
     let v5Scores=null,controlActive=false;
+    // The exact schema-5 state scored live (17 fields: base visible state +
+    // v5StateExtension). It is published as planningState.v5State so the
+    // captured planning frame trains on the very values used at inference.
+    const state={home:s.home,maxTroops:s.max,committed:s.committed,
+      incoming:s.incoming,reserve:s.reserve,gold:goldAmount(me),
+      land:number(()=>me.numTilesOwned(),0),capacityUse:s.ratio,
+      frontCount:groups?.length||0,...v5StateExtension(me,s,groups,tick)};
     if(opts.shadowRankEnabled&&shadowV5Model){
       try{
-        const state={home:s.home,maxTroops:s.max,committed:s.committed,
-          incoming:s.incoming,reserve:s.reserve,gold:goldAmount(me),
-          land:number(()=>me.numTilesOwned(),0),capacityUse:s.ratio,
-          frontCount:groups?.length||0};
-        const v5Score=candidate=>{
-          const f=shadowV5.features(state,{kind:candidate.kind,
-            costTroops:candidate.cost||0,counterRisk:candidate.risk||0,
-            holdProbability:1-Math.min(1,candidate.risk||0)});
+        const v5Score=cand=>{
+          const f=shadowV5.features(state,cand.v5||{kind:cand.kind,
+            costTroops:cand.cost||0,counterRisk:cand.risk||0,
+            holdProbability:1-Math.min(1,cand.risk||0)});
           // Feature contract: 32 finite features in [0,1]. `features` clamps
           // its output, so a violation means the live inputs drifted from the
           // trained contract; fail closed (rule-based) rather than score.
@@ -121,6 +203,7 @@
       rejected:limited[1]||null,rejectedCandidates,
       durationMs:Number((performance.now()-started).toFixed(2)),
       budgetMs,truncated:candidates.length>limited.length||performance.now()-started>budgetMs,
+      v5State:state,
       semantics:'bounded-ranking-only; existing legality remains authoritative'};
     // P0 canonical decision frame (diagnostics only; it never authorizes or
     // blocks actions). One frame per planning tick links the rule choice, the

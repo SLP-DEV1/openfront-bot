@@ -68,11 +68,18 @@ assert.ok(model.weights.every(x => Number.isFinite(x) && Math.abs(x) <= 5), 'fin
 assert.ok(a.res.curve.length === EPOCHS, 'one curve point per epoch');
 assert.ok(a.res.curve[EPOCHS - 1].valLoss < a.res.baseLoss.validation,
   'validation loss must improve over the zero baseline');
-// Feature parity: training features === runtime features.
+// Feature parity over the FULL featuredSchemaVersion-2 contract: 17 state
+// fields (incl. v5StateExtension) + 14 candidate fields (v5 contract).
 const x0 = a.res.T.x[0];
 const state = {home: 100, maxTroops: 200, committed: 5, incoming: 3, reserve: 10,
-  gold: 40000, land: 12, capacityUse: 0.4, frontCount: 1};
-const cand = {kind: 'attack', costTroops: 4, counterRisk: 0.2, holdProbability: 0.8};
+  gold: 40000, land: 12, capacityUse: 0.4, frontCount: 1,
+  economyRelative: 0.5, frontReach: 0.2, partnerNeed: 1, enemyBound: 0.3,
+  landTrend: 0.1, goldTrend: -0.2, troopTrend: 0, portAccess: 0,
+  technologyCoverage: 5/6};
+const cand = {kind: 'attack', costTroops: 4, costGold: 100, expectedLand: 2,
+  duration: 12, returnTime: 12, counterRisk: 0.2, thirdPartyRisk: 0.1,
+  infrastructureValue: 0.5, incomeValue: 0, recruitmentValue: 0,
+  siteRisk: 0.3, holdProbability: 0.8, legalConfidence: 1};
 const parity = feat.buildFeatures(state, cand);
 assert.deepEqual(parity, candidate.features(state, cand), 'feature parity');
 assert.ok(x0.length === 32, 'training feature vector length');

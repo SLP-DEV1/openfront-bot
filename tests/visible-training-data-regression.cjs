@@ -63,9 +63,11 @@ assert.notDeepEqual(policy.features({...baseState},
 // (a2) The deployed planning state for the shadow model uses ONLY visible
 //      fields; unknown enemy troops are masked, not read as a feature.
 // ---------------------------------------------------------------------------
-const shadowStateLiteral=/const state=\{home:s\.home,maxTroops:s\.max,committed:s\.committed,\s*incoming:s\.incoming,reserve:s\.reserve,gold:goldAmount\(me\),\s*land:number\(\(\)=>me\.numTilesOwned\(\),0\),capacityUse:s\.ratio,\s*frontCount:groups\?\.length\|\|0\};/;
+// The 17-field state = visible s./me./groups base fields plus the visible
+// v5StateExtension helper (own income/front/partner/structure history only).
+const shadowStateLiteral=/const state=\{home:s\.home,maxTroops:s\.max,committed:s\.committed,\s*incoming:s\.incoming,reserve:s\.reserve,gold:goldAmount\(me\),\s*land:number\(\(\)=>me\.numTilesOwned\(\),0\),capacityUse:s\.ratio,\s*frontCount:groups\?\.length\|\|0,\.\.\.v5StateExtension\(me,s,groups,tick\)\};/;
 assert.ok(shadowStateLiteral.test(planning),
-  'shadow planning state must be built only from visible s./me./groups fields');
+  'shadow planning state must be built only from visible s./me./groups fields + v5StateExtension');
 
 // The visible literal must NOT read a hidden enemy troop magnitude.
 assert.ok(!/const state=\{[\s\S]{0,400}opponent\?\.troops/.test(planning),

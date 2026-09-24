@@ -46,21 +46,42 @@ function parseArgs(argv){
 
 // One row per candidate in a planning frame. visibleState = the runtime state
 // fields + the candidate's own fields (flattened), action = {type:kind}.
+// Only the candidate that was actually chosen AND executed (pf.candidate,
+// i.e. planningState.selected) may be attributed observed outcomes: that row
+// gets `observed:true`. Unchosen candidates are `observed:false` — their
+// outcomes stay unknown (counterfactual) unless demonstrated separately, so
+// they never inherit the executed action's success labels.
 function frameRows(pf){
   const base={home:pf.home,maxTroops:pf.maxTroops,committed:pf.committed,
     incoming:pf.incoming,reserve:pf.reserve,gold:pf.gold,
-    capacityUse:pf.capacityUse,frontCount:pf.frontCount};
+    capacityUse:pf.capacityUse,frontCount:pf.frontCount,
+    // State extension fields captured by planningFrame from
+    // planningState.v5State (featuredSchemaVersion 2). Legacy frames omit
+    // them; absent fields must stay absent/0-baseline so training features
+    // match what the runtime actually produced for that frame.
+    economyRelative:pf.economyRelative??0,frontReach:pf.frontReach??0,
+    partnerNeed:pf.partnerNeed??0,enemyBound:pf.enemyBound??0,
+    landTrend:pf.landTrend,goldTrend:pf.goldTrend,troopTrend:pf.troopTrend,
+    portAccess:pf.portAccess??0,technologyCoverage:pf.technologyCoverage??0};
   const rows=[];
   const cands=pf.candidates&&pf.candidates.length?pf.candidates:[pf.candidate];
+  const chosen=pf.candidate;
+  const chosenJson=chosen&&chosen.kind?JSON.stringify(chosen):null;
   for(const c of cands){
     if(!c||!c.kind)continue;
-    rows.push({tick:pf.tick,
+    const observed=chosenJson!=null&&(c===chosen||JSON.stringify(c)===chosenJson);
+    rows.push({tick:pf.tick,observed,
       visibleState:{...base,land:pf.land,
         costTroops:c.costTroops||0,costGold:c.costGold||0,
         expectedLand:c.expectedLand||0,duration:c.duration||0,
         returnTime:c.returnTime||0,counterRisk:c.counterRisk||0,
         thirdPartyRisk:c.thirdPartyRisk||0,
-        holdProbability:c.holdProbability ?? 1},
+        infrastructureValue:c.infrastructureValue||0,
+        incomeValue:c.incomeValue||0,
+        recruitmentValue:c.recruitmentValue||0,
+        siteRisk:c.siteRisk||0,
+        holdProbability:c.holdProbability ?? 1,
+        legalConfidence:c.legalConfidence},
       action:{type:c.kind}});
   }
   return rows;
@@ -84,6 +105,7 @@ function assemble(results,opts){
   const {horizonTicks,landScale,expandAll}=opts;
   const matchFiles=findMatchFiles(results);
   const matches=[];const stats={matches:0,totalRows:0,usableLabels:0,
+    observedRows:0,counterfactualRows:0,
     badFeatures:0,featureRows:0,land:0,heldGain:0,lossRisk:0,
     heldGainMean:null,lossRiskMean:null,outcomes:{},kinds:{}};
   for(const file of matchFiles){
@@ -117,17 +139,32 @@ function assemble(results,opts){
       const vs=frames[i].visibleState||{};
       const st={home:vs.home,maxTroops:vs.maxTroops,committed:vs.committed,
         incoming:vs.incoming,reserve:vs.reserve,gold:vs.gold,land:vs.land,
-        capacityUse:vs.capacityUse,frontCount:vs.frontCount};
+        capacityUse:vs.capacityUse,frontCount:vs.frontCount,
+        economyRelative:vs.economyRelative??0,frontReach:vs.frontReach??0,
+        partnerNeed:vs.partnerNeed??0,enemyBound:vs.enemyBound??0,
+        landTrend:vs.landTrend,goldTrend:vs.goldTrend,
+        troopTrend:vs.troopTrend,portAccess:vs.portAccess??0,
+        technologyCoverage:vs.technologyCoverage??0};
       const cand={kind:frames[i].action?.type,
-        costTroops:vs.costTroops||0,counterRisk:vs.counterRisk||0,
-        holdProbability:vs.holdProbability ?? 1};
+        costTroops:vs.costTroops||0,costGold:vs.costGold||0,
+        expectedLand:vs.expectedLand||0,duration:vs.duration||0,
+        returnTime:vs.returnTime||0,counterRisk:vs.counterRisk||0,
+        thirdPartyRisk:vs.thirdPartyRisk||0,
+        infrastructureValue:vs.infrastructureValue||0,
+        incomeValue:vs.incomeValue||0,
+        recruitmentValue:vs.recruitmentValue||0,siteRisk:vs.siteRisk||0,
+        holdProbability:vs.holdProbability ?? 1,
+        legalConfidence:vs.legalConfidence};
       const x=feat.buildFeatures(st,cand);
       if(x.length!==INPUTS||x.some(v=>!Number.isFinite(v)||v<0||v>1)){
         stats.badFeatures++;
       }else stats.featureRows++;
+      if(frames[i].observed===false)stats.counterfactualRows++;
+      else stats.observedRows++;
       const y=labels[i];
       // Count only usable labels, exactly as trainer/train-v5.cjs consumes
-      // them (row.usable with non-null heldGain/lossRisk).
+      // them (row.usable with non-null heldGain/lossRisk). Unchosen rows are
+      // counterfactual and never contribute observed outcome labels.
       if(y&&y.usable&&y.heldGain!=null&&y.lossRisk!=null){
         withLabel++;
         stats.heldGain+=y.heldGain;

@@ -601,10 +601,10 @@ function predict(model,input){
   // against confirmations/observations at fixed horizons before export.
   let decisionFrames=[];
   // Step 3: benchmark-only per-decision frame for real training capture.
-  // Mirrors the P5 runtime state EXACTLY (strategicCandidatePlan builds the
-  // same state from troopSnapshot/strategic.groups/goldAmount) and returns
-  // the full candidate list projected to the runtime candidate contract
-  // ({kind,costTroops,counterRisk,holdProbability}). Diagnostics only: it
+  // Mirrors the P5 runtime state EXACTLY: planningState.v5State carries the
+  // very state object strategicCandidatePlan scored (17 fields, including
+  // v5StateExtension), and each candidate's `v5` contract is the exact
+  // candidate object shadowV5.features received. Diagnostics only: it
   // reads state, never authorizes or blocks actions.
   function planningFrame(){
     const me=myPlayer();
@@ -614,12 +614,14 @@ function predict(model,input){
     const s=troopSnapshot,groups=strategic?.groups||[];
     const project=c=>({kind:c.kind,costTroops:c.cost||0,
       counterRisk:c.risk||0,
-      holdProbability:1-Math.min(1,c.risk||0)});
+      holdProbability:1-Math.min(1,c.risk||0),
+      ...(c.v5||{})});
     return {tick:number(()=>game?.ticks?.(),null),
       land:number(()=>me.numTilesOwned(),0),
       home:s.home,maxTroops:s.max,committed:s.committed,
       incoming:s.incoming,reserve:s.reserve,gold:goldAmount(me),
       capacityUse:s.ratio,frontCount:groups?.length||0,
+      ...(planningState?.v5State||{}),
       candidate:project(sel),
       candidates:(planningState?.candidates||[]).map(project)};
   }
@@ -658,7 +660,10 @@ function predict(model,input){
   // Test control exists only on loopback and only after explicit harness opt-in.
   const benchmark = ['localhost','127.0.0.1','[::1]'].includes(window.location?.hostname) &&
     window.__OF_BENCHMARK_CONFIG__?.enabled===true ? window.__OF_BENCHMARK_CONFIG__ : null;
-  let recordSequence=0,recordCounts={},recordsDropped=0,streamErrors=0;
+  // recordsDropped counts true journal loss (a record the persistent stream
+  // never received); recordsEvicted only counts in-memory ring rotations of
+  // records the stream already received. The two must not be conflated.
+  let recordSequence=0,recordCounts={},recordsDropped=0,recordsEvicted=0,streamErrors=0;
   // Stable per-match IDs identify individual emitted actions. An emitted
   // intent is NOT proof the worker accepted it or that it achieved a result.
   let actionSequence=0,lastActionId=null;
@@ -848,7 +853,9 @@ function predict(model,input){
     }
     recordCounts[kind]=(recordCounts[kind]||0)+1;
     if(benchmark && typeof benchmark.onRecord==='function'){
-      try{benchmark.onRecord(jsonCopy(record));}catch(_){streamErrors++;}
+      try{benchmark.onRecord(jsonCopy(record));}
+      // A record the journal callback failed to receive is a true loss.
+      catch(_){streamErrors++;recordsDropped++;}
     }
     if(window.__OF_LOCAL_MONITOR_ACTIVE__===true){
       try{
@@ -857,8 +864,10 @@ function predict(model,input){
       }catch(_){streamErrors++;}
     }
     if(diagnostics.length>1400){
-      const dropped=diagnostics.length-1400;recordsDropped+=dropped;
-      diagnostics.splice(0,dropped);
+      // Ring eviction is a display cap, not a recording loss: the persistent
+      // journal/stream received every record before it was evicted.
+      const evicted=diagnostics.length-1400;recordsEvicted+=evicted;
+      diagnostics.splice(0,evicted);
     }
   }
   // P0: link decision frames to emitted intents and confirmations.
@@ -1036,6 +1045,7 @@ function predict(model,input){
         diagnosticHelpId!==null,
       evidence:'event-bus emission is not confirmed effect'};
     details.recording={total:recordSequence,counts:{...recordCounts},dropped:recordsDropped,
+      evicted:recordsEvicted,
       firstSequence:diagnostics[0]?.seq??null,streamErrors};
     return jsonCopy(details);
   }
@@ -1417,7 +1427,7 @@ function predict(model,input){
     duoLocal.lastPublished=0;duoLocal.lastAt=0;duoLocal.lastPromise=null;
     duoLocal.relayDrops=0;duoLocal.relayTimeouts=0;duoLocal.ackTimeouts=0;
     duoLocal.seenPeer=false;duoLocal.lastExpiredPlan=null;
-    warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};diagnostics=[];recordSequence=resumed?Math.max(0,Math.floor(prior.seq||0)):0;recordCounts={};recordsDropped=0;streamErrors=0;lastDiagnosticTick=-Infinity;gameEnd=null;forecastAudits=[];lastForecastAudit=null;incomeAttribution=[];
+    warState={id:null,name:'—',since:-Infinity,blockedUntil:-Infinity};diagnostics=[];recordSequence=resumed?Math.max(0,Math.floor(prior.seq||0)):0;recordCounts={};recordsDropped=0;recordsEvicted=0;streamErrors=0;lastDiagnosticTick=-Infinity;gameEnd=null;forecastAudits=[];lastForecastAudit=null;incomeAttribution=[];
     investmentStatus='Grundaufbau';lastWarReview=-Infinity;
     defenseStatus='Keine Bedrohung';lastEmergencyRetreat=-Infinity;lastDefenseLog=-Infinity;
     retreatRequests.clear();defenseStats={retreatsOrdered:0,retreatsObserved:0,unknown:0,unconfirmed:0};

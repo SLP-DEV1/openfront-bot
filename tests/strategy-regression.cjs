@@ -2673,7 +2673,11 @@ function boot(benchmarkOptions={}) {
     assert.equal(records.length,1410);assert.equal(records[0].kind,'build_confirmed');
     assert.equal(records[0].seq,1);assert.equal(records[0].tick,300);
     assert.equal(records[0].detailKind,'build');
-    assert.equal(data.records.length,1400);assert.equal(data.recording.dropped,10);
+    assert.equal(data.records.length,1400);
+    assert.equal(data.recording.dropped,0,
+      'ring eviction of already-streamed records is not a recording loss');
+    assert.equal(data.recording.evicted,10,
+      'ring eviction is accounted separately from journal loss');
     assert.equal(data.recording.counts.build_confirmed,1410);
     records[0].kind='modified';assert.equal(data.records[0].kind,'build_confirmed');
   });

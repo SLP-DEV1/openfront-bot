@@ -3,22 +3,39 @@
 //
 // candidate-policy-v5.features() is the SINGLE source of truth for the 32
 // inputs. At runtime (src/userscript/20-military-and-planning.js,
-// strategicCandidatePlan) it is called with a fixed state/candidate shape:
-//   state    = {home,maxTroops,committed,incoming,reserve,gold,land,capacityUse,frontCount}
-//   candidate= {kind,costTroops,counterRisk,holdProbability}
-// Features whose source fields are absent there are CONSTANT across all
-// runtime frames and are masked (they must not carry learned signal). The
-// training path must build the identical feature vector (feature parity).
+// strategicCandidatePlan) it is called with the full visible state/candidate
+// contract (featuredSchemaVersion 2):
+//   state    = {home,maxTroops,committed,incoming,reserve,gold,land,
+//               capacityUse,frontCount,economyRelative,frontReach,
+//               partnerNeed,enemyBound,landTrend,goldTrend,troopTrend,
+//               portAccess,technologyCoverage}
+//   candidate= {kind,costTroops,costGold,expectedLand,duration,returnTime,
+//               counterRisk,thirdPartyRisk,infrastructureValue,incomeValue,
+//               recruitmentValue,siteRisk,holdProbability,legalConfidence}
+// The state extension fields come from v5StateExtension (visible
+// observations only) and the candidate fields from the per-candidate v5
+// contract (v5Contract). The planning frame captures exactly these values
+// (planningState.v5State + candidate.v5), so training and live inference
+// build the identical feature vector (feature parity by construction).
+// Features whose source fields are absent (legacy frames) are CONSTANT
+// across all runtime frames and are masked (they must not carry learned
+// signal). The training path must build the identical feature vector.
 const candidate = require('./candidate-policy-v5.cjs');
 
 // The exact fields the runtime provides to shadowV5.features (kept in sync
-// with strategicCandidatePlan). A feature is ACTIVE only if every one of its
-// source fields is provided here.
+// with strategicCandidatePlan / v5StateExtension / v5Contract). A feature is
+// ACTIVE only if every one of its source fields is provided here.
 const RUNTIME_STATE_FIELDS = [
   'home','maxTroops','committed','incoming','reserve','gold','land',
-  'capacityUse','frontCount'
+  'capacityUse','frontCount','economyRelative','frontReach','partnerNeed',
+  'enemyBound','landTrend','goldTrend','troopTrend','portAccess',
+  'technologyCoverage'
 ];
-const RUNTIME_CANDIDATE_FIELDS = ['kind','costTroops','counterRisk','holdProbability'];
+const RUNTIME_CANDIDATE_FIELDS = [
+  'kind','costTroops','costGold','expectedLand','duration','returnTime',
+  'counterRisk','thirdPartyRisk','infrastructureValue','incomeValue',
+  'recruitmentValue','siteRisk','holdProbability','legalConfidence'
+];
 
 // Per-feature source manifest, index-aligned with candidate.features output.
 // Each entry lists the "scope:field" source fields that drive that feature.
@@ -57,7 +74,10 @@ const MANIFEST = [
   ['candidate:kind']                  // 31 (naval)
 ];
 
-const FEATURED_SCHEMA_VERSION = 1;
+// 2: the runtime provides the full 17 state + 14 candidate field contract,
+// so all 32 features are active (no masked constants). 1: only the original
+// 9+4 fields were provided; 19 features were constant and masked.
+const FEATURED_SCHEMA_VERSION = 2;
 
 function sourceAvailable(field, runtimeState, runtimeCand){
   const sep = field.indexOf(':');
