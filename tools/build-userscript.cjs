@@ -9,12 +9,15 @@ const files=['00-bootstrap.js','10-duo-and-diagnostics.js',
  '20-military-and-planning.js','30-economy-and-defense.js',
  '40-economy-runner.js','50-ui-and-entrypoint.js'];
 const output=path.join(root,'OpenFront_Solo_AggroBot.user.js');
+// Canonical source is LF. Normalize on read so assembly is independent of the
+// working-tree line endings (git autocrlf checks out CRLF on Windows).
+const norm=s=>s.replace(/\r\n/g,String.fromCharCode(10));
 function assemble(){
  const nl=String.fromCharCode(10);
- let source=files.map(name=>fs.readFileSync(
-   path.join(root,'src/userscript',name),'utf8')).join('');
- const panel=fs.readFileSync(path.join(root,'src/runtime/panel-state.cjs'),'utf8');
- const kernels=fs.readFileSync(path.join(root,'src/runtime/decision-kernels.cjs'),'utf8');
+ let source=files.map(name=>norm(fs.readFileSync(
+   path.join(root,'src/userscript',name),'utf8'))).join('');
+ const panel=norm(fs.readFileSync(path.join(root,'src/runtime/panel-state.cjs'),'utf8'));
+ const kernels=norm(fs.readFileSync(path.join(root,'src/runtime/decision-kernels.cjs'),'utf8'));
  const segments=[
    [panel,'/* __DUO_STATUS_VIEW__ */','// DUO-STATUS-BEGIN','// DUO-STATUS-END'],
    [panel,'/* __EVIDENCE_PANEL_STATE__ */','// EVIDENCE-STATE-BEGIN','// EVIDENCE-STATE-END'],
@@ -36,7 +39,7 @@ function main(args=process.argv.slice(2)){
    throw Error('Usage: node tools/build-userscript.cjs [--check|--write]');
  const generated=assemble();
  // --write must be able to reconstruct an artifact absent from a clean checkout.
- const existing=fs.existsSync(output)?fs.readFileSync(output,'utf8'):null;
+ const existing=fs.existsSync(output)?norm(fs.readFileSync(output,'utf8')):null;
  if(!generated.startsWith('// ==UserScript==')||
     generated.split('const NEURAL_BUNDLED_MODEL = null;').length!==2)
     throw Error('Invalid assembled userscript header or model marker');

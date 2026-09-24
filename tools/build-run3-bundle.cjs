@@ -47,11 +47,13 @@ function main(argv = process.argv.slice(2)) {
     process.exitCode = 2;
     return;
   }
-  const source = fs.readFileSync(sourcePath, 'utf8');
+  // Normalize line endings: canonical source is LF, but git autocrlf checks
+  // out CRLF on Windows, so the bundle must be independent of working-tree EOL.
+  const source = fs.readFileSync(sourcePath, 'utf8').replace(/\r\n/g, '\n');
   const championBytes = fs.readFileSync(championPath);
   const champion = JSON.parse(championBytes.toString('utf8'));
   const expected = renderBundle(source, champion);
-  const current = fs.readFileSync(bundlePath, 'utf8');
+  const current = fs.readFileSync(bundlePath, 'utf8').replace(/\r\n/g, '\n');
   const meta = {botVersion:source.match(/const VERSION = '([^']+)'/)?.[1],
     championSha256:sha256(championBytes),
     sourceSha256:sha256(source),bundleSha256:sha256(expected)};

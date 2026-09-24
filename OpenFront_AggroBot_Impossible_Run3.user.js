@@ -704,10 +704,7 @@ function predict(model,input){
   // Mirrors the P5 runtime state EXACTLY: planningState.v5State carries the
   // very state object strategicCandidatePlan scored (17 fields, including
   // v5StateExtension), and each candidate's `v5` contract is the exact
-  // candidate object shadowV5.features received. strategicCandidatePlan builds
-  // the same state from troopSnapshot/strategic.groups/goldAmount and returns
-  // the full candidate list projected to the runtime candidate contract
-  // ({kind,costTroops,counterRisk,holdProbability}). Diagnostics only: it
+  // candidate object shadowV5.features received. Diagnostics only: it
   // reads state, never authorizes or blocks actions.
   function planningFrame(){
     const me=myPlayer();
