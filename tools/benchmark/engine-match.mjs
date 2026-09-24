@@ -43,7 +43,11 @@ if(opts.candidateControl){
   candidateModel=model;
   storage.set('of-solo-aggrobot-v1111',JSON.stringify({neuralEnabled:true,fullAuto:true,
     shadowRankEnabled:true,candidateControlEnabled:true,
-    candidateControlGain:opts.candidateGain?Number(opts.candidateGain):18}));
+    candidateControlGain:opts.candidateGain?Number(opts.candidateGain):18,
+    candidateControlMode:opts.candidateControlMode||'raw',
+    candidateControlCapGain:opts.candidateControlCapGain?Number(opts.candidateControlCapGain):60,
+    candidateControlConfidenceRef:opts.candidateControlConfRef?Number(opts.candidateControlConfRef):0.5,
+    candidateControlMargin:opts.candidateControlMargin?Number(opts.candidateControlMargin):0.25}));
   policyParts.push({schema:5,sha256:common.digest(JSON.stringify(model))});
 }
 // policyHash: single model -> its sha; BOTH --policy and --candidateControl
@@ -95,6 +99,7 @@ let recordsCount=0,emitted=0;
 const meta={trajectorySemantics:visibleTrajectory.SEMANTICS,harness:'engine-gameview-v2',engineCommit,botSHA256:common.digest(source),policySHA256:policyHash,
   candidateControl:opts.candidateControl?true:null,
   candidateGain:candidateModel?(opts.candidateGain?Number(opts.candidateGain):18):null,
+  candidateControlMode:candidateModel?(opts.candidateControlMode||'raw'):null,
   seed:opts.seed,
   seedSource:'GameStartInfo.gameID',profile:opts.profile,settings:common.profiles[opts.profile],
   opponentProfile:opts.opponentProfile,scriptedHumans:opts.scriptedHumans,

@@ -10,7 +10,9 @@ function parse(argv){
     seed:'aggro-train-001',ticks:18000,out:null,profile:'autonomous',bot:null,policy:null,
     port:5173,engineCommit:ENGINE_COMMIT,gameType:'Singleplayer',gameMode:'FFA',
     scriptedHumans:0,opponentProfile:'balanced',candidateControl:null,
-    candidateModel:null,candidateGain:null,planningFrames:null};
+    candidateModel:null,candidateGain:null,planningFrames:null,
+    candidateControlMode:null,candidateControlCapGain:null,
+    candidateControlConfRef:null,candidateControlMargin:null};
   for(let i=0;i<argv.length;i++){
     const key=argv[i].replace(/^--/,'');
     if(!argv[i].startsWith('--')||!Object.hasOwn(out,key))throw Error('Unknown option '+argv[i]);

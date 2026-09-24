@@ -1,0 +1,147 @@
+{
+  "kind": "v5-controller-variants",
+  "campaign": "OpenFront Neural Schema 5 - Vom guten Offline-Modell zum echten Champion",
+  "generated": "2026-09-24",
+  "engineCommit": "13b403387af01d388f8c8ed8c953b6d3a11d1457",
+  "schema5CandidateModel": {
+    "path": "trainer/campaign-v5rank-20260924/candidate-model.json",
+    "runtimePolicySHA256": "16b686d291addf4e9c14c7c03e80308b6cb7474fd90dbd5efb60065c9a2b4f93",
+    "modelSHA": "fnv1a-f7428913-14382"
+  },
+  "run3Schema4Champion": {
+    "path": "docs/training-analysis-20260921/schema4-impossible-world-europe-20260920-run3/champion.json",
+    "runtimePolicySHA256": "e0fceaef90d542d3811dcd0b261fb3284577cf319912989a2f3eaa7647d39968",
+    "role": "ACTIVE champion (schema-4 planner model); the bar the schema-5 controller must exceed in S10"
+  },
+  "bindingEvidence": {
+    "source": "binding-analysis.json",
+    "frames": 1473,
+    "scenarios": 12,
+    "gainApplied": 18,
+    "keyFindings": [
+      "model score gap (top-1 vs top-2 legal) median ~0.0009, p90 ~0.558: the model is near-degenerate across legal candidates",
+      "rule top-2 utility gap (the barrier to flip) median ~31, p90 ~90: a large integer rule-utility wall",
+      "requiredGain to flip = ruleGap/modelGap; median ~538, p90 ~1.68e6, max ~5.3e8",
+      "requiredGain <= 18 in ~38 frames, <= 60 in ~178 frames, <= 150 in ~477 frames of 1473",
+      "conclusion: the bottleneck is model score-entanglement, not only the gain. Raising the gain (B) alone amplifies the near-constant vector; the principled fixes are score->utility calibration (C) and confidence-gated control (G)."
+    ]
+  },
+  "invariants": [
+    "all arms re-order only already-legal candidates; downstream legality (director + planners) stays authoritative",
+    "all arms preserve every hard safety check (reserve floors, emergency defense, spawn, capacity)",
+    "the gain/mapping is the only degree of freedom; no new action is invented"
+  ],
+  "arms": {
+    "rule-basis": {
+      "model": "none",
+      "candidateControl": false,
+      "role": "baseline; no neural influence on the bounded candidate pick"
+    },
+    "run3-schema4": {
+      "model": "run3-schema4",
+      "candidateControl": false,
+      "role": "baseline; ACTIVE schema-4 planner champion biases the planners (not the candidate control)"
+    },
+    "A": {
+      "model": "schema-5",
+      "mode": "raw",
+      "gain": 18,
+      "engineArgs": {
+        "candidateControl": true,
+        "candidateModel": "trainer/campaign-v5rank-20260924/candidate-model.json",
+        "candidateGain": 18,
+        "candidateControlMode": "raw"
+      },
+      "role": "current production candidate control (baseline for the variants)",
+      "hypothesis": "near-identical to rule-basis because the model score is near-degenerate (S1: endLand identical in most scenarios)"
+    },
+    "B": {
+      "model": "schema-5",
+      "mode": "raw",
+      "gain": 60,
+      "engineArgs": {
+        "candidateControl": true,
+        "candidateModel": "trainer/campaign-v5rank-20260924/candidate-model.json",
+        "candidateGain": 60,
+        "candidateControlMode": "raw"
+      },
+      "role": "higher raw gain at the documented clamp ceiling (60)",
+      "hypothesis": "flips the ~11% of frames with requiredGain <= 60; tests whether more changes (not better mapping) helps; S5 warns the gain must not simply be maxed, so B is a boundary probe, not the expected winner"
+    },
+    "C": {
+      "model": "schema-5",
+      "mode": "calibrated",
+      "gain": 18,
+      "engineArgs": {
+        "candidateControl": true,
+        "candidateModel": "trainer/campaign-v5rank-20260924/candidate-model.json",
+        "candidateGain": 18,
+        "candidateControlMode": "calibrated"
+      },
+      "role": "per-frame z-score calibration of the model score before scaling",
+      "hypothesis": "removes the near-constant magnitude so the model's full per-frame ranking is expressed; directly targets the S4 score-entanglement finding"
+    },
+    "D": {
+      "model": "schema-5",
+      "mode": "adaptive",
+      "gain": 18,
+      "capGain": 60,
+      "confidenceRef": 0.5,
+      "engineArgs": {
+        "candidateControl": true,
+        "candidateModel": "trainer/campaign-v5rank-20260924/candidate-model.json",
+        "candidateGain": 18,
+        "candidateControlMode": "adaptive",
+        "candidateControlCapGain": 60,
+        "candidateControlConfidenceRef": 0.5
+      },
+      "role": "confidence-scaled gain: 18 when the model is uncertain, up to 60 when its top-1/top-2 margin is high",
+      "hypothesis": "applies more influence only when the model is confident; bounded version of B"
+    },
+    "E": {
+      "model": "hybrid (run3-schema4 + schema-5)",
+      "mode": "raw",
+      "gain": 18,
+      "engineArgs": {
+        "policy": "docs/training-analysis-20260921/schema4-impossible-world-europe-20260920-run3/champion.json",
+        "candidateControl": true,
+        "candidateModel": "trainer/campaign-v5rank-20260924/candidate-model.json",
+        "candidateGain": 18,
+        "candidateControlMode": "raw"
+      },
+      "role": "schema-4 planner champion + schema-5 candidate control together",
+      "hypothesis": "combines the planner-level bias (proven to diverge from rule-basis in S1) with the candidate-level control"
+    },
+    "F": {
+      "model": "schema-5",
+      "mode": "rank",
+      "capGain": 60,
+      "engineArgs": {
+        "candidateControl": true,
+        "candidateModel": "trainer/campaign-v5rank-20260924/candidate-model.json",
+        "candidateGain": 60,
+        "candidateControlMode": "rank",
+        "candidateControlCapGain": 60
+      },
+      "role": "scale-free rank mapping: the model's rank position (1..0) becomes the utility bonus",
+      "hypothesis": "discards score magnitude entirely; pure ranking signal, most robust to score-entanglement"
+    },
+    "G": {
+      "model": "schema-5",
+      "mode": "gated",
+      "gain": 18,
+      "capGain": 60,
+      "margin": 0.25,
+      "engineArgs": {
+        "candidateControl": true,
+        "candidateModel": "trainer/campaign-v5rank-20260924/candidate-model.json",
+        "candidateGain": 18,
+        "candidateControlMode": "gated",
+        "candidateControlMargin": 0.25,
+        "candidateControlCapGain": 60
+      },
+      "role": "confidence-gated override: the model may only re-order when its top-1 clears the rule top-1 by >= 0.25 AND the implied required gain is within capGain",
+      "hypothesis": "minimal-intervention control; changes the pick only on high-confidence frames; targets the S4 score-entanglement finding while protecting against noise"
+    }
+  }
+}

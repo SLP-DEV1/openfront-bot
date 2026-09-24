@@ -1,0 +1,50 @@
+{
+  "section": 10,
+  "title": "Promotion decision — controller variants A-G (schema-5 candidate control) vs rule-basis & Run3 schema-4",
+  "campaignId": "openfront-neural-v5control-20260924",
+  "generatedAt": "2026-09-24",
+  "engineCommit": "13b403387af01d388f8c8ed8c953b6d3a11d1457",
+  "candidate": {
+    "model": "trainer/campaign-v5rank-20260924/candidate-model.json",
+    "arch": "32x20x2-tanh",
+    "policySHA256": "16b686d291addf4e9c14c7c03e80308b6cb7474fd90dbd5efb60065c9a2b4f93",
+    "modelSHA256": "a0bcf6439bee6274c17ef2101a8457b4bc89c1cd6af814cca0e96a90258f010f",
+    "note": "same schema-5 candidate model as the v5rank campaign; this campaign varies ONLY the score->utility control mapping (variants A-G), same bot source"
+  },
+  "bot": {
+    "file": "OpenFront_Solo_AggroBot.user.js",
+    "fileSHA256": "f2b4c2286ab2d26c0a09a352a18597d717c24cb16d02d1030423258764fbea1d",
+    "effectiveSourceSHA256_withEmbeddedSchema5": "eaf778bdfbdfa2eb760aaf22e141b9acf3c3de00e8befd95636c821470271daf",
+    "note": "botSHA256 in the match reports is the digest of the EFFECTIVE source: the schema-5 model is embedded via SHADOW_V5_BUNDLED_MODEL before hashing for arms A-G, so those arms show eaf778bd...; rule-basis and run3-schema4 show the unmodified file hash f2b4c228... . The .user.js file itself is identical across all arms."
+  },
+  "protocol": "paired real-engine comparison, v5di seeds (disjoint from training/holdout namespaces), 3 modes x 2 maps x 2 opponents = 12 scenarios x 9 arms = 108 matches, 18000 ticks, Compact/Medium; observation unit = scenario (same seed isolates model/mapping effect)",
+  "promotionRule": "A new champion must beat BOTH rule-basis AND Run3 schema-4 (plus safety + negative gates). Run3 stays ACTIVE until an explicit gated replacement. 'Verwerfe Varianten, die mehr Entscheidungen verändern, aber schlechter spielen' — reject variants that change more decisions but do not play better.",
+  "evidence": {
+    "source": "engine-comparison.json + controller-comparison/decision-impact.json",
+    "meanEndLand": { "rule-basis": 95605.6, "run3-schema4": 92793.8, "A": 95605.6, "B": 95605.6, "C": 95605.6, "D": 95605.6, "E": 92793.8, "F": 95605.6, "G": 95605.6 },
+    "pairedVsRuleBasis": {
+      "A": "0 pos / 0 neg / 12 zero (mean 0)",
+      "B": "0 pos / 0 neg / 12 zero (mean 0)",
+      "C": "0 pos / 0 neg / 12 zero (mean 0)",
+      "D": "0 pos / 0 neg / 12 zero (mean 0)",
+      "E": "5 pos / 6 neg / 1 zero (mean -2811.8; E == run3-schema4 in 12/12)",
+      "F": "0 pos / 0 neg / 12 zero (mean 0)",
+      "G": "0 pos / 0 neg / 12 zero (mean 0)"
+    },
+    "changedRate": { "A": 0.0201, "B": 0.1067, "C": 0.1518, "D": 0.0668, "E": 0.027, "F": 0.2907, "G": 0.061 },
+    "changedQuality": "95-99% of changed frames flip to a LOWER rule-utility candidate (0 up), avg utility loss 11.6-22.1, systematic bias toward 'naval' and 'invest'.",
+    "run3VsRuleBasis": "run3-schema4 is below rule-basis on this dev set (mean -2811.8; 6 of 12 scenarios negative, 1 zero; confirmed W/L 3/7 vs 2/5)"
+  },
+  "negativeGates": {
+    "safety": "all arms preserve the full safety stack (legality authoritative downstream; failed frames fall back to the rule pick; no arm produced a fail-closed regression in land)",
+    "changedQuality": "no arm's changed frames net positive rule utility (all net-negative or zero), so 'more changes' buys no utility",
+    "identity": "A/B/C/D/F/G endLand is EXACTLY rule-basis endLand in 12/12 scenarios; E is EXACTLY run3-schema4 in 12/12"
+  },
+  "decision": {
+    "candidateEligibleOverall": false,
+    "newChampion": null,
+    "run3ChampionStatus": "ACTIVE",
+    "reason": "No controller variant (A-G) beats rule-basis: A/B/C/D/F/G are land-identical to rule-basis in all 12 scenarios (the candidate-control channel is provably neutral — the model re-ranks the bounded candidate list but the executed action, and thus land, never changes), and E is land-identical to run3-schema4 and below rule-basis. Per the rejection rule, the high-change arms (F 29%, C 15%, B 11%) buy zero land over the minimal-change arm A (2%). Since no variant beats rule-basis, none can beat BOTH rule-basis and Run3, so no gated replacement is triggered.",
+    "verdict": "Run3 schema-4 stays the ACTIVE champion. The schema-5 candidate-control channel (all five mapping variants) is retained as verified infrastructure (provenance, per-frame binding, safety preserved) but is NOT a champion this cycle. The two decisive levers for the next cycle are (1) the offline-to-live binding gap (the live gate admits ~2% of the model's offline-decided changes and the admitted changes are land-neutral) and (2) the model's systematic bias toward lower-utility 'naval'/'invest' candidates (§7 fine-tune condition is met)."
+  }
+}

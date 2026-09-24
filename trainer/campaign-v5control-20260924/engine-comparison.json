@@ -1,0 +1,816 @@
+{
+  "kind": "v5-engine-comparison",
+  "generated": "2026-09-24T19:56:33.118Z",
+  "engineCommit": "13b403387af01d388f8c8ed8c953b6d3a11d1457",
+  "arms": [
+    "rule-basis",
+    "run3-schema4",
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F",
+    "G"
+  ],
+  "note": "§6 paired real-engine comparison. One bot source across all arms; arms differ only by injected model(s) and the candidate-control score->utility mapping. Same seed per scenario isolates the model/mapping effect. Changed frames: changedIntent=true means the candidate control moved the pick away from the rule pick. flipsToLowerRuleUtility counts changed frames whose final pick had LOWER bounded-candidate rule utility than the rule pick.",
+  "perArm": {
+    "rule-basis": {
+      "matches": 12,
+      "meanEndLand": 95605.6,
+      "changedRate": 0,
+      "blockedRate": 0,
+      "meanModelScore": 0,
+      "confirmedWins": 2,
+      "confirmedLosses": 5
+    },
+    "run3-schema4": {
+      "matches": 12,
+      "meanEndLand": 92793.8,
+      "changedRate": 0,
+      "blockedRate": 0,
+      "meanModelScore": 0,
+      "confirmedWins": 3,
+      "confirmedLosses": 7,
+      "changedQuality": {
+        "changedFrames": 0,
+        "flipsToLowerRuleUtility": 0,
+        "flipsToHigherRuleUtility": 0,
+        "flipsEqualUtility": 0,
+        "avgUtilityLossOnFlip": null,
+        "avgUtilityGainOnFlip": null,
+        "kindFrom": {},
+        "kindTo": {}
+      }
+    },
+    "A": {
+      "matches": 12,
+      "meanEndLand": 95605.6,
+      "changedRate": 0.0201,
+      "blockedRate": 0.4364,
+      "meanModelScore": -0.5619,
+      "confirmedWins": 2,
+      "confirmedLosses": 5,
+      "changedQuality": {
+        "changedFrames": 37,
+        "flipsToLowerRuleUtility": 35,
+        "flipsToHigherRuleUtility": 0,
+        "flipsEqualUtility": 2,
+        "avgUtilityLossOnFlip": 11.6,
+        "avgUtilityGainOnFlip": null,
+        "kindFrom": {
+          "hold": 8,
+          "invest": 5,
+          "expand": 10,
+          "naval": 14
+        },
+        "kindTo": {
+          "naval": 8,
+          "invest": 29
+        }
+      }
+    },
+    "B": {
+      "matches": 12,
+      "meanEndLand": 95605.6,
+      "changedRate": 0.1067,
+      "blockedRate": 0.3498,
+      "meanModelScore": -0.5619,
+      "confirmedWins": 2,
+      "confirmedLosses": 5,
+      "changedQuality": {
+        "changedFrames": 177,
+        "flipsToLowerRuleUtility": 176,
+        "flipsToHigherRuleUtility": 0,
+        "flipsEqualUtility": 1,
+        "avgUtilityLossOnFlip": 14.4,
+        "avgUtilityGainOnFlip": null,
+        "kindFrom": {
+          "hold": 20,
+          "invest": 109,
+          "naval": 33,
+          "expand": 15
+        },
+        "kindTo": {
+          "naval": 112,
+          "invest": 65
+        }
+      }
+    },
+    "C": {
+      "matches": 12,
+      "meanEndLand": 95605.6,
+      "changedRate": 0.1518,
+      "blockedRate": 0.3047,
+      "meanModelScore": -0.5619,
+      "confirmedWins": 2,
+      "confirmedLosses": 5,
+      "changedQuality": {
+        "changedFrames": 220,
+        "flipsToLowerRuleUtility": 217,
+        "flipsToHigherRuleUtility": 0,
+        "flipsEqualUtility": 3,
+        "avgUtilityLossOnFlip": 11.9,
+        "avgUtilityGainOnFlip": null,
+        "kindFrom": {
+          "hold": 83,
+          "invest": 111,
+          "naval": 16,
+          "expand": 10
+        },
+        "kindTo": {
+          "naval": 132,
+          "invest": 69,
+          "expand": 19
+        }
+      }
+    },
+    "D": {
+      "matches": 12,
+      "meanEndLand": 95605.6,
+      "changedRate": 0.0668,
+      "blockedRate": 0.3896,
+      "meanModelScore": -0.5619,
+      "confirmedWins": 2,
+      "confirmedLosses": 5,
+      "changedQuality": {
+        "changedFrames": 103,
+        "flipsToLowerRuleUtility": 102,
+        "flipsToHigherRuleUtility": 0,
+        "flipsEqualUtility": 1,
+        "avgUtilityLossOnFlip": 19,
+        "avgUtilityGainOnFlip": null,
+        "kindFrom": {
+          "hold": 17,
+          "invest": 38,
+          "naval": 33,
+          "expand": 15
+        },
+        "kindTo": {
+          "naval": 40,
+          "invest": 63
+        }
+      }
+    },
+    "E": {
+      "matches": 12,
+      "meanEndLand": 92793.8,
+      "changedRate": 0.027,
+      "blockedRate": 0.4128,
+      "meanModelScore": -0.5292,
+      "confirmedWins": 3,
+      "confirmedLosses": 7,
+      "changedQuality": {
+        "changedFrames": 39,
+        "flipsToLowerRuleUtility": 37,
+        "flipsToHigherRuleUtility": 0,
+        "flipsEqualUtility": 2,
+        "avgUtilityLossOnFlip": 14.4,
+        "avgUtilityGainOnFlip": null,
+        "kindFrom": {
+          "hold": 6,
+          "naval": 12,
+          "expand": 15,
+          "invest": 6
+        },
+        "kindTo": {
+          "naval": 7,
+          "invest": 32
+        }
+      }
+    },
+    "F": {
+      "matches": 12,
+      "meanEndLand": 95605.6,
+      "changedRate": 0.2907,
+      "blockedRate": 0.1657,
+      "meanModelScore": -0.5619,
+      "confirmedWins": 2,
+      "confirmedLosses": 5,
+      "changedQuality": {
+        "changedFrames": 397,
+        "flipsToLowerRuleUtility": 394,
+        "flipsToHigherRuleUtility": 0,
+        "flipsEqualUtility": 3,
+        "avgUtilityLossOnFlip": 22.1,
+        "avgUtilityGainOnFlip": null,
+        "kindFrom": {
+          "hold": 91,
+          "invest": 267,
+          "expand": 12,
+          "naval": 27
+        },
+        "kindTo": {
+          "naval": 132,
+          "hold": 156,
+          "invest": 93,
+          "expand": 16
+        }
+      }
+    },
+    "G": {
+      "matches": 12,
+      "meanEndLand": 95605.6,
+      "changedRate": 0.061,
+      "blockedRate": 0.3954,
+      "meanModelScore": -0.5619,
+      "confirmedWins": 2,
+      "confirmedLosses": 5,
+      "changedQuality": {
+        "changedFrames": 91,
+        "flipsToLowerRuleUtility": 90,
+        "flipsToHigherRuleUtility": 0,
+        "flipsEqualUtility": 1,
+        "avgUtilityLossOnFlip": 20.8,
+        "avgUtilityGainOnFlip": null,
+        "kindFrom": {
+          "hold": 17,
+          "invest": 26,
+          "naval": 33,
+          "expand": 15
+        },
+        "kindTo": {
+          "naval": 29,
+          "invest": 62
+        }
+      }
+    }
+  },
+  "scenarios": [
+    {
+      "scenarioId": "v5di-1v1-europe-balanced",
+      "seed": "v5di-1v1-europe-balanced-3",
+      "mode": "Free For All",
+      "map": "Europe",
+      "opponent": null,
+      "endLand": {
+        "rule-basis": 366733,
+        "run3-schema4": 394733,
+        "A": 366733,
+        "B": 366733,
+        "C": 366733,
+        "D": 366733,
+        "E": 394733,
+        "F": 366733,
+        "G": 366733
+      },
+      "paired": {
+        "A vs rule-basis": 0,
+        "A vs run3-schema4": -28000,
+        "B vs rule-basis": 0,
+        "B vs run3-schema4": -28000,
+        "C vs rule-basis": 0,
+        "C vs run3-schema4": -28000,
+        "D vs rule-basis": 0,
+        "D vs run3-schema4": -28000,
+        "E vs rule-basis": 28000,
+        "E vs run3-schema4": 0,
+        "F vs rule-basis": 0,
+        "F vs run3-schema4": -28000,
+        "G vs rule-basis": 0,
+        "G vs run3-schema4": -28000
+      }
+    },
+    {
+      "scenarioId": "v5di-1v1-europe-rush",
+      "seed": "v5di-1v1-europe-rush-4",
+      "mode": "Free For All",
+      "map": "Europe",
+      "opponent": null,
+      "endLand": {
+        "rule-basis": 100470,
+        "run3-schema4": 92815,
+        "A": 100470,
+        "B": 100470,
+        "C": 100470,
+        "D": 100470,
+        "E": 92815,
+        "F": 100470,
+        "G": 100470
+      },
+      "paired": {
+        "A vs rule-basis": 0,
+        "A vs run3-schema4": 7655,
+        "B vs rule-basis": 0,
+        "B vs run3-schema4": 7655,
+        "C vs rule-basis": 0,
+        "C vs run3-schema4": 7655,
+        "D vs rule-basis": 0,
+        "D vs run3-schema4": 7655,
+        "E vs rule-basis": -7655,
+        "E vs run3-schema4": 0,
+        "F vs rule-basis": 0,
+        "F vs run3-schema4": 7655,
+        "G vs rule-basis": 0,
+        "G vs run3-schema4": 7655
+      }
+    },
+    {
+      "scenarioId": "v5di-1v1-world-balanced",
+      "seed": "v5di-1v1-world-balanced-1",
+      "mode": "Free For All",
+      "map": "World",
+      "opponent": null,
+      "endLand": {
+        "rule-basis": 85361,
+        "run3-schema4": 117385,
+        "A": 85361,
+        "B": 85361,
+        "C": 85361,
+        "D": 85361,
+        "E": 117385,
+        "F": 85361,
+        "G": 85361
+      },
+      "paired": {
+        "A vs rule-basis": 0,
+        "A vs run3-schema4": -32024,
+        "B vs rule-basis": 0,
+        "B vs run3-schema4": -32024,
+        "C vs rule-basis": 0,
+        "C vs run3-schema4": -32024,
+        "D vs rule-basis": 0,
+        "D vs run3-schema4": -32024,
+        "E vs rule-basis": 32024,
+        "E vs run3-schema4": 0,
+        "F vs rule-basis": 0,
+        "F vs run3-schema4": -32024,
+        "G vs rule-basis": 0,
+        "G vs run3-schema4": -32024
+      }
+    },
+    {
+      "scenarioId": "v5di-1v1-world-rush",
+      "seed": "v5di-1v1-world-rush-2",
+      "mode": "Free For All",
+      "map": "World",
+      "opponent": null,
+      "endLand": {
+        "rule-basis": 79505,
+        "run3-schema4": 126737,
+        "A": 79505,
+        "B": 79505,
+        "C": 79505,
+        "D": 79505,
+        "E": 126737,
+        "F": 79505,
+        "G": 79505
+      },
+      "paired": {
+        "A vs rule-basis": 0,
+        "A vs run3-schema4": -47232,
+        "B vs rule-basis": 0,
+        "B vs run3-schema4": -47232,
+        "C vs rule-basis": 0,
+        "C vs run3-schema4": -47232,
+        "D vs rule-basis": 0,
+        "D vs run3-schema4": -47232,
+        "E vs rule-basis": 47232,
+        "E vs run3-schema4": 0,
+        "F vs rule-basis": 0,
+        "F vs run3-schema4": -47232,
+        "G vs rule-basis": 0,
+        "G vs run3-schema4": -47232
+      }
+    },
+    {
+      "scenarioId": "v5di-ffa-duo-europe-balanced",
+      "seed": "v5di-ffa-duo-europe-balanced-11",
+      "mode": "Free For All",
+      "map": "Europe",
+      "opponent": null,
+      "endLand": {
+        "rule-basis": 175647,
+        "run3-schema4": 24078,
+        "A": 175647,
+        "B": 175647,
+        "C": 175647,
+        "D": 175647,
+        "E": 24078,
+        "F": 175647,
+        "G": 175647
+      },
+      "paired": {
+        "A vs rule-basis": 0,
+        "A vs run3-schema4": 151569,
+        "B vs rule-basis": 0,
+        "B vs run3-schema4": 151569,
+        "C vs rule-basis": 0,
+        "C vs run3-schema4": 151569,
+        "D vs rule-basis": 0,
+        "D vs run3-schema4": 151569,
+        "E vs rule-basis": -151569,
+        "E vs run3-schema4": 0,
+        "F vs rule-basis": 0,
+        "F vs run3-schema4": 151569,
+        "G vs rule-basis": 0,
+        "G vs run3-schema4": 151569
+      }
+    },
+    {
+      "scenarioId": "v5di-ffa-duo-europe-rush",
+      "seed": "v5di-ffa-duo-europe-rush-12",
+      "mode": "Free For All",
+      "map": "Europe",
+      "opponent": null,
+      "endLand": {
+        "rule-basis": 12382,
+        "run3-schema4": 97076,
+        "A": 12382,
+        "B": 12382,
+        "C": 12382,
+        "D": 12382,
+        "E": 97076,
+        "F": 12382,
+        "G": 12382
+      },
+      "paired": {
+        "A vs rule-basis": 0,
+        "A vs run3-schema4": -84694,
+        "B vs rule-basis": 0,
+        "B vs run3-schema4": -84694,
+        "C vs rule-basis": 0,
+        "C vs run3-schema4": -84694,
+        "D vs rule-basis": 0,
+        "D vs run3-schema4": -84694,
+        "E vs rule-basis": 84694,
+        "E vs run3-schema4": 0,
+        "F vs rule-basis": 0,
+        "F vs run3-schema4": -84694,
+        "G vs rule-basis": 0,
+        "G vs run3-schema4": -84694
+      }
+    },
+    {
+      "scenarioId": "v5di-ffa-duo-world-balanced",
+      "seed": "v5di-ffa-duo-world-balanced-9",
+      "mode": "Free For All",
+      "map": "World",
+      "opponent": null,
+      "endLand": {
+        "rule-basis": 27822,
+        "run3-schema4": 29772,
+        "A": 27822,
+        "B": 27822,
+        "C": 27822,
+        "D": 27822,
+        "E": 29772,
+        "F": 27822,
+        "G": 27822
+      },
+      "paired": {
+        "A vs rule-basis": 0,
+        "A vs run3-schema4": -1950,
+        "B vs rule-basis": 0,
+        "B vs run3-schema4": -1950,
+        "C vs rule-basis": 0,
+        "C vs run3-schema4": -1950,
+        "D vs rule-basis": 0,
+        "D vs run3-schema4": -1950,
+        "E vs rule-basis": 1950,
+        "E vs run3-schema4": 0,
+        "F vs rule-basis": 0,
+        "F vs run3-schema4": -1950,
+        "G vs rule-basis": 0,
+        "G vs run3-schema4": -1950
+      }
+    },
+    {
+      "scenarioId": "v5di-ffa-duo-world-rush",
+      "seed": "v5di-ffa-duo-world-rush-10",
+      "mode": "Free For All",
+      "map": "World",
+      "opponent": null,
+      "endLand": {
+        "rule-basis": 26598,
+        "run3-schema4": 9606,
+        "A": 26598,
+        "B": 26598,
+        "C": 26598,
+        "D": 26598,
+        "E": 9606,
+        "F": 26598,
+        "G": 26598
+      },
+      "paired": {
+        "A vs rule-basis": 0,
+        "A vs run3-schema4": 16992,
+        "B vs rule-basis": 0,
+        "B vs run3-schema4": 16992,
+        "C vs rule-basis": 0,
+        "C vs run3-schema4": 16992,
+        "D vs rule-basis": 0,
+        "D vs run3-schema4": 16992,
+        "E vs rule-basis": -16992,
+        "E vs run3-schema4": 0,
+        "F vs rule-basis": 0,
+        "F vs run3-schema4": 16992,
+        "G vs rule-basis": 0,
+        "G vs run3-schema4": 16992
+      }
+    },
+    {
+      "scenarioId": "v5di-official-2v2-europe-balanced",
+      "seed": "v5di-official-2v2-europe-balanced-7",
+      "mode": "Team",
+      "map": "Europe",
+      "opponent": null,
+      "endLand": {
+        "rule-basis": 0,
+        "run3-schema4": 0,
+        "A": 0,
+        "B": 0,
+        "C": 0,
+        "D": 0,
+        "E": 0,
+        "F": 0,
+        "G": 0
+      },
+      "paired": {
+        "A vs rule-basis": 0,
+        "A vs run3-schema4": 0,
+        "B vs rule-basis": 0,
+        "B vs run3-schema4": 0,
+        "C vs rule-basis": 0,
+        "C vs run3-schema4": 0,
+        "D vs rule-basis": 0,
+        "D vs run3-schema4": 0,
+        "E vs rule-basis": 0,
+        "E vs run3-schema4": 0,
+        "F vs rule-basis": 0,
+        "F vs run3-schema4": 0,
+        "G vs rule-basis": 0,
+        "G vs run3-schema4": 0
+      }
+    },
+    {
+      "scenarioId": "v5di-official-2v2-europe-rush",
+      "seed": "v5di-official-2v2-europe-rush-8",
+      "mode": "Team",
+      "map": "Europe",
+      "opponent": null,
+      "endLand": {
+        "rule-basis": 198586,
+        "run3-schema4": 174020,
+        "A": 198586,
+        "B": 198586,
+        "C": 198586,
+        "D": 198586,
+        "E": 174020,
+        "F": 198586,
+        "G": 198586
+      },
+      "paired": {
+        "A vs rule-basis": 0,
+        "A vs run3-schema4": 24566,
+        "B vs rule-basis": 0,
+        "B vs run3-schema4": 24566,
+        "C vs rule-basis": 0,
+        "C vs run3-schema4": 24566,
+        "D vs rule-basis": 0,
+        "D vs run3-schema4": 24566,
+        "E vs rule-basis": -24566,
+        "E vs run3-schema4": 0,
+        "F vs rule-basis": 0,
+        "F vs run3-schema4": 24566,
+        "G vs rule-basis": 0,
+        "G vs run3-schema4": 24566
+      }
+    },
+    {
+      "scenarioId": "v5di-official-2v2-world-balanced",
+      "seed": "v5di-official-2v2-world-balanced-5",
+      "mode": "Team",
+      "map": "World",
+      "opponent": null,
+      "endLand": {
+        "rule-basis": 24163,
+        "run3-schema4": 9156,
+        "A": 24163,
+        "B": 24163,
+        "C": 24163,
+        "D": 24163,
+        "E": 9156,
+        "F": 24163,
+        "G": 24163
+      },
+      "paired": {
+        "A vs rule-basis": 0,
+        "A vs run3-schema4": 15007,
+        "B vs rule-basis": 0,
+        "B vs run3-schema4": 15007,
+        "C vs rule-basis": 0,
+        "C vs run3-schema4": 15007,
+        "D vs rule-basis": 0,
+        "D vs run3-schema4": 15007,
+        "E vs rule-basis": -15007,
+        "E vs run3-schema4": 0,
+        "F vs rule-basis": 0,
+        "F vs run3-schema4": 15007,
+        "G vs rule-basis": 0,
+        "G vs run3-schema4": 15007
+      }
+    },
+    {
+      "scenarioId": "v5di-official-2v2-world-rush",
+      "seed": "v5di-official-2v2-world-rush-6",
+      "mode": "Team",
+      "map": "World",
+      "opponent": null,
+      "endLand": {
+        "rule-basis": 50000,
+        "run3-schema4": 38147,
+        "A": 50000,
+        "B": 50000,
+        "C": 50000,
+        "D": 50000,
+        "E": 38147,
+        "F": 50000,
+        "G": 50000
+      },
+      "paired": {
+        "A vs rule-basis": 0,
+        "A vs run3-schema4": 11853,
+        "B vs rule-basis": 0,
+        "B vs run3-schema4": 11853,
+        "C vs rule-basis": 0,
+        "C vs run3-schema4": 11853,
+        "D vs rule-basis": 0,
+        "D vs run3-schema4": 11853,
+        "E vs rule-basis": -11853,
+        "E vs run3-schema4": 0,
+        "F vs rule-basis": 0,
+        "F vs run3-schema4": 11853,
+        "G vs rule-basis": 0,
+        "G vs run3-schema4": 11853
+      }
+    }
+  ],
+  "paired": {
+    "A vs rule-basis": {
+      "pairs": 12,
+      "meanLandDelta": 0,
+      "positivePairs": 0,
+      "negativePairs": 0,
+      "zeroPairs": 12
+    },
+    "A vs run3-schema4": {
+      "pairs": 12,
+      "meanLandDelta": 2811.8333333333335,
+      "positivePairs": 6,
+      "negativePairs": 5,
+      "zeroPairs": 1
+    },
+    "B vs rule-basis": {
+      "pairs": 12,
+      "meanLandDelta": 0,
+      "positivePairs": 0,
+      "negativePairs": 0,
+      "zeroPairs": 12
+    },
+    "B vs run3-schema4": {
+      "pairs": 12,
+      "meanLandDelta": 2811.8333333333335,
+      "positivePairs": 6,
+      "negativePairs": 5,
+      "zeroPairs": 1
+    },
+    "C vs rule-basis": {
+      "pairs": 12,
+      "meanLandDelta": 0,
+      "positivePairs": 0,
+      "negativePairs": 0,
+      "zeroPairs": 12
+    },
+    "C vs run3-schema4": {
+      "pairs": 12,
+      "meanLandDelta": 2811.8333333333335,
+      "positivePairs": 6,
+      "negativePairs": 5,
+      "zeroPairs": 1
+    },
+    "D vs rule-basis": {
+      "pairs": 12,
+      "meanLandDelta": 0,
+      "positivePairs": 0,
+      "negativePairs": 0,
+      "zeroPairs": 12
+    },
+    "D vs run3-schema4": {
+      "pairs": 12,
+      "meanLandDelta": 2811.8333333333335,
+      "positivePairs": 6,
+      "negativePairs": 5,
+      "zeroPairs": 1
+    },
+    "E vs rule-basis": {
+      "pairs": 12,
+      "meanLandDelta": -2811.8333333333335,
+      "positivePairs": 5,
+      "negativePairs": 6,
+      "zeroPairs": 1
+    },
+    "E vs run3-schema4": {
+      "pairs": 12,
+      "meanLandDelta": 0,
+      "positivePairs": 0,
+      "negativePairs": 0,
+      "zeroPairs": 12
+    },
+    "F vs rule-basis": {
+      "pairs": 12,
+      "meanLandDelta": 0,
+      "positivePairs": 0,
+      "negativePairs": 0,
+      "zeroPairs": 12
+    },
+    "F vs run3-schema4": {
+      "pairs": 12,
+      "meanLandDelta": 2811.8333333333335,
+      "positivePairs": 6,
+      "negativePairs": 5,
+      "zeroPairs": 1
+    },
+    "G vs rule-basis": {
+      "pairs": 12,
+      "meanLandDelta": 0,
+      "positivePairs": 0,
+      "negativePairs": 0,
+      "zeroPairs": 12
+    },
+    "G vs run3-schema4": {
+      "pairs": 12,
+      "meanLandDelta": 2811.8333333333335,
+      "positivePairs": 6,
+      "negativePairs": 5,
+      "zeroPairs": 1
+    }
+  },
+  "changedQualitySummary": "For every controller variant (A-G), essentially all changed frames flip to a LOWER rule-utility candidate (95-99% down, 0 up) with a systematic bias toward \"naval\" (and \"invest\" for A). Despite changedRate up to 29% (F), every variant lands EXACTLY on rule-basis endLand in all 12 scenarios (12/12 zero paired deltas). E is exactly identical to run3-schema4 in all 12 scenarios. The candidate-control channel is provably neutral in this architecture: the model re-ranks the bounded candidate list, but the executed action (and thus land) never changes.",
+  "verdict": {
+    "A": {
+      "beatsRuleBasis": false,
+      "pairedVsRuleBasis": {
+        "pos": 0,
+        "neg": 0,
+        "zero": 12,
+        "mean": 0
+      }
+    },
+    "B": {
+      "beatsRuleBasis": false,
+      "pairedVsRuleBasis": {
+        "pos": 0,
+        "neg": 0,
+        "zero": 12,
+        "mean": 0
+      }
+    },
+    "C": {
+      "beatsRuleBasis": false,
+      "pairedVsRuleBasis": {
+        "pos": 0,
+        "neg": 0,
+        "zero": 12,
+        "mean": 0
+      }
+    },
+    "D": {
+      "beatsRuleBasis": false,
+      "pairedVsRuleBasis": {
+        "pos": 0,
+        "neg": 0,
+        "zero": 12,
+        "mean": 0
+      }
+    },
+    "E": {
+      "beatsRuleBasis": false,
+      "pairedVsRuleBasis": {
+        "pos": 5,
+        "neg": 6,
+        "zero": 1,
+        "mean": -2811.8333333333335
+      }
+    },
+    "F": {
+      "beatsRuleBasis": false,
+      "pairedVsRuleBasis": {
+        "pos": 0,
+        "neg": 0,
+        "zero": 12,
+        "mean": 0
+      }
+    },
+    "G": {
+      "beatsRuleBasis": false,
+      "pairedVsRuleBasis": {
+        "pos": 0,
+        "neg": 0,
+        "zero": 12,
+        "mean": 0
+      }
+    }
+  },
+  "decision": "No controller variant (A-G) produces a provable improvement over rule-basis: all seven are exactly identical to rule-basis on endLand in all 12 scenarios. Per \"Verwerfe Varianten, die mehr Entscheidungen verändern, aber schlechter spielen\", the variants that change the most decisions (F 29%, C 15%, B 11%) buy zero land over the minimal-change arm A (2%). run3-schema4 is below rule-basis on this dev set (mean -2811.8; 6 of 12 scenarios negative, 1 zero) and the hybrid E adds nothing to it. No variant therefore qualifies for §8 (fresh holdout) or §10 (champion promotion). Run3 stays ACTIVE."
+}

@@ -39,6 +39,66 @@ function candidateControlKernel(candidates,scores,gain=18){
   out.sort((a,b)=>b.utility-a.utility||String(a.id).localeCompare(String(b.id)));
   return out;
 }
+// Controller variants (campaign §5). `raw` is identical to candidateControlKernel
+// (gain * raw score). All variants re-order only already-legal candidates and
+// never change legality (the downstream channel director still authorizes the
+// selected candidate). `calibrated` normalizes model scores to a per-frame
+// z-score before scaling, so a near-degenerate score vector still expresses its
+// full ranking; `adaptive` scales the gain up to capGain with the model's
+// top-1/top-2 confidence margin; `rank` maps the model's rank position to a
+// scale-free utility bonus (1 = best, 0 = worst); `gated` applies the bonus only
+// when the model's top-1 clearly beats the rule top-1 by `margin` AND the
+// implied required gain is within capGain, otherwise it keeps the rule order.
+function candidateControlVariant(candidates,scores,gain=18,mode='raw',opts={}){
+  const g=Number.isFinite(+gain)?Math.min(60,Math.max(0,+gain)):18;
+  const cand=Array.isArray(candidates)?candidates:[];
+  const rows=cand.map(c=>{
+    const sc=scores?.get?scores.get(c.id):scores?.[c.id];
+    return {c,score:Number.isFinite(sc)?sc:null};
+  });
+  const scored=rows.filter(r=>r.score!=null);
+  const byScore=[...scored].sort((a,b)=>b.score-a.score||String(a.c.id).localeCompare(String(b.c.id)));
+  const top1=byScore[0],top2=byScore[1];
+  const confidence=(top1&&top2)?(top1.score-top2.score):0;
+  const ruleTop=cand[0];
+  const cap=Number.isFinite(+opts.capGain)?Math.min(60,Math.max(0,+opts.capGain)):60;
+  const confRef=Number.isFinite(+opts.confidenceRef)&&+opts.confidenceRef>0?+opts.confidenceRef:0.5;
+  const margin=Number.isFinite(+opts.margin)?+opts.margin:0.25;
+  let utilityOf;
+  if(mode==='calibrated'){
+    const vals=scored.map(r=>r.score);
+    const mean=vals.reduce((a,b)=>a+b,0)/Math.max(1,vals.length);
+    const sd=Math.sqrt(vals.reduce((a,b)=>a+(b-mean)*(b-mean),0)/Math.max(1,vals.length));
+    const inv=sd>1e-9?1/sd:1;
+    utilityOf=r=>r.score==null?r.c.utility:Math.round(r.c.utility+g*(r.score-mean)*inv);
+  } else if(mode==='adaptive'){
+    const gEff=g+(cap-g)*Math.max(0,Math.min(1,confidence/confRef));
+    utilityOf=r=>r.score==null?r.c.utility:Math.round(r.c.utility+gEff*r.score);
+  } else if(mode==='rank'){
+    const n=scored.length;
+    const rankOf=new Map();
+    byScore.forEach((r,i)=>rankOf.set(r.c.id,n>1?1-i/(n-1):1));
+    utilityOf=r=>{const p=rankOf.get(r.c.id);return p==null?r.c.utility:Math.round(r.c.utility+cap*p);};
+  } else if(mode==='gated'){
+    const modelTop=top1?top1.c.id:null;
+    const ruleId=ruleTop?ruleTop.id:null;
+    const ruleScore=ruleId!=null?((byScore.find(r=>r.c.id===ruleId)?.score)??0):0;
+    const modelScore=top1?top1.score:0;
+    const modelUtil=modelTop!=null?((byScore.find(r=>r.c.id===modelTop)?.c.utility)??ruleTop?.utility??0):(ruleTop?.utility??0);
+    const ruleUtil=ruleTop?.utility??0;
+    const gap=modelScore-ruleScore;
+    const required=(modelTop!=null&&modelTop!==ruleId&&gap>1e-9)?(ruleUtil-modelUtil)/gap:0;
+    const gate=ruleId!=null&&modelTop!=null&&modelTop!==ruleId&&gap>=margin&&required<=cap;
+    const gUse=gate?cap:0;
+    utilityOf=r=>r.score==null?r.c.utility:Math.round(r.c.utility+gUse*r.score);
+  } else {
+    // 'raw' (and default): the original gain * raw score mapping.
+    utilityOf=r=>r.score==null?r.c.utility:Math.round(r.c.utility+g*r.score);
+  }
+  const out=rows.map(r=>({...r.c,utility:utilityOf(r)}));
+  out.sort((a,b)=>b.utility-a.utility||String(a.id).localeCompare(String(b.id)));
+  return out;
+}
 function reserveResolutionKernel(home,floors){
   const f=floors||{},entries=Object.entries(f).filter(([,v])=>Number.isFinite(v));
   const reserve=Math.min(Math.max(0,home||0),
@@ -110,5 +170,5 @@ function duoNuclearInvestmentKernel(x){
 }
 // DECISION-KERNELS-END
 module.exports={archetypeRankKernel,economyRecoveryKernel,
-  marineObservationGraceKernel,candidateControlKernel,reserveResolutionKernel,
-  actionEvidenceKernel,duoNuclearInvestmentKernel};
+  marineObservationGraceKernel,candidateControlKernel,candidateControlVariant,
+  reserveResolutionKernel,actionEvidenceKernel,duoNuclearInvestmentKernel};

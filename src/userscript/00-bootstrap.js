@@ -23,7 +23,12 @@
     // P5: bounded candidate-v5 control. Off by default (shadow-only). When on,
     // the schema-5 ranker shifts the bounded candidate ranking so it can drive
     // the channel director; legality downstream remains authoritative.
+    // candidateControlMode selects the score->utility mapping (campaign §5):
+    // 'raw' (default, backward-compatible), 'calibrated', 'adaptive', 'rank',
+    // 'gated'. capGain/confidenceRef/margin bound the variant-specific mapping.
     candidateControlEnabled:false,candidateControlGain:18,
+    candidateControlMode:'raw',candidateControlCapGain:60,
+    candidateControlConfidenceRef:0.5,candidateControlMargin:0.25,
     duoEnabled:false,duoPartnerID:'',duoPartnerName:'',duoRoom:'',archetype:'legacy'};
   let opts;
   try { opts = {...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; }
@@ -624,6 +629,25 @@ function predict(model,input){
       incoming:s.incoming,reserve:s.reserve,gold:goldAmount(me),
       capacityUse:s.ratio,frontCount:groups?.length||0,
       ...(planningState?.v5State||{}),
+      // §4 binding evidence: per-candidate rule utility, model score,
+      // effective gain and combined utility, plus the frame-level gain and
+      // the 1st-vs-2nd rule gap. Lets the binding analysis compute the gain
+      // required to flip the pick from actual scores and utility gaps, not
+      // an average. modelSHA is the candidate-model fingerprint; the
+      // authoritative candidate SHA256 is pinned in benchmarkMeta.
+      binding:planningState?.binding??null,
+      controlGain:planningState?.controlGain??0,
+      controlMode:planningState?.controlMode??null,
+      controlCapGain:planningState?.controlCapGain??null,
+      controlConfidenceRef:planningState?.controlConfidenceRef??null,
+      controlMargin:planningState?.controlMargin??null,
+      ruleTop2Gap:planningState?.ruleTop2Gap??null,
+      modelSHA:planningState?.provenance?.modelHashes?.candidate??null,
+      ruleChoice:planningState?.ruleChoice??null,
+      modelChoice:planningState?.modelChoice??null,
+      finalChoice:planningState?.finalChoice??null,
+      changedIntent:planningState?.changedIntent??false,
+      safetyBlockReason:planningState?.safetyBlockReason??null,
       candidate:project(sel),
       candidates:(planningState?.candidates||[]).map(project)};
   }

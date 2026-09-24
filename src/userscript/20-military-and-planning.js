@@ -150,6 +150,10 @@
     }
     candidates.sort((a,b)=>b.utility-a.utility||String(a.id).localeCompare(String(b.id)));
     const ruleSelected=candidates[0]||null;
+    // §4 binding evidence: the rule-basis ranking (pre-control) per
+    // candidate, so per-candidate rule utility can be compared against the
+    // model score that (or fails to) override it.
+    const ruleRank=candidates.map(c=>({id:c.id,kind:c.kind,ruleUtility:c.utility}));
     // P5: bounded candidate-v5 control + shadow scoring. The schema-5 ranker
     // scores every bounded candidate. When opts.candidateControlEnabled the
     // score shifts each utility by a bounded gain*score and the ranking is
@@ -181,8 +185,11 @@
         };
         v5Scores=new Map(candidates.map(c=>[c.id,v5Score(c)]));
         if(opts.candidateControlEnabled===true){
-          const controlled=candidateControlKernel(candidates,v5Scores,
-            opts.candidateControlGain);
+          const controlled=candidateControlVariant(candidates,v5Scores,
+            opts.candidateControlGain,opts.candidateControlMode||'raw',
+            {margin:opts.candidateControlMargin,
+             capGain:opts.candidateControlCapGain,
+             confidenceRef:opts.candidateControlConfidenceRef});
           candidates.splice(0,candidates.length,...controlled);
           controlActive=true;
         }
@@ -196,6 +203,27 @@
           changedIntent:false};
       }
     }
+    // §4 binding evidence: for each candidate, the pre-control rule utility,
+    // the schema-5 model score, the effective gain, and the combined utility
+    // the controller used (round(rule + gain*score) when control is active,
+    // else rule). Bounded (one entry per candidate), read-only; it never
+    // authorizes or blocks actions. Lets the binding analysis compute, from
+    // actual scores and utility gaps, the gain required to flip the pick and
+    // the exact reason a switch was blocked at the configured gain.
+    const controlGain=controlActive?
+      (Number.isFinite(+opts.candidateControlGain)?+opts.candidateControlGain:18):0;
+    const combinedById=new Map(candidates.map(c=>[c.id,c.utility]));
+    const binding=ruleRank.map((r,rankByRule)=>{
+      const score=v5Scores?v5Scores.get(r.id):null;
+      const scored=Number.isFinite(score);
+      const neuralDelta=scored?controlGain*score:0;
+      return {id:r.id,kind:r.kind,legal:true,ruleUtility:r.ruleUtility,
+        modelScore:scored?score:null,gain:scored?controlGain:0,
+        neuralDelta:+neuralDelta.toFixed(4),
+        combinedUtility:combinedById.get(r.id)??r.ruleUtility,rankByRule};
+    });
+    const ruleTop2Gap=ruleRank.length>1?
+      ruleRank[0].ruleUtility-ruleRank[1].ruleUtility:0;
     const limited=candidates.slice(0,8),selected=limited[0]||null;
     const rejectedCandidates=limited.slice(1);
     archetypeRecord(selected,groups,me,tick);
@@ -203,7 +231,11 @@
       rejected:limited[1]||null,rejectedCandidates,
       durationMs:Number((performance.now()-started).toFixed(2)),
       budgetMs,truncated:candidates.length>limited.length||performance.now()-started>budgetMs,
-      v5State:state,
+      v5State:state,binding,controlGain,ruleTop2Gap,
+      controlMode:opts.candidateControlMode||null,
+      controlCapGain:opts.candidateControlCapGain??null,
+      controlConfidenceRef:opts.candidateControlConfidenceRef??null,
+      controlMargin:opts.candidateControlMargin??null,
       semantics:'bounded-ranking-only; existing legality remains authoritative'};
     // P0 canonical decision frame (diagnostics only; it never authorizes or
     // blocks actions). One frame per planning tick links the rule choice, the
@@ -267,6 +299,22 @@
         changedIntent?'Schema-5 Kandidatensteuerung aktiv':'Schema-5 nur protokolliert',
         shadowDecisionEvidence);
     }
+    // §3/§4: explicit per-frame decision-path fields. ruleChoice is the
+    // pre-control rule pick, finalChoice the actually selected candidate,
+    // modelChoice the model's top by score. changedIntent is true only when
+    // control flipped the pick away from the rule. safetyBlockReason marks
+    // frames where the model's top differs from the rule pick but the final
+    // pick stayed with the rule (the switch did not take effect at the
+    // configured gain); the precise gain-vs-gap reason is computed by the
+    // binding analysis from the per-candidate `binding` data.
+    planningState.ruleChoice=ruleSelected?.id??null;
+    planningState.finalChoice=selected?.id??null;
+    planningState.changedIntent=controlActive&&
+      selected?.id!==ruleSelected?.id;
+    planningState.safetyBlockReason=
+      (controlActive&&planningState.modelChoice!=null&&
+       planningState.modelChoice!==ruleSelected?.id&&
+       selected?.id===ruleSelected?.id)?'model-preference-blocked':null;
     return planningState;
   }
   // Observed behaviour is evidence, not knowledge of a human's intentions.
