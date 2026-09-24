@@ -2,27 +2,20 @@
 // Paired, disjoint holdout over verified official-engine outcomes (v2).
 // Outcomes rank victory(2) > censored tick-limit/incomplete(1) > defeat(0).
 // A tick limit is right-censored survival, never a victory.
-//
-// v2 differs from v1: added victories allow a bounded number of
-// per-seed regressions, while equal-win promotion still requires zero.
-// The rule is fixed before any comparison:
-//   * Invalid on <2 rows, unequal lengths, unpaired/duplicate/invalid sample,
-//     non-zero exit code, or non-finite endTick/land.
-//   * Wins are primary, BUT a single extra win must not auto-justify a massive
-//     collapse: promoting on more wins additionally requires
-//         regressed <= max(1, floor(N/4))  AND  (improved - regressed) >= 0
-//   * Equal wins may progress ONLY via repeatable survival/territory gains
-//     with zero per-seed regressions (improved>=2, regressed==0, and a real
-//     survival-tick or territory gain).
-//   * `decisionRoundNeeded` flags a "mixed strengths" outcome (close win
-//     margin + substantial per-seed disagreement) so the trainer can run a
-//     larger decision round instead of committing on a narrow margin.
+function normalizeEvaluationRow(row) {
+  if (!row || typeof row !== 'object') return row;
+  if (Number.isFinite(row.land)) return row;
+  if (Number.isFinite(row.endLand)) return {...row, land: row.endLand};
+  return row;
+}
 function compare(incumbent, candidate) {
   const invalid = {valid: false, promoted: false, reason: 'incomplete-or-unpaired',
     incumbentWins: 0, candidateWins: 0, improved: 0, regressed: 0, tied: 0, net: 0,
     survivalTicks: 0, survivalArea: 0, N: 0, mixed: false, decisionRoundNeeded: false};
   if (!Array.isArray(incumbent) || !Array.isArray(candidate) ||
       incumbent.length < 2 || incumbent.length !== candidate.length) return invalid;
+  incumbent=incumbent.map(normalizeEvaluationRow);
+  candidate=candidate.map(normalizeEvaluationRow);
   const signature = x => [x.difficulty, x.map, x.nation, x.gameType ?? 'Singleplayer',
     x.gameMode ?? 'FFA', x.scriptedHumans ?? 0, x.opponentProfile ?? 'none', x.seed].join('|');
   const acceptable = x => ['victory', 'defeat', 'incomplete'].includes(x.outcome);
@@ -69,4 +62,4 @@ function compare(incumbent, candidate) {
     decisionRoundNeeded: mixed && !(won || survived)
   };
 }
-module.exports = {compare};
+module.exports = {compare,normalizeEvaluationRow};
