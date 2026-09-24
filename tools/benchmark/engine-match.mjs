@@ -21,30 +21,36 @@ const mod=p=>import(pathToFileURL(path.join(opts.engine,p)).href);
 // Upstream GameView reads preferences. No auth, account or real browser storage.
 const storage=new Map();
 let policyHash=null;
+const policyParts=[];
 if(opts.policy){
   const policySource=fs.readFileSync(path.resolve(opts.policy),'utf8');
   const decoded=JSON.parse(policySource);
   const policy=decoded?.schema===4?strategicModelV4.validate(decoded):
     decoded?.schema===3?strategicModel.validate(decoded):
     decoded?.schema===2?actionModel.validate(decoded):policyModel.validate(decoded);
-  policyHash=common.digest(JSON.stringify(policy));
   storage.set('of-aggrobot-neural-policy-v1',JSON.stringify(policy));
   storage.set('of-solo-aggrobot-v1111',JSON.stringify({neuralEnabled:true,fullAuto:true}));
+  policyParts.push({schema:policy.schema??4,
+    sha256:common.digest(JSON.stringify(policy))});
 }
 // P5: bounded candidate-v5 control arm. Embeds the schema-5 model into the
 // generated bot and enables shadow ranking + control so the model can drive
 // the channel director (legality remains authoritative downstream).
 let candidateModel=null;
 if(opts.candidateControl){
-  if(opts.policy)throw Error('--candidate-control and --policy are mutually exclusive');
   const model=candidatePolicyV5.validate(JSON.parse(
     fs.readFileSync(path.resolve(opts.candidateModel),'utf8')));
   candidateModel=model;
-  policyHash=common.digest(JSON.stringify(model));
   storage.set('of-solo-aggrobot-v1111',JSON.stringify({neuralEnabled:true,fullAuto:true,
     shadowRankEnabled:true,candidateControlEnabled:true,
     candidateControlGain:opts.candidateGain?Number(opts.candidateGain):18}));
+  policyParts.push({schema:5,sha256:common.digest(JSON.stringify(model))});
 }
+// policyHash: single model -> its sha; BOTH --policy and --candidateControl
+// (the hybrid 4+5 arm) -> sha of the ordered part list, so the report pins
+// exactly which two models are loaded together.
+policyHash=policyParts.length===1?policyParts[0].sha256:
+  policyParts.length>1?common.digest(JSON.stringify(policyParts)):null;
 globalThis.localStorage={getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,String(v)),removeItem:k=>storage.delete(k)};
 const [{createGameRunner},{Config},{GameMapType,GameMapSize,Difficulty,GameType,GameMode},
  {GameView},{loadTerrainMap},{NodeGameMapLoader},{EventBus},{GameConfigSchema,StampedIntentSchema}]=await Promise.all([

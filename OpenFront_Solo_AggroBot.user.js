@@ -728,6 +728,18 @@ function predict(model,input){
       incoming:s.incoming,reserve:s.reserve,gold:goldAmount(me),
       capacityUse:s.ratio,frontCount:groups?.length||0,
       ...(planningState?.v5State||{}),
+      // P0 decision evidence (mandate §6): ruleChoice is the rule-basis pick
+      // (candidates[0] before any model), modelChoice/modelScores are the
+      // schema-5 top pick + per-candidate model scores, changedIntent is
+      // whether control altered the pick, failClosed is the safety-gate
+      // fallback reason. finalChoice = candidate (the pick actually sent).
+      // Identical in all arms -> isolation is by model, not code.
+      ruleChoice:shadowDecisionEvidence?.ruleChoice??null,
+      finalChoiceId:sel?.id??null,
+      modelChoice:planningState?.modelChoice??null,
+      modelScores:shadowDecisionEvidence?.ranked??null,
+      changedIntent:shadowDecisionEvidence?.changedIntent??false,
+      failClosed:shadowDecisionEvidence?.failClosed??false,
       candidate:project(sel),
       candidates:(planningState?.candidates||[]).map(project)};
   }

@@ -1,0 +1,26 @@
+{
+  "matches": 34,
+  "totalRows": 8807,
+  "usableLabels": 2950,
+  "observedRows": 3154,
+  "counterfactualRows": 5653,
+  "badFeatures": 0,
+  "featureRows": 8807,
+  "land": 0,
+  "heldGain": 1399.4350000000013,
+  "lossRisk": 379.5687500000002,
+  "heldGainMean": 0.47438474576271233,
+  "lossRiskMean": 0.128667372881356,
+  "outcomes": {
+    "unknown": 20,
+    "defeat": 10,
+    "victory": 4
+  },
+  "kinds": {
+    "naval": 2074,
+    "invest": 3154,
+    "hold": 3154,
+    "expand": 353,
+    "attack": 72
+  }
+}

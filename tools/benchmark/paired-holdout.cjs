@@ -41,7 +41,8 @@ function parseArgs(argv){
   const o={bot:null,run3Policy:null,candidateModel:null,engine:null,
     engineCommit:common.ENGINE_COMMIT,out:null,execute:false,smoke:false,
     mode:'1v1',maps:'World,Europe',opponents:'balanced,rush',runs:2,
-    size:'Compact',difficulty:'Medium',gain:18,ticks:18000};
+    size:'Compact',difficulty:'Medium',gain:18,ticks:18000,
+    seedPrefix:'holdout'};
   for(let i=0;i<argv.length;i++){
     const key=argv[i].replace(/^--/,'');
     if(!argv[i].startsWith('--')||!Object.hasOwn(o,key))throw Error('Unknown option '+argv[i]);
@@ -79,8 +80,8 @@ function buildProtocol(o,arms){
   for(let pair=1;pair<=o.runs;pair++){
     n++;
     const tag=`${o.mode}-${map}-${opponent}-p${pair}`;
-    scenarios.push({scenarioId:`holdout-${tag}`,
-      matchSeed:`holdout-${tag}-${n}`.slice(0,64),
+    scenarios.push({scenarioId:`${o.seedPrefix}-${tag}`,
+      matchSeed:`${o.seedPrefix}-${tag}-${n}`.slice(0,64),
       mode:o.mode,map,opponent});
   }
   return{engineCommit:o.engineCommit,modes:[o.mode],maps:o.maps,

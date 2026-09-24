@@ -1,0 +1,14 @@
+{
+  "arch": "32x40x2-tanh",
+  "hidden": 40,
+  "length": 1402,
+  "epoch": 400,
+  "lr": 0.1,
+  "splitPct": 21,
+  "lambda": 1,
+  "noRegression": true,
+  "trainGroups": 854,
+  "valGroups": 3483,
+  "wallMs": 2952,
+  "finalValLoss": 0.910058
+}

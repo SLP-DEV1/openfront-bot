@@ -26,8 +26,9 @@ const INPUTS=candidate.INPUTS;
 
 function parseArgs(argv){
   const o={engine:null,engineCommit:common.ENGINE_COMMIT,out:null,run:false,
-    assemble:null,map:'World',difficulty:'Medium',seeds:6,ticks:6000,
+    assemble:null,map:'World',size:'Compact',difficulty:'Medium',seeds:6,ticks:6000,
     seedBase:20260000,scriptedHumans:3,opponentProfile:'mixed',
+    gameMode:'FFA',gameType:'Singleplayer',bots:40,nations:8,
     horizonTicks:600,landScale:800,expandAll:true};
   for(let i=0;i<argv.length;i++){
     const key=argv[i].replace(/^--/,'');
@@ -38,6 +39,7 @@ function parseArgs(argv){
   }
   o.seeds=Number(o.seeds);o.ticks=Number(o.ticks);
   o.seedBase=Number(o.seedBase);o.scriptedHumans=Number(o.scriptedHumans);
+  o.bots=Number(o.bots);o.nations=Number(o.nations);
   o.horizonTicks=Number(o.horizonTicks);o.landScale=Number(o.landScale);
   if(o.out)o.out=path.resolve(o.out);
   if(o.assemble)o.assemble=path.resolve(o.assemble);
@@ -195,14 +197,18 @@ function writeDataset(file,o,dataset,stats){
 }
 
 function runOne(o,map,difficulty,seed){
-  const dir=path.join(o.out,map.toLowerCase(),difficulty.toLowerCase(),
+  const arm=[o.gameMode,'b'+o.bots,'n'+o.nations,
+    o.opponentProfile].join('-');
+  const dir=path.join(o.out,arm,map.toLowerCase(),difficulty.toLowerCase(),
     String(seed));
   fs.mkdirSync(dir,{recursive:true});
-  const matchId='v5d-'+map+'-'+difficulty+'-'+seed;
+  const matchId='v5d-'+arm+'-'+map+'-'+difficulty+'-'+seed;
   const args=[path.join(__dirname,'engine-match.mjs'),
     '--bot','OpenFront_Solo_AggroBot.user.js','--engine',o.engine,
     '--engineCommit',o.engineCommit,'--seed',String(seed),
-    '--map',map,'--difficulty',difficulty,
+    '--map',map,'--size',o.size,'--difficulty',difficulty,
+    '--gameMode',o.gameMode,'--gameType',o.gameType,
+    '--bots',String(o.bots),'--nations',String(o.nations),
     '--scriptedHumans',String(o.scriptedHumans),
     '--opponentProfile',o.opponentProfile,'--ticks',String(o.ticks),
     '--planningFrames','true','--out',dir];

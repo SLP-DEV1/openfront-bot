@@ -1,0 +1,54 @@
+{
+  "section": 4,
+  "title": "Training-data audit — combined v5full-v2 + §4 targeted curriculum",
+  "campaignId": "openfront-neural-v5rank-20260924",
+  "generatedAt": "2026-09-24",
+  "combined": {
+    "file": "trainer/campaign-v5rank-20260924/combined/dataset.json",
+    "sha256": "0bf26676313d3b911026b1041220c1b9491c7a721cc49e6f521c21fc0e7e5f75",
+    "kind": "v5-real-dataset",
+    "engineCommit": "13b403387af01d388f8c8ed8c953b6d3a11d1457",
+    "horizonTicks": 600,
+    "landScale": 800,
+    "matches": 62,
+    "frames": 12765,
+    "outcomes": { "victory": 4, "defeat": 14, "unknown": 44 },
+    "actionKinds": { "naval": 2858, "invest": 4709, "hold": 4709, "expand": 390, "attack": 99 }
+  },
+  "provenance": {
+    "v5fullV2Baseline": {
+      "file": "tools/benchmark/v5full-v2/dataset.json",
+      "sha256": "3ba5a4058a613f78a27259d632b88add1af757372193df9686170dcaedbe9ede",
+      "matches": 28,
+      "frames": 3958,
+      "outcomes": { "unknown": 24, "defeat": 4, "victory": 0 },
+      "note": "Original frame-level dataset. Zero confirmed victories — the measured weakness the §4 curriculum targets."
+    },
+    "curriculumAdditions": {
+      "matches": 34,
+      "frames": 8807,
+      "addedOutcomes": { "victory": 4, "defeat": 10, "unknown": 10 },
+      "note": "Real pinned-engine matches captured to fill the decisive-outcome gap (4 confirmed victories added) and broaden opponent/mode coverage. Combined with v5full-v2 to 62 matches / 12765 frames."
+    }
+  },
+  "wholeMatchSplit": {
+    "method": "sideOf(matchId, splitPct=21) — deterministic, whole-match (a match is entirely train or entirely val; no frame leaks across the boundary)",
+    "trainGroups": 854,
+    "valGroups": 3483,
+    "totalGroups": 4337,
+    "droppedNoPositive": 372,
+    "note": "Val is the held-out majority (~79% of groups), so valRankLoss/valCrossStd are generalization estimates, not in-sample."
+  },
+  "holdoutSeedNamespace": {
+    "prefix": "v5fh",
+    "collidesWithTrainingOrCurriculumMatchIds": 0,
+    "disjointFromConsumedNamespaces": ["o7hold-*", "holdout-*", "v5d-*", "v6hold-*", "paired-holdout-*"],
+    "note": "v5fh-* is a fresh, previously-unused seed namespace for the §8 final holdout."
+  },
+  "labeling": {
+    "labelsStored": false,
+    "recomputedAtTrainTime": "trainer/v5-labels.cjs buildLabels (frame-level heldGain/lossRisk over a 600-tick horizon, landScale 800)",
+    "note": "Frame-level labels are the §3 root-cause of the old near-constant scores; the §5 ranking objective fixes that without changing the label pipeline."
+  },
+  "gate": "§4 curriculum gate passed (decisive-outcome coverage achieved: 4 confirmed victories present in the combined set; see campaign record)."
+}
