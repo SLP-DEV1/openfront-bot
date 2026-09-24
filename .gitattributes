@@ -1,0 +1,15 @@
+# The userscript artifacts are joined byte-for-byte by
+# tools/build-userscript.cjs and tools/build-run3-bundle.cjs, and the
+# identity / shadow / modular-build / enemy-metrics regression tests assert
+# byte parity or search for literal LF markers inside the generated output.
+# Pin LF line endings in the working tree so the generated artifacts match
+# their committed blobs and those tests hold even under core.autocrlf=true.
+*.user.js text eol=lf
+src/userscript/*.js text eol=lf
+src/runtime/*.cjs text eol=lf
+trainer/*.cjs text eol=lf
+trainer/*.mjs text eol=lf
+tools/build-userscript.cjs text eol=lf
+tools/build-run3-bundle.cjs text eol=lf
+tools/benchmark/*.cjs text eol=lf
+tools/benchmark/*.mjs text eol=lf
