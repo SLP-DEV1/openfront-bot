@@ -73,12 +73,16 @@ function actionEvidenceKernel(ledger){
 // override a funded first silo. A missing/stale relay never blocks solo play.
 function duoNuclearInvestmentKernel(x){
   const coreReady=x.coreReady===true,peerValid=x.peerValid===true;
-  const peerReady=peerValid&&x.peerCoreReady===true;
-  const primary=!peerValid || (coreReady!==peerReady?coreReady:
-    String(x.ownId)<String(x.peerId));
+  const siloReady=x.siloAllowed===true&&coreReady&&x.late===true&&
+    x.land>900&&x.siloSiteBlocked!==true;
+  // Old peers have no canonical readiness. Do not interpret missing as false:
+  // that makes both browsers elect themselves. Wait for an observed peer silo.
+  const peerProtocol=peerValid&&x.peerNuclearProtocol===1;
+  const peerReady=peerProtocol&&x.peerSiloReady===true;
+  const primary=!peerValid || (peerProtocol&&
+    (siloReady!==peerReady?siloReady:String(x.ownId)<String(x.peerId)));
   const peerHasSilo=peerValid&&x.peerSilos>0;
-  const firstSiloWindow=x.siloAllowed===true&&coreReady&&x.late===true&&
-    x.land>900&&(primary||peerHasSilo);
+  const firstSiloWindow=siloReady&&(primary||peerHasSilo);
   const incoming=Math.max(0,x.incomingNukes||0);
   const uncovered=Math.max(0,x.uncovered||0);
   const ownSAM=Math.max(0,x.ownSAM||0),silos=Math.max(0,x.silos||0);
