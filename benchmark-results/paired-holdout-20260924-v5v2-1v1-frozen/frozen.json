@@ -1,0 +1,169 @@
+{
+  "kind": "frozen-holdout-seeds",
+  "schema": 5,
+  "mode": "1v1",
+  "maps": [
+    "Europe",
+    "World"
+  ],
+  "opponents": [
+    "balanced",
+    "rush"
+  ],
+  "minPairsPerCell": 2,
+  "engineCommit": "13b403387af01d388f8c8ed8c953b6d3a11d1457",
+  "arms": {
+    "rule-basis": {
+      "policySHA256": "f64ab52d2065175e2f441a740c41b0c56a9e09c8c9c8a93258f73a206ae5a911"
+    },
+    "run3-schema4": {
+      "policySHA256": "e0fceaef90d542d3811dcd0b261fb3284577cf319912989a2f3eaa7647d39968"
+    },
+    "candidate": {
+      "policySHA256": "5041e9aaeb3759be84ac0772bd643e103c755b04dabaff90f6d264f930ae8371",
+      "model": "C:\\Users\\SPK\\Desktop\\openfront\\trainer\\campaign-20260924\\lr0.2-e200\\model.json"
+    }
+  },
+  "botSHA256": "beb1ada057629e2c83279b046cb315fdace87b1bd80915ba5b5262426d9107c9",
+  "protocol": {
+    "engineCommit": "13b403387af01d388f8c8ed8c953b6d3a11d1457",
+    "modes": [
+      "1v1"
+    ],
+    "maps": [
+      "Europe",
+      "World"
+    ],
+    "opponents": [
+      "balanced",
+      "rush"
+    ],
+    "scenarios": [
+      {
+        "scenarioId": "holdout-1v1-Europe-balanced-p1",
+        "matchSeed": "holdout-1v1-Europe-balanced-p1-1",
+        "mode": "1v1",
+        "map": "Europe",
+        "opponent": "balanced"
+      },
+      {
+        "scenarioId": "holdout-1v1-Europe-balanced-p2",
+        "matchSeed": "holdout-1v1-Europe-balanced-p2-2",
+        "mode": "1v1",
+        "map": "Europe",
+        "opponent": "balanced"
+      },
+      {
+        "scenarioId": "holdout-1v1-Europe-rush-p1",
+        "matchSeed": "holdout-1v1-Europe-rush-p1-3",
+        "mode": "1v1",
+        "map": "Europe",
+        "opponent": "rush"
+      },
+      {
+        "scenarioId": "holdout-1v1-Europe-rush-p2",
+        "matchSeed": "holdout-1v1-Europe-rush-p2-4",
+        "mode": "1v1",
+        "map": "Europe",
+        "opponent": "rush"
+      },
+      {
+        "scenarioId": "holdout-1v1-World-balanced-p1",
+        "matchSeed": "holdout-1v1-World-balanced-p1-5",
+        "mode": "1v1",
+        "map": "World",
+        "opponent": "balanced"
+      },
+      {
+        "scenarioId": "holdout-1v1-World-balanced-p2",
+        "matchSeed": "holdout-1v1-World-balanced-p2-6",
+        "mode": "1v1",
+        "map": "World",
+        "opponent": "balanced"
+      },
+      {
+        "scenarioId": "holdout-1v1-World-rush-p1",
+        "matchSeed": "holdout-1v1-World-rush-p1-7",
+        "mode": "1v1",
+        "map": "World",
+        "opponent": "rush"
+      },
+      {
+        "scenarioId": "holdout-1v1-World-rush-p2",
+        "matchSeed": "holdout-1v1-World-rush-p2-8",
+        "mode": "1v1",
+        "map": "World",
+        "opponent": "rush"
+      }
+    ],
+    "minPairsPerCell": 2,
+    "arms": {
+      "rule-basis": {
+        "botSHA256": "beb1ada057629e2c83279b046cb315fdace87b1bd80915ba5b5262426d9107c9",
+        "policySHA256": "f64ab52d2065175e2f441a740c41b0c56a9e09c8c9c8a93258f73a206ae5a911",
+        "expectedPolicySHA256": null,
+        "engineArgs": [
+          "--profile",
+          "autonomous"
+        ]
+      },
+      "run3-schema4": {
+        "botSHA256": "beb1ada057629e2c83279b046cb315fdace87b1bd80915ba5b5262426d9107c9",
+        "policySHA256": "e0fceaef90d542d3811dcd0b261fb3284577cf319912989a2f3eaa7647d39968",
+        "expectedPolicySHA256": "e0fceaef90d542d3811dcd0b261fb3284577cf319912989a2f3eaa7647d39968",
+        "engineArgs": [
+          "--profile",
+          "autonomous",
+          "--policy",
+          "C:\\Users\\SPK\\Desktop\\openfront\\docs\\training-analysis-20260921\\schema4-impossible-world-europe-20260920-run3\\champion.json"
+        ]
+      },
+      "candidate": {
+        "botSHA256": "0f4c76c02be04e7a3c087e7c4c7dc7051708426d3cf230c80d4c3e0fc8ae2af6",
+        "policySHA256": "5041e9aaeb3759be84ac0772bd643e103c755b04dabaff90f6d264f930ae8371",
+        "expectedPolicySHA256": "5041e9aaeb3759be84ac0772bd643e103c755b04dabaff90f6d264f930ae8371",
+        "engineArgs": [
+          "--profile",
+          "autonomous",
+          "--candidateControl",
+          "true",
+          "--candidateModel",
+          "C:\\Users\\SPK\\Desktop\\openfront\\trainer\\campaign-20260924\\lr0.2-e200\\model.json",
+          "--candidateGain",
+          "18"
+        ]
+      }
+    },
+    "roleRotation": "opponent profile + unique engine seed per scenario"
+  },
+  "seeds": [
+    "holdout-1v1-Europe-balanced-p1-1",
+    "holdout-1v1-Europe-balanced-p2-2",
+    "holdout-1v1-Europe-rush-p1-3",
+    "holdout-1v1-Europe-rush-p2-4",
+    "holdout-1v1-World-balanced-p1-5",
+    "holdout-1v1-World-balanced-p2-6",
+    "holdout-1v1-World-rush-p1-7",
+    "holdout-1v1-World-rush-p2-8"
+  ],
+  "seedListSHA256": "f948d92cb8cad3e166d6b4bb1e28deffdb19d9aa6549816f0f348995f95e489b",
+  "consumed": {
+    "priorHoldoutFiles": [
+      "benchmark-results\\holdout-ffa-duo-v2-run\\holdout.json",
+      "benchmark-results\\paired-holdout-dry\\holdout.json",
+      "benchmark-results\\paired-holdout-sample\\holdout.json",
+      "benchmark-results\\paired-holdout-smoke\\holdout.json",
+      "benchmark-results\\v5full-1v1\\holdout.json",
+      "benchmark-results\\v5full-2v2\\holdout.json",
+      "benchmark-results\\v5full-ffa\\holdout.json"
+    ],
+    "priorHoldoutSeedCount": 76,
+    "trainingFiles": [
+      "tools\\benchmark\\v5full-v2\\dataset.json"
+    ],
+    "trainingMatchCount": 28,
+    "collisions": 0
+  },
+  "note": "New ffa-duo holdout seed set. Every seed string is proven disjoint from all training-data generation matches and all prior holdout evaluations BEFORE any match was executed. Pre-registered: the execution must use exactly this protocol (mode/maps/opponents/runs).",
+  "frozen": "2026-09-24T01:36:10.985Z"
+}

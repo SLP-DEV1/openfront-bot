@@ -1,0 +1,83 @@
+{
+  "dataset": "C:\\Users\\SPK\\Desktop\\openfront\\tools\\benchmark\\v5full-v2\\dataset.json",
+  "dataHash": "n/a",
+  "generated": "2026-09-24T01:28:52.768Z",
+  "results": [
+    {
+      "name": "lr0.1-e300-baseline",
+      "arch": "32x20x2-tanh",
+      "modelSHA": "6ed491fa866ee14d027a401eb108e58f0aa59e3fea0a874513cbf41009574bc0",
+      "valMSE": 0.115689909,
+      "nullMSE": 0.23144517489346586,
+      "ruleMSE": 0.2188512998558612,
+      "meanMSE": 0.1457072032959988,
+      "valLossInitial": 0.347494786,
+      "valLossFinal": 0.115689909,
+      "maxAbsWeight": 0.6344295751954343,
+      "improved": true,
+      "trainSamples": 1035,
+      "valSamples": 352
+    },
+    {
+      "name": "lr0.05-e500",
+      "arch": "32x20x2-tanh",
+      "modelSHA": "ea31c73001e85ff52369f89c8b470b33813a8be6ebd2c16c62a5f05aa465bdc8",
+      "valMSE": 0.11725491,
+      "nullMSE": 0.23144517489346586,
+      "ruleMSE": 0.2188512998558612,
+      "meanMSE": 0.1457072032959988,
+      "valLossInitial": 0.375283471,
+      "valLossFinal": 0.11725491,
+      "maxAbsWeight": 0.6159033225891599,
+      "improved": true,
+      "trainSamples": 1035,
+      "valSamples": 352
+    },
+    {
+      "name": "lr0.2-e200",
+      "arch": "32x20x2-tanh",
+      "modelSHA": "5041e9aaeb3759be84ac0772bd643e103c755b04dabaff90f6d264f930ae8371",
+      "valMSE": 0.11307833,
+      "nullMSE": 0.23144517489346586,
+      "ruleMSE": 0.2188512998558612,
+      "meanMSE": 0.1457072032959988,
+      "valLossInitial": 0.292437233,
+      "valLossFinal": 0.11307833,
+      "maxAbsWeight": 0.6682337554380077,
+      "improved": true,
+      "trainSamples": 1035,
+      "valSamples": 352
+    },
+    {
+      "name": "lr0.01-e1000",
+      "arch": "32x20x2-tanh",
+      "modelSHA": "d15ddd4d6249c58ccb320e1a813a7dd33e20a2faca9ea1299afc2ddaf2ff1462",
+      "valMSE": 0.124652213,
+      "nullMSE": 0.23144517489346586,
+      "ruleMSE": 0.2188512998558612,
+      "meanMSE": 0.1457072032959988,
+      "valLossInitial": 0.396948422,
+      "valLossFinal": 0.124652213,
+      "maxAbsWeight": 0.5548764732295327,
+      "improved": true,
+      "trainSamples": 1035,
+      "valSamples": 352
+    },
+    {
+      "name": "arch32x40x2-lr0.1-e300",
+      "arch": "32x40x2-tanh",
+      "modelSHA": "ef28d5feb00113e93d72ccf3f5d7e1a184c744d249f2f922dbc806ef01d47c2d",
+      "valMSE": 0.107866728,
+      "nullMSE": 0.23144517489346586,
+      "ruleMSE": 0.2188512998558612,
+      "meanMSE": 0.1457072032959988,
+      "valLossInitial": 0.176838782,
+      "valLossFinal": 0.107866728,
+      "maxAbsWeight": 0.5310024408663399,
+      "improved": true,
+      "trainSamples": 1035,
+      "valSamples": 352,
+      "ms": 735
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "campaign": "openfront-neural-v5-v2-5h",
+  "wallStart": "2026-09-24T01:18:45Z",
+  "phases": {
+    "0_safety_baseline": { "status": "done", "note": "git reconciled to 850803f; v5-v2 integrated conflict-free; economy/SAM/silo/marine/duo unchanged" },
+    "1_fix_133": { "status": "done", "note": "budget-block telemetry test root-caused (engine tick vs wall) + fixed; 8 verification commands green" },
+    "2_data_quality": { "status": "done", "note": "v5full-v2 dataset: linked chosen-vs-executed, censored=unknown, multi-frame+duo kept, 19 constant features now active (32/32), exact parity" },
+    "2b_train_candidates": {
+      "status": "done",
+      "dataset": "tools/benchmark/v5full-v2/dataset.json",
+      "candidates": [
+        { "name": "lr0.1-e300-baseline", "arch": "32x20x2-tanh", "valMSE": 0.115689909, "model": "trainer/campaign-20260924/lr0.1-e300-baseline/model.json" },
+        { "name": "lr0.05-e500", "arch": "32x20x2-tanh", "valMSE": 0.11725491 },
+        { "name": "lr0.2-e200", "arch": "32x20x2-tanh", "valMSE": 0.11307833, "chosen": true },
+        { "name": "lr0.01-e1000", "arch": "32x20x2-tanh", "valMSE": 0.124652213 },
+        { "name": "arch32x40x2-lr0.1-e300", "arch": "32x40x2-tanh", "valMSE": 0.107866728, "note": "best offline; runtime-incompatible (validate() requires 32x20x2)" }
+      ],
+      "reference": "null 0.2310988 / rule-basis 0.2190794 (all candidates beat both)",
+      "chosenForEngine": "lr0.2-e200 (best 32x20x2 runtime-compatible)"
+    },
+    "2c_engine_holdouts": {
+      "status": "done",
+      "candidateModel": "trainer/campaign-20260924/lr0.2-e200/model.json",
+      "arms": ["candidate", "rule-basis", "run3-schema4"],
+      "engine": "C:\\Users\\SPK\\Desktop\\OpenFrontIO @ 13b403387af01d388f8c8ed8c953b6d3a11d1457",
+      "modes": {
+        "1v1": { "status": "done", "frozen": "benchmark-results/paired-holdout-20260924-v5v2-1v1-frozen/frozen.json", "out": "benchmark-results/paired-holdout-20260924-v5v2-1v1", "matches": 24, "clean": 24, "candVsRuleLandCI": "0.0 [0,0]", "candVsRun3LandCI": "+39320.75 [-39626,+118268]" },
+        "official-2v2": { "status": "done", "frozen": "benchmark-results/paired-holdout-20260924-v5v2-official-2v2-frozen/frozen.json", "out": "benchmark-results/paired-holdout-20260924-v5v2-official-2v2", "matches": 24, "clean": 24, "candVsRuleLandCI": "0.0 [0,0]", "candVsRun3LandCI": "+3265.75 [-20852,+27384]" },
+        "ffa-duo": { "status": "done", "frozen": "benchmark-results/paired-holdout-20260924-v5v2-ffa-duo-frozen/frozen.json", "out": "benchmark-results/paired-holdout-20260924-v5v2-ffa-duo", "matches": 24, "clean": 24, "candVsRuleLandCI": "0.0 [0,0]", "candVsRun3LandCI": "+37319.38 [-26617,+101256]" }
+      },
+      "note": "All 3 modes done (72 matches, 72/72 clean). Robust finding: candidate land == rule-basis land in every scenario (diff 0) in all 3 modes; candidate ahead of run3 on average in all 3 modes but never statistically distinguishable."
+    },
+    "3_promotion_gate": { "status": "done", "note": "gateEvaluate NOT-ELIGIBLE in all 3 modes (incomplete-recording-or-unverified: tick-limit censored rows). Recording dropped-frame issue resolved (72/72 clean). Run3 champion NOT auto-replaced." },
+    "5_report": { "status": "done", "note": "docs/campaign-openfront-neural-v5v2-20260924.md" }
+  },
+  "checkpoints": [
+    { "ts": "2026-09-24T01:18:45Z", "event": "campaign start (monotonic baseline)" },
+    { "ts": "2026-09-24T02:10:08Z", "event": "1v1 holdout complete (24 matches, 24 clean)" },
+    { "ts": "2026-09-24T02:24:44Z", "event": "ffa-duo holdout complete (24 matches, 24 clean)" },
+    { "ts": "2026-09-24T02:32:57Z", "event": "official-2v2 holdout complete (24 matches, 24 clean); all 3 modes done" },
+    { "ts": "2026-09-24T02:33:00Z", "event": "Gate evaluated (NOT-ELIGIBLE all modes); report written; campaign complete" }
+  ]
+}
