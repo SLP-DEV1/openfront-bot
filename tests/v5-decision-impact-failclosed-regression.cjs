@@ -1,0 +1,17 @@
+'use strict';
+const assert=require('node:assert/strict');
+const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+const {armRow,failClosedReason}=require('../tools/benchmark/v5-decision-impact.cjs');
+assert.equal(failClosedReason(false),null);
+assert.equal(failClosedReason(null),null);
+assert.equal(failClosedReason(''),null);
+assert.equal(failClosedReason(true),'legacy-boolean');
+assert.equal(failClosedReason(' feature mismatch '),'feature mismatch');
+const dir=fs.mkdtempSync(path.join(os.tmpdir(),'decision-impact-'));
+const file=path.join(dir,'match.json');
+fs.writeFileSync(file,JSON.stringify({planningFrames:[{failClosed:false},{failClosed:true},{failClosed:'feature mismatch'},{failClosed:''}],finalState:{land:100},run:{termination:'tick-limit'}}));
+const row=armRow(file);
+assert.equal(row.failClosedFrames,2);
+assert.equal(row.failClosedRate,0.5);
+assert.deepEqual(row.failClosedReasons,{'legacy-boolean':1,'feature mismatch':1});
+console.log('v5 decision-impact fail-closed regression: ok');
