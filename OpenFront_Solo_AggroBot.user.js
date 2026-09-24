@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.21.4
+// @version      1.21.5
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.21.4', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.21.5', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -129,12 +129,16 @@ function actionEvidenceKernel(ledger){
 // override a funded first silo. A missing/stale relay never blocks solo play.
 function duoNuclearInvestmentKernel(x){
   const coreReady=x.coreReady===true,peerValid=x.peerValid===true;
-  const peerReady=peerValid&&x.peerCoreReady===true;
-  const primary=!peerValid || (coreReady!==peerReady?coreReady:
-    String(x.ownId)<String(x.peerId));
+  const siloReady=x.siloAllowed===true&&coreReady&&x.late===true&&
+    x.land>900&&x.siloSiteBlocked!==true;
+  // Old peers have no canonical readiness. Do not interpret missing as false:
+  // that makes both browsers elect themselves. Wait for an observed peer silo.
+  const peerProtocol=peerValid&&x.peerNuclearProtocol===1;
+  const peerReady=peerProtocol&&x.peerSiloReady===true;
+  const primary=!peerValid || (peerProtocol&&
+    (siloReady!==peerReady?siloReady:String(x.ownId)<String(x.peerId)));
   const peerHasSilo=peerValid&&x.peerSilos>0;
-  const firstSiloWindow=x.siloAllowed===true&&coreReady&&x.late===true&&
-    x.land>900&&(primary||peerHasSilo);
+  const firstSiloWindow=siloReady&&(primary||peerHasSilo);
   const incoming=Math.max(0,x.incomingNukes||0);
   const uncovered=Math.max(0,x.uncovered||0);
   const ownSAM=Math.max(0,x.ownSAM||0),silos=Math.max(0,x.silos||0);
@@ -691,6 +695,8 @@ function predict(model,input){
   let failedEconomyProbes=0,successfulEconomyTick=-Infinity,warWaitSince=-Infinity;
   let coreQuotes=new Map(),lastCoreFundingReport=-Infinity,coreFunding=null;
   let lastEconomyProbeReport=null,neuralDecisionEvidence=null,economyBudgetEvidence=null,shadowDecisionEvidence=null;
+  // Yield silo lead only after an observed funded, illegal-site worker scan.
+  let duoSiloBlockedUntil=-Infinity;
   let investmentStatus='Grundaufbau',lastWarReview=-Infinity;
   let defenseStatus='Keine Bedrohung',lastEmergencyRetreat=-Infinity,lastDefenseLog=-Infinity;
   let targetIntelCache=new Map(),frontMemory=new Map(),lastFrontWarning=-Infinity;
@@ -1502,6 +1508,7 @@ function predict(model,input){
     failedEconomyProbes=0;successfulEconomyTick=-Infinity;warWaitSince=-Infinity;
     coreQuotes.clear();coreFunding=null;lastCoreFundingReport=-Infinity;
     lastEconomyProbeReport=null;neuralDecisionEvidence=null;economyBudgetEvidence=null;shadowDecisionEvidence=null;
+    duoSiloBlockedUntil=-Infinity;
     lastEconomicAction=-Infinity;lastNeutralSend=-Infinity;lastEnemySend=-Infinity;lastHostilePressure=-Infinity;consecutiveIdle=0;
     economicPending=null;economicBlocked.clear();economicNegative.clear();economicStatus='Bauplanung bereit';economicLastPlan='—';
     samQuotedCost=0;portQuotedCost=0;samQuotedTick=-Infinity;portQuotedTick=-Infinity;
@@ -1905,6 +1912,16 @@ function predict(model,input){
       operation?.target??duoPlan?.target??warState.id;
     const candidate=spawnCache?.tile??null,spawn=me?.state?.spawnTile;
     const tick=number(()=>game?.ticks?.(),0);
+    const ownUnits=me?.units?.()||[],cfg=game?.config?.();
+    const cities=ownUnits.filter(u=>u.isActive?.()&&u.type?.()==='City').length;
+    const factories=ownUnits.filter(u=>u.isActive?.()&&u.type?.()==='Factory').length;
+    const coreReady=(cfg?.isUnitDisabled?.('City')===true||cities>=2)&&
+      (cfg?.isUnitDisabled?.('Factory')===true||factories>=2);
+    const siloAllowed=opts.nukes&&cfg?.isUnitDisabled?.('Missile Silo')!==true&&
+      ['Atom Bomb','Hydrogen Bomb','MIRV'].some(t=>cfg?.isUnitDisabled?.(t)!==true);
+    const siloReady=!!(me?.hasSpawned?.()&&coreReady&&siloAllowed&&
+      lateGame(me)&&number(()=>me?.numTilesOwned?.(),0)>900&&
+      tick>=duoSiloBlockedUntil);
     const help=!!(state&&state.incoming>Math.max(1200,state.home*.1));
     const trend=armyTrend(tick);
     const earlyCrisis=!!(state&&(
@@ -1960,8 +1977,8 @@ function predict(model,input){
         state.available>=Math.max(1200,state.home*.09)),
       needHelp:!!(state&&state.incoming>Math.max(1200,state.home*.1)),
       earlyCrisis,land:number(()=>me?.numTilesOwned?.(),0),
-      cities:(me?.units?.()||[]).filter(u=>u.isActive?.()&&u.type?.()==='City').length,
-      factories:(me?.units?.()||[]).filter(u=>u.isActive?.()&&u.type?.()==='Factory').length,
+      // Sender-owned, config-aware readiness. Never reconstruct from peer counts.
+      nuclearProtocol:1,coreReady,siloReady,cities,factories,
       silos:(me?.units?.()||[]).filter(u=>u.isActive?.()&&u.type?.()==='Missile Silo').length,
       sams:(me?.units?.()||[]).filter(u=>u.isActive?.()&&u.type?.()==='SAM Launcher').length,
       gold:number(()=>me?.gold?.(),0),
@@ -5071,7 +5088,10 @@ function predict(model,input){
     const peerUnits=peer?(peer.player.units?.()||[]):[];
     const duoNuclear=duoNuclearInvestmentKernel({
       ownId:safeID(me),peerId:peer?.id,peerValid:!!peer,
-      peerCoreReady:!!(peer&&peer.state?.cities>=2&&peer.state?.factories>=2),
+      peerNuclearProtocol:peer?.state?.nuclearProtocol??null,
+      peerCoreReady:peer?.state?.coreReady===true,
+      peerSiloReady:peer?.state?.siloReady===true,
+      siloSiteBlocked:nowTick<duoSiloBlockedUntil,
       peerSilos:peerUnits.filter(u=>u.isActive?.()&&u.type?.()==='Missile Silo').length,
       coreReady:coreComplete,
       siloAllowed,late,land:mine,silos:siloCount,nukeShots,
@@ -5607,6 +5627,7 @@ function predict(model,input){
       lowestCost:Infinity,quoteByType:{},underfundedByType:{},workerNoOfferByType:{},
       budgetRejected:0,siteRejected:0,priorityRejected:0,
       lowestCore:Infinity,portQueries:0,portLegal:0,samQueries:0,
+      siloQueries:0,siloLegal:0,siloUnderfunded:0,
       samLegal:0,samUnaffordable:0,samUnsafe:0,samNoWorkerBuild:0,
       samSites:0};
     const work=[];
@@ -5681,6 +5702,7 @@ function predict(model,input){
         runtime.buildProbes++;probe.queries++;
         if(slot.entry.type==='Port')probe.portQueries++;
         if(slot.entry.type==='SAM Launcher')probe.samQueries++;
+        if(slot.entry.type==='Missile Silo'&&!slot.entry.upgrade)probe.siloQueries++;
         try{return {slot,legal:await me.actions(slot.site.ref,[slot.entry.type])};}
         catch(_){probe.errors++;return {slot,legal:null};}
       }));
@@ -5720,6 +5742,7 @@ function predict(model,input){
           }
         }
         if(priceBlocked){
+          if(entry.type==='Missile Silo'&&!entry.upgrade)probe.siloUnderfunded++;
           probe.underfundedByType[entry.type]=
             (probe.underfundedByType[entry.type]||0)+1;
           probe.unaffordable++;
@@ -5753,6 +5776,7 @@ function predict(model,input){
           if(!Number.isInteger(tile) || !ownedTile(tile,me)){
             probe.invalidSite++;probe.siteRejected++;continue;
           }
+          if(item.type==='Missile Silo'&&!isUpgrade)probe.siloLegal++;
           const key=(isUpgrade?'upgrade':'build')+':'+item.type+':'+tile;
           if((economicBlocked.get(key)??0)>tick)continue;
           const cost=Number(isUpgrade?(b.upgradeCosts?.[0]??b.cost):b.cost);
@@ -5822,6 +5846,17 @@ function predict(model,input){
         }
       }
       if(proposals.length)break;
+    }
+    // Only an actually attempted funded scan without a legal site yields
+    // first-silo lead. Low gold and worker errors never prove unbuildability.
+    if(requirements.duoNuclear.firstSiloWindow&&requirements.siloCount===0&&
+      probe.siloQueries>=2&&probe.siloLegal===0&&
+      probe.siloUnderfunded===0&&probe.errors===0&&
+      (game.config().infiniteGold?.()||requirements.gold>=1150000)){
+      duoSiloBlockedUntil=Math.max(duoSiloBlockedUntil,tick+180);
+      telemetry('duo_silo_site_blocked','Erster Silo: kein legaler Worker-Standort',{
+        probes:probe.siloQueries,untilTick:duoSiloBlockedUntil,
+        evidence:'attempted-no-legal-site-not-underfunded'});
     }
     if(!proposals.length){
       // Waiting for a documented price is not a worker/site failure.
