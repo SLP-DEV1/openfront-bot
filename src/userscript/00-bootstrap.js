@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.21.4
+// @version      1.21.5
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.21.4', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.21.5', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -591,6 +591,8 @@ function predict(model,input){
   let failedEconomyProbes=0,successfulEconomyTick=-Infinity,warWaitSince=-Infinity;
   let coreQuotes=new Map(),lastCoreFundingReport=-Infinity,coreFunding=null;
   let lastEconomyProbeReport=null,neuralDecisionEvidence=null,economyBudgetEvidence=null,shadowDecisionEvidence=null;
+  // Yield silo lead only after an observed funded, illegal-site worker scan.
+  let duoSiloBlockedUntil=-Infinity;
   let investmentStatus='Grundaufbau',lastWarReview=-Infinity;
   let defenseStatus='Keine Bedrohung',lastEmergencyRetreat=-Infinity,lastDefenseLog=-Infinity;
   let targetIntelCache=new Map(),frontMemory=new Map(),lastFrontWarning=-Infinity;
@@ -1392,6 +1394,7 @@ function predict(model,input){
     failedEconomyProbes=0;successfulEconomyTick=-Infinity;warWaitSince=-Infinity;
     coreQuotes.clear();coreFunding=null;lastCoreFundingReport=-Infinity;
     lastEconomyProbeReport=null;neuralDecisionEvidence=null;economyBudgetEvidence=null;shadowDecisionEvidence=null;
+    duoSiloBlockedUntil=-Infinity;
     lastEconomicAction=-Infinity;lastNeutralSend=-Infinity;lastEnemySend=-Infinity;lastHostilePressure=-Infinity;consecutiveIdle=0;
     economicPending=null;economicBlocked.clear();economicNegative.clear();economicStatus='Bauplanung bereit';economicLastPlan='—';
     samQuotedCost=0;portQuotedCost=0;samQuotedTick=-Infinity;portQuotedTick=-Infinity;
