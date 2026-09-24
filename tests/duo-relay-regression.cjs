@@ -54,6 +54,10 @@ const mk=(ownID,partnerID,instance,match='v1|Public|World|Large|FFA|123|_')=>({
   assert.equal(relay.validate({...A,state:{...A.state,allies:['one']}}),false);
   assert.equal(relay.validate({...A,state:{...A.state,allies:['../bad']}}),false);
   assert.equal(relay.validate({...A,state:{...A.state,allies:Array(17).fill('id')}}),false);
+  assert.equal(relay.validate({...A,state:{...A.state,nuclearProtocol:1,coreReady:true,siloReady:true}}),true);
+  assert.equal(relay.validate({...A,state:{...A.state,nuclearProtocol:1,coreReady:false,siloReady:true}}),false);
+  assert.equal(relay.validate({...A,state:{...A.state,nuclearProtocol:1,coreReady:true,siloReady:'true'}}),false);
+  assert.equal(relay.validate({...A,state:{...A.state,nuclearProtocol:1,coreReady:true}}),false);
   // Auto discovery must not depend on stable per-match PlayerIDs.
   relay.rooms.clear();
   const autoA={...A,auto:true,partnerID:null};

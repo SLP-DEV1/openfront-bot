@@ -130,6 +130,7 @@
       lowestCost:Infinity,quoteByType:{},underfundedByType:{},workerNoOfferByType:{},
       budgetRejected:0,siteRejected:0,priorityRejected:0,
       lowestCore:Infinity,portQueries:0,portLegal:0,samQueries:0,
+      siloQueries:0,siloLegal:0,siloUnderfunded:0,
       samLegal:0,samUnaffordable:0,samUnsafe:0,samNoWorkerBuild:0,
       samSites:0};
     const work=[];
@@ -204,6 +205,7 @@
         runtime.buildProbes++;probe.queries++;
         if(slot.entry.type==='Port')probe.portQueries++;
         if(slot.entry.type==='SAM Launcher')probe.samQueries++;
+        if(slot.entry.type==='Missile Silo'&&!slot.entry.upgrade)probe.siloQueries++;
         try{return {slot,legal:await me.actions(slot.site.ref,[slot.entry.type])};}
         catch(_){probe.errors++;return {slot,legal:null};}
       }));
@@ -243,6 +245,7 @@
           }
         }
         if(priceBlocked){
+          if(entry.type==='Missile Silo'&&!entry.upgrade)probe.siloUnderfunded++;
           probe.underfundedByType[entry.type]=
             (probe.underfundedByType[entry.type]||0)+1;
           probe.unaffordable++;
@@ -276,6 +279,7 @@
           if(!Number.isInteger(tile) || !ownedTile(tile,me)){
             probe.invalidSite++;probe.siteRejected++;continue;
           }
+          if(item.type==='Missile Silo'&&!isUpgrade)probe.siloLegal++;
           const key=(isUpgrade?'upgrade':'build')+':'+item.type+':'+tile;
           if((economicBlocked.get(key)??0)>tick)continue;
           const cost=Number(isUpgrade?(b.upgradeCosts?.[0]??b.cost):b.cost);
@@ -345,6 +349,17 @@
         }
       }
       if(proposals.length)break;
+    }
+    // Only an actually attempted funded scan without a legal site yields
+    // first-silo lead. Low gold and worker errors never prove unbuildability.
+    if(requirements.duoNuclear.firstSiloWindow&&requirements.siloCount===0&&
+      probe.siloQueries>=2&&probe.siloLegal===0&&
+      probe.siloUnderfunded===0&&probe.errors===0&&
+      (game.config().infiniteGold?.()||requirements.gold>=1150000)){
+      duoSiloBlockedUntil=Math.max(duoSiloBlockedUntil,tick+180);
+      telemetry('duo_silo_site_blocked','Erster Silo: kein legaler Worker-Standort',{
+        probes:probe.siloQueries,untilTick:duoSiloBlockedUntil,
+        evidence:'attempted-no-legal-site-not-underfunded'});
     }
     if(!proposals.length){
       // Waiting for a documented price is not a worker/site failure.
