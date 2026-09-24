@@ -106,7 +106,11 @@ jobs:
           node tests/v5-labels-regression.cjs
           node --check trainer/train-v5.cjs
           node tests/train-v5-regression.cjs
+          node --check tests/v5-runtime-parity-regression.cjs
+          node tests/v5-runtime-parity-regression.cjs
           node tests/v5-shadow-regression.cjs
+          node --check trainer/v5-control-evidence.cjs
+          node tests/v5-control-departure-regression.cjs
       - name: Test P4 curriculum league and collapse watcher
         run: |
           node --check trainer/collapse-watch.cjs
@@ -118,6 +122,10 @@ jobs:
           node --check tools/benchmark/paired-holdout.cjs
           node tests/paired-holdout-regression.cjs
           node tools/benchmark/paired-holdout.cjs --bot OpenFront_AggroBot_Impossible_Run3.user.js --run3Policy docs/training-analysis-20260921/schema4-impossible-world-europe-20260920-run3/champion.json --candidateModel trainer/candidate-v5-holdout.json --engineCommit 13b403387af01d388f8c8ed8c953b6d3a11d1457 --out .ci/p5-holdout --mode 1v1 --maps World,Europe --opponents balanced,rush --runs 2
+      - name: Test P5 new-holdout seed freeze (disjoint from training + prior holdouts)
+        run: |
+          node --check tools/benchmark/freeze-holdout-seeds.cjs
+          node tests/holdout-freeze-regression.cjs
       - name: Check Scenario Pack and read-only Evidence Mode
         run: |
           node --check tools/benchmark/scenario-pack.cjs
