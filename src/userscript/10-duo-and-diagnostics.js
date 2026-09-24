@@ -180,6 +180,16 @@
       operation?.target??duoPlan?.target??warState.id;
     const candidate=spawnCache?.tile??null,spawn=me?.state?.spawnTile;
     const tick=number(()=>game?.ticks?.(),0);
+    const ownUnits=me?.units?.()||[],cfg=game?.config?.();
+    const cities=ownUnits.filter(u=>u.isActive?.()&&u.type?.()==='City').length;
+    const factories=ownUnits.filter(u=>u.isActive?.()&&u.type?.()==='Factory').length;
+    const coreReady=(cfg?.isUnitDisabled?.('City')===true||cities>=2)&&
+      (cfg?.isUnitDisabled?.('Factory')===true||factories>=2);
+    const siloAllowed=opts.nukes&&cfg?.isUnitDisabled?.('Missile Silo')!==true&&
+      ['Atom Bomb','Hydrogen Bomb','MIRV'].some(t=>cfg?.isUnitDisabled?.(t)!==true);
+    const siloReady=!!(me?.hasSpawned?.()&&coreReady&&siloAllowed&&
+      lateGame(me)&&number(()=>me?.numTilesOwned?.(),0)>900&&
+      tick>=duoSiloBlockedUntil);
     const help=!!(state&&state.incoming>Math.max(1200,state.home*.1));
     const trend=armyTrend(tick);
     const earlyCrisis=!!(state&&(
@@ -235,8 +245,8 @@
         state.available>=Math.max(1200,state.home*.09)),
       needHelp:!!(state&&state.incoming>Math.max(1200,state.home*.1)),
       earlyCrisis,land:number(()=>me?.numTilesOwned?.(),0),
-      cities:(me?.units?.()||[]).filter(u=>u.isActive?.()&&u.type?.()==='City').length,
-      factories:(me?.units?.()||[]).filter(u=>u.isActive?.()&&u.type?.()==='Factory').length,
+      // Sender-owned, config-aware readiness. Never reconstruct from peer counts.
+      nuclearProtocol:1,coreReady,siloReady,cities,factories,
       silos:(me?.units?.()||[]).filter(u=>u.isActive?.()&&u.type?.()==='Missile Silo').length,
       sams:(me?.units?.()||[]).filter(u=>u.isActive?.()&&u.type?.()==='SAM Launcher').length,
       gold:number(()=>me?.gold?.(),0),
