@@ -1,0 +1,271 @@
+{
+  "kind": "o7hold-final-holdout",
+  "generated": "2026-09-24T05:04:49.606Z",
+  "engineCommit": "bb8af015b515b3b717bd4d901074c5f4c16641cb",
+  "botSHA256": "3c149957793c88ada12c8513fe17a579f5250d1bb8144172af6e303213cf9d9e",
+  "arms": {
+    "candidate": {
+      "policySHA256": "4c5848c9b93a3923345c7525f28731e1de6f5595656a85ba530fd0c286bb8f52"
+    },
+    "stageC": {
+      "policySHA256": "84d1f593039166f9e953272524ac1018b4034adcf4304cb4e6c49757d752d2e1"
+    },
+    "run3": {
+      "policySHA256": "e0fceaef90d542d3811dcd0b261fb3284577cf319912989a2f3eaa7647d39968"
+    },
+    "rule-basis": {
+      "policySHA256": null
+    }
+  },
+  "difficulty": "Impossible",
+  "maps": [
+    "World",
+    "Europe"
+  ],
+  "seeds": [
+    "o7hold-0",
+    "o7hold-1",
+    "o7hold-2",
+    "o7hold-3",
+    "o7hold-4",
+    "o7hold-5",
+    "o7hold-6",
+    "o7hold-7"
+  ],
+  "opponentProfile": "mixed",
+  "manifestHash": "a90b1a2764743aa3f0e9dd5e6371ea66fa1c646086f4ce93a319ede8662e2e4e",
+  "results": {
+    "1v1": {
+      "stageC": {
+        "paired": 16,
+        "refWins": 0,
+        "candWins": 0,
+        "refMeanLand": 10801,
+        "candMeanLand": 13401,
+        "gate": {
+          "valid": true,
+          "promoted": false,
+          "reason": "no-verified-improvement",
+          "incumbentWins": 0,
+          "candidateWins": 0,
+          "improved": 4,
+          "regressed": 11,
+          "tied": 1,
+          "net": -7,
+          "N": 16,
+          "survivalTicks": -14107,
+          "survivalArea": 86800,
+          "maxCollapse": 4,
+          "mixed": true,
+          "decisionRoundNeeded": true
+        }
+      },
+      "run3": {
+        "paired": 16,
+        "refWins": 0,
+        "candWins": 0,
+        "refMeanLand": 30274,
+        "candMeanLand": 13401,
+        "gate": {
+          "valid": true,
+          "promoted": false,
+          "reason": "no-verified-improvement",
+          "incumbentWins": 0,
+          "candidateWins": 0,
+          "improved": 5,
+          "regressed": 9,
+          "tied": 2,
+          "net": -4,
+          "N": 16,
+          "survivalTicks": -10263,
+          "survivalArea": 67782,
+          "maxCollapse": 4,
+          "mixed": true,
+          "decisionRoundNeeded": true
+        }
+      },
+      "rule-basis": {
+        "paired": 16,
+        "refWins": 0,
+        "candWins": 0,
+        "refMeanLand": 28859,
+        "candMeanLand": 13401,
+        "gate": {
+          "valid": true,
+          "promoted": false,
+          "reason": "no-verified-improvement",
+          "incumbentWins": 0,
+          "candidateWins": 0,
+          "improved": 9,
+          "regressed": 7,
+          "tied": 0,
+          "net": 2,
+          "N": 16,
+          "survivalTicks": 9123,
+          "survivalArea": 166935,
+          "maxCollapse": 4,
+          "mixed": true,
+          "decisionRoundNeeded": true
+        }
+      }
+    },
+    "official-2v2": {
+      "stageC": {
+        "paired": 16,
+        "refWins": 6,
+        "candWins": 6,
+        "refMeanLand": 81125,
+        "candMeanLand": 78491,
+        "gate": {
+          "valid": true,
+          "promoted": false,
+          "reason": "no-verified-improvement",
+          "incumbentWins": 6,
+          "candidateWins": 6,
+          "improved": 6,
+          "regressed": 4,
+          "tied": 6,
+          "net": 2,
+          "N": 16,
+          "survivalTicks": -2438,
+          "survivalArea": 46742,
+          "maxCollapse": 4,
+          "mixed": true,
+          "decisionRoundNeeded": true
+        }
+      },
+      "run3": {
+        "paired": 16,
+        "refWins": 7,
+        "candWins": 6,
+        "refMeanLand": 90480,
+        "candMeanLand": 78491,
+        "gate": {
+          "valid": true,
+          "promoted": false,
+          "reason": "no-verified-improvement",
+          "incumbentWins": 7,
+          "candidateWins": 6,
+          "improved": 5,
+          "regressed": 4,
+          "tied": 7,
+          "net": 1,
+          "N": 16,
+          "survivalTicks": 4424,
+          "survivalArea": 48239,
+          "maxCollapse": 4,
+          "mixed": true,
+          "decisionRoundNeeded": true
+        }
+      },
+      "rule-basis": {
+        "paired": 16,
+        "refWins": 7,
+        "candWins": 6,
+        "refMeanLand": 73079,
+        "candMeanLand": 78491,
+        "gate": {
+          "valid": true,
+          "promoted": false,
+          "reason": "no-verified-improvement",
+          "incumbentWins": 7,
+          "candidateWins": 6,
+          "improved": 6,
+          "regressed": 4,
+          "tied": 6,
+          "net": 2,
+          "N": 16,
+          "survivalTicks": -4054,
+          "survivalArea": 114911,
+          "maxCollapse": 4,
+          "mixed": true,
+          "decisionRoundNeeded": true
+        }
+      }
+    },
+    "ffa-duo": {
+      "stageC": {
+        "paired": 16,
+        "refWins": 0,
+        "candWins": 0,
+        "refMeanLand": 4625,
+        "candMeanLand": 1445,
+        "gate": {
+          "valid": true,
+          "promoted": false,
+          "reason": "no-verified-improvement",
+          "incumbentWins": 0,
+          "candidateWins": 0,
+          "improved": 8,
+          "regressed": 6,
+          "tied": 2,
+          "net": 2,
+          "N": 16,
+          "survivalTicks": 4687,
+          "survivalArea": 15218,
+          "maxCollapse": 4,
+          "mixed": true,
+          "decisionRoundNeeded": true
+        }
+      },
+      "run3": {
+        "paired": 16,
+        "refWins": 0,
+        "candWins": 0,
+        "refMeanLand": 3141,
+        "candMeanLand": 1445,
+        "gate": {
+          "valid": true,
+          "promoted": false,
+          "reason": "no-verified-improvement",
+          "incumbentWins": 0,
+          "candidateWins": 0,
+          "improved": 5,
+          "regressed": 10,
+          "tied": 1,
+          "net": -5,
+          "N": 16,
+          "survivalTicks": -11201,
+          "survivalArea": 0,
+          "maxCollapse": 4,
+          "mixed": true,
+          "decisionRoundNeeded": true
+        }
+      },
+      "rule-basis": {
+        "paired": 16,
+        "refWins": 0,
+        "candWins": 0,
+        "refMeanLand": 1298,
+        "candMeanLand": 1445,
+        "gate": {
+          "valid": true,
+          "promoted": false,
+          "reason": "no-verified-improvement",
+          "incumbentWins": 0,
+          "candidateWins": 0,
+          "improved": 7,
+          "regressed": 7,
+          "tied": 2,
+          "net": 0,
+          "N": 16,
+          "survivalTicks": -1402,
+          "survivalArea": 6041,
+          "maxCollapse": 4,
+          "mixed": true,
+          "decisionRoundNeeded": true
+        }
+      }
+    }
+  },
+  "promotion": {
+    "promote": false,
+    "requiredModes": 2,
+    "beatModes": {
+      "stageC": [],
+      "run3": [],
+      "rule-basis": []
+    },
+    "criterion": "candidate beats stageC AND run3 AND rule-basis via evaluation-v2 gate on >=2/3 modes"
+  }
+}
