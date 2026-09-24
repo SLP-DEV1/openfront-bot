@@ -694,7 +694,10 @@
     const peerUnits=peer?(peer.player.units?.()||[]):[];
     const duoNuclear=duoNuclearInvestmentKernel({
       ownId:safeID(me),peerId:peer?.id,peerValid:!!peer,
-      peerCoreReady:!!(peer&&peer.state?.cities>=2&&peer.state?.factories>=2),
+      peerNuclearProtocol:peer?.state?.nuclearProtocol??null,
+      peerCoreReady:peer?.state?.coreReady===true,
+      peerSiloReady:peer?.state?.siloReady===true,
+      siloSiteBlocked:nowTick<duoSiloBlockedUntil,
       peerSilos:peerUnits.filter(u=>u.isActive?.()&&u.type?.()==='Missile Silo').length,
       coreReady:coreComplete,
       siloAllowed,late,land:mine,silos:siloCount,nukeShots,
