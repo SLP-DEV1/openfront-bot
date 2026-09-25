@@ -1,112 +1,102 @@
-# MISSION: OpenFront Neural Schema 6 – neuer Modellvertrag statt weiterer Schema-5-No-Op-Runden
+# OVERNIGHT MISSION: OpenFront Neural Schema 7 — 10 Stunden bis zum echten Action-Level-Champion
 
 Du arbeitest im Repository:
 
 `SLP-DEV1/openfront-bot`
 
-Aktueller Referenzstand:
+Aktueller Ausgangspunkt:
 
-* `origin/main`: mindestens Commit `173630c`
-* Aktiver Champion: Run3 Schema 4
-* Aktueller Schema-5-Baseline-Kandidat:
-  `16b686d291addf4e9c14c7c03e80308b6cb7474fd90dbd5efb60065c9a2b4f93`
+* `origin/main` enthält mindestens Commit `0b6b8ec`
+* Aktiver Champion: **Run3 Schema 4**
+* Schema 5: kein Champion
+* Schema 6: sauber implementiert und trainiert, aber **Category C / NEGATIVE RESULT**
 * Letzte Kampagne:
-  `trainer/campaign-v5finetune-20260925/`
-* §13: **NICHT bestanden**
-* Variante D: exakt gleich zur Schema-5-Baseline
-* Variante F: marginale Offline-Verbesserung, kein Live-Durchbruch
-* Run3 bleibt ACTIVE
+  `trainer/campaign-schema6-20260925/`
+* Schema-6-Lead:
+  `E_38x40x2tanh`
+* Schema-6-Divergent-Control:
+  `A_38x40x2tanh`
 
-Dies ist **kein weiterer Schema-5-Finetuning-Auftrag**.
+Der entscheidende Befund der letzten Kampagne ist verbindlich:
 
-Die bisherigen Ergebnisse zeigen strukturelle Grenzen des bestehenden Schema-5-Vertrags. Entwickle deshalb eine **neue, sauber versionierte neuronale Modellgeneration mit neuem Feature-Vertrag**.
+> Schema 6 kann intern stark von der Rule-Basis abweichen, verändert aber keinen einzigen tatsächlich ausgeführten Engine-Turn.
 
-Nenne sie vorläufig:
+Beispiel:
 
-`Schema 6`
+```text
+A_38x40x2tanh:
+148 / 165 Planning-Frames Modell != Regel
+133 / 165 changedIntent
+0 / 2000 unterschiedliche ausgeführte Turns
+```
 
-sofern die Repository-Konventionen keinen besseren Namen verlangen.
+**Das ist kein weiteres Tuningproblem.**
+
+Das neuronale Modell sitzt aktuell am falschen Punkt der Entscheidungsarchitektur.
+
+Diese Kampagne baut deshalb einen **neuen Schema-7 Action-Branch Controller**.
 
 ---
 
-# 1. Ziel
+# 1. Mission
 
-Wir wollen einen Neural-Controller, der:
+Entwickle einen neuronalen Controller, der direkt diejenige Entscheidungsebene beeinflusst, die tatsächlich einen Intent an die Engine ausgeben kann.
 
-1. alle relevanten Kandidatenarten eindeutig unterscheiden kann;
-2. bessere Aktionspräferenzen lernt;
-3. tatsächlich andere ausgeführte Engine-Turns erzeugt;
-4. diese Änderungen im Durchschnitt positive Gameplay-Wirkung haben;
-5. am Ende Rule-Basis und Run3 in einer sauberen Evaluation schlagen kann.
-
-**Ein neuer SHA, niedrigere Loss oder mehr `changedIntent` sind kein Erfolg.**
-
-Der Erfolgspfad lautet:
+Alt:
 
 ```text
-besserer Feature-Vertrag
+State
 ↓
-besseres Candidate Ranking
+Schema 6 rankt abstrakte Kandidaten
 ↓
-tatsächlich andere ausführbare Aktionen
+Director filtert / blockiert / berechnet neu
 ↓
-veränderte Turn-Streams
-↓
-bessere Match-Ergebnisse
-↓
-bestandener Promotion-Gate
+ausgeführter Intent
 ```
+
+Neu:
+
+```text
+State
+↓
+Director erzeugt aktuell ausführbare Branch-/Action-Kandidaten
+↓
+Hard Legality + Safety
+↓
+Schema 7 bewertet diese ACTIONABLE Branches
+↓
+eine Branch wird ausgewählt
+↓
+genau diese Branch erzeugt den Intent
+↓
+Engine
+```
+
+**Schema 7 muss auf der Action-/Emit-Ebene sitzen.**
 
 ---
 
-# 2. Ausgangsdiagnose verbindlich übernehmen
+# 2. Keine weitere Schema-6-Runde
 
-Die letzte Kampagne hat vier strukturelle Blocker belegt.
-
-## Blocker A – Feature-Lücke
-
-Im aktuellen Schema-5-Vertrag besitzen nur bestimmte Aktionsarten eigene Kind-Kodierungen.
-
-Insbesondere fehlen explizite Kind-One-Hots für:
+Nicht erneut versuchen:
 
 ```text
-hold
-expand
+mehr Gain
+größeres Schema-6-Netz
+noch mehr Candidate-Reordering
+noch mehr changedIntent
+andere globale kindBias-Werte
 ```
 
-Dadurch können mehrere Kandidatentypen im Feature-Vektor strukturell nicht sauber genug unterschieden werden.
+Die letzte Kampagne hat nachgewiesen, dass diese Ebene behavioraler No-op ist.
 
-## Blocker B – schiefer Datensatz
-
-Der letzte Datensatz ist stark dominiert durch:
-
-```text
-invest
-hold
-naval
-```
-
-`attack` und insbesondere `expand` sind deutlich unterrepräsentiert.
-
-## Blocker C – behavioraler No-Op
-
-Die Modelle erzeugen interne Ranking-Unterschiede, diese ändern aber praktisch keine tatsächlich ausgeführten Engine-Turns.
-
-Der §13-Vergleich zeigte byte-identische Turn-Streams.
-
-## Blocker D – Holdout zu wenig entscheidend
-
-7/8 1v1-Szenarien waren tick-limit-zensiert.
-
-Ein Champion-Gate benötigt deutlich mehr bestätigte Ergebnisse.
-
-**Behebe diese vier Punkte in genau dieser Reihenfolge.**
+Schema 6 bleibt als reproduzierbare historische Referenz erhalten.
 
 ---
 
 # 3. Git-Sicherheit
 
-Vor jeder Änderung:
+Vor Änderungen:
 
 ```powershell
 git status --short
@@ -116,11 +106,9 @@ git log -10 --oneline
 git log -5 --oneline origin/main
 ```
 
-Arbeite auf dem aktuellen kompatiblen Stand.
+Neueste kompatible Änderungen integrieren.
 
-Keine lokalen Arbeiten löschen.
-
-Kein:
+Nicht verwenden:
 
 ```text
 git reset --hard
@@ -128,490 +116,700 @@ git clean -fd
 force push
 ```
 
-Der bestehende Run3-Champion und die bisherigen Schema-5-Artefakte bleiben unverändert erhalten.
+Bestehende Trainingsartefakte, Scratch-Daten anderer Arbeiten und Champion-Dateien nicht löschen.
 
 ---
 
-# 4. Neuen Feature-Vertrag entwerfen
+# 4. Run3 bleibt unverändert
 
-Analysiere zuerst:
+Der aktive Run3-Schema-4-Champion bleibt während der gesamten Kampagne unverändert.
 
-```text
-trainer/v5-features.cjs
-trainer/candidate-policy-v5.cjs
-src/runtime/decision-kernels.cjs
-src/userscript/20-military-and-planning.js
-tools/benchmark/v5-dataset.cjs
-tools/benchmark/v5-decision-capture.cjs
-trainer/train-v5fn-variants.cjs
-```
+Kein automatischer Modelltausch.
 
-Erstelle einen neuen Feature-Vertrag.
-
-Mindestens alle Kandidatenarten müssen explizit kodierbar sein:
+Selbst bei bestandenem Gate am Ende nur:
 
 ```text
-hold
-invest
-attack
-expand
-naval
+PROMOTION-ELIGIBLE
 ```
 
-Vermeide ein implizites:
+melden.
 
-```text
-all-zero = irgendeine andere Aktionsart
-```
-
-für semantisch unterschiedliche Kandidaten.
-
-## Mindestanforderung
-
-Der neue Vertrag enthält explizite Action-Kind-Features für alle fünf Kandidatentypen.
-
-Beispielsweise:
-
-```text
-isHold
-isInvest
-isAttack
-isExpand
-isNaval
-```
-
-Prüfe zusätzlich, ob weitere kandidatenspezifische Informationen fehlen.
-
-Mögliche sinnvolle Features:
-
-```text
-candidateRuleUtility
-utilityGapToRuleTop1
-utilityGapToRuleTop2
-
-candidateTroopCommitment
-candidateReserveAfterAction
-
-targetWeakness
-targetStrengthRatio
-targetBorderPressure
-
-candidateExpectedIncomeImpact
-candidateExpectedDefenseImpact
-
-hasLandTarget
-hasNavalTarget
-
-currentExpansionPressure
-safeExpansionAvailable
-
-frontCount
-activeWars
-enemyPressure
-
-gamePhase
-```
-
-Aber:
-
-**Nicht blind Features hinzufügen.**
-
-Für jedes neue Feature dokumentieren:
-
-* Semantik
-* Wertebereich
-* Normalisierung
-* Quelle
-* Runtime-Verfügbarkeit
-* Train-/Runtime-Parität
+Nicht automatisch deployen.
 
 ---
 
-# 5. Schema-Version sauber erhöhen
+# 5. Zuerst den echten Action-Pipeline-Pfad kartieren
 
-Schema 5 darf nicht stillschweigend verändert werden.
+Bevor Schema 7 geschrieben wird, analysiere den vollständigen Weg bis zum tatsächlichen Intent.
 
-Implementiere einen neuen Vertrag, zum Beispiel:
-
-```text
-schema: 6
-```
-
-mit neuer Architekturkennung.
-
-Beispiel:
+Mindestens prüfen:
 
 ```text
-37x24x2-tanh
+src/userscript/
+src/runtime/
+20-military-and-planning.js
+decision-kernels.cjs
+channel director
+military planners
+economy/build planner
+naval planner
+alliance/team logic
+nuclear logic
+engine-match.mjs
 ```
 
-oder eine andere sinnvolle Größe.
+Erstelle eine reproduzierbare Pipeline-Grafik bzw. Dokumentation:
 
-Die konkrete Dimension ergibt sich aus dem tatsächlichen Feature-Vertrag.
+```text
+visible state
+↓
+planner
+↓
+branch generation
+↓
+hard legality
+↓
+cooldown
+↓
+budget
+↓
+reserve
+↓
+safety
+↓
+branch selection
+↓
+intent construction
+↓
+turn dispatch
+↓
+engine receipt
+```
 
-Implementiere:
+Bestimme exakt:
 
-* Feature-Builder;
-* Modell-Validator;
-* Runtime-Inferenz;
-* Hashing;
-* Serialization;
-* Bundling;
-* Tests;
-* Fail-closed bei unbekanntem Schema.
+**An welcher letzten Stelle existieren noch mehrere legale Optionen, von denen eine tatsächlich unmittelbar einen unterschiedlichen Engine-Intent erzeugen würde?**
 
-Schema 5 muss weiterhin reproduzierbar ladbar bleiben.
+Genau dort muss Schema 7 eingreifen.
 
 ---
 
-# 6. Runtime-Parität ist Pflicht
+# 6. Actionable Branch Contract
 
-Erstelle Tests, die garantieren:
-
-```text
-trainingFeatures === runtimeFeatures
-```
-
-für denselben sichtbaren Zustand und denselben Kandidaten.
-
-Teste explizit alle fünf Kinds:
-
-```text
-hold
-invest
-attack
-expand
-naval
-```
-
-Kein Kandidat darf versehentlich denselben Kind-Vektor wie ein semantisch anderer Kandidat bekommen.
-
----
-
-# 7. Neue Trainingsdaten sammeln
-
-Verwende nicht nur die bisherigen selbst-destillierten Schema-5-Daten.
-
-Baue einen neuen Curriculum-Datensatz mit gezieltem Oversampling unterrepräsentierter Entscheidungstypen.
-
-Zielverteilung soll nicht künstlich exakt gleich sein, aber `attack` und `expand` dürfen nicht wieder statistisch verschwinden.
-
-Sammle insbesondere echte Engine-Situationen für:
-
-## Expand
-
-```text
-sichere Expansion möglich
-Expansion unter Druck
-Expansion vs Hold
-Expansion vs Invest
-Expansion vs Attack
-Expansion im Early Game
-Expansion im Mid Game
-Expansion im Late Game
-```
-
-## Attack
-
-```text
-klar guter Angriff
-klar schlechter Angriff
-Grenzfall
-schwacher Gegner
-starker Gegner
-Mehrfrontenkrieg
-zu hohe Truppenbindung
-günstiger Finisher
-```
-
-## Hold
-
-```text
-Hold wirklich sinnvoll
-Hold trotz guter Expansion schlecht
-Hold wegen Reserve sinnvoll
-Hold wegen unmittelbarer Gefahr sinnvoll
-```
-
-## Invest
-
-```text
-City
-Factory
-SAM
-Silo
-sonstige Investition
-gute Investition
-zu frühe Investition
-wirtschaftlich gefährliche Investition
-```
-
-## Naval
-
-```text
-sinnvoller Transport
-sinnloser Transport
-Warship sinnvoll
-Warship irrelevant
-Landroute vorhanden
-keine Landroute vorhanden
-```
-
----
-
-# 8. Datenqualitäts-Gates
-
-Erstelle vor Training einen Daten-Audit.
-
-Mindestens:
-
-```text
-matches
-frames
-rows
-
-kindDistribution
-outcomeDistribution
-mapDistribution
-modeDistribution
-difficultyDistribution
-
-confirmedWins
-confirmedLosses
-censoredMatches
-
-executedActionDistribution
-```
-
-Setze Mindestanforderungen.
-
-Ein Datensatz darf NICHT in die finale Trainingsrunde, wenn z. B.:
-
-```text
-expand < 5 %
-```
-
-oder:
-
-```text
-attack < 5 %
-```
-
-der für Ranking geeigneten Gruppen ausmacht, sofern ausreichend reale Situationen erzeugbar sind.
-
-Falls die Engine diese Anteile natürlich nicht hergibt, dokumentiere das und oversample relevante Gruppen beim Training.
-
----
-
-# 9. Keine falschen Counterfactual-Labels
-
-Behalte die bereits korrigierte Regel bei:
-
-**Nicht ausgeführte Kandidaten bekommen nicht automatisch das Outcome der gewählten Aktion.**
-
-Unbeobachtete Counterfactuals bleiben unbekannt.
-
-Ranking-Signale dürfen nur aus nachvollziehbarer Evidenz entstehen.
-
-Zulässige Quellen:
-
-* tatsächlich ausgeführte Aktion;
-* beobachtete spätere Wirkung;
-* sichere strukturelle Constraints;
-* klar definierte Hard-Negative-Kriterien;
-* relative Kandidateninformationen innerhalb desselben Frames, wenn deren Bedeutung valide ist.
-
----
-
-# 10. Neues Trainingsziel
-
-Verwende die Erkenntnisse aus Variante F als Ausgangspunkt, aber nicht als Endlösung.
-
-Teste mindestens diese Modellziele:
-
-## S6-A – Ranking baseline
-
-Candidate-group ranking mit neuem Feature-Vertrag.
-
-## S6-B – Ranking + Utility Alignment
-
-Hilfsterm für offensichtliche starke Abweichungen von brauchbarer Rule-Utility.
-
-Rule-Utility bleibt Hilfssignal, nicht Ground Truth.
-
-## S6-C – Outcome-aware Ranking
-
-Gewichte Entscheidungen stärker, wenn danach klare langfristige Wirkung beobachtbar ist.
-
-## S6-D – Hard-Negative Ranking
-
-Fehlentscheidungen aus:
-
-```text
-campaign-v5control-20260924
-campaign-v5finetune-20260925
-```
-
-gezielt als Hard Negatives verwenden.
-
-## S6-E – Combined
-
-Kombination der besten Elemente.
-
----
-
-# 11. Kind-Bias nicht als Ersatz für Features verwenden
-
-Die letzte Runde hat gezeigt, dass ein globaler `kindBias` nur Reihenfolgen verschiebt.
-
-Das reicht nicht.
-
-Ein globaler Bias wie:
-
-```text
-invest +0.18
-naval -0.65
-```
-
-ist kein Ersatz für ein Modell, das anhand des Zustands erkennt:
-
-```text
-wann invest gut ist
-wann naval gut ist
-wann expand gut ist
-wann hold gut ist
-```
-
-Bias darf höchstens als kleiner Kalibrierungsterm bestehen.
-
----
-
-# 12. Architekturvergleich
-
-Teste mindestens zwei Architekturen.
+Definiere einen klar versionierten Branch-Typ.
 
 Zum Beispiel:
 
 ```text
-small:
-N x 24 x 2
-
-medium:
-N x 40 x 2
+actionableBranch = {
+    id,
+    kind,
+    subtype,
+    targetId,
+    legal,
+    safetyApproved,
+    executableNow,
+    ruleUtility,
+    cost,
+    troopCommitment,
+    reserveAfter,
+    cooldownReady,
+    expectedPurpose,
+    buildType,
+    sourceId,
+    targetId
+}
 ```
 
-mit:
+Nur Branches mit:
 
 ```text
-N = neue Feature-Dimension
+legal === true
+safetyApproved === true
+executableNow === true
 ```
 
-Optional zusätzlich:
+dürfen vom Neural-Controller gegeneinander gerankt werden.
+
+Das Netz darf keine illegale Aktion legal machen.
+
+---
+
+# 7. Die eigentlichen Branch-Klassen
+
+Unterscheide mindestens handlungsnahe Kategorien wie:
 
 ```text
-N x 32 x 16 x 2
+WAIT
+HOLD_RESERVE
+
+EXPAND
+
+ATTACK_PLAYER
+ATTACK_FRONT
+FINISH_TARGET
+
+BUILD_CITY
+BUILD_FACTORY
+BUILD_SAM
+BUILD_SILO
+BUILD_PORT
+
+SEND_TRANSPORT
+SEND_WARSHIP
+
+DEFEND_FRONT
+EMERGENCY_DEFENSE
+
+SUPPORT_ALLY
+
+NUCLEAR_ATTACK
+ANTI_NUKE_ACTION
 ```
 
-wenn Training und Runtime dadurch nicht unnötig komplex werden.
+Nutze die tatsächlichen Branches des Codes.
 
-Vergleiche nicht nur Loss.
+Keine künstliche Klasse erzeugen, wenn sie im Bot nicht existiert.
 
-Messe:
+---
+
+# 8. Wichtig: WAIT ist ebenfalls eine echte Entscheidung
+
+Die bisherigen Modelle konnten oft nur innerhalb eines Kandidaten-Sets umsortieren.
+
+Schema 7 muss auch lernen können:
 
 ```text
-valRankLoss
-crossCandidateSpread
-decisionAccuracy
-kindSelectionDistribution
-hardNegativeAccuracy
-flipToLowerRate
-flipToHigherRate
+jetzt handeln
+vs
+jetzt bewusst warten
+```
+
+Aber `WAIT` darf nicht automatisch gewinnen, nur weil es risikolos ist.
+
+Logge genau, warum gewartet wurde.
+
+Beispiele:
+
+```text
+wait_for_budget
+wait_for_reserve
+wait_for_cooldown
+wait_no_target
+wait_strategic
 ```
 
 ---
 
-# 13. Drei-Stunden-Trainingsbudget
+# 9. Hard Safety bleibt außerhalb der Lernentscheidung
 
-Nach Feature-Implementierung, Tests und Datensatzaufbau startet ein **echtes 3-Stunden-Kampagnenfenster**.
+Schema 7 darf niemals Hard-Safety überwinden.
 
-Nutze es ungefähr:
+Dazu gehören mindestens:
 
 ```text
-0:00–0:45
-neue zielgerichtete Engine-Daten
-
-0:45–1:30
-mehrere Schema-6-Kandidaten trainieren
-
-1:30–2:15
-Offline-Auswertung + Hard-Negative-Retraining
-
-2:15–2:40
-billige Engine-Prescreens
-
-2:40–3:00
-besten Kandidaten weitertrainieren / validieren
+Verbündete nicht angreifen
+keine Nukes auf Verbündete
+keine illegalen Ziele
+keine ungültigen Builds
+keine Reserve-Verletzung
+keine ungültige Marineaktion
+keine Spawn-/Capacity-Verletzung
+keine bestätigte Emergency-Defense übergehen
 ```
 
-Nicht drei Stunden mit derselben Konfiguration rechnen.
+Ablauf:
 
-Nutze Successive Halving.
+```text
+alle Roh-Branches
+↓
+Hard legality + safety
+↓
+nur sichere actionable branches
+↓
+Schema 7
+```
+
+Nicht:
+
+```text
+Schema 7
+↓
+Safety vielleicht ignorieren
+```
 
 ---
 
-# 14. Successive Halving
+# 10. Neuer Schema-7 Feature-Vertrag
+
+Schema 7 benötigt Features sowohl für den Spielzustand als auch für die konkrete Action-Branch.
+
+Baue einen explizit versionierten Vertrag.
+
+Beispiele für State-Features:
+
+```text
+gamePhase
+land
+troops
+reserveRatio
+gold
+income
+enemyPressure
+activeWars
+frontCount
+allyPressure
+homeThreat
+nukeThreat
+recentLandTrend
+recentTroopTrend
+```
+
+Branch-spezifisch beispielsweise:
+
+```text
+branchKind one-hot
+branchSubtype one-hot
+
+ruleUtility
+utilityGapToTop
+
+costRatio
+troopCommitmentRatio
+reserveAfterRatio
+
+targetStrengthRatio
+targetLandRatio
+targetBorderPressure
+
+expectedBuildValue
+expectedDefenseValue
+
+cooldownReady
+alreadyActiveOperation
+targetReachable
+
+isEmergency
+isFinisher
+isExpansion
+```
+
+Nur Features verwenden, die im Live-Runtime zuverlässig verfügbar sind.
+
+---
+
+# 11. Keine impliziten Action-Klassen
+
+Jede semantisch verschiedene Branch-Art bekommt eine explizite Kodierung.
+
+Kein:
+
+```text
+all zero = hold oder expand oder wait
+```
+
+Train-/Runtime-Parität muss exakt getestet werden.
+
+---
+
+# 12. Schema 7 ist eine neue Modellversion
+
+Schema 6 nicht überschreiben.
+
+Beispielsweise:
+
+```json
+{
+  "schema": 7,
+  "featureSchemaVersion": 4,
+  "arch": "...",
+  "outputs": [...]
+}
+```
+
+Implementiere:
+
+```text
+candidate-policy-v7 / action-policy-v7
+feature builder
+validator
+serialization
+runtime inference
+bundling
+hashing
+tests
+fail-closed
+```
+
+Unbekannte Schema-Versionen müssen fail-closed bleiben.
+
+---
+
+# 13. Output-Design
+
+Prüfe mindestens zwei Ansätze.
+
+## Ansatz A — Branch Value
+
+Ein Score pro Actionable Branch:
+
+```text
+branchScore
+```
+
+höchster sichere Score gewinnt.
+
+## Ansatz B — Multi-Head
+
+Beispielsweise:
+
+```text
+expectedGain
+expectedRisk
+expectedSurvival
+```
+
+und daraus kontrolliert ein Ranking bilden.
+
+Nicht unnötig komplex starten.
+
+Ein einfaches, korrekt platziertes Modell ist wertvoller als ein großes Netz an der falschen Stelle.
+
+---
+
+# 14. Training nur auf actionable decision frames
+
+Schema 6 wurde auf sehr vielen Frames bewertet, in denen überhaupt keine ausführbare Action existierte.
+
+Schema 7 trainiert primär auf:
+
+```text
+actionable decision frame
+```
+
+Definition:
+
+```text
+>= 2 sichere executable branches
+```
+
+oder mindestens:
+
+```text
+eine ausführbare Action vs echtes WAIT
+```
+
+Metriken separat ausweisen für:
+
+```text
+all planning frames
+actionable frames
+executed frames
+```
+
+---
+
+# 15. Instrumentierung
+
+Für jeden Actionable Frame loggen:
+
+```text
+tick
+matchId
+
+stateHash
+
+branchId
+branchKind
+branchSubtype
+
+legal
+safetyApproved
+executableNow
+
+ruleUtility
+modelScore
+
+ruleChoice
+modelChoice
+finalChoice
+
+emittedIntent
+
+engineConfirmed
+
+effectAfter100
+effectAfter300
+effectAfter600
+
+landDelta
+troopDelta
+incomeDelta
+
+matchOutcome
+```
+
+---
+
+# 16. Executed-Action Attribution
+
+Das Trainingssystem muss wissen:
+
+```text
+welche Branch tatsächlich gewählt wurde
+```
+
+und:
+
+```text
+welcher Intent daraus erzeugt wurde
+```
+
+sowie:
+
+```text
+ob die Engine ihn bestätigt hat
+```
+
+Kein Training auf bloßem internen `changedIntent`.
+
+---
+
+# 17. Keine falschen Counterfactuals
+
+Weiterhin streng:
+
+Eine nicht gewählte Branch bekommt **nicht** automatisch das Ergebnis der gewählten Branch.
+
+Nicht beobachtete Alternativen bleiben unbekannt.
+
+Verwende nur:
+
+* echte ausgeführte Outcomes;
+* sichere strukturelle Präferenzen;
+* valide Pairwise-Signale;
+* kontrollierte Rollouts, falls tatsächlich unabhängig simuliert.
+
+---
+
+# 18. Bootstrap-Daten
+
+Nutze historische Daten aus:
+
+```text
+campaign-v5rank-20260924
+campaign-v5control-20260924
+campaign-v5finetune-20260925
+campaign-schema6-20260925
+```
+
+aber nur, wenn die Daten auf den neuen Action-Branch-Contract sauber abbildbar sind.
+
+Nicht blind alte abstrakte Candidate-Labels übernehmen.
+
+---
+
+# 19. Neue On-Policy-Daten
+
+Erzeuge neue echte Engine-Matches speziell für Schema 7.
+
+Ziel: viele Frames mit tatsächlich konkurrierenden ausführbaren Aktionen.
+
+Suche Szenarien mit:
+
+```text
+Attack vs Wait
+Expand vs Invest
+Attack vs Expand
+City vs Factory
+SAM vs Economy
+Silo vs Economy
+Transport vs Landstrategie
+Defense vs Expansion
+```
+
+---
+
+# 20. Gegner- und Szenario-Diversität
+
+Verwende:
+
+```text
+World
+Europe
+
+balanced
+rush
+defensive
+economic
+aggressive
+
+1v1
+FFA
+official 2v2
+FFA-duo
+```
+
+soweit vom Harness zuverlässig unterstützt.
+
+---
+
+# 21. Outcome-Horizonte
+
+Nicht nur Match-Ende verwenden.
+
+Für ausgeführte Branches mehrere Horizonte erfassen:
+
+```text
++100 ticks
++300 ticks
++600 ticks
++1200 ticks
+match end
+```
+
+Dadurch kann das Modell lernen:
+
+```text
+kurzfristiger Angriff schlecht,
+langfristig aber gut
+```
+
+oder umgekehrt.
+
+---
+
+# 22. Reward / Ranking-Signal
+
+Entwickle ein plausibles Multi-Horizon-Signal.
+
+Berücksichtige beispielsweise:
+
+```text
+heldLand
+landTrend
+survival
+troopEfficiency
+income
+economicRecovery
+attackSuccess
+defenseSuccess
+teamSurvival
+finalOutcome
+```
+
+Keine einzelne Metrik darf alles dominieren.
+
+Dokumentiere die Formel.
+
+---
+
+# 23. Nicht einfach Rule Utility imitieren
+
+Rule Utility darf ein Hilfssignal sein.
+
+Aber Ziel ist nicht:
+
+```text
+Schema 7 = neuronale Kopie der Regeln
+```
+
+Sonst kann das Netz sie niemals schlagen.
+
+Rule Utility verwenden für:
+
+```text
+bootstrap
+hard-negative sanity
+extreme bad-action detection
+```
+
+nicht als alleinige Ground Truth.
+
+---
+
+# 24. Modellarchitekturen
+
+Teste mindestens zwei Größen.
+
+Zum Beispiel abhängig von Feature-Anzahl `N`:
+
+```text
+N x 32 x 1
+N x 48 x 1
+```
+
+oder bei Multi-Head:
+
+```text
+N x 32 x 3
+N x 48 x 3
+```
+
+Optional ein zweischichtiges Modell, falls gerechtfertigt.
+
+Nicht mehr als nötig.
+
+---
+
+# 25. Successive Halving
+
+Trainiere mehrere Kandidaten.
 
 Beispiel:
 
 ```text
 8 Kandidaten
 ↓
-Offline-Gates
+Offline Gate
 ↓
-4 Kandidaten
+4
 ↓
-Hard-Negative-Test
+Actionable-frame validation
 ↓
-2 Kandidaten
+2
 ↓
-Engine-Prescreen
+Engine turn-divergence
 ↓
-1 Kandidat
+1
 ```
 
-Schlechte Modelle früh verwerfen.
+Nicht alle 10 Stunden auf ein einziges Modell setzen.
 
 ---
 
-# 15. WICHTIG: Turn-Stream-Divergenz als neues Pre-Gate
+# 26. DAS WICHTIGSTE PRE-GATE
 
-Der letzte §13-Lauf zeigte:
+Bevor irgendein längerer Holdout startet:
 
-```text
-Kandidat und Baseline:
-byte-identische turns.jsonl
-```
+Schema 7 gegen Rule-Basis auf identischem Seed.
 
-Das darf nicht erst nach einem großen Holdout entdeckt werden.
-
-Vor jeder teuren Evaluation:
-
-Führe 1–2 kurze identische Seed-Paare aus.
-
-Vergleiche:
+Es muss gelten:
 
 ```text
-candidate turns.jsonl
-vs
-baseline turns.jsonl
+differentExecutedTurns > 0
 ```
 
-Der Kandidat darf nur weiterkommen, wenn:
+UND die Unterschiede müssen:
 
-1. tatsächlich mindestens eine andere ausführbare Aktion gesendet wurde;
-2. diese Abweichung durch den Neural-Controller verursacht wurde;
-3. die Abweichung legal war;
-4. die Abweichung nicht nur kosmetisch ist.
+```text
+legal
+model-caused
+non-cosmetic
+engine-confirmed
+```
+
+sein.
+
+Wenn nicht:
+
+**sofort strukturell debuggen.**
+
+Nicht einfach weitertrainieren.
+
+---
+
+# 27. Turn-Divergence muss jetzt eine Kausalitätskette zeigen
 
 Erzeuge:
 
@@ -619,205 +817,267 @@ Erzeuge:
 turn-divergence.json
 ```
 
-mit:
+Beispiel:
 
 ```text
-totalTurns
-identicalTurns
-differentTurns
+tick 4812
 
-firstDifferentTick
-ruleAction
-candidateAction
+rule:
+WAIT
 
-modelReason
-ruleUtility
-modelScore
+schema7:
+ATTACK_PLAYER 17
+
+Schema7 branchScore:
+0.72
+
+engine:
+attack confirmed
+
+100 ticks later:
++2400 held land
+
+300 ticks later:
++5100 held land
 ```
+
+Damit wird nachweisbar, dass das Netz wirklich Gameplay verändert.
 
 ---
 
-# 16. Action-Channel-Coverage untersuchen
+# 28. Branch-Funnel
 
-Der letzte Lauf zeigte:
-
-```text
-1154 Planungsframes
-nur 38 Frames mit ausgegebenem Action
-≈ 3.3 %
-```
-
-Das ist extrem wichtig.
-
-Untersuche, warum 97 % der Frames keinen ausführbaren Channel-Action besitzen.
-
-Trenne:
+Für die neuen Runs messen:
 
 ```text
-kein legaler Kandidat
-keine Aktion notwendig
-Planner erzeugt keine Aktion
-Cooldown
-Budget blockiert
-Safety blockiert
-bereits laufende Aktion
-kein Ziel
-sonstiger Grund
+planningFrames
+actionableFrames
+multiChoiceFrames
+modelDifferentFrames
+differentEmittedActions
+engineConfirmedDifferences
+positiveOutcomeDifferences
+negativeOutcomeDifferences
 ```
 
-Wir wollen wissen, ob das Netz an einer Stelle entscheidet, an der überhaupt keine Gameplay-Wirkung möglich ist.
-
-Erstelle:
-
-```text
-action-channel-coverage.json
-```
+Das ist eine Kernmetrik der gesamten Kampagne.
 
 ---
 
-# 17. Modell nur dort anwenden, wo es Wirkung haben kann
+# 29. 10-STUNDEN-NACHTKAMPAGNE
 
-Falls bestätigt wird, dass viele Planning-Frames überhaupt keinen ausführbaren Action-Kanal besitzen:
+WICHTIG:
 
-Trainiere bzw. evaluiere das Candidate-Ranking primär auf Frames mit tatsächlich auswählbaren, ausführbaren Alternativen.
+**Die 10 Stunden beginnen erst, nachdem Schema-7 Runtime-Wiring, Feature-Parität und kurze Smoke-Tests funktionieren.**
 
-Das Modell soll nicht dafür belohnt werden, tausende interne No-Op-Rankings zu produzieren.
+Git-Abgleich, Implementierung und initiale Debug-Arbeit zählen nicht zum eigentlichen Trainings-/Evaluationsfenster.
 
-Unterscheide:
+Starte danach einen monotonen 10-Stunden-Kampagnen-Timer.
 
-```text
-planning frame
-decision frame
-actionable decision frame
-executed decision frame
-```
-
-Offline-Metriken primär auf:
+Nutze ungefähr:
 
 ```text
-actionable decision frames
+Stunde 0–2
+On-policy Actionable-Branch-Daten erzeugen
+
+Stunde 2–4
+erste Schema-7-Kandidaten trainieren
+
+Stunde 4–5
+Offline-Analyse / Hard-Negative Mining
+
+Stunde 5–6
+zweite Trainingsgeneration
+
+Stunde 6–7
+kurze Turn-Divergence-/Engine-Prescreens
+
+Stunde 7–8
+gezieltes Retraining auf echten Fehlern
+
+Stunde 8–9
+größere Dev-Evaluation der besten 1–2 Modelle
+
+Stunde 9–10
+Final-Holdout nur falls Dev-Gates bestanden
++ Abschlussreport
 ```
 
-berechnen.
+Dynamisch anpassen, wenn die Evidenz einen besseren Einsatz der Zeit zeigt.
 
 ---
 
-# 18. Controller nicht blind verstärken
+# 30. Nicht vorzeitig fertig melden
 
-Der neue Schema-6-Kandidat soll zunächst mit einem konservativen Controller laufen.
+Wenn nach zwei Stunden ein Kandidat trainiert wurde:
+
+**nicht abbrechen und „Kampagne fertig“ melden.**
+
+Nutze das verbleibende Zeitbudget für:
+
+```text
+neue Daten
+Fehleranalyse
+neue Generation
+Engine-Vergleich
+```
+
+Die Kampagne soll tatsächlich über Nacht iterativ arbeiten.
+
+---
+
+# 31. Hintergrundjobs
+
+Du darfst parallele Trainings-/Engine-Jobs starten.
 
 Aber:
 
-Wenn der neue Score nachweislich besser kalibriert ist, darf eine neue Version des Mapping-Kernels entwickelt werden.
+* Prozesse überwachen;
+* Resultate einsammeln;
+* Exit-Codes prüfen;
+* keine gestarteten Jobs als abgeschlossen zählen;
+* finalen Bericht erst erstellen, wenn relevante Jobs beendet oder bewusst abgebrochen wurden.
 
-Nicht einfach:
-
-```text
-gain = sehr hoch
-```
-
-setzen.
-
-Ein Modell muss durch bessere Präferenzen gewinnen, nicht durch rohe Übersteuerung.
+Keine „background job launched = task complete“-Logik.
 
 ---
 
-# 19. Pre-Screen gegen Schema-5-Baseline
+# 32. Checkpoints
 
-Vergleiche den besten Schema-6-Kandidaten zuerst gegen:
+Mindestens stündlich einen Kampagnenstatus speichern:
 
 ```text
-16b686d291addf4e...
+campaign-state.json
 ```
 
-mit identischen Seeds.
+mit:
 
-Pre-Screen-Kriterien:
+```text
+elapsed
+modelsTrained
+matchesGenerated
+actionableFrames
+bestCandidate
+bestDevResult
+currentPhase
+errors
+```
 
-* Turn-Streams unterscheiden sich tatsächlich;
-* neural verursachte Aktionen werden ausgeführt;
-* kein Safety-Regression;
-* kein extremer Kind-Bias;
-* deutlich niedrigerer `flipToLowerRate`;
-* mindestens keine offensichtliche Gameplay-Verschlechterung.
-
-Nur dann größere Evaluation.
+Damit ist der Lauf nach Crash fortsetzbar.
 
 ---
 
-# 20. Pre-Screen gegen Rule-Basis
+# 33. Hard-Negative Mining
 
-Danach:
+Nach jedem Prescreen:
+
+Sammle Situationen, in denen Schema 7 eine tatsächlich ausgeführte Aktion verändert und diese klar schlechter abschneidet.
+
+Diese Beispiele priorisiert wieder ins Training geben.
+
+Besonders:
 
 ```text
-Schema 6
-vs
-rule-basis
+schlechter Angriff
+verpasste Expansion
+falscher Build
+unnötiges Warten
+schlechte Marineentscheidung
+schlechte Teamhilfe
 ```
-
-Ein Kandidat, dessen ausgeführte Turn-Streams anders sind, aber dessen Ergebnis systematisch schlechter ist, wird verworfen.
 
 ---
 
-# 21. Pre-Screen gegen Run3
+# 34. Positive Mining
 
-Erst danach:
+Ebenso Situationen sammeln, in denen das Modell eine Rule-Entscheidung erfolgreich verbessert.
 
-```text
-Schema 6
-vs
-Run3 Schema 4
-```
+Diese sind besonders wertvoll.
 
-Run3 bleibt der aktive Champion.
+Aber nicht mehrfach duplizieren, bis der Datensatz nur noch aus wenigen Erfolgssituationen besteht.
 
 ---
 
-# 22. Holdout-Protokoll neu gestalten
+# 35. Dev-Vergleich
 
-Der alte §13-Test war zu stark zensiert:
+Bestes Schema 7 vergleichen gegen:
 
 ```text
-1/8 decisive
-7/8 tick-limit
+Rule-Basis
+Schema-5 baseline
+Schema-6 lead
+Run3 Schema-4
 ```
 
-Entwickle ein Holdout-Protokoll, das ausreichend bestätigte Ergebnisse erzeugt.
+Schema 5/6 dienen Diagnosezwecken.
 
-Ziel:
+Champion-Bar bleibt:
+
+```text
+Rule-Basis + Run3
+```
+
+---
+
+# 36. Modus-Gates
+
+Mindestens separat bewerten:
+
+```text
+1v1
+official-2v2
+FFA-duo
+```
+
+Falls ein Modell in einem Modus klar schlechter wird, dokumentieren und nicht durch Durchschnittswerte verstecken.
+
+---
+
+# 37. Entscheidendere Evaluation
+
+Das bisherige Problem:
+
+```text
+7/8 tick-limit censored
+```
+
+muss behoben werden.
+
+Gestalte das Evaluationsprotokoll so, dass genügend bestätigte Ergebnisse entstehen.
+
+Ziel mindestens:
 
 ```text
 >= 5 decisive paired outcomes
 ```
 
-pro zentralem Vergleich, bevor ein Win-Gate überhaupt interpretiert wird.
+für relevante Win-Vergleiche.
 
-Mögliche Hebel:
+Mögliche Mittel:
 
-* längerer Tick-Horizont;
-* stärker entscheidende Szenarien;
-* kompaktere Maps;
-* geeignetere Gegnerprofile;
-* mehr Seed-Paare.
+```text
+mehr Ticks
+kleinere/kompaktere Settings
+entscheidendere Gegnerprofile
+mehr Seeds
+```
 
-Aber:
-
-Protokoll vor der finalen Auswertung einfrieren.
-
-Keine nachträgliche Auswahl günstiger Szenarien.
+Protokoll VOR Final-Evaluation einfrieren.
 
 ---
 
-# 23. Final-Holdout nur bei echtem Dev-Sieg
+# 38. Final-Holdout
 
-Final-Holdout erst starten, wenn Schema 6:
+Nur starten, wenn:
 
-1. Schema-5-Baseline schlägt;
-2. Rule-Basis auf Dev-Seeds schlägt oder klar verbessert;
-3. tatsächliche Turn-Divergenz produziert;
-4. keine Safety-Regression zeigt.
+```text
+Turn divergence PASS
+Gameplay Dev PASS
+Safety PASS
+Schema7 > Rule auf Dev
+```
 
-Neue Seeds verwenden.
+Verwende komplett neue Seeds.
 
 Nicht wiederverwenden:
 
@@ -826,99 +1086,118 @@ v6hold-*
 o7hold
 v5fh-*
 v5di-*
+v6pres-*
 ```
 
 ---
 
-# 24. Promotion-Gate
+# 39. Finaler Vergleich
 
-Ein neuer Champion muss:
-
-* Run3 schlagen;
-* Rule-Basis schlagen;
-* genügend decisive pairs haben;
-* Safety-Gates bestehen;
-* Provenienz bestehen;
-* keine schwerwiegenden Modus-Regressionen zeigen.
-
-Keine Promotion auf Basis von:
+Final mindestens:
 
 ```text
-Loss
-MSE
-RankLoss
-changedIntent
-Land-only bei zensierten Matches
+Schema 7 vs Rule-Basis
+Schema 7 vs Run3
+```
+
+gleiche Seeds, Maps und Gegner.
+
+Ausweisen:
+
+```text
+confirmed wins
+confirmed losses
+censored
+paired win delta
+paired land delta
+survival
+economy
+turn divergence
+safety violations
 ```
 
 ---
 
-# 25. Tests für Schema 6
+# 40. Keine Gate-Manipulation
 
-Mindestens neue Tests für:
+Nicht:
 
 ```text
-schema6 feature contract
-schema6 serialization
-schema6 model validation
-schema6 runtime parity
-all five action kind one-hots
+censored als win
+Seeds nach Ergebnis entfernen
+schlechte Maps löschen
+Promotion-Grenzen lockern
+Safety deaktivieren
+```
+
+Wenn kein Champion entsteht, ist ein ehrliches negatives Ergebnis korrekt.
+
+---
+
+# 41. Testpflicht
+
+Erstelle neue Schema-7-Regressionstests mindestens für:
+
+```text
+schema7 feature contract
+runtime parity
+branch serialization
+branch validation
+actionable filtering
+hard safety preservation
+intent provenance
+executed-turn attribution
 unknown schema fail-closed
 schema5 backward compatibility
-schema6 candidate scoring
-turn-divergence harness
-action-channel coverage
+schema6 backward compatibility
+turn divergence harness
 ```
 
-Bestehende Regressionen weiterhin ausführen.
+Führe betroffene bestehende Tests ebenfalls aus.
 
 ---
 
-# 26. Keine Änderung am aktiven Champion
+# 42. Bestehende CI-/Strategy-Fehler
 
-Run3 bleibt unverändert.
+Bekannte vorbestehende Fehler nicht als Schema-7-Regression ausgeben.
 
-Keine automatische Live-Promotion.
-
-Auch wenn Schema 6 den Gate besteht:
-
-Ergebnis nur als:
-
-```text
-PROMOTION-ELIGIBLE
-```
-
-markieren.
-
-Nicht automatisch Run3 ersetzen.
+Aber jeden Fehler gegen einen sauberen Parent-Commit reproduzieren, bevor er als „pre-existing“ bezeichnet wird.
 
 ---
 
-# 27. Kampagnenordner
+# 43. Kampagnenordner
 
 Erstelle:
 
 ```text
-trainer/campaign-schema6-20260925/
+trainer/campaign-schema7-overnight-20260925/
 ```
 
-mit mindestens:
+oder passend zum tatsächlichen Startdatum.
+
+Mindestens:
 
 ```text
-feature-contract.md
-feature-contract.json
+pipeline-audit.md
+branch-contract.md
+branch-contract.json
 
 data-audit.json
 dataset-manifest.json
 
-action-channel-coverage.json
-hard-negatives.json
+actionable-frame-analysis.json
 
 training-manifest.json
 candidate-comparison.json
 
+hard-negatives.json
+positive-examples.json
+
 turn-divergence.json
+branch-funnel.json
+
 engine-prescreen.json
+dev-evaluation.json
 
 holdout-protocol.json
 holdout-results.json
@@ -928,20 +1207,22 @@ failure-analysis.md
 final-report.md
 
 candidate-model.json
+campaign-state.json
 ```
 
 ---
 
-# 28. Provenienz
+# 44. Modell-Provenienz
 
-Für jedes trainierte Modell:
+Für jeden Kandidaten:
 
 ```text
 schema
-arch
 featureSchemaVersion
+arch
+weights
+
 featureNames
-weightCount
 
 modelSHA256
 policySHA256
@@ -960,89 +1241,114 @@ gitCommit
 
 ---
 
-# 29. Abbruchbedingungen
+# 45. Abschlussstatus
 
-Breche einen Kandidaten früh ab, wenn:
-
-```text
-turn streams identisch zur Baseline
-```
-
-oder:
+Am Ende exakt eine Kategorie:
 
 ```text
-flipToLowerRate extrem hoch bleibt
+A) SCHEMA-7 PROMOTION-ELIGIBLE
+
+Tatsächlich andere Engine-Aktionen,
+bessere Dev-Ergebnisse,
+Rule-Basis und Run3 im Final-Holdout geschlagen,
+Safety bestanden.
+
+B) SCHEMA-7 IMPROVED CANDIDATE
+
+Tatsächlich andere Engine-Aktionen
+und messbar bessere Gameplay-Wirkung,
+aber Final-Evidenz reicht noch nicht für Promotion.
+
+C) SCHEMA-7 NEGATIVE RESULT
+
+Auch Action-Level-Control erzeugt keinen
+robusten Gameplay-Vorteil.
+Nächster Engpass reproduzierbar belegt.
 ```
-
-oder:
-
-```text
-nur globaler kind bias gelernt wird
-```
-
-oder:
-
-```text
-Gameplay im Prescreen schlechter ist
-```
-
-Verschwende dann keinen großen Holdout.
 
 ---
 
-# 30. Abschlussentscheidung
+# 46. Commit + Push
 
-Der finale Bericht muss exakt eine Kategorie ausgeben:
+Nach Abschluss:
 
-```text
-A) SCHEMA-6 PROMOTION-ELIGIBLE
-
-Schema 6 schlägt Schema-5-Baseline,
-Rule-Basis und Run3 mit ausreichender Evidenz.
-
-B) SCHEMA-6 IMPROVED CANDIDATE
-
-Schema 6 verändert tatsächlich Turns
-und verbessert relevante Dev-Metriken,
-aber Promotion-Evidenz reicht noch nicht.
-
-C) SCHEMA-6 NEGATIVE RESULT
-
-Kein Modell verbessert das Live-Verhalten.
-Der nächste strukturelle Engpass ist
-mit reproduzierbarer Evidenz benannt.
-```
-
-Keine künstliche Erfolgsmeldung.
+* Git-Status prüfen;
+* nachvollziehbare Artefakte committen;
+* keine riesigen temporären Scratch-Verzeichnisse committen, sofern nicht reproduktionsrelevant;
+* sicher mit aktuellem `origin/main` abgleichen;
+* kein Force-Push;
+* Push durchführen;
+* finalen Commit-SHA berichten.
 
 ---
 
-# 31. Wichtigste Regel dieser Kampagne
+# 47. Das eigentliche Ziel dieser Nacht
 
-Die letzten Läufe haben gezeigt:
+Wir haben inzwischen bewiesen:
 
 ```text
-Modellscore ≠ ausgeführte Aktion
-changedIntent ≠ Turn-Divergenz
-Turn-Divergenz ≠ bessere Aktion
-bessere Offline-Metrik ≠ Champion
+besserer Offline-Loss
+    ≠ Champion
+
+mehr Candidate-Divergenz
+    ≠ ausgeführte Aktion
+
+mehr changedIntent
+    ≠ ausgeführter Turn
+
+mehr Gain
+    ≠ besser
 ```
 
-Deshalb gilt diesmal:
+Diese Nacht testen wir die erste Architektur, bei der das neuronale Modell **direkt zwischen tatsächlich ausführbaren Aktionen entscheidet**.
 
-**Ein Kandidat darf nur weiterkommen, wenn seine neuronale Entscheidung tatsächlich die Engine-Aktion verändert und diese Änderung messbar besser ist.**
+Das entscheidende Erfolgssignal lautet:
 
-Beginne jetzt mit:
+```text
+Schema 7 wählt Action B
+↓
+Rule hätte Action A gewählt
+↓
+Action B wird tatsächlich an die Engine gesendet
+↓
+Engine bestätigt Action B
+↓
+Spielverlauf unterscheidet sich
+↓
+Action B verbessert das Ergebnis
+```
 
-1. Git-Abgleich
-2. Feature-Contract-Audit
-3. Schema-6-Design
-4. Runtime-/Training-Parität
-5. neuem Expansion-/Attack-Datensatz
-6. 3-Stunden-Training
-7. Turn-Divergenz-Prescreen
-8. Dev-Evaluation
-9. ggf. Final-Holdout
-10. dokumentierter Promotion-Entscheidung
+**Erst dann haben wir ein echtes neuronales Gameplay-Signal.**
 
-Arbeite selbstständig bis zum Abschluss und committe/pushe alle nachvollziehbaren Artefakte.
+Beginne jetzt mit dem Pipeline-Audit und der Identifikation der letzten Multi-Choice-Stelle vor Intent-Emission. Implementiere dort Schema 7, verifiziere die Kausalitätskette und starte anschließend die vollständige 10-Stunden-Nachtkampagne.
+
+---
+
+# 48. Prescreen-Hintergrundjobs — Live-Verifikation (2026-09-25)
+
+Die in §31 gestarteten Prescreen-Hintergrundjobs sind alle beendet.
+Resultate eingesammelt, Exit-Codes geprüft:
+
+* 13 Jobs: 11 × Exit 0, 2 × Arg-Parser-Fehler (nur Scratch, nicht reproduktionsrelevant):
+  * `--candidateControl` ohne Wert → `Missing value for --candidateControl`;
+  * `--candidateControlGain` → unbekannt; korrekt ist `--candidateGain`.
+* Davon 9 Prescreen-Paare (Lead `E_38x40x2tanh`, Divergent `A_38x40x2tanh`)
+  und 2 Smoke-Runs (`.tmp-v6-smoke`, `.tmp-v6-smoke2`) ohne Seed.
+
+Live-Engine-Ergebnis bestätigt die committed Prescreen
+(`engine-prescreen.json`, `turn-divergence.json`):
+
+```text
+seed        density   rule    v6-E (gated/rank)   v6-A (rank, capGain 60)
+v6pres-001  2         22478   22478               22478
+v6pres-002  2         6452    6452                -
+v6pres-003  6         6127    6127                6127
+```
+
+In jedem Seed byte-identisch zur Rule-Basis → `differentExecutedTurns = 0`
+(§26 Pre-Gate: FAIL; §28 Branch-Funnel: `differentEmittedActions = 0`).
+Internes Re-Ranking (bis 90 % der Frames) ändert nie die emittierte Aktion,
+weil die Block-Reasons invariabel gegenüber der Modell-Reihenfolge sind.
+
+Determination C (NEGATIVE RESULT) durch Live-Engine bestätigt.
+Run3 bleibt ACTIVE. Bereits in `0b6b8ec` committet und gepusht.
