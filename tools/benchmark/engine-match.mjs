@@ -13,6 +13,7 @@ import strategicModel from '../../trainer/strategic-policy.cjs';
 import strategicModelV4 from '../../trainer/strategic-policy-v4.cjs';
 import candidatePolicyV5 from '../../trainer/candidate-policy-v5.cjs';
 import candidatePolicyV6 from '../../trainer/candidate-policy-v6.cjs';
+import actionPolicyV7 from '../../trainer/action-policy-v7.cjs';
 
 const opts=common.parse(process.argv.slice(2));
 const engineCommit=common.engineInfo(opts.engine,opts.engineCommit);
@@ -55,6 +56,24 @@ if(opts.candidateControl){
     candidateControlMargin:opts.candidateControlMargin?Number(opts.candidateControlMargin):0.25}));
   policyParts.push({schema:candidateSchema,sha256:common.digest(JSON.stringify(candidateModel))});
 }
+// P7: schema-7 action-branch controller. It ranks CONCRETE actionable
+// branches after hard safety, before send(). Unlike the schema-5/6 candidate
+// ranker (which re-orders already-legal candidates and was order-invariant
+// downstream), the schema-7 argmax directly drives the emitted intent when
+// actionControl is set. actionRank is shadow observation only.
+let actionModel=null,actionSchema=null;
+if(opts.actionModel){
+  const raw=JSON.parse(fs.readFileSync(path.resolve(opts.actionModel),'utf8'));
+  actionModel=actionPolicyV7.validate(raw);
+  actionSchema=raw.schema;
+  const cur=storage.get('of-solo-aggrobot-v1111')?
+    JSON.parse(storage.get('of-solo-aggrobot-v1111')):{};
+  storage.set('of-solo-aggrobot-v1111',JSON.stringify({...cur,
+    neuralEnabled:true,fullAuto:true,
+    actionRankEnabled:!!(opts.actionRank||opts.actionControl),
+    actionControlEnabled:!!opts.actionControl}));
+  policyParts.push({schema:actionSchema,sha256:common.digest(JSON.stringify(actionModel))});
+}
 // policyHash: single model -> its sha; BOTH --policy and --candidateControl
 // (the hybrid 4+5 arm) -> sha of the ordered part list, so the report pins
 // exactly which two models are loaded together.
@@ -92,6 +111,15 @@ if(candidateModel){
     (candidateSchema===6?'const SHADOW_V6_BUNDLED_MODEL = ':
       'const SHADOW_V5_BUNDLED_MODEL = ')+JSON.stringify(candidateModel)+';');
 }
+// Embed the schema-7 action-branch model into its own shadow slot so a
+// candidate model and an action model can coexist without colliding.
+if(actionModel){
+  const needle='const SHADOW_V7_BUNDLED_MODEL = null;';
+  if(source.split(needle).length!==2)
+    throw Error('Action marker missing/not unique in bot source: '+needle);
+  source=source.replace(needle,
+    'const SHADOW_V7_BUNDLED_MODEL = '+JSON.stringify(actionModel)+';');
+}
 const clientID='aggrobot';
 const players=[{clientID,username:'AggroBot Benchmark',clanTag:null,
   ...(gameMode===GameMode.Team?{teamIndex:0}:{})},
@@ -110,6 +138,9 @@ const meta={trajectorySemantics:visibleTrajectory.SEMANTICS,harness:'engine-game
   candidateSchema:candidateModel?candidateSchema:null,
   candidateGain:candidateModel?(opts.candidateGain?Number(opts.candidateGain):18):null,
   candidateControlMode:candidateModel?(opts.candidateControlMode||'raw'):null,
+  actionControl:actionModel?!!opts.actionControl:null,
+  actionRank:actionModel?!!(opts.actionRank||opts.actionControl):null,
+  actionSchema:actionModel?actionSchema:null,
   seed:opts.seed,
   seedSource:'GameStartInfo.gameID',profile:opts.profile,settings:common.profiles[opts.profile],
   opponentProfile:opts.opponentProfile,scriptedHumans:opts.scriptedHumans,

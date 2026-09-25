@@ -12,7 +12,8 @@ function parse(argv){
     scriptedHumans:0,opponentProfile:'balanced',candidateControl:null,
     candidateModel:null,candidateGain:null,planningFrames:null,
     candidateControlMode:null,candidateControlCapGain:null,
-    candidateControlConfRef:null,candidateControlMargin:null};
+    candidateControlConfRef:null,candidateControlMargin:null,
+    actionModel:null,actionRank:null,actionControl:null};
   for(let i=0;i<argv.length;i++){
     const key=argv[i].replace(/^--/,'');
     if(!argv[i].startsWith('--')||!Object.hasOwn(out,key))throw Error('Unknown option '+argv[i]);

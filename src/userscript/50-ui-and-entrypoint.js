@@ -222,6 +222,11 @@
       stop:()=>{telemetry('benchmark_stop','Lokaler Testlauf gestoppt');opts.enabled=false;autoStartGame=game;generation++;},
       // Step 3: benchmark-only per-decision frame for real training capture.
       planningFrame:()=>planningFrame(),
+      // §28 schema-7 branch funnel (aggregate + last decision) for the
+      // pre-gate and dev/holdout reconciliation from the benchmark report.
+      branchFunnel:()=>({...branchFunnel,
+        lastDecision:branchFunnel.lastDecision?
+          {...branchFunnel.lastDecision}:null}),
       // Engine harness awaits every cycle; ordinary browser timers stay unchanged.
       pump:async()=>{await step();await economyStep();await diplomacyTick();
         await nukeStep();if(opts.duoEnabled)await duoPublish();}

@@ -58,6 +58,13 @@ function main(args=process.argv.slice(2)){
    candidateV6.indexOf('function sha(model){'));
  if(!sharedV6||!generated.includes(sharedV6))
    throw Error('Schema-6 shadow runtime drifted from trainer model source');
+ const candidateV7=require('node:fs').readFileSync(
+   path.join(root,'trainer/action-policy-v7.cjs'),'utf8');
+ const sharedV7=candidateV7.slice(
+   candidateV7.indexOf('const INPUTS=38,OUTPUTS=1;'),
+   candidateV7.indexOf('function sha(model){'));
+ if(!sharedV7||!generated.includes(sharedV7))
+   throw Error('Schema-7 shadow runtime drifted from trainer model source');
  if(mode==='--check'){
    if(existing!==generated)throw Error('Solo userscript is stale; run node tools/build-userscript.cjs --write');
    console.log('USERSCRIPT_BUILD_PASS '+JSON.stringify({parts:files.length,bytes:generated.length}));

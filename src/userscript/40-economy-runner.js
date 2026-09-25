@@ -2324,6 +2324,147 @@
       tick>=frame.tick&&tick-frame.tick<=20&&
       frame.player===safeID(myPlayer());
   }
+  // §7/§9/§13: schema-7 actionable-branch extraction + Approach-A ranking.
+  // It sits AFTER hard safety (strategicDirector + the planners already
+  // validated every candidate) and BEFORE send(): it ranks the concrete
+  // branches the rule basis would emit and, when actionControlEnabled, the
+  // argmax branch steers the existing emitters. Hard legality stays
+  // authoritative downstream — the model can only reorder or pick among
+  // already-legal branches, never make an illegal action legal.
+  //
+  // The state object mirrors the 16 runtime-reliable fields documented in
+  // trainer/v7-features.cjs so the on-policy dataset builder can replay the
+  // exact inference features from the captured planning frame.
+  function branchState(s,me,groups,tick){
+    const home=Math.max(1,s.home);
+    const land=number(()=>me?.numTilesOwned?.(),0)||0;
+    const maxLand=number(()=>me?.maxLand?.(),null);
+    const observedIncome=Math.max(0,
+      (incomeStatus.train||0)+(incomeStatus.trade||0));
+    const enemyGroups=(groups||[]).filter(g=>g.id!==null&&g.opponent);
+    const samples=(typeof troopSamples!=='undefined'?troopSamples:[])
+      .filter(x=>tick-x.tick<=110);
+    let troopTrend=0;
+    if(samples.length>1){
+      const first=samples[0];
+      const base=first?.home||first?.troops||0;
+      if(base>0)troopTrend=Math.max(-1,Math.min(1,(home-base)/base));
+    }
+    return {
+      gamePhase:Math.min(20,Math.max(0,tick/200)),
+      home,troops:s.home,reserve:s.reserve||0,gold:goldAmount(me),
+      income:Math.max(0,Math.min(2,observedIncome/100000)),
+      enemyPressure:Math.max(0,Math.min(1,(s.strongest||0)/home)),
+      activeWars:enemyGroups.length,frontCount:(groups||[]).length||0,
+      allyPressure:0,
+      homeThreat:Math.max(0,Math.min(1,(s.incoming||0)/home)),
+      nukeThreat:0,recentLandTrend:0,recentTroopTrend:troopTrend,
+      maxLand:Number.isFinite(maxLand)&&maxLand>0?maxLand:Math.max(1,land),
+      land};
+  }
+  const b01=x=>Math.max(0,Math.min(1,Number.isFinite(x)?x:0));
+  // Map one rule-sorted candidate to its actionable-branch contract (§6).
+  // The 16 contract subclasses collapse to the 9 model kinds; the finer
+  // distinction (neutral vs enemy target, finisher, build type) rides on
+  // subtype/flags/targetId, not the one-hot.
+  function candidateToBranch(cand,home){
+    const kindMap={hold:'wait',invest:'build_economy',expand:'expand',
+      attack:'attack',naval:'boat',support:'donate'};
+    const kind=kindMap[cand.kind]||'wait';
+    const isLand=cand.kind==='attack'||cand.kind==='expand';
+    const cost=Math.max(0,Number(cand.cost)||0);
+    const v5=cand.v5||{};
+    const finisher=cand.kind==='attack'&&cand.forecast&&
+      Number.isFinite(cand.forecast.loss)&&cost>0&&
+      cand.forecast.loss/cost<0.35;
+    return {
+      id:String(cand.id),kind,
+      subtype:cand.kind==='attack'?(finisher?'finisher':'enemy'):
+        cand.kind==='expand'?'neutral':cand.kind==='naval'?'boat':
+        cand.kind==='support'?'donate':
+        cand.kind==='invest'?'build':'strategic',
+      targetId:cand.target??null,tile:null,
+      legal:true,safetyApproved:true,
+      executableNow:isLand?cost>0:true,
+      ruleUtility:Number(cand.utility)||0,
+      cost:isLand?cost:0,troopCommitment:isLand?cost:0,
+      reserveAfter:Math.max(0,home-(isLand?cost:0)),
+      targetStrength:b01(v5.siteRisk),
+      targetLand:b01((v5.expectedLand||0)/Math.max(1,home)),
+      expectedBuildValue:kind==='build_economy'?b01(v5.incomeValue):0,
+      expectedDefenseValue:kind==='wait'?b01(1-(Number(cand.risk)||0)):0,
+      cooldownReady:true,alreadyActiveOperation:false,
+      targetReachable:isLand,isEmergency:false,
+      isFinisher:finisher,isExpansion:cand.kind==='expand',
+      sourceId:String(cand.id),channel:cand.channel||null};
+  }
+  // Build the branch decision for one combat frame. Returns:
+  //   basis: 'no-model' (identical to rule basis, funnel noModelFrames)
+  //          | 'rule' (model scored but control off / fail-closed)
+  //          | 'model' (argmax drives steering when controlActive)
+  //   ruleTop: the branch of the rule-selected candidate (candidates[0])
+  //   modelTop: argmax branchScore over actionable branches (null if none)
+  //   controlActive: model present + actionRank + actionControl enabled
+  function chooseActionBranch(planning,s,me,groups,tick){
+    const home=Math.max(1,s.home);
+    const cands=(planning?.candidates||[]).filter(c=>c&&c.kind);
+    if(!cands.length)return {basis:'no-model',tick,ruleTop:null,modelTop:null,
+      branches:[],actionableCount:0,scores:null,controlActive:false,state:null};
+    const branches=cands.map(c=>candidateToBranch(c,home));
+    const actionable=branches.filter(b=>b.legal&&b.safetyApproved&&b.executableNow);
+    const ruleTop=branches.find(b=>b.id===String(cands[0].id))||branches[0];
+    const rankEnabled=!!(opts.actionRankEnabled&&shadowV7Model);
+    const controlActive=!!(rankEnabled&&opts.actionControlEnabled);
+    if(!rankEnabled)return {basis:'no-model',tick,ruleTop,modelTop:null,
+      branches,actionableCount:actionable.length,scores:null,
+      controlActive:false,state:branchState(s,me,groups,tick)};
+    const state=branchState(s,me,groups,tick);
+    const ruleTop1=Number(cands[0].utility)||0;
+    let scores={};
+    try{
+      for(const b of branches){
+        const feat=shadowV7.features(state,b,
+          {ownRu:b.ruleUtility,ruleTop1});
+        scores[b.id]=shadowV7.predict(shadowV7Model,feat).branchScore;
+      }
+    }catch(e){
+      branchFunnel.rankErrors++;
+      return {basis:'rule',tick,ruleTop,modelTop:ruleTop,branches,
+        actionableCount:actionable.length,scores:null,controlActive,
+        state,error:String(e?.message||e)};
+    }
+    let modelTop=null,best=-Infinity;
+    for(const b of actionable){
+      const sc=scores[b.id];
+      if(sc>best){best=sc;modelTop=b;}
+    }
+    if(!modelTop)modelTop=ruleTop;
+    return {basis:'model',tick,ruleTop,modelTop,branches,
+      actionableCount:actionable.length,scores,controlActive,state};
+  }
+  // Steer emission for a model-driven branch. Returns {order,ranked,wait}:
+  //   wait:  true when the model chose WAIT → the caller idles this decision
+  //   order: the re-ordered channel list (model channel first)
+  //   ranked: the re-ordered target list (model target first for land)
+  // The existing attack()/naval() emitters still run their full hard-safety
+  // checks; this only reorders what they consider, so legality is preserved.
+  function steerForBranch(branch,order,ranked){
+    if(!branch)return {order,ranked,wait:false};
+    const channel=branch.channel||
+      (branch.kind==='boat'||branch.kind==='warship'||
+        branch.kind==='build_warship'||branch.kind==='nuclear'
+        ?'naval':branch.kind==='wait'||branch.kind==='build_economy'
+        ?'hold':'land');
+    if(branch.kind==='wait')return {order,ranked,wait:true};
+    const rest=order.filter(ch=>ch!==channel);
+    const next=[...new Set([channel,...rest])];
+    if(channel==='land'&&branch.targetId!==null&&Array.isArray(ranked)){
+      const idx=ranked.findIndex(r=>r.id===branch.targetId);
+      if(idx>0)return {order:next,
+        ranked:[ranked[idx],...ranked.filter((_,i)=>i!==idx)],wait:false};
+    }
+    return {order:next,ranked,wait:false};
+  }
   async function step() {
     const found=discover();
     if(!found){if(game){generation++;game=null;bus=null;opts.enabled=false;persist();status='Warte auf Spiel';}paint();return;}
@@ -2550,13 +2691,37 @@
         status='AUFBAU · Truppen regenerieren / Verteidigung halten';
         return;
       }
-      for(const channel of directive.order) {
-        if(channel==='land' && await attack(me,tick,serial,ranked,s)){
-          consecutiveIdle=0;return;
+      // §26/§28: schema-7 branch decision. The hard-safety hold gate above
+      // (recovering/defending) is preserved — the model only reorders or
+      // picks among already-legal branches in the channel loop below.
+      // With no bundled model, chooseActionBranch returns basis 'no-model'
+      // and steer is the identity, so emission is identical to the rule basis.
+      const branchDecision=chooseActionBranch(planning,s,me,groups,tick);
+      const steer=branchDecision.controlActive&&
+        branchDecision.modelTop&&
+        branchDecision.modelTop.id!==branchDecision.ruleTop.id?
+        steerForBranch(branchDecision.modelTop,directive.order,ranked):
+        {order:directive.order,ranked,wait:false};
+      if(steer.wait){
+        planning.blockReasons=['schema7-wait'];
+        recordBranchDecision(branchDecision,null);
+        return;
+      }
+      let emittedChannel=null;
+      for(const channel of steer.order) {
+        if(channel==='land' && await attack(me,tick,serial,steer.ranked,s)){
+          emittedChannel='land';consecutiveIdle=0;
+          recordBranchDecision(branchDecision,emittedChannel);
+          return;
         }
         if(channel==='naval' && !context.underAttack &&
-          await naval(me,tick,serial)){consecutiveIdle=0;return;}
+          await naval(me,tick,serial)){
+          emittedChannel='naval';consecutiveIdle=0;
+          recordBranchDecision(branchDecision,emittedChannel);
+          return;
+        }
       }
+      recordBranchDecision(branchDecision,null);
       consecutiveIdle++;
       planning.blockReasons=[directive.reason||'hold','no-channel-action'];
       if(consecutiveIdle>4){status='WARTEN · '+directive.reason;
