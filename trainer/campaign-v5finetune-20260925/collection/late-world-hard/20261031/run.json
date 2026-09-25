@@ -1,0 +1,38 @@
+{
+  "trajectorySemantics": "gameview-hostile-only-v1",
+  "harness": "engine-gameview-v2",
+  "engineCommit": "13b403387af01d388f8c8ed8c953b6d3a11d1457",
+  "botSHA256": "f2b4c2286ab2d26c0a09a352a18597d717c24cb16d02d1030423258764fbea1d",
+  "policySHA256": null,
+  "candidateControl": null,
+  "candidateGain": null,
+  "candidateControlMode": null,
+  "seed": "20261031",
+  "seedSource": "GameStartInfo.gameID",
+  "profile": "autonomous",
+  "settings": {
+    "fullAuto": true
+  },
+  "opponentProfile": "balanced",
+  "scriptedHumans": 3,
+  "gameConfig": {
+    "gameMap": "World",
+    "difficulty": "Hard",
+    "donateGold": false,
+    "donateTroops": false,
+    "gameType": "Singleplayer",
+    "gameMode": "Free For All",
+    "gameMapSize": "Compact",
+    "nations": 8,
+    "bots": 40,
+    "infiniteGold": false,
+    "infiniteTroops": false,
+    "instantBuild": false,
+    "randomSpawn": true
+  },
+  "maxTicks": 18000,
+  "clock": "100ms simulation clock; serial awaited bot cycles",
+  "worker": "real GameRunner queries via async in-process adapter",
+  "browser": false,
+  "scriptedOpponents": "deterministic human-client intents; heuristic profiles, not real human behavior"
+}

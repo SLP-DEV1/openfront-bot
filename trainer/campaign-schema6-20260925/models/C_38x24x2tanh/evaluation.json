@@ -1,0 +1,23 @@
+{
+  "arch": "38x24x2-tanh",
+  "variant": "C",
+  "splitPct": 21,
+  "metrics": {
+    "valRankLoss": 0.695883,
+    "crossCandidateSpread": 0.014092,
+    "decisionAccuracy": 0.2466,
+    "kindSelectionDistribution": {
+      "invest": 0.4827,
+      "naval": 0.4253,
+      "hold": 0.0869,
+      "attack": 0.0027,
+      "expand": 0.0025
+    },
+    "hardNegativeAccuracy": 0.7367,
+    "hardNegativeFrames": 771,
+    "flipToLowerRate": 0.6946,
+    "flipToHigherRate": 0,
+    "flipFrames": 11673,
+    "flipCount": 8190
+  }
+}

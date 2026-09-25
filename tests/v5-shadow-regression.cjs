@@ -44,7 +44,9 @@ assert.ok(!generated.includes('const SHADOW_V5_BUNDLED_MODEL = null;'), 'null re
 assert.ok(generated.includes('changedIntent:false'), 'no-intent fallback preserved');
 assert.ok(generated.includes('shadow-only; not observed game effect'),
   'shadow-only (no intent) evidence branch still present');
-assert.ok(generated.includes('candidate-v5 bounded control override; legality still authoritative'),
+// The v6 refactor parameterized the evidence label by the live shadow
+// schema (v5 or v6); assert the schema-parameterized template is present.
+assert.ok(generated.includes('candidate-v${shadowSchema} bounded control override; legality still authoritative'),
   'bounded control override evidence branch present');
 assert.ok(generated.includes('candidateControlEnabled'),
   'control gated on explicit candidateControlEnabled');

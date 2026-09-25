@@ -1,0 +1,78 @@
+{
+  "kind": "v5-decision-capture",
+  "generated": "2026-09-24T18:40:12.743Z",
+  "engineCommit": "13b403387af01d388f8c8ed8c953b6d3a11d1457",
+  "arms": [
+    "C"
+  ],
+  "scenarios": [
+    {
+      "scenarioId": "v5di-1v1-europe-balanced",
+      "matchSeed": "v5di-1v1-europe-balanced-1",
+      "mode": "1v1",
+      "map": "Europe",
+      "opponent": "balanced"
+    },
+    {
+      "scenarioId": "v5di-official-2v2-europe-balanced",
+      "matchSeed": "v5di-official-2v2-europe-balanced-2",
+      "mode": "official-2v2",
+      "map": "Europe",
+      "opponent": "balanced"
+    },
+    {
+      "scenarioId": "v5di-ffa-duo-europe-balanced",
+      "matchSeed": "v5di-ffa-duo-europe-balanced-3",
+      "mode": "ffa-duo",
+      "map": "Europe",
+      "opponent": "balanced"
+    }
+  ],
+  "rows": [
+    {
+      "scenarioId": "v5di-1v1-europe-balanced",
+      "arm": "C",
+      "mode": "1v1",
+      "map": "Europe",
+      "opponent": "balanced",
+      "matchSeed": "v5di-1v1-europe-balanced-1",
+      "exitCode": 0,
+      "termination": "tick-limit",
+      "outcome": "incomplete",
+      "endLand": 184432,
+      "frames": 29,
+      "botSHA256": "eaf778bdfbdfa2eb760aaf22e141b9acf3c3de00e8befd95636c821470271daf",
+      "policySHA256": "16b686d291addf4e9c14c7c03e80308b6cb7474fd90dbd5efb60065c9a2b4f93"
+    },
+    {
+      "scenarioId": "v5di-official-2v2-europe-balanced",
+      "arm": "C",
+      "mode": "official-2v2",
+      "map": "Europe",
+      "opponent": "balanced",
+      "matchSeed": "v5di-official-2v2-europe-balanced-2",
+      "exitCode": 0,
+      "termination": "tick-limit",
+      "outcome": "incomplete",
+      "endLand": 93304,
+      "frames": 29,
+      "botSHA256": "eaf778bdfbdfa2eb760aaf22e141b9acf3c3de00e8befd95636c821470271daf",
+      "policySHA256": "16b686d291addf4e9c14c7c03e80308b6cb7474fd90dbd5efb60065c9a2b4f93"
+    },
+    {
+      "scenarioId": "v5di-ffa-duo-europe-balanced",
+      "arm": "C",
+      "mode": "ffa-duo",
+      "map": "Europe",
+      "opponent": "balanced",
+      "matchSeed": "v5di-ffa-duo-europe-balanced-3",
+      "exitCode": 0,
+      "termination": "tick-limit",
+      "outcome": "incomplete",
+      "endLand": 15738,
+      "frames": 29,
+      "botSHA256": "eaf778bdfbdfa2eb760aaf22e141b9acf3c3de00e8befd95636c821470271daf",
+      "policySHA256": "16b686d291addf4e9c14c7c03e80308b6cb7474fd90dbd5efb60065c9a2b4f93"
+    }
+  ]
+}

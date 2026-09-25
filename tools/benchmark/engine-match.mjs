@@ -12,6 +12,7 @@ import actionModel from '../../trainer/action-policy.cjs';
 import strategicModel from '../../trainer/strategic-policy.cjs';
 import strategicModelV4 from '../../trainer/strategic-policy-v4.cjs';
 import candidatePolicyV5 from '../../trainer/candidate-policy-v5.cjs';
+import candidatePolicyV6 from '../../trainer/candidate-policy-v6.cjs';
 
 const opts=common.parse(process.argv.slice(2));
 const engineCommit=common.engineInfo(opts.engine,opts.engineCommit);
@@ -36,11 +37,15 @@ if(opts.policy){
 // P5: bounded candidate-v5 control arm. Embeds the schema-5 model into the
 // generated bot and enables shadow ranking + control so the model can drive
 // the channel director (legality remains authoritative downstream).
-let candidateModel=null;
+let candidateModel=null,candidateSchema=null;
 if(opts.candidateControl){
-  const model=candidatePolicyV5.validate(JSON.parse(
-    fs.readFileSync(path.resolve(opts.candidateModel),'utf8')));
-  candidateModel=model;
+  const raw=JSON.parse(fs.readFileSync(path.resolve(opts.candidateModel),'utf8'));
+  // Dispatch on the model schema: schema 6 uses the new 38-dim contract,
+  // schema 5 the legacy 32-dim one. Each validate() is fail-closed on the
+  // other schema, so a mismatched file cannot be silently embedded.
+  candidateModel=raw?.schema===6?candidatePolicyV6.validate(raw):
+    candidatePolicyV5.validate(raw);
+  candidateSchema=raw.schema;
   storage.set('of-solo-aggrobot-v1111',JSON.stringify({neuralEnabled:true,fullAuto:true,
     shadowRankEnabled:true,candidateControlEnabled:true,
     candidateControlGain:opts.candidateGain?Number(opts.candidateGain):18,
@@ -48,7 +53,7 @@ if(opts.candidateControl){
     candidateControlCapGain:opts.candidateControlCapGain?Number(opts.candidateControlCapGain):60,
     candidateControlConfidenceRef:opts.candidateControlConfRef?Number(opts.candidateControlConfRef):0.5,
     candidateControlMargin:opts.candidateControlMargin?Number(opts.candidateControlMargin):0.25}));
-  policyParts.push({schema:5,sha256:common.digest(JSON.stringify(model))});
+  policyParts.push({schema:candidateSchema,sha256:common.digest(JSON.stringify(candidateModel))});
 }
 // policyHash: single model -> its sha; BOTH --policy and --candidateControl
 // (the hybrid 4+5 arm) -> sha of the ordered part list, so the report pins
@@ -75,13 +80,17 @@ const config=GameConfigSchema.parse({gameMap:resolve(GameMapType,opts.map),gameM
   ...(gameMode===GameMode.Team?{playerTeams:2}:{})});
 const dir=common.outputDir(opts);
 let source=fs.readFileSync(opts.bot,'utf8');
-// Embed the candidate-v5 model (marker parity with trainer/shadow-deploy.mjs).
+// Embed the candidate model (marker parity with trainer/shadow-deploy.mjs).
+// Schema 6 uses its own shadow slot so v5 and v6 candidates never collide.
 if(candidateModel){
-  const needle='const SHADOW_V5_BUNDLED_MODEL = null;';
+  const needle=candidateSchema===6?
+    'const SHADOW_V6_BUNDLED_MODEL = null;':
+    'const SHADOW_V5_BUNDLED_MODEL = null;';
   if(source.split(needle).length!==2)
-    throw Error('Candidate-v5 marker missing/not unique in bot source');
+    throw Error('Candidate marker missing/not unique in bot source: '+needle);
   source=source.replace(needle,
-    'const SHADOW_V5_BUNDLED_MODEL = '+JSON.stringify(candidateModel)+';');
+    (candidateSchema===6?'const SHADOW_V6_BUNDLED_MODEL = ':
+      'const SHADOW_V5_BUNDLED_MODEL = ')+JSON.stringify(candidateModel)+';');
 }
 const clientID='aggrobot';
 const players=[{clientID,username:'AggroBot Benchmark',clanTag:null,
@@ -98,6 +107,7 @@ const intentsFile=fs.openSync(path.join(dir,'turns.jsonl'),'wx');
 let recordsCount=0,emitted=0;
 const meta={trajectorySemantics:visibleTrajectory.SEMANTICS,harness:'engine-gameview-v2',engineCommit,botSHA256:common.digest(source),policySHA256:policyHash,
   candidateControl:opts.candidateControl?true:null,
+  candidateSchema:candidateModel?candidateSchema:null,
   candidateGain:candidateModel?(opts.candidateGain?Number(opts.candidateGain):18):null,
   candidateControlMode:candidateModel?(opts.candidateControlMode||'raw'):null,
   seed:opts.seed,

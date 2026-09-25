@@ -1,0 +1,39 @@
+{
+  "trajectorySemantics": "gameview-hostile-only-v1",
+  "harness": "engine-gameview-v2",
+  "engineCommit": "13b403387af01d388f8c8ed8c953b6d3a11d1457",
+  "botSHA256": "f2b4c2286ab2d26c0a09a352a18597d717c24cb16d02d1030423258764fbea1d",
+  "policySHA256": "e0fceaef90d542d3811dcd0b261fb3284577cf319912989a2f3eaa7647d39968",
+  "candidateControl": null,
+  "candidateGain": null,
+  "candidateControlMode": null,
+  "seed": "v5di-official-2v2-europe-rush-8",
+  "seedSource": "GameStartInfo.gameID",
+  "profile": "autonomous",
+  "settings": {
+    "fullAuto": true
+  },
+  "opponentProfile": "rush",
+  "scriptedHumans": 3,
+  "gameConfig": {
+    "gameMap": "Europe",
+    "difficulty": "Medium",
+    "donateGold": true,
+    "donateTroops": true,
+    "gameType": "Singleplayer",
+    "gameMode": "Team",
+    "gameMapSize": "Compact",
+    "nations": 2,
+    "bots": 2,
+    "infiniteGold": false,
+    "infiniteTroops": false,
+    "instantBuild": false,
+    "randomSpawn": true,
+    "playerTeams": 2
+  },
+  "maxTicks": 18000,
+  "clock": "100ms simulation clock; serial awaited bot cycles",
+  "worker": "real GameRunner queries via async in-process adapter",
+  "browser": false,
+  "scriptedOpponents": "deterministic human-client intents; heuristic profiles, not real human behavior"
+}

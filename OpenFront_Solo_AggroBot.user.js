@@ -388,6 +388,101 @@ function predict(model,input){
   // GENERATED-SHADOW-V5-END
   let shadowV5Model=null;
   try{shadowV5Model=shadowV5.validate(SHADOW_V5_BUNDLED_MODEL);}catch(_){shadowV5Model=null;}
+  const SHADOW_V6_BUNDLED_MODEL = null;
+  // GENERATED-SHADOW-V6-BEGIN: keep equal to trainer/candidate-policy-v6.cjs
+  const shadowV6=(()=>{
+const INPUTS=38,OUTPUTS=2;
+const KINDS=['hold','invest','attack','expand','naval','support'];
+const HIDDEN_BY_ARCH={'38x24x2-tanh':24,'38x40x2-tanh':40};
+const ARCHES=Object.keys(HIDDEN_BY_ARCH);
+const clamp=(n,a=0,b=1)=>Math.max(a,Math.min(b,Number.isFinite(n)?n:a));
+const logrel=(n,base)=>clamp(Math.log1p(Math.max(0,Number(n)||0))/
+  Math.log1p(Math.max(1,Number(base)||1)),0,2)/2;
+// Bounded rule-utility normalization. Rule utilities are order-of-magnitude
+// bounded in [~-1000 (gated early attack), ~+150 (strong candidate)]; the
+// absolute feature is an offset/scale map, the gaps are signed-bounded so a
+// candidate far below the rule leader saturates at 1 without the -1000 gated
+// early-attack floor collapsing the whole frame.
+const RU_ABS_OFFSET=100,RU_ABS_SCALE=200,RU_GAP_SCALE=100;
+function lengthFor(arch){const h=HIDDEN_BY_ARCH[arch];
+  if(h===undefined)throw Error('Invalid schema-6 arch '+arch);
+  return INPUTS*h+h+h*OUTPUTS+OUTPUTS;}
+// 38-dim candidate feature vector.
+//   idx 0-28  state + candidate contract (identical to schema-5, verified)
+//   idx 29-34 kind one-hot: hold, invest, attack, expand, naval, support
+//   idx 35    candidateRuleUtility (own rule utility, bounded)
+//   idx 36    utilityGapToRuleTop1 (top-1 utility - own, bounded)
+//   idx 37    utilityGapToRuleTop2 (top-2 utility - own, bounded)
+// ctx is the per-frame rule-utility context: {ownRu, ruTop1, ruTop2}.
+function features(state={},candidate={},ctx={}){
+  const home=Math.max(1,Number(state.home)||1),gold=Math.max(1,Number(state.gold)||1);
+  const kind=String(candidate.kind||'');
+  const ownRu=Number(ctx.ownRu),top1=Number(ctx.ruTop1),top2=Number(ctx.ruTop2);
+  const values=[
+    logrel(state.home,state.maxTroops),logrel(state.gold,10000000),
+    clamp((state.incoming||0)/home,0,2)/2,clamp((state.committed||0)/home,0,2)/2,
+    clamp((state.reserve||0)/home,0,1),clamp(state.economyRelative,0,2)/2,
+    clamp(state.capacityUse,0,1),clamp(state.frontReach,0,1),
+    clamp(state.partnerNeed,0,1),clamp(state.enemyBound,0,1),
+    clamp(state.landTrend,-1,1)/2+.5,clamp(state.goldTrend,-1,1)/2+.5,
+    clamp(state.troopTrend,-1,1)/2+.5,clamp(state.frontCount/8,0,1),
+    clamp(state.portAccess,0,1),clamp(state.technologyCoverage,0,1),
+    clamp(candidate.expectedLand/Math.max(1,state.land||1),0,1),
+    clamp(candidate.costTroops/home,0,1),clamp(candidate.costGold/gold,0,1),
+    clamp(candidate.duration/1200,0,1),clamp(candidate.returnTime/1200,0,1),
+    clamp(candidate.counterRisk,0,1),clamp(candidate.thirdPartyRisk,0,1),
+    clamp(candidate.infrastructureValue,0,1),clamp(candidate.incomeValue,0,1),
+    clamp(candidate.recruitmentValue,0,1),clamp(candidate.siteRisk,0,1),
+    clamp(candidate.holdProbability,0,1),clamp(candidate.legalConfidence,0,1),
+    // idx 29-34: explicit one-hot for every action kind (no all-zero fallback).
+    ...(KINDS.map(k=>k===kind?1:0)),
+    // idx 35: candidateRuleUtility.
+    Number.isFinite(ownRu)?clamp((ownRu+RU_ABS_OFFSET)/RU_ABS_SCALE,0,1):0,
+    // idx 36: utilityGapToRuleTop1 (0 for the rule leader, grows below it).
+    (Number.isFinite(ownRu)&&Number.isFinite(top1))
+      ?clamp((top1-ownRu)/RU_GAP_SCALE,0,1):0.5,
+    // idx 37: utilityGapToRuleTop2.
+    (Number.isFinite(ownRu)&&Number.isFinite(top2))
+      ?clamp((top2-ownRu)/RU_GAP_SCALE,0,1):0.5
+  ];
+  return values.map(v=>clamp(v));
+}
+function validate(model){
+  if(!model||model.schema!==6)throw Error('Invalid schema-6 candidate model');
+  const h=HIDDEN_BY_ARCH[model.arch];
+  if(h===undefined)throw Error('Invalid schema-6 candidate model');
+  const L=lengthFor(model.arch);
+  if(!Array.isArray(model.outputs)||model.outputs.length!==OUTPUTS||
+    model.outputs[0]!=='heldGain'||model.outputs[1]!=='lossRisk'||
+    !Array.isArray(model.weights)||model.weights.length!==L||
+    Array.from(model.weights).some(x=>!Number.isFinite(x)||Math.abs(x)>5))
+    throw Error('Invalid schema-6 candidate model');
+  return model;
+}
+function zero(arch){arch=arch||ARCHES[0];
+  if(!HIDDEN_BY_ARCH[arch])throw Error('Invalid arch '+arch);
+  return {schema:6,arch,outputs:['heldGain','lossRisk'],
+    weights:Array(lengthFor(arch)).fill(0)};}
+function predict(model,input){
+  const m=validate(model);const h=HIDDEN_BY_ARCH[m.arch];
+  if(!Array.isArray(input)||input.length!==INPUTS||
+    input.some(x=>!Number.isFinite(x)||x<0||x>1))
+    throw Error('Invalid candidate feature vector');
+  const w=m.weights;const hb=INPUTS*h,outStart=hb+h,outBias=outStart+h*OUTPUTS;
+  const hid=[];
+  for(let j=0;j<h;j++){let z=w[hb+j];
+    for(let i=0;i<INPUTS;i++)z+=input[i]*w[i*h+j];hid.push(Math.tanh(z));}
+  const out=[];
+  for(let k=0;k<OUTPUTS;k++){let z=w[outBias+k];
+    for(let j=0;j<h;j++)z+=hid[j]*w[outStart+j*OUTPUTS+k];
+    out.push((Math.tanh(z)+1)/2);}
+  return {heldGain:out[0],lossRisk:out[1]};
+}
+    return {features,validate,predict};
+  })();
+  // GENERATED-SHADOW-V6-END
+  let shadowV6Model=null;
+  try{shadowV6Model=shadowV6.validate(SHADOW_V6_BUNDLED_MODEL);}catch(_){shadowV6Model=null;}
   const NEURAL_LENGTH=90,NEURAL_STORAGE='of-aggrobot-neural-policy-v1';
   let neuralModel=null;
   function neuralValidate(data){
@@ -489,7 +584,7 @@ function predict(model,input){
       fingerprint:'fnv1a-'+(hash>>>0).toString(16).padStart(8,'0')+'-'+bytes};
   }
   function shadowModelInfo(){
-    const model=shadowV5Model;
+    const model=shadowV6Model||shadowV5Model;
     if(!model)return {loaded:false,enabled:!!opts.shadowRankEnabled,
       reason:'no-valid-candidate'};
     // FNV-1a tracking fingerprint (not a trainer policy SHA256), mirroring
@@ -2711,38 +2806,57 @@ function predict(model,input){
     // recomputed, so the model can drive the channel director; downstream
     // legality (director + planners) remains authoritative. Otherwise this is
     // shadow-only (the model only observes, it never changes the pick).
-    let v5Scores=null,controlActive=false;
-    // The exact schema-5 state scored live (17 fields: base visible state +
+    let modelScores=null,controlActive=false;
+    // The exact state scored live (17 fields: base visible state +
     // v5StateExtension). It is published as planningState.v5State so the
     // captured planning frame trains on the very values used at inference.
+    // Both the schema-5 and schema-6 rankers consume this same state object.
     const state={home:s.home,maxTroops:s.max,committed:s.committed,
       incoming:s.incoming,reserve:s.reserve,gold:goldAmount(me),
       land:number(()=>me.numTilesOwned(),0),capacityUse:s.ratio,
       frontCount:groups?.length||0,...v5StateExtension(me,s,groups,tick)};
-    if(opts.shadowRankEnabled&&shadowV5Model){
+    // Schema-6 takes precedence when a v6 shadow model is bundled: it scores
+    // the SAME candidate contract (cand.v5) plus the rule-utility context.
+    // The candidates array is still rule-sorted here (control reorders it
+    // below, after all scores are computed), so candidates[0]/[1] are the
+    // rule top-1/top-2 utilities — the exact parity the v6 binding trained on.
+    const shadowModel=shadowV6Model||shadowV5Model;
+    const shadowSchema=shadowV6Model?6:5;
+    if(opts.shadowRankEnabled&&shadowModel){
       try{
-        const v5Score=cand=>{
-          const f=shadowV5.features(state,cand.v5||{kind:cand.kind,
-            costTroops:cand.cost||0,counterRisk:cand.risk||0,
-            holdProbability:1-Math.min(1,cand.risk||0)});
-          // Feature contract: 32 finite features in [0,1]. `features` clamps
-          // its output, so a violation means the live inputs drifted from the
-          // trained contract; fail closed (rule-based) rather than score.
-          if(!Array.isArray(f)||f.length!==32||
-             f.some(x=>!Number.isFinite(x)||x<0||x>1))
-            throw Error('feature-drift');
-          const outcome=shadowV5.predict(shadowV5Model,f);
-          // Action-kind calibration (trainer variant D): the trained score
-          // includes a per-kind bias learned on the ranking margin; adding
-          // biasOf(kind) per candidate makes the live score margin exactly
-          // equal to the trained margin. Absent for models without
-          // training.kindBias (no-op, identical behavior).
-          const bias=Number(shadowV5Model.training?.kindBias?.[cand.kind])||0;
+        const scoreOf=cand=>{
+          const contract=cand.v5||{kind:cand.kind,costTroops:cand.cost||0,
+            counterRisk:cand.risk||0,holdProbability:1-Math.min(1,cand.risk||0)};
+          let f,outcome,bias;
+          if(shadowV6Model){
+            const ctx={ownRu:cand.utility,
+              ruTop1:candidates[0]?candidates[0].utility:null,
+              ruTop2:candidates.length>1?candidates[1].utility:null};
+            f=shadowV6.features(state,contract,ctx);
+            // 38 finite features in [0,1]; `features` clamps, so a violation
+            // means live inputs drifted from the trained contract.
+            if(!Array.isArray(f)||f.length!==38||
+               f.some(x=>!Number.isFinite(x)||x<0||x>1))
+              throw Error('feature-drift');
+            outcome=shadowV6.predict(shadowV6Model,f);
+            bias=Number(shadowV6Model.training?.kindBias?.[cand.kind])||0;
+          }else{
+            f=shadowV5.features(state,contract);
+            // 32 finite features in [0,1]; fail closed (rule-based) on drift.
+            if(!Array.isArray(f)||f.length!==32||
+               f.some(x=>!Number.isFinite(x)||x<0||x>1))
+              throw Error('feature-drift');
+            outcome=shadowV5.predict(shadowV5Model,f);
+            // Action-kind calibration (trainer variant D): makes the live
+            // score margin exactly equal to the trained margin. Absent for
+            // models without training.kindBias (no-op, identical behavior).
+            bias=Number(shadowV5Model.training?.kindBias?.[cand.kind])||0;
+          }
           return outcome.heldGain-outcome.lossRisk+bias;
         };
-        v5Scores=new Map(candidates.map(c=>[c.id,v5Score(c)]));
+        modelScores=new Map(candidates.map(c=>[c.id,scoreOf(c)]));
         if(opts.candidateControlEnabled===true){
-          const controlled=candidateControlVariant(candidates,v5Scores,
+          const controlled=candidateControlVariant(candidates,modelScores,
             opts.candidateControlGain,opts.candidateControlMode||'raw',
             {margin:opts.candidateControlMargin,
              capGain:opts.candidateControlCapGain,
@@ -2771,7 +2885,7 @@ function predict(model,input){
       (Number.isFinite(+opts.candidateControlGain)?+opts.candidateControlGain:18):0;
     const combinedById=new Map(candidates.map(c=>[c.id,c.utility]));
     const binding=ruleRank.map((r,rankByRule)=>{
-      const score=v5Scores?v5Scores.get(r.id):null;
+      const score=modelScores?modelScores.get(r.id):null;
       const scored=Number.isFinite(score);
       const neuralDelta=scored?controlGain*score:0;
       return {id:r.id,kind:r.kind,legal:true,ruleUtility:r.ruleUtility,
@@ -2811,7 +2925,7 @@ function predict(model,input){
       borderStale:borderAge===null||borderAge>20,
       opponentTroopsUnknown:(groups||[]).filter(g=>g.id!==null&&
         !Number.isFinite(number(()=>g.opponent?.troops?.(),NaN))).length,
-      modelEnabled:!!(opts.shadowRankEnabled&&shadowV5Model)};
+      modelEnabled:!!(opts.shadowRankEnabled&&shadowModel)};
     planningState.provenance={bot:VERSION,
       engineCommit:window.BOOTSTRAP_CONFIG?.gitCommit??null,
       gameMode:game?.config?.().gameConfig?.().gameMode??'unknown',
@@ -2835,25 +2949,25 @@ function predict(model,input){
     // false; its output is never read by an intent, budget, reserve, legality
     // or target selector. When control is on, `selected` already reflects the
     // v5-influenced re-ranking computed above.
-    if(opts.shadowRankEnabled&&shadowV5Model&&limited.length){
+    if(opts.shadowRankEnabled&&shadowModel&&limited.length){
       const ruleChoice=ruleSelected?.id??null;
       const changedIntent=controlActive&&selected?.id!==ruleChoice;
-      const rankedShadow=(v5Scores?
-        limited.map(c=>({id:c.id,score:v5Scores.get(c.id)??0})):[]).sort((a,b)=>
+      const rankedShadow=(modelScores?
+        limited.map(c=>({id:c.id,score:modelScores.get(c.id)??0})):[]).sort((a,b)=>
           b.score-a.score||String(a.id).localeCompare(String(b.id)));
       const wouldPrefer=controlActive?selected?.id??null:
         rankedShadow[0]?.id??null;
       shadowDecisionEvidence={tick,ruleChoice,wouldPrefer,ranked:rankedShadow,
-        changedIntent,
+        changedIntent,schema:shadowSchema,
         evidence:controlActive
           ?(changedIntent
-            ?'candidate-v5 bounded control override; legality still authoritative'
-            :'candidate-v5 control active; model agrees with rule ranking')
+            ?`candidate-v${shadowSchema} bounded control override; legality still authoritative`
+            :`candidate-v${shadowSchema} control active; model agrees with rule ranking`)
           :'shadow-only; not observed game effect'};
       planningState.modelChoice=rankedShadow[0]?.id??null;
       planningState.modelScores=rankedShadow;
       if(tick%100<4)telemetry('neural_shadow_rank',
-        changedIntent?'Schema-5 Kandidatensteuerung aktiv':'Schema-5 nur protokolliert',
+        changedIntent?`Schema-${shadowSchema} Kandidatensteuerung aktiv`:`Schema-${shadowSchema} nur protokolliert`,
         shadowDecisionEvidence);
     }
     // §3/§4: explicit per-frame decision-path fields. ruleChoice is the
@@ -8328,8 +8442,8 @@ function predict(model,input){
       <div style="color:#a9efc9">Start_Live_Duo.bat starten · Port 8767 · nur Raumcode in beiden Browsern gleich · Bündnis gilt erst nach Bestätigung im Spiel · Relay-Ausfall ⇒ beide spielen autonom weiter.</div>
       </details>
       <details data-section="neural"${openFor('neural')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Neurales Modell</summary>
-      <div>${b('shadowRankEnabled',opts.shadowRankEnabled?'Schema-5 Shadow AN':'Schema-5 Shadow AUS')}</div>
-      <div style="color:#9bd0e4">Shadow: ${shadowV5Model?(opts.shadowRankEnabled&&opts.candidateControlEnabled?'CONTROL AKTIV (Gain '+escapeHTML(shadowModelInfo().controlGain)+')':'Schema 5 geladen, nur Vergleich'):'kein Schema-5-Kandidat geladen'} · ${escapeHTML(shadowDecisionEvidence?.wouldPrefer??'—')} ${shadowV5Model&&opts.shadowRankEnabled&&opts.candidateControlEnabled?(shadowDecisionEvidence?.failClosed?'(Fallback Regelbasis: '+escapeHTML(shadowDecisionEvidence.failClosed)+')':shadowDecisionEvidence?.changedIntent?'(Auswahl durch Modell verändert)':'(Control konfiguriert; letzte Auswahl unverändert)'):'(ohne Aktionswirkung)'}</div>
+      <div>${b('shadowRankEnabled',opts.shadowRankEnabled?'Shadow-Ranking AN':'Shadow-Ranking AUS')}</div>
+      <div style="color:#9bd0e4">Shadow: ${shadowV6Model||shadowV5Model?((shadowV6Model?'Schema 6':'Schema 5')+(opts.shadowRankEnabled&&opts.candidateControlEnabled?' CONTROL AKTIV (Gain '+escapeHTML(shadowModelInfo().controlGain)+')':', geladen, nur Vergleich')):'kein Shadow-Kandidat geladen'} · ${escapeHTML(shadowDecisionEvidence?.wouldPrefer??'—')} ${(shadowV6Model||shadowV5Model)&&opts.shadowRankEnabled&&opts.candidateControlEnabled?(shadowDecisionEvidence?.failClosed?'(Fallback Regelbasis: '+escapeHTML(shadowDecisionEvidence.failClosed)+')':shadowDecisionEvidence?.changedIntent?'(Auswahl durch Modell verändert)':'(Control konfiguriert; letzte Auswahl unverändert)'):'(ohne Aktionswirkung)'}</div>
       <div style="color:#9bd0e4">Inferenz: ${escapeHTML(neuralModelInfo().fingerprint||'kein Modell')} · Signale ${neuralEvidence.nonzero}/${neuralEvidence.calls} · Ranking ${neuralEvidence.actionNonzero}/${neuralEvidence.actionCalls}</div>
       <div style="color:#9bd0e4">Deployment: Modell ${escapeHTML(deploymentInfo().model.champion.fingerprint||'—')} · Kandidat ${escapeHTML(deploymentInfo().model.candidate.fingerprint||'—')} · Skript ${escapeHTML(deploymentInfo().script.version)} · Engine ${escapeHTML(deploymentInfo().engine.commit||'—')}</div>
       <div style="color:#9bd0e4">Neurales Modell: ${neuralModel?.schema===4?'Strategische Policy v4 (24 Signale)':neuralModel?.schema===3?'Strategische Policy v3 (16 Signale)':neuralModel?.schema===2?'Aktionsranking (max. ±14 Punkte)':neuralModel?.schema===1?'Slider (max. ±8 Punkte)':'nicht geladen'} · nur bei freigegebener Partie</div>

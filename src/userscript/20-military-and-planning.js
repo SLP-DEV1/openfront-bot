@@ -160,38 +160,57 @@
     // recomputed, so the model can drive the channel director; downstream
     // legality (director + planners) remains authoritative. Otherwise this is
     // shadow-only (the model only observes, it never changes the pick).
-    let v5Scores=null,controlActive=false;
-    // The exact schema-5 state scored live (17 fields: base visible state +
+    let modelScores=null,controlActive=false;
+    // The exact state scored live (17 fields: base visible state +
     // v5StateExtension). It is published as planningState.v5State so the
     // captured planning frame trains on the very values used at inference.
+    // Both the schema-5 and schema-6 rankers consume this same state object.
     const state={home:s.home,maxTroops:s.max,committed:s.committed,
       incoming:s.incoming,reserve:s.reserve,gold:goldAmount(me),
       land:number(()=>me.numTilesOwned(),0),capacityUse:s.ratio,
       frontCount:groups?.length||0,...v5StateExtension(me,s,groups,tick)};
-    if(opts.shadowRankEnabled&&shadowV5Model){
+    // Schema-6 takes precedence when a v6 shadow model is bundled: it scores
+    // the SAME candidate contract (cand.v5) plus the rule-utility context.
+    // The candidates array is still rule-sorted here (control reorders it
+    // below, after all scores are computed), so candidates[0]/[1] are the
+    // rule top-1/top-2 utilities — the exact parity the v6 binding trained on.
+    const shadowModel=shadowV6Model||shadowV5Model;
+    const shadowSchema=shadowV6Model?6:5;
+    if(opts.shadowRankEnabled&&shadowModel){
       try{
-        const v5Score=cand=>{
-          const f=shadowV5.features(state,cand.v5||{kind:cand.kind,
-            costTroops:cand.cost||0,counterRisk:cand.risk||0,
-            holdProbability:1-Math.min(1,cand.risk||0)});
-          // Feature contract: 32 finite features in [0,1]. `features` clamps
-          // its output, so a violation means the live inputs drifted from the
-          // trained contract; fail closed (rule-based) rather than score.
-          if(!Array.isArray(f)||f.length!==32||
-             f.some(x=>!Number.isFinite(x)||x<0||x>1))
-            throw Error('feature-drift');
-          const outcome=shadowV5.predict(shadowV5Model,f);
-          // Action-kind calibration (trainer variant D): the trained score
-          // includes a per-kind bias learned on the ranking margin; adding
-          // biasOf(kind) per candidate makes the live score margin exactly
-          // equal to the trained margin. Absent for models without
-          // training.kindBias (no-op, identical behavior).
-          const bias=Number(shadowV5Model.training?.kindBias?.[cand.kind])||0;
+        const scoreOf=cand=>{
+          const contract=cand.v5||{kind:cand.kind,costTroops:cand.cost||0,
+            counterRisk:cand.risk||0,holdProbability:1-Math.min(1,cand.risk||0)};
+          let f,outcome,bias;
+          if(shadowV6Model){
+            const ctx={ownRu:cand.utility,
+              ruTop1:candidates[0]?candidates[0].utility:null,
+              ruTop2:candidates.length>1?candidates[1].utility:null};
+            f=shadowV6.features(state,contract,ctx);
+            // 38 finite features in [0,1]; `features` clamps, so a violation
+            // means live inputs drifted from the trained contract.
+            if(!Array.isArray(f)||f.length!==38||
+               f.some(x=>!Number.isFinite(x)||x<0||x>1))
+              throw Error('feature-drift');
+            outcome=shadowV6.predict(shadowV6Model,f);
+            bias=Number(shadowV6Model.training?.kindBias?.[cand.kind])||0;
+          }else{
+            f=shadowV5.features(state,contract);
+            // 32 finite features in [0,1]; fail closed (rule-based) on drift.
+            if(!Array.isArray(f)||f.length!==32||
+               f.some(x=>!Number.isFinite(x)||x<0||x>1))
+              throw Error('feature-drift');
+            outcome=shadowV5.predict(shadowV5Model,f);
+            // Action-kind calibration (trainer variant D): makes the live
+            // score margin exactly equal to the trained margin. Absent for
+            // models without training.kindBias (no-op, identical behavior).
+            bias=Number(shadowV5Model.training?.kindBias?.[cand.kind])||0;
+          }
           return outcome.heldGain-outcome.lossRisk+bias;
         };
-        v5Scores=new Map(candidates.map(c=>[c.id,v5Score(c)]));
+        modelScores=new Map(candidates.map(c=>[c.id,scoreOf(c)]));
         if(opts.candidateControlEnabled===true){
-          const controlled=candidateControlVariant(candidates,v5Scores,
+          const controlled=candidateControlVariant(candidates,modelScores,
             opts.candidateControlGain,opts.candidateControlMode||'raw',
             {margin:opts.candidateControlMargin,
              capGain:opts.candidateControlCapGain,
@@ -220,7 +239,7 @@
       (Number.isFinite(+opts.candidateControlGain)?+opts.candidateControlGain:18):0;
     const combinedById=new Map(candidates.map(c=>[c.id,c.utility]));
     const binding=ruleRank.map((r,rankByRule)=>{
-      const score=v5Scores?v5Scores.get(r.id):null;
+      const score=modelScores?modelScores.get(r.id):null;
       const scored=Number.isFinite(score);
       const neuralDelta=scored?controlGain*score:0;
       return {id:r.id,kind:r.kind,legal:true,ruleUtility:r.ruleUtility,
@@ -260,7 +279,7 @@
       borderStale:borderAge===null||borderAge>20,
       opponentTroopsUnknown:(groups||[]).filter(g=>g.id!==null&&
         !Number.isFinite(number(()=>g.opponent?.troops?.(),NaN))).length,
-      modelEnabled:!!(opts.shadowRankEnabled&&shadowV5Model)};
+      modelEnabled:!!(opts.shadowRankEnabled&&shadowModel)};
     planningState.provenance={bot:VERSION,
       engineCommit:window.BOOTSTRAP_CONFIG?.gitCommit??null,
       gameMode:game?.config?.().gameConfig?.().gameMode??'unknown',
@@ -284,25 +303,25 @@
     // false; its output is never read by an intent, budget, reserve, legality
     // or target selector. When control is on, `selected` already reflects the
     // v5-influenced re-ranking computed above.
-    if(opts.shadowRankEnabled&&shadowV5Model&&limited.length){
+    if(opts.shadowRankEnabled&&shadowModel&&limited.length){
       const ruleChoice=ruleSelected?.id??null;
       const changedIntent=controlActive&&selected?.id!==ruleChoice;
-      const rankedShadow=(v5Scores?
-        limited.map(c=>({id:c.id,score:v5Scores.get(c.id)??0})):[]).sort((a,b)=>
+      const rankedShadow=(modelScores?
+        limited.map(c=>({id:c.id,score:modelScores.get(c.id)??0})):[]).sort((a,b)=>
           b.score-a.score||String(a.id).localeCompare(String(b.id)));
       const wouldPrefer=controlActive?selected?.id??null:
         rankedShadow[0]?.id??null;
       shadowDecisionEvidence={tick,ruleChoice,wouldPrefer,ranked:rankedShadow,
-        changedIntent,
+        changedIntent,schema:shadowSchema,
         evidence:controlActive
           ?(changedIntent
-            ?'candidate-v5 bounded control override; legality still authoritative'
-            :'candidate-v5 control active; model agrees with rule ranking')
+            ?`candidate-v${shadowSchema} bounded control override; legality still authoritative`
+            :`candidate-v${shadowSchema} control active; model agrees with rule ranking`)
           :'shadow-only; not observed game effect'};
       planningState.modelChoice=rankedShadow[0]?.id??null;
       planningState.modelScores=rankedShadow;
       if(tick%100<4)telemetry('neural_shadow_rank',
-        changedIntent?'Schema-5 Kandidatensteuerung aktiv':'Schema-5 nur protokolliert',
+        changedIntent?`Schema-${shadowSchema} Kandidatensteuerung aktiv`:`Schema-${shadowSchema} nur protokolliert`,
         shadowDecisionEvidence);
     }
     // §3/§4: explicit per-frame decision-path fields. ruleChoice is the

@@ -49,6 +49,15 @@ function main(args=process.argv.slice(2)){
    candidate.indexOf('function sha(model)'));
  if(!shared||!generated.includes(shared))
    throw Error('Schema-5 shadow runtime drifted from trainer model source');
+ const candidateV6=require('node:fs').readFileSync(
+   path.join(root,'trainer/candidate-policy-v6.cjs'),'utf8');
+ // Anchor on the unique declaration strings (not the prose mentions of the
+ // same tokens in the header comment).
+ const sharedV6=candidateV6.slice(
+   candidateV6.indexOf('const INPUTS=38,OUTPUTS=2;'),
+   candidateV6.indexOf('function sha(model){'));
+ if(!sharedV6||!generated.includes(sharedV6))
+   throw Error('Schema-6 shadow runtime drifted from trainer model source');
  if(mode==='--check'){
    if(existing!==generated)throw Error('Solo userscript is stale; run node tools/build-userscript.cjs --write');
    console.log('USERSCRIPT_BUILD_PASS '+JSON.stringify({parts:files.length,bytes:generated.length}));

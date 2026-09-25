@@ -1,0 +1,35 @@
+{
+  "kind": "v6-dataset-manifest",
+  "generated": "2026-09-25T17:28:59.847Z",
+  "engineCommit": "13b403387af01d388f8c8ed8c953b6d3a11d1457",
+  "schema": 6,
+  "featuredSchemaVersion": 3,
+  "horizonTicks": 600,
+  "landScale": 800,
+  "matches": 132,
+  "rows": 41865,
+  "outcomes": {
+    "unknown": 42,
+    "defeat": 57,
+    "victory": 33
+  },
+  "kinds": {
+    "naval": 9911,
+    "invest": 15475,
+    "hold": 15475,
+    "expand": 828,
+    "attack": 176
+  },
+  "hardNegFrames": 1051,
+  "hardNegRows": 2996,
+  "ruRows": 40861,
+  "noRuRows": 1004,
+  "ctxComplete": 40861,
+  "featureParitySample": {
+    "ok": 44,
+    "bad": 0
+  },
+  "matchCount": 132,
+  "dataFile": "dataset.json",
+  "auditFile": "data-audit.json"
+}

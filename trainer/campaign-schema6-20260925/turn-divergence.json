@@ -1,0 +1,74 @@
+{
+  "gate": "section-15 turn-stream divergence pre-gate",
+  "rule": "Kandidat darf nur weiterkommen, wenn tatsaechlich mindestens eine andere, legal, nicht-kosmetische, vom Neural-Controller verursachte Action gesendet wurde.",
+  "comparedAgainst": "rule-basis (identical seed, same engine 13b403387af01d388f8c8ed8c953b6d3a11d1457, 2000 ticks)",
+  "candidateModelLead": "E_38x40x2tanh",
+  "pairs": [
+    {
+      "label": "E_38x40x2tanh gated seed-001 2hum",
+      "candidateDir": ".tmp-pres-v6", "baselineDir": ".tmp-pres-rule",
+      "seed": "v6pres-001", "scriptedHumans": 2, "candidateControlMode": "gated",
+      "totalTurns": 2000, "identicalTurns": 2000, "differentTurns": 0,
+      "firstDifferentTick": null, "ruleAction": null, "candidateAction": null,
+      "modelReason": null, "ruleUtility": null, "modelScore": null,
+      "funnel": { "frames": 163, "modelVsRule": 0, "changedIntent": 0, "framesWithIntent": 4 }
+    },
+    {
+      "label": "E_38x40x2tanh rank seed-001 2hum",
+      "candidateDir": ".tmp-pres-v6-rank", "baselineDir": ".tmp-pres-rule",
+      "seed": "v6pres-001", "scriptedHumans": 2, "candidateControlMode": "rank",
+      "totalTurns": 2000, "identicalTurns": 2000, "differentTurns": 0,
+      "firstDifferentTick": null, "ruleAction": null, "candidateAction": null,
+      "modelReason": null, "ruleUtility": null, "modelScore": null,
+      "funnel": { "frames": 163, "modelVsRule": 0, "changedIntent": 0, "framesWithIntent": 4 }
+    },
+    {
+      "label": "E_38x40x2tanh rank seed-002 2hum",
+      "candidateDir": ".tmp-pres-v6-rank-002", "baselineDir": ".tmp-pres-rule-002",
+      "seed": "v6pres-002", "scriptedHumans": 2, "candidateControlMode": "rank",
+      "totalTurns": 2000, "identicalTurns": 2000, "differentTurns": 0,
+      "firstDifferentTick": null, "ruleAction": null, "candidateAction": null,
+      "modelReason": null, "ruleUtility": null, "modelScore": null,
+      "funnel": { "frames": 165, "modelVsRule": 0, "changedIntent": 0, "framesWithIntent": 1 }
+    },
+    {
+      "label": "E_38x40x2tanh rank seed-003 6hum",
+      "candidateDir": ".tmp-pres-v6-rank-003", "baselineDir": ".tmp-pres-rule-003",
+      "seed": "v6pres-003", "scriptedHumans": 6, "candidateControlMode": "rank",
+      "totalTurns": 2000, "identicalTurns": 2000, "differentTurns": 0,
+      "firstDifferentTick": null, "ruleAction": null, "candidateAction": null,
+      "modelReason": null, "ruleUtility": null, "modelScore": null,
+      "funnel": { "frames": 165, "modelVsRule": 30, "changedIntent": 30, "framesWithIntent": 2 }
+    },
+    {
+      "label": "A_38x40x2tanh rank seed-001 2hum",
+      "candidateDir": ".tmp-pres-A-rank", "baselineDir": ".tmp-pres-rule",
+      "seed": "v6pres-001", "scriptedHumans": 2, "candidateControlMode": "rank",
+      "totalTurns": 2000, "identicalTurns": 2000, "differentTurns": 0,
+      "firstDifferentTick": null, "ruleAction": null, "candidateAction": null,
+      "modelReason": null, "ruleUtility": null, "modelScore": null,
+      "funnel": { "frames": 163, "modelVsRule": 12, "changedIntent": 1, "framesWithIntent": 4 }
+    },
+    {
+      "label": "A_38x40x2tanh rank seed-003 6hum",
+      "candidateDir": ".tmp-pres-A-rank-003", "baselineDir": ".tmp-pres-rule-003",
+      "seed": "v6pres-003", "scriptedHumans": 6, "candidateControlMode": "rank",
+      "totalTurns": 2000, "identicalTurns": 2000, "differentTurns": 0,
+      "firstDifferentTick": null, "ruleAction": null, "candidateAction": null,
+      "modelReason": null, "ruleUtility": null, "modelScore": null,
+      "funnel": { "frames": 165, "modelVsRule": 148, "changedIntent": 133, "framesWithIntent": 2 }
+    }
+  ],
+  "summary": {
+    "pairsTested": 6,
+    "pairsWithAnyTurnDivergence": 0,
+    "maxInternalModelVsRuleDivergence": { "label": "A_38x40x2tanh rank seed-003 6hum", "modelVsRule": 148, "frames": 165, "fraction": 0.9 },
+    "maxExecutedActionRate": { "framesWithIntent": 4, "frames": 163, "fraction": 0.0245 },
+    "note": "Even the most divergent model (A, 90% of frames differ from rule internally) emits an actual action in <=2.4% of sampled frames, and in every pair the executed turns.jsonl is byte-identical to rule-basis."
+  },
+  "mechanism": "The schema-6 model reorders the channel-director candidate list (finalChoice / changedIntent change), but the EMITTED action is derived downstream by the channel director's actionable / cooldown / budget / safety gating, which is invariant to candidate order. Concretely, in A_38x40x2tanh seed-003 tick 1661 the model flips hold->invest (finalChoice=invest, changedIntent=true) yet the emitted intent is a build action; the block reasons (146 'stabilize home/borders', 17 'wait for reserve/growth', 17 'no-channel-action') are identical between candidate and baseline. This is the section-31 trap: changedIntent (133 frames) != executed turn divergence (0 turns).",
+  "decision": "FAIL",
+  "proceed": false,
+  "abortPerSection29": "turn streams identisch zur Baseline",
+  "repro": "node .tmp-prescreen-matrix.cjs  (turns.jsonl line diff + decision-frame funnel for all 6 pairs)"
+}

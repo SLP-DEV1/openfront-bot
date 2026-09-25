@@ -1,0 +1,38 @@
+{
+  "trajectorySemantics": "gameview-hostile-only-v1",
+  "harness": "engine-gameview-v2",
+  "engineCommit": "13b403387af01d388f8c8ed8c953b6d3a11d1457",
+  "botSHA256": "eaf778bdfbdfa2eb760aaf22e141b9acf3c3de00e8befd95636c821470271daf",
+  "policySHA256": "16b686d291addf4e9c14c7c03e80308b6cb7474fd90dbd5efb60065c9a2b4f93",
+  "candidateControl": true,
+  "candidateGain": 60,
+  "candidateControlMode": "raw",
+  "seed": "v5di-1v1-europe-balanced-3",
+  "seedSource": "GameStartInfo.gameID",
+  "profile": "autonomous",
+  "settings": {
+    "fullAuto": true
+  },
+  "opponentProfile": "balanced",
+  "scriptedHumans": 1,
+  "gameConfig": {
+    "gameMap": "Europe",
+    "difficulty": "Medium",
+    "donateGold": false,
+    "donateTroops": false,
+    "gameType": "Singleplayer",
+    "gameMode": "Free For All",
+    "gameMapSize": "Compact",
+    "nations": 2,
+    "bots": 2,
+    "infiniteGold": false,
+    "infiniteTroops": false,
+    "instantBuild": false,
+    "randomSpawn": true
+  },
+  "maxTicks": 18000,
+  "clock": "100ms simulation clock; serial awaited bot cycles",
+  "worker": "real GameRunner queries via async in-process adapter",
+  "browser": false,
+  "scriptedOpponents": "deterministic human-client intents; heuristic profiles, not real human behavior"
+}

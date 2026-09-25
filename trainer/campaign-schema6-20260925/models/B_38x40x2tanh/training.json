@@ -1,0 +1,45 @@
+{
+  "variant": "B",
+  "arch": "38x40x2-tanh",
+  "epoch": 150,
+  "lr": 0.1,
+  "splitPct": 21,
+  "lambda": 0,
+  "seed": 1337,
+  "bagSize": 96,
+  "ruWeight": 0.25,
+  "hardNegBoost": 2,
+  "useBias": false,
+  "oversample": {
+    "min": 0.05,
+    "max": 5,
+    "target": 151,
+    "positiveKindCounts": {
+      "naval": 565,
+      "invest": 1641,
+      "hold": 658,
+      "expand": 99,
+      "attack": 47
+    }
+  },
+  "trainGroups": 3010,
+  "valGroups": 11673,
+  "wallMs": 4606,
+  "finalValLoss": 0.009533,
+  "metrics": {
+    "valRankLoss": 0.472332,
+    "crossCandidateSpread": 0.349456,
+    "decisionAccuracy": 0.867,
+    "kindSelectionDistribution": {
+      "invest": 0.5845,
+      "hold": 0.2085,
+      "naval": 0.207
+    },
+    "hardNegativeAccuracy": 0.4163,
+    "hardNegativeFrames": 771,
+    "flipToLowerRate": 0.1244,
+    "flipToHigherRate": 0,
+    "flipFrames": 11673,
+    "flipCount": 1477
+  }
+}

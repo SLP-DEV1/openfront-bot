@@ -52,6 +52,7 @@ assert.equal(SEMANTICS,'gameview-hostile-only-v1');
    put('tools/build-userscript.cjs','tools/build-userscript.cjs');
    put('tools/build-run3-bundle.cjs','tools/build-run3-bundle.cjs');
    put('trainer/candidate-policy-v5.cjs','trainer/candidate-policy-v5.cjs');
+   put('trainer/candidate-policy-v6.cjs','trainer/candidate-policy-v6.cjs');
    put('src/runtime/panel-state.cjs','src/runtime/panel-state.cjs');
    put('src/runtime/decision-kernels.cjs','src/runtime/decision-kernels.cjs');
    fs.cpSync(path.join(root,'src/userscript'),path.join(temp,'src/userscript'),

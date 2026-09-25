@@ -1,0 +1,263 @@
+{
+  "contract": "schema-6 candidate feature contract",
+  "schema": 6,
+  "featuredSchemaVersion": 3,
+  "inputs": 38,
+  "outputs": 2,
+  "archs": [
+    "38x24x2-tanh",
+    "38x40x2-tanh"
+  ],
+  "hiddenByArch": {
+    "38x24x2-tanh": 24,
+    "38x40x2-tanh": 40
+  },
+  "lengths": {
+    "38x24x2-tanh": 986,
+    "38x40x2-tanh": 1642
+  },
+  "ruConstants": {
+    "RU_ABS_OFFSET": 100,
+    "RU_ABS_SCALE": 200,
+    "RU_GAP_SCALE": 100
+  },
+  "kinds": [
+    "hold",
+    "invest",
+    "attack",
+    "expand",
+    "naval",
+    "support"
+  ],
+  "features": [
+    {
+      "idx": 0,
+      "name": "home_ratio",
+      "source": "state.home/state.maxTroops",
+      "transform": "logrel(home,maxTroops)"
+    },
+    {
+      "idx": 1,
+      "name": "gold",
+      "source": "state.gold",
+      "transform": "logrel(gold,1e7)"
+    },
+    {
+      "idx": 2,
+      "name": "incoming_ratio",
+      "source": "state.incoming/home",
+      "transform": "clamp(0,2)/2"
+    },
+    {
+      "idx": 3,
+      "name": "committed_ratio",
+      "source": "state.committed/home",
+      "transform": "clamp(0,2)/2"
+    },
+    {
+      "idx": 4,
+      "name": "reserve_ratio",
+      "source": "state.reserve/home",
+      "transform": "clamp(0,1)"
+    },
+    {
+      "idx": 5,
+      "name": "economy_relative",
+      "source": "state.economyRelative",
+      "transform": "clamp(0,2)/2"
+    },
+    {
+      "idx": 6,
+      "name": "capacity_use",
+      "source": "state.capacityUse",
+      "transform": "clamp(0,1)"
+    },
+    {
+      "idx": 7,
+      "name": "front_reach",
+      "source": "state.frontReach",
+      "transform": "clamp(0,1)"
+    },
+    {
+      "idx": 8,
+      "name": "partner_need",
+      "source": "state.partnerNeed",
+      "transform": "clamp(0,1)"
+    },
+    {
+      "idx": 9,
+      "name": "enemy_bound",
+      "source": "state.enemyBound",
+      "transform": "clamp(0,1)"
+    },
+    {
+      "idx": 10,
+      "name": "land_trend",
+      "source": "state.landTrend",
+      "transform": "clamp(-1,1)/2+0.5"
+    },
+    {
+      "idx": 11,
+      "name": "gold_trend",
+      "source": "state.goldTrend",
+      "transform": "clamp(-1,1)/2+0.5"
+    },
+    {
+      "idx": 12,
+      "name": "troop_trend",
+      "source": "state.troopTrend",
+      "transform": "clamp(-1,1)/2+0.5"
+    },
+    {
+      "idx": 13,
+      "name": "front_count",
+      "source": "state.frontCount/8",
+      "transform": "clamp(0,1)"
+    },
+    {
+      "idx": 14,
+      "name": "port_access",
+      "source": "state.portAccess",
+      "transform": "clamp(0,1)"
+    },
+    {
+      "idx": 15,
+      "name": "technology_coverage",
+      "source": "state.technologyCoverage",
+      "transform": "clamp(0,1)"
+    },
+    {
+      "idx": 16,
+      "name": "expected_land_ratio",
+      "source": "candidate.expectedLand/state.land",
+      "transform": "clamp(0,1)"
+    },
+    {
+      "idx": 17,
+      "name": "cost_troops_ratio",
+      "source": "candidate.costTroops/home",
+      "transform": "clamp(0,1)"
+    },
+    {
+      "idx": 18,
+      "name": "cost_gold_ratio",
+      "source": "candidate.costGold/gold",
+      "transform": "clamp(0,1)"
+    },
+    {
+      "idx": 19,
+      "name": "duration",
+      "source": "candidate.duration/1200",
+      "transform": "clamp(0,1)"
+    },
+    {
+      "idx": 20,
+      "name": "return_time",
+      "source": "candidate.returnTime/1200",
+      "transform": "clamp(0,1)"
+    },
+    {
+      "idx": 21,
+      "name": "counter_risk",
+      "source": "candidate.counterRisk",
+      "transform": "clamp(0,1)"
+    },
+    {
+      "idx": 22,
+      "name": "third_party_risk",
+      "source": "candidate.thirdPartyRisk",
+      "transform": "clamp(0,1)"
+    },
+    {
+      "idx": 23,
+      "name": "infrastructure_value",
+      "source": "candidate.infrastructureValue",
+      "transform": "clamp(0,1)"
+    },
+    {
+      "idx": 24,
+      "name": "income_value",
+      "source": "candidate.incomeValue",
+      "transform": "clamp(0,1)"
+    },
+    {
+      "idx": 25,
+      "name": "recruitment_value",
+      "source": "candidate.recruitmentValue",
+      "transform": "clamp(0,1)"
+    },
+    {
+      "idx": 26,
+      "name": "site_risk",
+      "source": "candidate.siteRisk",
+      "transform": "clamp(0,1)"
+    },
+    {
+      "idx": 27,
+      "name": "hold_probability",
+      "source": "candidate.holdProbability",
+      "transform": "clamp(0,1)"
+    },
+    {
+      "idx": 28,
+      "name": "legal_confidence",
+      "source": "candidate.legalConfidence",
+      "transform": "clamp(0,1)"
+    },
+    {
+      "idx": 29,
+      "name": "kind_hold",
+      "source": "candidate.kind===k",
+      "transform": "one-hot (1/0)"
+    },
+    {
+      "idx": 30,
+      "name": "kind_invest",
+      "source": "candidate.kind===k",
+      "transform": "one-hot (1/0)"
+    },
+    {
+      "idx": 31,
+      "name": "kind_attack",
+      "source": "candidate.kind===k",
+      "transform": "one-hot (1/0)"
+    },
+    {
+      "idx": 32,
+      "name": "kind_expand",
+      "source": "candidate.kind===k",
+      "transform": "one-hot (1/0)"
+    },
+    {
+      "idx": 33,
+      "name": "kind_naval",
+      "source": "candidate.kind===k",
+      "transform": "one-hot (1/0)"
+    },
+    {
+      "idx": 34,
+      "name": "kind_support",
+      "source": "candidate.kind===k",
+      "transform": "one-hot (1/0)"
+    },
+    {
+      "idx": 35,
+      "name": "candidate_rule_utility",
+      "source": "ctx.ownRu",
+      "transform": "clamp((ownRu+100)/200,0,1)"
+    },
+    {
+      "idx": 36,
+      "name": "utility_gap_to_rule_top1",
+      "source": "ctx.ruTop1-ctx.ownRu",
+      "transform": "clamp((top1-ownRu)/100,0,1); 0.5 if non-finite"
+    },
+    {
+      "idx": 37,
+      "name": "utility_gap_to_rule_top2",
+      "source": "ctx.ruTop2-ctx.ownRu",
+      "transform": "clamp((top2-ownRu)/100,0,1); 0.5 if non-finite"
+    }
+  ],
+  "note": "idx 0-28 byte-identical to schema-5; idx 29-34 explicit per-kind one-hots (fixes Blocker A); idx 35-37 bounded rule-utility context (fixes control ceiling). train/runtime parity by construction via v6-features.cjs assertFeatureParity."
+}
