@@ -181,7 +181,13 @@
              f.some(x=>!Number.isFinite(x)||x<0||x>1))
             throw Error('feature-drift');
           const outcome=shadowV5.predict(shadowV5Model,f);
-          return outcome.heldGain-outcome.lossRisk;
+          // Action-kind calibration (trainer variant D): the trained score
+          // includes a per-kind bias learned on the ranking margin; adding
+          // biasOf(kind) per candidate makes the live score margin exactly
+          // equal to the trained margin. Absent for models without
+          // training.kindBias (no-op, identical behavior).
+          const bias=Number(shadowV5Model.training?.kindBias?.[cand.kind])||0;
+          return outcome.heldGain-outcome.lossRisk+bias;
         };
         v5Scores=new Map(candidates.map(c=>[c.id,v5Score(c)]));
         if(opts.candidateControlEnabled===true){

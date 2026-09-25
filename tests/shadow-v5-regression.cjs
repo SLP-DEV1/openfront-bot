@@ -19,6 +19,40 @@ assert.deepEqual(Array.from(actual.features(state,option)),refFeatures);
 assert.equal(actual.validate(model).schema,5);
 assert.deepEqual(JSON.parse(JSON.stringify(actual.predict(model,refFeatures))),
  expected.predict(model,refFeatures));
+// v5Score wiring (trainer variant D calibration): the live per-candidate
+// score must be heldGain - lossRisk + training.kindBias[kind]; models
+// without training.kindBias keep the exact pre-calibration score (no-op).
+const vsI=source.indexOf('const v5Score=cand=>{');
+assert(vsI>0,'live v5Score wiring missing');
+let depth=0,vsEnd=-1;
+for(let k=source.indexOf('{',vsI);k<source.length;k++){
+  const ch=source[k];
+  if(ch==='{')depth++;
+  else if(ch==='}'){depth--;if(depth===0){vsEnd=k+1;break;}}
+}
+assert(vsEnd>vsI,'unbalanced v5Score block');
+const wiring=mdl=>vm.runInNewContext(
+  '(function(){'+source.slice(vsI,vsEnd)+';return v5Score;})()',
+  {shadowV5:actual,shadowV5Model:mdl,state});
+const mkCand=kind=>({id:kind,kind,cost:120,risk:.3});
+const liveFeatures=cand=>actual.features(state,{kind:cand.kind,
+  costTroops:cand.cost||0,counterRisk:cand.risk||0,
+  holdProbability:1-Math.min(1,cand.risk||0)});
+for(const kind of ['attack','hold','expand','invest','naval']){
+  const cand=mkCand(kind),f=liveFeatures(cand),out=actual.predict(model,f);
+  assert.equal(wiring(model)(cand),out.heldGain-out.lossRisk,kind+' no-bias no-op');
+}
+const biased={...model,training:{kindBias:{attack:0.5,hold:-0.25}}};
+for(const [kind,delta] of [['attack',0.5],['hold',-0.25],['expand',0]]){
+  const cand=mkCand(kind),f=liveFeatures(cand),out=actual.predict(biased,f);
+  assert.equal(wiring(biased)(cand),out.heldGain-out.lossRisk+delta,kind+' bias wiring');
+}
+// The Run3 sibling bot must carry the same wiring (duplicate source).
+const run3Source=fs.readFileSync(
+  path.join(root,'OpenFront_AggroBot_Impossible_Run3.user.js'),'utf8');
+assert(run3Source.includes(
+  'const bias=Number(shadowV5Model.training?.kindBias?.[cand.kind])||0;'),
+  'Run3 bot missing kindBias wiring');
 assert(source.includes('changedIntent:false'));
 assert(source.includes('if(opts.shadowRankEnabled&&shadowV5Model&&limited.length)'));
 assert(source.includes('return planningState;'));

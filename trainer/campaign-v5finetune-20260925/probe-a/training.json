@@ -1,0 +1,34 @@
+{
+  "variant": "A",
+  "epoch": 3,
+  "lr": 0.1,
+  "splitPct": 21,
+  "lambda": 1,
+  "seed": 1337,
+  "bagSize": 96,
+  "ruWeight": 0.5,
+  "hardNegBoost": 3,
+  "biasL2": 0.001,
+  "trainGroups": 1822,
+  "valGroups": 10336,
+  "wallMs": 152,
+  "finalValLoss": 0.671483,
+  "biasMetrics": {
+    "frames": 10336,
+    "flips": 3229,
+    "flipRate": 0.3124,
+    "flipToLowerRate": 0.8436,
+    "meanRuDeltaOnFlip": 57.1564,
+    "kindShareModel": {
+      "invest": 0.8015,
+      "hold": 0.1505,
+      "expand": 0.0397,
+      "attack": 0.0083
+    },
+    "kindShareRule": {
+      "invest": 0.616,
+      "hold": 0.2383,
+      "naval": 0.1457
+    }
+  }
+}
