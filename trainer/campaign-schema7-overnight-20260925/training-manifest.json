@@ -1,0 +1,290 @@
+{
+  "generatedAt": "2026-09-26T00:44:09.197Z",
+  "campaign": "campaign-schema7-overnight-20260925",
+  "schema": 7,
+  "engineCommit": "13b403387af01d388f8c8ed8c953b6d3a11d1457",
+  "datasetSHA256": "d3d52d16b5bfc41f4826c98cdf02796015246b5177ee459117827e1e13c78d40",
+  "datasetFrames": 41865,
+  "trainer": "trainer/train-v7.cjs",
+  "objective": "rank loss (pairwise within frame, lambda-weighted by |delta|/landScale) + ru anchor + branch prior (15% of frames, lambda 0.2)",
+  "modelCount": 10,
+  "grid": {
+    "archs": [
+      "38x24x2-tanh",
+      "38x40x2-tanh"
+    ],
+    "note": "per §24 two architectures (24 vs 40 hidden); 5 variants A..E (baseline / +hard-neg / +ru / hard-neg+oversample / all), successive halving"
+  },
+  "models": [
+    {
+      "name": "A-24",
+      "arch": "38x24x2-tanh",
+      "epoch": 120,
+      "lr": 0.1,
+      "splitPct": 21,
+      "lambda": 1,
+      "seed": 1337,
+      "hardNegBoost": 3,
+      "ruWeight": 0.5,
+      "oversample": {
+        "min": 0.05,
+        "max": 5,
+        "target": 150,
+        "positiveKindCounts": {
+          "boat": 512,
+          "build_economy": 1651,
+          "wait": 824
+        }
+      },
+      "finalValLoss": 0.376295,
+      "valRankLoss": 0.376295,
+      "decisionAccuracy": 0.9137,
+      "hardNegativeAccuracy": 0.2375,
+      "flipToLowerRate": 0.0515,
+      "modelSHA256": "34fc387e7eaec1b6a4a09d3bcea2c7d634ddc09cb9f3a718ea5fe68761538883"
+    },
+    {
+      "name": "A-40",
+      "arch": "38x40x2-tanh",
+      "epoch": 120,
+      "lr": 0.1,
+      "splitPct": 21,
+      "lambda": 1,
+      "seed": 1337,
+      "hardNegBoost": 3,
+      "ruWeight": 0.5,
+      "oversample": {
+        "min": 0.05,
+        "max": 5,
+        "target": 150,
+        "positiveKindCounts": {
+          "boat": 512,
+          "build_economy": 1651,
+          "wait": 824
+        }
+      },
+      "finalValLoss": 0.376103,
+      "valRankLoss": 0.376103,
+      "decisionAccuracy": 0.9137,
+      "hardNegativeAccuracy": 0.2375,
+      "flipToLowerRate": 0.0515,
+      "modelSHA256": "f9346742d8c6b656b78962410ba36c1cb471e8e68e59ec657add6ada73f430c6"
+    },
+    {
+      "name": "B-24",
+      "arch": "38x24x2-tanh",
+      "epoch": 120,
+      "lr": 0.1,
+      "splitPct": 21,
+      "lambda": 1,
+      "seed": 1337,
+      "hardNegBoost": 3,
+      "ruWeight": 0.5,
+      "oversample": {
+        "min": 0.05,
+        "max": 5,
+        "target": 150,
+        "positiveKindCounts": {
+          "boat": 512,
+          "build_economy": 1651,
+          "wait": 824
+        }
+      },
+      "finalValLoss": 0.399518,
+      "valRankLoss": 0.382587,
+      "decisionAccuracy": 0.9181,
+      "hardNegativeAccuracy": 0.2254,
+      "flipToLowerRate": 0.0461,
+      "modelSHA256": "f5c2d7ac483def71eb058b5b9fce51e4bd0eff004d79cffe2c3e08ffb0e8c79b"
+    },
+    {
+      "name": "B-40",
+      "arch": "38x40x2-tanh",
+      "epoch": 120,
+      "lr": 0.1,
+      "splitPct": 21,
+      "lambda": 1,
+      "seed": 1337,
+      "hardNegBoost": 3,
+      "ruWeight": 0.5,
+      "oversample": {
+        "min": 0.05,
+        "max": 5,
+        "target": 150,
+        "positiveKindCounts": {
+          "boat": 512,
+          "build_economy": 1651,
+          "wait": 824
+        }
+      },
+      "finalValLoss": 0.399301,
+      "valRankLoss": 0.382334,
+      "decisionAccuracy": 0.9181,
+      "hardNegativeAccuracy": 0.2254,
+      "flipToLowerRate": 0.0461,
+      "modelSHA256": "04e12b39b4cfd1eff9c0c280b508974f878ea0028f2f9aec5d378b190b7ed973"
+    },
+    {
+      "name": "C-24",
+      "arch": "38x24x2-tanh",
+      "epoch": 120,
+      "lr": 0.1,
+      "splitPct": 21,
+      "lambda": 1,
+      "seed": 1337,
+      "hardNegBoost": 3,
+      "ruWeight": 0.5,
+      "oversample": {
+        "min": 0.05,
+        "max": 5,
+        "target": 150,
+        "positiveKindCounts": {
+          "boat": 512,
+          "build_economy": 1651,
+          "wait": 824
+        }
+      },
+      "finalValLoss": 0.373103,
+      "valRankLoss": 0.374873,
+      "decisionAccuracy": 0.9145,
+      "hardNegativeAccuracy": 0.2281,
+      "flipToLowerRate": 0.0501,
+      "modelSHA256": "e470166644daa03db6292624263229884bec8c85e70ccd64e08cf7dd36c021b8"
+    },
+    {
+      "name": "C-40",
+      "arch": "38x40x2-tanh",
+      "epoch": 120,
+      "lr": 0.1,
+      "splitPct": 21,
+      "lambda": 1,
+      "seed": 1337,
+      "hardNegBoost": 3,
+      "ruWeight": 0.5,
+      "oversample": {
+        "min": 0.05,
+        "max": 5,
+        "target": 150,
+        "positiveKindCounts": {
+          "boat": 512,
+          "build_economy": 1651,
+          "wait": 824
+        }
+      },
+      "finalValLoss": 0.372883,
+      "valRankLoss": 0.374679,
+      "decisionAccuracy": 0.9147,
+      "hardNegativeAccuracy": 0.2321,
+      "flipToLowerRate": 0.0503,
+      "modelSHA256": "dea2baf1431a21f92d4cb85aa105c76d9da7c4ea1cd766bd13b92bf65a1ff3c0"
+    },
+    {
+      "name": "D-24",
+      "arch": "38x24x2-tanh",
+      "epoch": 120,
+      "lr": 0.1,
+      "splitPct": 21,
+      "lambda": 1,
+      "seed": 1337,
+      "hardNegBoost": 3,
+      "ruWeight": 0.5,
+      "oversample": {
+        "min": 0.05,
+        "max": 5,
+        "target": 150,
+        "positiveKindCounts": {
+          "boat": 512,
+          "build_economy": 1651,
+          "wait": 824
+        }
+      },
+      "finalValLoss": 0.42776,
+      "valRankLoss": 0.409286,
+      "decisionAccuracy": 0.8752,
+      "hardNegativeAccuracy": 0.7314,
+      "flipToLowerRate": 0.1528,
+      "modelSHA256": "dfdf3cd70f682f4244312a2230da059938548a60217ffc9fd6c3945d13e8bf7c"
+    },
+    {
+      "name": "D-40",
+      "arch": "38x40x2-tanh",
+      "epoch": 120,
+      "lr": 0.1,
+      "splitPct": 21,
+      "lambda": 1,
+      "seed": 1337,
+      "hardNegBoost": 3,
+      "ruWeight": 0.5,
+      "oversample": {
+        "min": 0.05,
+        "max": 5,
+        "target": 150,
+        "positiveKindCounts": {
+          "boat": 512,
+          "build_economy": 1651,
+          "wait": 824
+        }
+      },
+      "finalValLoss": 0.42768,
+      "valRankLoss": 0.40921,
+      "decisionAccuracy": 0.8752,
+      "hardNegativeAccuracy": 0.7314,
+      "flipToLowerRate": 0.1528,
+      "modelSHA256": "a26e39c2fe9eaa113d49507017b2961a0b4fe9a89aa66f59bf408da8dd1b8c50"
+    },
+    {
+      "name": "E-24",
+      "arch": "38x24x2-tanh",
+      "epoch": 120,
+      "lr": 0.1,
+      "splitPct": 21,
+      "lambda": 1,
+      "seed": 1337,
+      "hardNegBoost": 3,
+      "ruWeight": 0.5,
+      "oversample": {
+        "min": 0.05,
+        "max": 5,
+        "target": 150,
+        "positiveKindCounts": {
+          "boat": 512,
+          "build_economy": 1651,
+          "wait": 824
+        }
+      },
+      "finalValLoss": 0.444417,
+      "valRankLoss": 0.398173,
+      "decisionAccuracy": 0.9113,
+      "hardNegativeAccuracy": 0.2321,
+      "flipToLowerRate": 0.0537,
+      "modelSHA256": "c902395b1fa6c99dbb8b3b56a6e03500393c9277e63e9223d64a4544e8df61eb"
+    },
+    {
+      "name": "E-40",
+      "arch": "38x40x2-tanh",
+      "epoch": 120,
+      "lr": 0.1,
+      "splitPct": 21,
+      "lambda": 1,
+      "seed": 1337,
+      "hardNegBoost": 3,
+      "ruWeight": 0.5,
+      "oversample": {
+        "min": 0.05,
+        "max": 5,
+        "target": 150,
+        "positiveKindCounts": {
+          "boat": 512,
+          "build_economy": 1651,
+          "wait": 824
+        }
+      },
+      "finalValLoss": 0.444297,
+      "valRankLoss": 0.398102,
+      "decisionAccuracy": 0.9112,
+      "hardNegativeAccuracy": 0.2321,
+      "flipToLowerRate": 0.0538,
+      "modelSHA256": "f25074195e2b2e7c2eca0ec23dab98242e4baf5af47119f5f8106c6e88fe6a9c"
+    }
+  ]
+}

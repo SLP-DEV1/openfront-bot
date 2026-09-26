@@ -1,0 +1,58 @@
+{
+  "generatedAt": "2026-09-26T00:44:09.197Z",
+  "file": "dataset.json",
+  "sha256": "d3d52d16b5bfc41f4826c98cdf02796015246b5177ee459117827e1e13c78d40",
+  "bytes": 37825042,
+  "schema": 7,
+  "featuredSchemaVersion": 4,
+  "engineCommit": "13b403387af01d388f8c8ed8c953b6d3a11d1457",
+  "source": "controller-comparison(108) + collection(24), engine-gameview-v2 planningFrames",
+  "horizonTicks": 600,
+  "landScale": 800,
+  "counts": {
+    "matches": 132,
+    "totalFrames": 41865,
+    "framesNoBranches": 0,
+    "multiChoiceFrames": 15475,
+    "multiChoiceRatio": "37.0%"
+  },
+  "outcomes": {
+    "unknown": 42,
+    "defeat": 57,
+    "victory": 33
+  },
+  "branchKinds": {
+    "boat": 9911,
+    "build_economy": 15475,
+    "wait": 15475,
+    "expand": 828,
+    "attack": 176
+  },
+  "observedKinds": {
+    "boat": 2631,
+    "build_economy": 8793,
+    "wait": 3491
+  },
+  "featureParitySample": {
+    "ok": 44,
+    "bad": 0
+  },
+  "s20ModeDiversity": {
+    "modeCount": {
+      "1v1": 36,
+      "official-2v2": 36,
+      "ffa-duo": 36,
+      "v7-new-scenarios": 24
+    },
+    "regionCount": {
+      "europe": 58,
+      "world": 62
+    },
+    "note": "training dataset spans 1v1 / official-2v2 / ffa-duo across Europe and World, plus 24 v7-new scenario matches (opponent/scenario diversity per §20)"
+  },
+  "realFrameCountCrossCheck": {
+    "computedFromDataset": 41865,
+    "matchesAudit": 41865,
+    "consistent": true
+  }
+}

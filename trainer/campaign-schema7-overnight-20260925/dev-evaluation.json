@@ -1,0 +1,179 @@
+{
+  "generatedAt": "2026-09-26T00:44:09.197Z",
+  "section": "§35/§36/§37 dev evaluation",
+  "engineCommit": "13b403387af01d388f8c8ed8c953b6d3a11d1457",
+  "map": "World",
+  "size": "Compact",
+  "bots": 40,
+  "difficulty": "Medium",
+  "profile": "autonomous",
+  "opponentProfile": "balanced",
+  "ticks": 9000,
+  "scriptedHumans": 0,
+  "gameType": "ffa",
+  "devSeeds": [
+    "aggro-train-001",
+    "aggro-train-002"
+  ],
+  "arms": {
+    "rule-basis": {
+      "schema": "rule",
+      "note": "Heuristic rule policy (no model)",
+      "seeds": {
+        "aggro-train-001": {
+          "status": "done",
+          "land": 55607,
+          "alive": true,
+          "termination": "tick-limit",
+          "diffVsRule": 0,
+          "kindLevelDiff": 0,
+          "policySHA": "null"
+        },
+        "aggro-train-002": {
+          "status": "done",
+          "land": 76036,
+          "alive": true,
+          "termination": "tick-limit",
+          "diffVsRule": 0,
+          "kindLevelDiff": 0,
+          "policySHA": "null"
+        }
+      }
+    },
+    "run3-schema4": {
+      "schema": 4,
+      "note": "Run3 schema-4 champion (schema4-impossible-world-europe-20260920-run3/champion.json)",
+      "seeds": {
+        "aggro-train-001": {
+          "status": "done",
+          "land": 37696,
+          "alive": true,
+          "termination": "tick-limit",
+          "diffVsRule": 230,
+          "kindLevelDiff": 225,
+          "policySHA": "e0fceaef90d542d3811dcd0b261fb3284577cf319912989a2f3eaa7647d39968"
+        },
+        "aggro-train-002": {
+          "status": "done",
+          "land": 16625,
+          "alive": true,
+          "termination": "game-over",
+          "diffVsRule": 174,
+          "kindLevelDiff": 170,
+          "policySHA": "e0fceaef90d542d3811dcd0b261fb3284577cf319912989a2f3eaa7647d39968"
+        }
+      }
+    },
+    "schema5-baseline": {
+      "schema": 5,
+      "note": "Schema-5 baseline (campaign-20260924 lr0.1-e300-baseline), candidateControl",
+      "seeds": {
+        "aggro-train-001": {
+          "status": "done",
+          "land": 55607,
+          "alive": true,
+          "termination": "tick-limit",
+          "diffVsRule": 0,
+          "kindLevelDiff": 0,
+          "policySHA": "6ed491fa866ee14d027a401eb108e58f0aa59e3fea0a874513cbf41009574bc0"
+        },
+        "aggro-train-002": {
+          "status": "done",
+          "land": 76036,
+          "alive": true,
+          "termination": "tick-limit",
+          "diffVsRule": 0,
+          "kindLevelDiff": 0,
+          "policySHA": "6ed491fa866ee14d027a401eb108e58f0aa59e3fea0a874513cbf41009574bc0"
+        }
+      }
+    },
+    "schema6-lead": {
+      "schema": 6,
+      "note": "Schema-6 lead (campaign-schema6-20260925 candidate-model), candidateControl",
+      "seeds": {
+        "aggro-train-001": {
+          "status": "done",
+          "land": 55607,
+          "alive": true,
+          "termination": "tick-limit",
+          "diffVsRule": 0,
+          "kindLevelDiff": 0,
+          "policySHA": "33d716ff0c763d1ea8706193f06742d525f13c83a9fa4a06377e32eab58930bd"
+        },
+        "aggro-train-002": {
+          "status": "done",
+          "land": 76036,
+          "alive": true,
+          "termination": "tick-limit",
+          "diffVsRule": 0,
+          "kindLevelDiff": 0,
+          "policySHA": "33d716ff0c763d1ea8706193f06742d525f13c83a9fa4a06377e32eab58930bd"
+        }
+      }
+    },
+    "schema7-D24": {
+      "schema": 7,
+      "note": "Schema-7 D-24 (hard-negative/override variant), actionControl=true",
+      "seeds": {
+        "aggro-train-001": {
+          "status": "done",
+          "land": 55607,
+          "alive": true,
+          "termination": "tick-limit",
+          "diffVsRule": 0,
+          "kindLevelDiff": 0,
+          "policySHA": "e5dc6b175761dcd0eb74f7992d639edba34680db303bc526adb992ba40f17b14"
+        },
+        "aggro-train-002": {
+          "status": "done",
+          "land": 49169,
+          "alive": true,
+          "termination": "tick-limit",
+          "diffVsRule": 201,
+          "kindLevelDiff": 198,
+          "policySHA": "e5dc6b175761dcd0eb74f7992d639edba34680db303bc526adb992ba40f17b14"
+        }
+      }
+    }
+  },
+  "ruleBaseline": {
+    "aggro-train-001": 55607,
+    "aggro-train-002": 76036
+  },
+  "schema7Best": "D-24 (only trained variant with meaningful divergence; 201 divergent turns on seed 002, model-caused)",
+  "s36_modeGates": {
+    "requirement": "1v1, official-2v2, FFA-duo must be gated separately (§36)",
+    "evaluated": "FFA (Free For All, 40-bot, World/Compact/Medium, balanced, autonomous)",
+    "oneVsOne": "not separately gated live for schema-7 (the dataset included 1v1-europe frames from v5 collection, but dev evaluation runs were FFA)",
+    "official2v2": "not separately gated live for schema-7",
+    "ffaDuo": "not separately gated live for schema-7 (duoEnabled=false in dev runs)",
+    "result": "PARTIAL — FFA mode evaluated; 1v1/official-2v2/FFA-duo not separately gated this campaign (consistent with the negative §45 verdict; no gate was forced)"
+  },
+  "s37_decisiveOutcomes": {
+    "requirement": "≥5 decisive paired outcomes, protocol frozen before final evaluation (§37)",
+    "decisivePairedOutcomes": [
+      {
+        "candidate": "D-24",
+        "seed": "aggro-train-002",
+        "modelLand": 49169,
+        "ruleLand": 76036,
+        "outcome": "lost",
+        "decisive": true
+      },
+      {
+        "candidate": "navaltest",
+        "seed": "aggro-train-001",
+        "modelLand": 58537,
+        "ruleLand": 55607,
+        "outcome": "won",
+        "decisive": true
+      }
+    ],
+    "count": 2,
+    "met": false,
+    "note": "D-24/002 is a decisive NEGATIVE (49169 < 76036, model-caused); navaltest/001 is a decisive POSITIVE (58537 > 55607, model-caused, synthetic). 2 decisive paired outcomes found; < 5 required. The causal protocol (model-caused + engine-confirmed via §27) was applied, but the ≥5 bar was not met."
+  },
+  "schema7BeatsRule": false,
+  "verdict": "Schema-7 D-24 does not beat the rule baseline on dev (neutral 001, worse 002). §36: FFA only (1v1/2v2/duo not separately gated). §37: 2 decisive paired outcomes (< 5). No gate manipulation (§40)."
+}

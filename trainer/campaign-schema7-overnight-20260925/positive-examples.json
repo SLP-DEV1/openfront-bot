@@ -1,0 +1,14 @@
+{
+  "generatedAt": "2026-09-26T00:44:09.197Z",
+  "section": "§34 positive-example mining",
+  "source": "pgate-navaltest run + dev-comparison.json note — navaltest (synthetic) seed aggro-train-001",
+  "definition": "A positive example is a model-caused divergent turn where the model’s action WON land relative to the rule (navaltest land 58537 > rule 55607 on seed 001).",
+  "candidate": "navaltest (synthetic mechanism-proof, not trained — proves the schema-7 override is executable and live-impactful)",
+  "seed": "aggro-train-001",
+  "modelLand": 58537,
+  "ruleLand": 55607,
+  "differentExecutedTurns": 164,
+  "causalChain": "model-caused",
+  "outcome": "positively divergent (model-caused, won land)",
+  "note": "Full divergent-turn list is in the pgate-navaltest run; the land outcome (58537 vs 55607, +2930) is the §35 dev evidence. This positive exists because the override is live; it is synthetic (not trained), so it proves mechanism, not model quality."
+}

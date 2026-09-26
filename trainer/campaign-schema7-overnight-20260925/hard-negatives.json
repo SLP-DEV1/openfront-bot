@@ -1,0 +1,276 @@
+{
+  "generatedAt": "2026-09-26T00:44:09.197Z",
+  "section": "§33 hard-negative mining",
+  "source": "turn-divergence.json — D-24 seed aggro-train-002",
+  "definition": "A hard negative is a model-caused divergent turn where the model’s action LOST land relative to the rule (D-24 land 49169 < rule 76036 on seed 002).",
+  "candidate": "D-24",
+  "seed": "aggro-train-002",
+  "modelLand": 49169,
+  "ruleLand": 76036,
+  "differentExecutedTurns": 201,
+  "differentKindLevelTurns": 198,
+  "causalChain": "model-caused",
+  "outcome": "negatively divergent (model-caused, lost land)",
+  "divergentTurnsShown": 15,
+  "divergentTurns": [
+    {
+      "turn": 213,
+      "dKinds": [],
+      "ruleKinds": [
+        "attack"
+      ],
+      "modelTop": "naval",
+      "ruleTop": "naval",
+      "branchScore": 0.9992935197954503,
+      "emittedKind": null,
+      "controlActive": true,
+      "landNow": 2761,
+      "landPlus100": 3854,
+      "landPlus300": 6054,
+      "delta100": 1093,
+      "delta300": 3293
+    },
+    {
+      "turn": 217,
+      "dKinds": [
+        "allianceRequest"
+      ],
+      "ruleKinds": [],
+      "modelTop": "naval",
+      "ruleTop": "naval",
+      "branchScore": 0.9992935197954503,
+      "emittedKind": null,
+      "controlActive": true,
+      "landNow": 2761,
+      "landPlus100": 3854,
+      "landPlus300": 6054,
+      "delta100": 1093,
+      "delta300": 3293
+    },
+    {
+      "turn": 257,
+      "dKinds": [
+        "attack"
+      ],
+      "ruleKinds": [],
+      "modelTop": "naval",
+      "ruleTop": "naval",
+      "branchScore": 0.9992935197954503,
+      "emittedKind": null,
+      "controlActive": true,
+      "landNow": 2761,
+      "landPlus100": 3854,
+      "landPlus300": 6054,
+      "delta100": 1093,
+      "delta300": 3293
+    },
+    {
+      "turn": 285,
+      "dKinds": [],
+      "ruleKinds": [
+        "attack"
+      ],
+      "modelTop": "naval",
+      "ruleTop": "naval",
+      "branchScore": 0.9992935197954503,
+      "emittedKind": null,
+      "controlActive": true,
+      "landNow": 2761,
+      "landPlus100": 3854,
+      "landPlus300": 6054,
+      "delta100": 1093,
+      "delta300": 3293
+    },
+    {
+      "turn": 317,
+      "dKinds": [
+        "attack"
+      ],
+      "ruleKinds": [],
+      "modelTop": "naval",
+      "ruleTop": "naval",
+      "branchScore": 0.9992935197954503,
+      "emittedKind": null,
+      "controlActive": true,
+      "landNow": 3854,
+      "landPlus100": 5412,
+      "landPlus300": 8172,
+      "delta100": 1558,
+      "delta300": 4318
+    },
+    {
+      "turn": 337,
+      "dKinds": [],
+      "ruleKinds": [
+        "attack"
+      ],
+      "modelTop": "naval",
+      "ruleTop": "naval",
+      "branchScore": 0.9992935197954503,
+      "emittedKind": null,
+      "controlActive": true,
+      "landNow": 3854,
+      "landPlus100": 5412,
+      "landPlus300": 8172,
+      "delta100": 1558,
+      "delta300": 4318
+    },
+    {
+      "turn": 425,
+      "dKinds": [],
+      "ruleKinds": [
+        "attack"
+      ],
+      "modelTop": "naval",
+      "ruleTop": "naval",
+      "branchScore": 0.9992935197954503,
+      "emittedKind": null,
+      "controlActive": true,
+      "landNow": 5412,
+      "landPlus100": 6054,
+      "landPlus300": 9575,
+      "delta100": 642,
+      "delta300": 4163
+    },
+    {
+      "turn": 441,
+      "dKinds": [
+        "attack"
+      ],
+      "ruleKinds": [
+        "attack"
+      ],
+      "modelTop": "naval",
+      "ruleTop": "naval",
+      "branchScore": 0.9992935197954503,
+      "emittedKind": null,
+      "controlActive": true,
+      "landNow": 5412,
+      "landPlus100": 6054,
+      "landPlus300": 9575,
+      "delta100": 642,
+      "delta300": 4163
+    },
+    {
+      "turn": 493,
+      "dKinds": [],
+      "ruleKinds": [
+        "attack"
+      ],
+      "modelTop": "naval",
+      "ruleTop": "naval",
+      "branchScore": 0.9992935197954503,
+      "emittedKind": null,
+      "controlActive": true,
+      "landNow": 5412,
+      "landPlus100": 6054,
+      "landPlus300": 9575,
+      "delta100": 642,
+      "delta300": 4163
+    },
+    {
+      "turn": 509,
+      "dKinds": [
+        "attack"
+      ],
+      "ruleKinds": [],
+      "modelTop": "naval",
+      "ruleTop": "naval",
+      "branchScore": 0.9992935197954503,
+      "emittedKind": null,
+      "controlActive": true,
+      "landNow": 6054,
+      "landPlus100": 8172,
+      "landPlus300": 13939,
+      "delta100": 2118,
+      "delta300": 7885
+    },
+    {
+      "turn": 601,
+      "dKinds": [
+        "attack"
+      ],
+      "ruleKinds": [
+        "attack"
+      ],
+      "modelTop": "naval",
+      "ruleTop": "naval",
+      "branchScore": 0.9992935197954503,
+      "emittedKind": null,
+      "controlActive": true,
+      "landNow": 8172,
+      "landPlus100": 9575,
+      "landPlus300": 17136,
+      "delta100": 1403,
+      "delta300": 8964
+    },
+    {
+      "turn": 629,
+      "dKinds": [],
+      "ruleKinds": [
+        "build_unit"
+      ],
+      "modelTop": "naval",
+      "ruleTop": "naval",
+      "branchScore": 0.9992935197954503,
+      "emittedKind": null,
+      "controlActive": true,
+      "landNow": 8172,
+      "landPlus100": 9575,
+      "landPlus300": 17136,
+      "delta100": 1403,
+      "delta300": 8964
+    },
+    {
+      "turn": 669,
+      "dKinds": [],
+      "ruleKinds": [
+        "attack"
+      ],
+      "modelTop": "naval",
+      "ruleTop": "naval",
+      "branchScore": 0.9992935197954503,
+      "emittedKind": null,
+      "controlActive": true,
+      "landNow": 8172,
+      "landPlus100": 9575,
+      "landPlus300": 17136,
+      "delta100": 1403,
+      "delta300": 8964
+    },
+    {
+      "turn": 673,
+      "dKinds": [
+        "allianceRequest"
+      ],
+      "ruleKinds": [],
+      "modelTop": "naval",
+      "ruleTop": "naval",
+      "branchScore": 0.9992935197954503,
+      "emittedKind": null,
+      "controlActive": true,
+      "landNow": 8172,
+      "landPlus100": 9575,
+      "landPlus300": 17136,
+      "delta100": 1403,
+      "delta300": 8964
+    },
+    {
+      "turn": 693,
+      "dKinds": [
+        "attack"
+      ],
+      "ruleKinds": [],
+      "modelTop": "naval",
+      "ruleTop": "naval",
+      "branchScore": 0.9992935197954503,
+      "emittedKind": null,
+      "controlActive": true,
+      "landNow": 8172,
+      "landPlus100": 9575,
+      "landPlus300": 17136,
+      "delta100": 1403,
+      "delta300": 8964
+    }
+  ]
+}

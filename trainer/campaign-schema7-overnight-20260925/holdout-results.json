@@ -1,0 +1,9 @@
+{
+  "generatedAt": "2026-09-26T00:44:09.197Z",
+  "section": "§38/§39 final holdout result",
+  "status": "SKIPPED",
+  "reason": "Gate \"Schema7 > Rule on Dev\" not met (D-24 = 55607/49169 vs rule 55607/76036: neutral on 001, worse on 002). §37 decisive outcomes also < 5 (2 found). Per the frozen §38 protocol, holdout runs only if gates pass — it did not, so no new-seed holdout was run (and none was forced).",
+  "holdoutRuns": [],
+  "finalComparison": "Schema-7 D-24 vs rule baseline (dev): 001 neutral (55607=55607), 002 worse (49169<76036). No promotion.",
+  "note": "No gate manipulation (§40): the holdout was skipped because the gate was not met, not adjusted."
+}
