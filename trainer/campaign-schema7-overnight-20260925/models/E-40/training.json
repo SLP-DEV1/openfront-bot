@@ -1,0 +1,42 @@
+{
+  "variant": "E",
+  "arch": "38x40x2-tanh",
+  "epoch": 120,
+  "lr": 0.1,
+  "splitPct": 21,
+  "lambda": 1,
+  "seed": 1337,
+  "bagSize": 96,
+  "ruWeight": 0.5,
+  "hardNegBoost": 3,
+  "oversample": {
+    "min": 0.05,
+    "max": 5,
+    "target": 150,
+    "positiveKindCounts": {
+      "boat": 512,
+      "build_economy": 1651,
+      "wait": 824
+    }
+  },
+  "trainGroups": 2987,
+  "valGroups": 11928,
+  "wallMs": 3458,
+  "finalValLoss": 0.444297,
+  "metrics": {
+    "valRankLoss": 0.398102,
+    "crossBranchSpread": 0.443218,
+    "decisionAccuracy": 0.9112,
+    "kindSelectionDistribution": {
+      "build_economy": 0.6631,
+      "wait": 0.2037,
+      "boat": 0.132,
+      "expand": 0.0011
+    },
+    "hardNegativeAccuracy": 0.2321,
+    "hardNegativeFrames": 741,
+    "flipToLowerRate": 0.0538,
+    "flipToHigherRate": 0,
+    "flipFrames": 11928
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "arch": "38x24x2-tanh",
+  "variant": "D",
+  "splitPct": 21,
+  "metrics": {
+    "valRankLoss": 0.409286,
+    "crossBranchSpread": 0.414903,
+    "decisionAccuracy": 0.8752,
+    "kindSelectionDistribution": {
+      "build_economy": 0.6138,
+      "boat": 0.1937,
+      "wait": 0.1923,
+      "expand": 0.0002
+    },
+    "hardNegativeAccuracy": 0.7314,
+    "hardNegativeFrames": 741,
+    "flipToLowerRate": 0.1528,
+    "flipToHigherRate": 0,
+    "flipFrames": 11928
+  }
+}

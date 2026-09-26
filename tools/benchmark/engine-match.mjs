@@ -61,18 +61,18 @@ if(opts.candidateControl){
 // ranker (which re-orders already-legal candidates and was order-invariant
 // downstream), the schema-7 argmax directly drives the emitted intent when
 // actionControl is set. actionRank is shadow observation only.
-let actionModel=null,actionSchema=null;
+let actionModel7=null,actionSchema7=null;
 if(opts.actionModel){
   const raw=JSON.parse(fs.readFileSync(path.resolve(opts.actionModel),'utf8'));
-  actionModel=actionPolicyV7.validate(raw);
-  actionSchema=raw.schema;
+  actionModel7=actionPolicyV7.validate(raw);
+  actionSchema7=raw.schema;
   const cur=storage.get('of-solo-aggrobot-v1111')?
     JSON.parse(storage.get('of-solo-aggrobot-v1111')):{};
   storage.set('of-solo-aggrobot-v1111',JSON.stringify({...cur,
     neuralEnabled:true,fullAuto:true,
     actionRankEnabled:!!(opts.actionRank||opts.actionControl),
     actionControlEnabled:!!opts.actionControl}));
-  policyParts.push({schema:actionSchema,sha256:common.digest(JSON.stringify(actionModel))});
+  policyParts.push({schema:actionSchema7,sha256:common.digest(JSON.stringify(actionModel7))});
 }
 // policyHash: single model -> its sha; BOTH --policy and --candidateControl
 // (the hybrid 4+5 arm) -> sha of the ordered part list, so the report pins
@@ -113,12 +113,12 @@ if(candidateModel){
 }
 // Embed the schema-7 action-branch model into its own shadow slot so a
 // candidate model and an action model can coexist without colliding.
-if(actionModel){
+if(actionModel7){
   const needle='const SHADOW_V7_BUNDLED_MODEL = null;';
   if(source.split(needle).length!==2)
     throw Error('Action marker missing/not unique in bot source: '+needle);
   source=source.replace(needle,
-    'const SHADOW_V7_BUNDLED_MODEL = '+JSON.stringify(actionModel)+';');
+    'const SHADOW_V7_BUNDLED_MODEL = '+JSON.stringify(actionModel7)+';');
 }
 const clientID='aggrobot';
 const players=[{clientID,username:'AggroBot Benchmark',clanTag:null,
@@ -138,9 +138,9 @@ const meta={trajectorySemantics:visibleTrajectory.SEMANTICS,harness:'engine-game
   candidateSchema:candidateModel?candidateSchema:null,
   candidateGain:candidateModel?(opts.candidateGain?Number(opts.candidateGain):18):null,
   candidateControlMode:candidateModel?(opts.candidateControlMode||'raw'):null,
-  actionControl:actionModel?!!opts.actionControl:null,
-  actionRank:actionModel?!!(opts.actionRank||opts.actionControl):null,
-  actionSchema:actionModel?actionSchema:null,
+  actionControl:actionModel7?!!opts.actionControl:null,
+  actionRank:actionModel7?!!(opts.actionRank||opts.actionControl):null,
+  actionSchema:actionModel7?actionSchema7:null,
   seed:opts.seed,
   seedSource:'GameStartInfo.gameID',profile:opts.profile,settings:common.profiles[opts.profile],
   opponentProfile:opts.opponentProfile,scriptedHumans:opts.scriptedHumans,
