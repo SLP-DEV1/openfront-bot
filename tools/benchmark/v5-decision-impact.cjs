@@ -112,8 +112,19 @@ function armRow(file){
     blockedFrames:blocked,blockedRate:framesN?blocked/framesN:null,
     meanModelScore:scoreN?scoreSum/scoreN:null,scoreN,
     controlMode:meta.candidateControlMode??null,
+    candidateControl:meta.candidateControl??null,
+    candidateGain:meta.candidateGain??null,
     botSHA256:meta.botSHA256??null,policySHA256:meta.policySHA256??null,
-    seed:meta.seed??null,engineCommit:meta.engineCommit??null};
+    seed:meta.seed??null,engineCommit:meta.engineCommit??null,
+    gameMap:meta.gameMap??meta.gameConfig?.gameMap??null,
+    gameMapSize:meta.gameMapSize??meta.gameConfig?.gameMapSize??null,
+    gameMode:meta.gameMode??meta.gameConfig?.gameMode??null,
+    opponentProfile:meta.opponentProfile??null,
+    scriptedHumans:meta.scriptedHumans??null,
+    profile:meta.profile??null,
+    harness:meta.harness??null,
+    trajectorySemantics:meta.trajectorySemantics??null,
+    gameConfig:meta.gameConfig??null};
 }
 
 // Discover scenarios: each subdirectory of `out` that contains at least one
@@ -129,9 +140,119 @@ function discoverScenarios(out,arms){
   return outDirs.sort();
 }
 
+
+function canonical(value){
+  if(Array.isArray(value))return value.map(canonical);
+  if(value&&typeof value==='object')
+    return Object.fromEntries(Object.keys(value).sort()
+      .map(k=>[k,canonical(value[k])]));
+  return value;
+}
+function sameValue(a,b){
+  return JSON.stringify(canonical(a))===JSON.stringify(canonical(b));
+}
+function loadCaptureManifest(out){
+  const file=path.join(out,'capture-manifest.json');
+  if(!fs.existsSync(file))return null;
+  let manifest;
+  try{manifest=JSON.parse(fs.readFileSync(file,'utf8'));}
+  catch(e){throw Error('Invalid capture-manifest.json: '+e.message);}
+  return manifest;
+}
+function validateScenarioProvenance(sid,arms,perArm,manifest=null){
+  const missing=arms.filter(a=>!perArm[a]);
+  if(missing.length)
+    throw Error(`[provenance] ${sid}: missing requested arms: ${missing.join(', ')}`);
+  const rows=arms.map(a=>perArm[a]);
+  for(const key of ['seed','engineCommit']){
+    const values=rows.map(r=>r[key]);
+    if(values.some(v=>v==null||v===''))
+      throw Error(`[provenance] ${sid}: missing ${key}`);
+    if(values.some(v=>v!==values[0]))
+      throw Error(`[provenance] ${sid}: mismatched ${key}: ${JSON.stringify(values)}`);
+  }
+  for(const key of ['gameMap','gameMapSize','gameMode','opponentProfile',
+    'scriptedHumans','profile','harness','trajectorySemantics','gameConfig']){
+    const first=rows[0][key];
+    if(rows.some(r=>!sameValue(r[key],first)))
+      throw Error(`[provenance] ${sid}: mismatched ${key}`);
+  }
+  if(perArm['rule-basis']){
+    if(perArm['rule-basis'].policySHA256!=null)
+      throw Error(`[provenance] ${sid}: rule-basis must not carry a policy`);
+    if(perArm['rule-basis'].candidateControl===true)
+      throw Error(`[provenance] ${sid}: rule-basis unexpectedly enables candidate control`);
+  }
+  if(perArm['run3-schema4']){
+    if(!perArm['run3-schema4'].policySHA256)
+      throw Error(`[provenance] ${sid}: run3-schema4 is missing its policy identity`);
+    if(perArm['run3-schema4'].candidateControl===true)
+      throw Error(`[provenance] ${sid}: run3-schema4 unexpectedly enables candidate control`);
+  }
+  for(const arm of arms){
+    if(BASELINES.includes(arm))continue;
+    if(!perArm[arm].policySHA256)
+      throw Error(`[provenance] ${sid}: ${arm} is missing its policy identity`);
+    if(perArm[arm].candidateControl!==true)
+      throw Error(`[provenance] ${sid}: ${arm} must enable candidate control`);
+  }
+  let manifestScenario=null;
+  if(manifest){
+    if(manifest.engineCommit&&manifest.engineCommit!==rows[0].engineCommit)
+      throw Error(`[provenance] ${sid}: engineCommit differs from capture manifest`);
+    manifestScenario=(manifest.scenarios||[]).find(x=>x.scenarioId===sid)||null;
+    if(!manifestScenario)
+      throw Error(`[provenance] ${sid}: scenario missing from capture manifest`);
+    if(manifestScenario.matchSeed&&manifestScenario.matchSeed!==rows[0].seed)
+      throw Error(`[provenance] ${sid}: seed differs from capture manifest`);
+    if(manifestScenario.map&&manifestScenario.map!==rows[0].gameMap)
+      throw Error(`[provenance] ${sid}: map differs from capture manifest`);
+    if(manifestScenario.opponent&&manifestScenario.opponent!==rows[0].opponentProfile)
+      throw Error(`[provenance] ${sid}: opponent differs from capture manifest`);
+    for(const arm of arms){
+      const expected=(manifest.rows||[])
+        .find(x=>x.scenarioId===sid&&x.arm===arm);
+      if(!expected)
+        throw Error(`[provenance] ${sid}/${arm}: row missing from capture manifest`);
+      if(expected.matchSeed&&expected.matchSeed!==perArm[arm].seed)
+        throw Error(`[provenance] ${sid}/${arm}: seed differs from capture manifest`);
+      if(Object.hasOwn(expected,'botSHA256')&&
+        expected.botSHA256!==perArm[arm].botSHA256)
+        throw Error(`[provenance] ${sid}/${arm}: botSHA256 differs from capture manifest`);
+      if(Object.hasOwn(expected,'policySHA256')&&
+        expected.policySHA256!==perArm[arm].policySHA256)
+        throw Error(`[provenance] ${sid}/${arm}: policySHA256 differs from capture manifest`);
+    }
+  }
+  return{
+    verified:true,
+    source:manifest?'capture-manifest+match-meta':'match-meta',
+    seed:rows[0].seed,
+    engineCommit:rows[0].engineCommit,
+    map:rows[0].gameMap,
+    opponent:rows[0].opponentProfile,
+    mode:manifestScenario?.mode??rows[0].gameMode
+  };
+}
+function validateArmIdentityAcrossScenarios(scenarios,arms){
+  for(const arm of arms){
+    const rows=scenarios.map(s=>s.perArm[arm]).filter(Boolean);
+    if(!rows.length)continue;
+    const identityKeys=['botSHA256','policySHA256','candidateControl',
+      'candidateGain','controlMode'];
+    for(const key of identityKeys){
+      const first=rows[0][key];
+      if(rows.some(r=>!sameValue(r[key],first)))
+        throw Error(`[provenance] ${arm}: ${key} drifted across scenarios`);
+    }
+  }
+  return true;
+}
+
 function main(){
   const o=parseArgs(process.argv.slice(2));
   const scenarioIds=discoverScenarios(o.out,o.arms);
+  const manifest=loadCaptureManifest(o.out);
   const scenarios=[];
   for(const sid of scenarioIds){
     const perArm={};
@@ -141,29 +262,23 @@ function main(){
       const row=armRow(file);
       if(row)perArm[arm]=row;
     }
-    // Read the scenario config (map/opponent/mode) + seed from any match meta.
-    let map=null,opponent=null,mode=null,seed=null;
-    for(const arm of o.arms){
-      try{
-        const r=JSON.parse(fs.readFileSync(path.join(o.out,sid,arm,'match.json'),'utf8'));
-        const cfg=r.benchmarkMeta?.gameConfig||{};
-        if(cfg.gameMap)map=cfg.gameMap;
-        if(cfg.opponentProfile)opponent=cfg.opponentProfile;
-        if(cfg.gameMode)mode=cfg.gameMode;
-        if(!seed)seed=r.benchmarkMeta?.seed??null;
-      }catch(_){/* ignore */}
-    }
-    // Paired land deltas (same seed -> isolation by model/mapping).
+    // Fail closed before any pair is emitted. The capture manifest, when
+    // present, is the canonical arm/scenario provenance contract.
+    const provenance=validateScenarioProvenance(sid,o.arms,perArm,manifest);
     const delta=(a,b)=>(Number.isFinite(a?.endLand)&&Number.isFinite(b?.endLand))
       ?a.endLand-b.endLand:null;
     const paired={};
     for(const arm of o.arms){
       if(BASELINES.includes(arm))continue;
       for(const base of BASELINES)
-        paired[`${arm} vs ${base}`]=delta(perArm[arm],perArm[base]);
+        if(o.arms.includes(base))
+          paired[`${arm} vs ${base}`]=delta(perArm[arm],perArm[base]);
     }
-    scenarios.push({scenarioId:sid,seed,map,opponent,mode,perArm,paired});
+    scenarios.push({scenarioId:sid,seed:provenance.seed,
+      map:provenance.map,opponent:provenance.opponent,mode:provenance.mode,
+      provenance,perArm,paired});
   }
+  validateArmIdentityAcrossScenarios(scenarios,o.arms);
 
   // Per-arm aggregate across scenarios.
   const perArm={};
@@ -200,7 +315,8 @@ function main(){
   }
   const report={kind:'v5-decision-impact',
     generated:new Date().toISOString(),arms:o.arms,
-    note:'Isolation by model/mapping: identical bot source across arms; same engine seed per scenario. changedRate = fraction of decision frames with changedIntent (the candidate control moved the pick away from the rule). blockedRate = fraction where the model top differed from the rule pick but the final pick stayed with the rule at the configured gain. Paired deltas compare endLand on the SAME seed, so a positive delta for an arm = its changed decisions netted positive land.',
+    provenanceVerified:true,
+    note:'Isolation by model/mapping is reported only after fail-closed provenance validation. Seed, engine, match configuration, stable arm identity, and (when present) capture-manifest bot/policy identities must match before any paired delta is emitted. changedRate = fraction of decision frames with changedIntent; blockedRate = fraction where model preference did not take effect.',
     scenarios,aggregate:{perArm,paired}};
   fs.writeFileSync(path.join(o.out,'decision-impact.json'),
     JSON.stringify(report,null,2)+'\n');
@@ -215,4 +331,5 @@ function main(){
 }
 if(require.main===module)main();
 module.exports={armRow,discoverScenarios,parseArgs,failClosedReason,
+  loadCaptureManifest,validateScenarioProvenance,validateArmIdentityAcrossScenarios,
   ARMS,BASELINES};

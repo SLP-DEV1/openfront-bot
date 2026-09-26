@@ -143,6 +143,12 @@ jobs:
           node tests/benchmark-regression.cjs
           node --check tools/benchmark/impossible-matrix.mjs
           node tools/benchmark/impossible-matrix.mjs --dryRun true > /dev/null
+      - name: Test decision-impact and champion provenance
+        run: |
+          node --check tools/benchmark/v5-decision-impact.cjs
+          node tests/v5-decision-impact-failclosed-regression.cjs
+          node tests/v5-decision-impact-provenance-regression.cjs
+          node tests/overnight-champion-provenance-regression.cjs
       - name: Test league plan provenance identities
         run: |
           node --check tools/benchmark/league-plan.mjs
