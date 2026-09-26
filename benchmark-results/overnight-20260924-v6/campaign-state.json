@@ -30,99 +30,26 @@
     "rule": "Fresh Final-Holdout only AFTER candidate selection; 4 arms (candidate / rule-basis / run3-schema4 / stageC) per 1v1, official-2v2, ffa-duo"
   },
   "completed": [
-    {
-      "job": "inventory-scan",
-      "status": "done",
-      "note": "All model artifacts scanned; policy/file SHAs verified. See inventory.json + model-inventory.md."
-    },
-    {
-      "job": "step2-crlf-fix",
-      "status": "done",
-      "commit": "375afd7",
-      "note": "Pinned eol=lf in .gitattributes for byte-sensitive build artifacts. Fixed 5 hard-safety tests."
-    },
-    {
-      "job": "validate-v6-holdout",
-      "status": "done",
-      "note": "Holdout 960/960 verified (pre-window). 9 models x 2 difficulties x 12 seeds x 2 maps x 2 nations."
-    },
-    {
-      "job": "validate-v6-collapse-report",
-      "status": "done",
-      "note": "V6 collapse + report done. NO PROMOTION (no verified improvement over stageC/V4-prov/V5-A-prov/V5-V4-prov). decision.json + summary.json copied to v6-final-holdout/."
-    },
-    {
-      "job": "step2-regressions",
-      "status": "done",
-      "note": "Definitive 59 pass / 2 fail. All 5 CRLF hard-safety PASS. 2 explained: league-smoke (engine mismatch, fixed by wrap-up restore) + strategy (23 pre-existing on origin)."
-    },
-    {
-      "job": "diagnosis",
-      "status": "done",
-      "note": "diagnosis.md (8 sections, P1-P5 bottlenecks -> V7 variants; Posture-Bot OOD caveat)."
-    },
-    {
-      "job": "train-new-variants",
-      "status": "done",
-      "note": "3 V7 variants done. Candidate selected: v7-mixed-public (only variant beating stageC in training final-gen)."
-    },
-    {
-      "job": "final-holdout",
-      "status": "done",
-      "note": "o7hold: 192 matches (3 modes x 4 arms x 8 seeds x 2 maps), all verified, engine bb8af015. Gate: no-verified-improvement vs all references on all modes."
-    },
-    {
-      "job": "promotion-decision",
-      "status": "done",
-      "note": "o7hold/promotion-decision.json: promote=false (0/3 modes vs each reference; required >=2/3)."
-    },
-    {
-      "job": "wrap-up",
-      "status": "done",
-      "note": "evaluation.md + overnight-report.md + campaign-state.json updated; engine restored to 13b40338; Run3 policySHA256 e0fceaef90d542d3811dcd0b261fb3284577cf319912989a2f3eaa7647d39968 / fileSHA256 65589febcf8a376c9dbd0e895e4ce643d2591b1ac185270012e148a9315f7ff3 verified unchanged; committed."
-    }
+    { "job": "inventory-scan", "status": "done", "note": "All model artifacts scanned; policy/file SHAs verified. See inventory.json + model-inventory.md." },
+    { "job": "step2-crlf-fix", "status": "done", "commit": "375afd7", "note": "Pinned eol=lf in .gitattributes for byte-sensitive build artifacts. Fixed 5 hard-safety tests." },
+    { "job": "validate-v6-holdout", "status": "done", "note": "Holdout 960/960 verified (pre-window). 9 models x 2 difficulties x 12 seeds x 2 maps x 2 nations." },
+    { "job": "validate-v6-collapse-report", "status": "done", "note": "V6 collapse + report done. NO PROMOTION (no verified improvement over stageC/V4-prov/V5-A-prov/V5-V4-prov). decision.json + summary.json copied to v6-final-holdout/." },
+    { "job": "step2-regressions", "status": "done", "note": "Definitive 59 pass / 2 fail. All 5 CRLF hard-safety PASS. 2 explained: league-smoke (engine mismatch, fixed by wrap-up restore) + strategy (23 pre-existing on origin)." },
+    { "job": "diagnosis", "status": "done", "note": "diagnosis.md (8 sections, P1-P5 bottlenecks -> V7 variants; Posture-Bot OOD caveat)." },
+    { "job": "train-new-variants", "status": "done", "note": "3 V7 variants done. Candidate selected: v7-mixed-public (only variant beating stageC in training final-gen)." },
+    { "job": "final-holdout", "status": "done", "note": "o7hold: 192 matches (3 modes x 4 arms x 8 seeds x 2 maps), all verified, engine bb8af015. Gate: no-verified-improvement vs all references on all modes." },
+    { "job": "promotion-decision", "status": "done", "note": "o7hold/promotion-decision.json: promote=false (0/3 modes vs each reference; required >=2/3)." },
+    { "job": "wrap-up", "status": "done", "note": "evaluation.md + overnight-report.md + campaign-state.json updated; engine restored to 13b40338; Run3 policySHA256 e0fceaef90d542d3811dcd0b261fb3284577cf319912989a2f3eaa7647d39968 / fileSHA256 65589febcf8a376c9dbd0e895e4ce643d2591b1ac185270012e148a9315f7ff3 verified unchanged; committed." }
   ],
   "jobs": [
-    {
-      "id": "validate-v6-holdout",
-      "status": "done",
-      "desc": "V6 holdout 960/960 verified"
-    },
-    {
-      "id": "validate-v6-collapse",
-      "status": "done",
-      "desc": "V6 collapse + report: NO PROMOTION"
-    },
-    {
-      "id": "step2-regressions",
-      "status": "done",
-      "desc": "Definitive 59 pass / 2 fail; 5 CRLF hard-safety PASS; 2 explained"
-    },
-    {
-      "id": "diagnosis",
-      "status": "done",
-      "desc": "diagnosis.md written"
-    },
-    {
-      "id": "train-new-variants",
-      "status": "done",
-      "desc": "3 V7 variants done; candidate = v7-mixed-public"
-    },
-    {
-      "id": "final-holdout",
-      "status": "done",
-      "desc": "o7hold 192 matches, no-verified-improvement vs all"
-    },
-    {
-      "id": "promotion-decision",
-      "status": "done",
-      "desc": "promote=false"
-    },
-    {
-      "id": "wrap-up",
-      "status": "done",
-      "desc": "reports written; engine restored; Run3 verified; committed"
-    }
+    { "id": "validate-v6-holdout", "status": "done", "desc": "V6 holdout 960/960 verified" },
+    { "id": "validate-v6-collapse", "status": "done", "desc": "V6 collapse + report: NO PROMOTION" },
+    { "id": "step2-regressions", "status": "done", "desc": "Definitive 59 pass / 2 fail; 5 CRLF hard-safety PASS; 2 explained" },
+    { "id": "diagnosis", "status": "done", "desc": "diagnosis.md written" },
+    { "id": "train-new-variants", "status": "done", "desc": "3 V7 variants done; candidate = v7-mixed-public" },
+    { "id": "final-holdout", "status": "done", "desc": "o7hold 192 matches, no-verified-improvement vs all" },
+    { "id": "promotion-decision", "status": "done", "desc": "promote=false" },
+    { "id": "wrap-up", "status": "done", "desc": "reports written; engine restored; Run3 verified; committed" }
   ],
   "errors": [
     {
