@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import {createRequire} from 'node:module';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import common from './common.cjs';
+import engineLayout from './engine-layout.cjs';
 import {startBackend} from './openfront-backend.mjs';
 const opts=common.parse(process.argv.slice(2));
 // Browser harness exposes only a local Singleplayer/FFA game, without a
@@ -15,7 +16,8 @@ if(opts.gameType!=='Singleplayer'||opts.gameMode!=='FFA'||opts.scriptedHumans!==
 const engineCommit=common.engineInfo(opts.engine,opts.engineCommit);
 const requireEngine=createRequire(path.join(opts.engine,'package.json'));
 requireEngine('tsx/esm/api').register({tsconfig:path.join(opts.engine,'tsconfig.json')});
-const enums=await import(pathToFileURL(path.join(opts.engine,'src/core/game/Game.ts')).href);
+const layout=engineLayout.locate(opts.engine);
+const enums=await import(pathToFileURL(path.join(opts.engine,layout.resolve('src/core/game/Game.ts'))).href);
 const resolve=(values,input)=>{const key=Object.keys(values).find(k=>k.toLowerCase()===input.toLowerCase());if(!key)throw Error('Unknown enum '+input);return values[key];};
 const gameConfig={gameMap:resolve(enums.GameMapType,opts.map),gameMapSize:resolve(enums.GameMapSize,opts.size),
   difficulty:resolve(enums.Difficulty,opts.difficulty),gameType:'Singleplayer',gameMode:'Free For All',

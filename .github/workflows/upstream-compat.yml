@@ -1,0 +1,34 @@
+name: Current OpenFront Compatibility
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/benchmark/engine-layout.cjs'
+      - 'tools/benchmark/engine-match.mjs'
+      - 'tools/benchmark/engine-capacity-smoke.mjs'
+      - '.github/workflows/upstream-compat.yml'
+permissions:
+  contents: read
+jobs:
+  upstream:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install current pinned official engine
+        run: |
+          git clone --depth 1 https://github.com/openfrontio/OpenFrontIO.git ../OpenFrontIO
+          git -C ../OpenFrontIO fetch --depth 1 origin c8dc34214e248c1877556d11011ebf3206bb186a
+          git -C ../OpenFrontIO checkout --detach c8dc34214e248c1877556d11011ebf3206bb186a
+          cd ../OpenFrontIO
+          npm ci
+      - name: Test current official Config
+        run: |
+          node tools/benchmark/engine-capacity-smoke.mjs --engine ../OpenFrontIO --engineCommit c8dc34214e248c1877556d11011ebf3206bb186a
+      - name: Run current engine small match
+        run: |
+          node tools/benchmark/engine-match.mjs --engine ../OpenFrontIO --engineCommit c8dc34214e248c1877556d11011ebf3206bb186a --ticks 120 --out ${RUNNER_TEMP}/aggrobot-upstream-smoke

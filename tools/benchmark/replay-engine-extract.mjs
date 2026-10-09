@@ -6,6 +6,7 @@ import path from 'node:path';
 import {createRequire} from 'node:module';
 import {pathToFileURL} from 'node:url';
 import common from './common.cjs';
+import engineLayout from './engine-layout.cjs';
 const requireLocal=createRequire(import.meta.url);
 const core=requireLocal('./replay-engine-extract-core.cjs');
 
@@ -29,14 +30,17 @@ if(String(raw.gitCommit||'').toLowerCase()!==engineCommit.toLowerCase())
 
 const requireEngine=createRequire(path.join(path.resolve(opts.engine),'package.json'));
 requireEngine('tsx/esm/api').register({tsconfig:path.join(path.resolve(opts.engine),'tsconfig.json')});
-const mod=p=>import(pathToFileURL(path.join(path.resolve(opts.engine),p)).href);
+const layout=engineLayout.locate(path.resolve(opts.engine));
+const mod=p=>import(pathToFileURL(path.join(path.resolve(opts.engine),layout.resolve(p))).href);
 const [{createGameRunner},{Config},{GameView},{loadTerrainMap},{NodeGameMapLoader},
   schemas,util,updates]=await Promise.all([
   mod('src/core/GameRunner.ts'),mod('src/core/configuration/Config.ts'),
   mod('src/client/view/GameView.ts'),mod('src/core/game/TerrainMapLoader.ts'),
   mod('tests/perf/fullgame/NodeGameMapLoader.ts'),
   mod('src/core/Schemas.ts'),mod('src/core/Util.ts'),mod('src/core/game/GameUpdates.ts')]);
-const record=util.decompressGameRecord(schemas.GameRecordSchema.parse(raw));
+const mapFilesLoader=layout.modern?(await mod('packages/shared/src/GameMapLoader.ts')).loadMapFiles:null;
+const wire=layout.modern?await mod('packages/shared/src/WireSchemas.ts'):schemas;
+const record=util.decompressGameRecord(wire.GameRecordSchema.parse(raw));
 const info=record.info,player=info.players.find(p=>p.clientID===opts.clientID);
 if(!player)throw Error('Selected clientID is not present in replay players');
 const start=util.toWireGameStartInfo({gameID:info.gameID,
@@ -44,10 +48,14 @@ const start=util.toWireGameStartInfo({gameID:info.gameID,
   tribes:info.tribes});
 const loader=new NodeGameMapLoader(path.join(path.resolve(opts.engine),'resources/maps'));
 let update=null,fatal=null;
-const runner=await createGameRunner(start,opts.clientID,loader,gu=>{
+const runnerInput=layout.modern?
+  await mapFilesLoader(loader,info.config.gameMap,info.config.gameMapSize):loader;
+const runner=await createGameRunner(start,opts.clientID,runnerInput,gu=>{
   if('errMsg' in gu)fatal=gu.errMsg;else update=gu;
 });
-const map=await loadTerrainMap(info.config.gameMap,info.config.gameMapSize,loader,false);
+const map=layout.modern?
+  await loadTerrainMap(await mapFilesLoader(loader,info.config.gameMap,info.config.gameMapSize)):
+  await loadTerrainMap(info.config.gameMap,info.config.gameMapSize,loader,false);
 const worker={playerInteraction:async(...a)=>structuredClone(runner.playerActions(...a)),
   playerBuildables:async(...a)=>structuredClone(runner.playerBuildables(...a)),
   playerBorderTiles:async(...a)=>structuredClone(runner.playerBorderTiles(...a)),

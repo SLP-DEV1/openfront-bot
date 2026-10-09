@@ -85,6 +85,10 @@ jobs:
           node tests/diagnostic-zip-regression.cjs
           node --check tests/diagnostic-evidence-regression.cjs
           node tests/diagnostic-evidence-regression.cjs
+      - name: Test OpenFront engine layout compatibility
+        run: |
+          node --check tools/benchmark/engine-layout.cjs
+          node tests/upstream-engine-layout-regression.cjs
       - name: Test bot strategy
         run: node tests/strategy-regression.cjs
       - name: Test P0 decision frame linkage

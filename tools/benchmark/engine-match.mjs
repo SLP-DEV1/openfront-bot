@@ -7,6 +7,7 @@ const localRequire=createRequire(import.meta.url);
 const visibleTrajectory=localRequire('./trajectory.cjs');
 import {pathToFileURL} from 'node:url';
 import common from './common.cjs';
+import engineLayout from './engine-layout.cjs';
 import policyModel from '../../trainer/policy.cjs';
 import actionModel from '../../trainer/action-policy.cjs';
 import strategicModel from '../../trainer/strategic-policy.cjs';
@@ -19,7 +20,8 @@ const opts=common.parse(process.argv.slice(2));
 const engineCommit=common.engineInfo(opts.engine,opts.engineCommit);
 const requireEngine=createRequire(path.join(opts.engine,'package.json'));
 requireEngine('tsx/esm/api').register({tsconfig:path.join(opts.engine,'tsconfig.json')});
-const mod=p=>import(pathToFileURL(path.join(opts.engine,p)).href);
+const layout=engineLayout.locate(opts.engine);
+const mod=p=>import(pathToFileURL(path.join(opts.engine,layout.resolve(p))).href);
 // Upstream GameView reads preferences. No auth, account or real browser storage.
 const storage=new Map();
 let policyHash=null;
@@ -85,6 +87,7 @@ const [{createGameRunner},{Config},{GameMapType,GameMapSize,Difficulty,GameType,
   mod('src/core/GameRunner.ts'),mod('src/core/configuration/Config.ts'),mod('src/core/game/Game.ts'),
   mod('src/client/view/GameView.ts'),mod('src/core/game/TerrainMapLoader.ts'),
   mod('tests/perf/fullgame/NodeGameMapLoader.ts'),mod('src/core/EventBus.ts'),mod('src/core/Schemas.ts')]);
+const mapFilesLoader=layout.modern?(await mod('packages/shared/src/GameMapLoader.ts')).loadMapFiles:null;
 const resolve=(values,input)=>{const key=Object.keys(values).find(k=>k.toLowerCase()===input.toLowerCase());if(!key)throw Error('Unknown enum '+input);return values[key];};
 const gameType=resolve(GameType,opts.gameType),gameMode=resolve(GameMode,opts.gameMode);
 const scriptedProfiles=['rush','balanced','defender','opportunist'];
@@ -149,8 +152,12 @@ const meta={trajectorySemantics:visibleTrajectory.SEMANTICS,harness:'engine-game
   scriptedOpponents:opts.scriptedHumans>0?
     'deterministic human-client intents; heuristic profiles, not real human behavior':null};
 common.writeJSON(path.join(dir,'run.json'),meta);
-const runner=await createGameRunner(start,clientID,loader,gu=>{'errMsg' in gu?fatal=gu.errMsg:update=gu;});
-const clientMap=await loadTerrainMap(config.gameMap,config.gameMapSize,loader,false);
+const runnerInput=layout.modern?
+  await mapFilesLoader(loader,config.gameMap,config.gameMapSize):loader;
+const runner=await createGameRunner(start,clientID,runnerInput,gu=>{'errMsg' in gu?fatal=gu.errMsg:update=gu;});
+const clientMap=layout.modern?
+  await loadTerrainMap(await mapFilesLoader(loader,config.gameMap,config.gameMapSize)):
+  await loadTerrainMap(config.gameMap,config.gameMapSize,loader,false);
 // Mirrors WorkerClient queries; the full GameView remains the bot's only view of state.
 const worker={
   playerInteraction:async(...args)=>structuredClone(runner.playerActions(...args)),

@@ -4,6 +4,7 @@ import path from 'node:path';
 import {createRequire} from 'node:module';
 import {pathToFileURL} from 'node:url';
 import common from './common.cjs';
+import engineLayout from './engine-layout.cjs';
 
 const argv=process.argv.slice(2),index=argv.indexOf('--engine');
 if(index<0||!argv[index+1])throw Error('--engine PATH required');
@@ -14,7 +15,8 @@ if(!expected)throw Error('--engineCommit SHA required');
 const engineCommit=common.engineInfo(engine,expected);
 const requireEngine=createRequire(path.join(engine,'package.json'));
 requireEngine('tsx/esm/api').register({tsconfig:path.join(engine,'tsconfig.json')});
-const mod=p=>import(pathToFileURL(path.join(engine,p)).href);
+const layout=engineLayout.locate(engine);
+const mod=p=>import(pathToFileURL(path.join(engine,layout.resolve(p))).href);
 const [{Config},{GameMapType,GameMapSize,GameMode,GameType,Difficulty,
   PlayerType,UnitType},{GameConfigSchema}]=await Promise.all([
   mod('src/core/configuration/Config.ts'),mod('src/core/game/Game.ts'),
