@@ -8426,9 +8426,9 @@ function predict(model,input){
       <details data-section="localduo"${openFor('localduo')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">🤝 Duo-Modus (2 Browser, 1 PC)</summary>
       <div>${b('duoEnabled','Lokales Duo '+(opts.duoEnabled?'AN':'AUS'))}</div>
       <div style="color:#9bd0e4">Eigene Spieler-ID: <b>${escapeHTML(safeID(myPlayer())??'noch nicht im Spiel')}</b></div>
-      <label>Partnername (nur Anzeige)<input type="text" data-option="duoPartnerName" maxlength="80" value="${escapeHTML(opts.duoPartnerName||'')}" placeholder="z. B. KitsukamiBot2" style="box-sizing:border-box;width:100%"></label>
+      <label>Partnername (nur Anzeige)<input type="text" data-option="duoPartnerName" maxlength="80" value="${escapeHTML(opts.duoPartnerName||'')}" placeholder="z. B. ExamplePartner" style="box-sizing:border-box;width:100%"></label>
       <div>Partner-ID (automatisch): ${escapeHTML(duoTrustedPeer()?.id??"Warte auf Partner")}</div>
-      <label>Duo-Raumcode (in beiden Browsern gleich)<input type="text" data-option="duoRoom" maxlength="64" value="${escapeHTML(opts.duoRoom)}" placeholder="z. B. KITSU_DUO_01" style="box-sizing:border-box;width:100%"></label>
+      <label>Duo-Raumcode (in beiden Browsern gleich)<input type="text" data-option="duoRoom" maxlength="64" value="${escapeHTML(opts.duoRoom)}" placeholder="z. B. EXAMPLE_DUO_01" style="box-sizing:border-box;width:100%"></label>
       <div>Status: ${escapeHTML(duoLocal.status)} · ${duoTrustedPeer()?'Partner im aktuellen Match bestätigt':'Partner nicht verbunden'}</div>
       <div style="color:#9bd0e4">Duo-Zustand: ${escapeHTML(duoStatusView(opts.duoEnabled,duoTrustedPeer(),duoPlan,number(()=>game?.ticks?.(),-1),duoLocal).phase)} · Relay-Drops ${duoLocal.relayDrops} · Relay-Timeouts ${duoLocal.relayTimeouts} · ACK-Timeouts ${duoLocal.ackTimeouts}</div>
       <div style="color:#9bd0e4;font-size:10px">Matchkennung: ${escapeHTML(duoMatchKey())}</div>
