@@ -25,6 +25,7 @@ jobs:
           git -C ../OpenFrontIO fetch --depth 1 origin c8dc34214e248c1877556d11011ebf3206bb186a
           git -C ../OpenFrontIO checkout --detach c8dc34214e248c1877556d11011ebf3206bb186a
           cd ../OpenFrontIO
+          npm install --global npm@12.1.0
           npm ci
       - name: Test current official Config
         run: |

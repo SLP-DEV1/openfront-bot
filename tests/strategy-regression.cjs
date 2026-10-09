@@ -325,24 +325,23 @@ function boot(benchmarkOptions={}) {
     assert.equal(summary.effectsObserved,0,
       'confirmation is not silently upgraded to observed effect');
   });
-  await check('audit monitor bridge preserves fresh decision metrics and session',()=>{
+  await check('removed local monitor does not leak telemetry events to the page',()=>{
     const events=[];
     const x=boot({__OF_LOCAL_MONITOR_ACTIVE__:true,dispatchEvent:e=>events.push(e)});
     x.b.setMonitorSession('match-regression-1234');
     x.b.setTroopSnapshot({...x.b.military(x.me,[]),incoming:0});
     x.b.telemetry('budget_guard','Live risk',{incoming:26000,committed:500,
       marker:'fresh'});
-    assert.equal(events.length,1,'one read-only page event');
-    assert.equal(events[0].type,'aggrobot:telemetry');
-    const record=JSON.parse(events[0].detail);
+    assert.equal(events.length,0,'removed monitor no longer publishes page events');
+    const record=x.b.diagnosticSnapshot().records.at(-1);
     assert.equal(record.session,'match-regression-1234');
     assert.equal(record.incoming,26000,'fresh decision beats older snapshot');
     assert.equal(record.committed,500);
     assert.equal(record.kind,'budget_guard');
-    assert.equal(x.b.diagnosticSnapshot().records.at(-1).incoming,26000);
     x.b.setMonitorSession('match-new-5678');
     x.b.telemetry('snapshot','second',{});
-    assert.equal(JSON.parse(events[1].detail).session,'match-new-5678');
+    assert.equal(x.b.diagnosticSnapshot().records.at(-1).session,'match-new-5678');
+    assert.equal(events.length,0);
   });
   await check('audit personal elimination ends own FFA game before world ends',async()=>{
     const x=boot();x.game.terrainByte=()=>1;
@@ -1747,7 +1746,7 @@ function boot(benchmarkOptions={}) {
   });
   await check('issue #9 current README installs maintained script, legacy notes archived', () => {
     const readme=fs.readFileSync(path.join(__dirname,'..','README.md'),'utf8');
-    assert.match(readme,/\]\(\.\/OpenFront_Solo_AggroBot\.user\.js\)/);
+    assert.match(readme,/releases\/download\/v1\.21\.5\/OpenFront_Solo_AggroBot\.user\.js/);
     assert.doesNotMatch(readme,/\]\(\.\/OpenFront_Solo_AggroBot_1\.9\.0\.js\)/);
     assert.doesNotMatch(readme,/1\.9\.0\.js.{0,90}bleibt als/);
     assert.equal(fs.existsSync(path.join(__dirname,'..','docs','README_HISTORY.md')),false,'obsolete documentation removed');
