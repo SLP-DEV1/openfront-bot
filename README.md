@@ -1,46 +1,76 @@
-# OpenFront Solo AggroBot
+# ⚔️ OpenFront AggroBot
 
-An experimental **Tampermonkey userscript** for [OpenFront](https://openfront.io/) that automates gameplay decisions in single-player, public and private matches.
+**Automate the battlefield. Experiment with smarter strategies. Take OpenFront automation further.**
 
-**Current bundled scripts: v1.21.5.** This is an independent community project and is not affiliated with or endorsed by OpenFront.
+An experimental **OpenFront bot and Tampermonkey userscript** that handles expansion, economy, warfare, naval operations, defense, and diplomacy — with optional neural strategy models and local Duo coordination.
 
-## Features
+[![Star OpenFront AggroBot](https://img.shields.io/github/stars/SLP-DEV1/openfront-bot?style=for-the-badge&logo=github&label=STARS)](https://github.com/SLP-DEV1/openfront-bot/stargazers)
+[![Latest version](https://img.shields.io/badge/version-1.21.5-blue?style=for-the-badge)](./OpenFront_Solo_AggroBot.user.js)
+[![Userscript](https://img.shields.io/badge/platform-Tampermonkey-orange?style=for-the-badge)](https://www.tampermonkey.net/)
 
-- Automated spawning, territorial expansion, economy, upgrades and defense.
-- Combat planning, naval operations, diplomacy, alliances and late-game strategy.
-- Configurable safety checks for legality, resource reserves and action budgets.
-- Optional local two-browser Duo coordination using a loopback relay.
-- Diagnostic event recording and a local, read-only match monitor.
-- Experimental neural strategy components and reproducible engine benchmarks.
+**[Get started](#-quick-start)** · **[Explore features](#-what-can-it-do)** · **[How it works](#-built-for-tinkering)** · **[Report a bug or suggest a feature](https://github.com/SLP-DEV1/openfront-bot/issues)**
 
-**Important:** Experimental policies and scripted engine benchmarks do not establish a reliable win rate against human players or on Impossible difficulty. A completed CI job does not mean the bot won a game.
+> ⭐ **Enjoy experimenting with AggroBot? [Star this repository](https://github.com/SLP-DEV1/openfront-bot) to support its development and help other OpenFront players discover it.**
 
-## Install
+## 🚀 Why AggroBot?
 
-1. Install a userscript manager such as [Tampermonkey](https://www.tampermonkey.net/).
-2. Choose **one** script:
-   - [OpenFront_Solo_AggroBot.user.js](./OpenFront_Solo_AggroBot.user.js) — standard bot.
-   - [OpenFront_AggroBot_Impossible_Run3.user.js](./OpenFront_AggroBot_Impossible_Run3.user.js) — experimental version with a bundled, fixed Schema 4 model.
-3. Copy the **entire contents** of your chosen file into a new Tampermonkey script, save, and open [openfront.io](https://openfront.io/).
-4. Only enable one AggroBot variant at a time. If you also use Spawn Advisor, disable its overlapping automatic controls.
+AggroBot goes beyond a single auto-attack script. It combines multiple game systems into **one configurable autopilot**, with strategy decisions constrained by game-state and safety checks.
 
-The bot waits for a playable match and a ready game event bus before starting. Replay mode is not an automation target.
+- 🗺️ **Hands-off expansion** — automatic spawn selection and territorial growth.
+- 🏙️ **Economy & upgrades** — resource management, development, and investment planning.
+- ⚔️ **Combat & naval strategy** — target selection, troop reserves, transports, and late-game offense.
+- 🛡️ **Defense first** — invasion awareness and defensive responses, including anti-nuke planning.
+- 🤝 **Diplomacy & teamwork** — alliances, team support, and optional local two-browser Duo coordination.
+- 🧠 **Experimental neural policies** — investigate how learned candidate ranking interacts with rule-based decisions.
+- 🔎 **Diagnostics & benchmarking** — inspect actions, capture match evidence, and run reproducible engine scenarios.
 
-### Controls
+The bot is an **experiment, not a guaranteed win button**: neural features are research-oriented, and benchmark outcomes do not prove success against human players.
 
-- **Alt + Shift + P** — pause/resume.
-- **Alt + Shift + X** — disable the bot and automatic start.
-- Use the in-game panel for strategy preferences, diagnostics, evidence mode and optional Duo settings.
+## ⚡ Quick start
 
-### Optional local Duo mode
+**No Node.js setup is required to install the normal browser userscript.**
 
-Run `Start_Live_Duo.bat` with **Node.js 24+** installed, then enable Duo in two separate browser instances in the same game with the same room code. The relay listens only on `127.0.0.1:8767`; it does not replace in-game alliance validation or action safety checks.
+1. Install [Tampermonkey](https://www.tampermonkey.net/) in your browser.
+2. Choose **one** script below. Open it on GitHub and copy its **complete contents** into a new Tampermonkey userscript:
 
-See [Local Duo](docs/LOCAL_DUO.md) and [Local monitor](docs/LIVE_MONITOR.md) for details.
+   | Script | Best for |
+   | --- | --- |
+   | **[OpenFront Solo AggroBot](./OpenFront_Solo_AggroBot.user.js)** | Standard automation and customizable strategy settings |
+   | **[Impossible Run3 Neural](./OpenFront_AggroBot_Impossible_Run3.user.js)** | Experimental variant with the fixed, bundled Schema 4 champion model |
 
-## Development and validation
+3. Save the script, open **[openfront.io](https://openfront.io/)**, and enter a playable match.
+4. Use the in-game AggroBot panel to control the autopilot.
 
-Node.js 24 is recommended for the build and regression tools:
+**Important:** Activate only **one** AggroBot variant at a time. When using Spawn Advisor, disable overlapping automatic features such as auto-spawn, smart attack, and auto-accept alliances. The bot waits for a playable match and event-bus readiness; it does not automate replays.
+
+### Keyboard shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| `Alt + Shift + P` | Pause or resume |
+| `Alt + Shift + X` | Disable the bot and automatic start |
+
+## 🎮 What can it do?
+
+| System | Capabilities |
+| --- | --- |
+| **Territory** | Spawn automation, expansion planning, target evaluation |
+| **Military** | Combat planning, troop allocation, reserve checks |
+| **Navy** | Port and transport planning, naval operations |
+| **Economy** | Resource budgeting, structures, upgrades, investment priorities |
+| **Defense** | Threat awareness, emergency responses, defensive structures |
+| **Diplomacy** | Alliance interactions, team-oriented support and coordination |
+| **Research** | Neural candidate ranking, match diagnostics, benchmarking |
+
+**Local Duo mode:** Run `Start_Live_Duo.bat` with **Node.js 24+**, then enable Duo in two separate browser instances in the same match using the same room code. The relay is restricted to `127.0.0.1:8767`. It does not override actual in-game alliance status, legality checks, or reserve rules. Read the [Duo setup guide](docs/LOCAL_DUO.md).
+
+**Local match monitor:** An optional companion userscript can send diagnostic events to a read-only service on localhost. See the [monitor guide](docs/LIVE_MONITOR.md).
+
+## 🧪 Built for tinkering
+
+Want to tune the strategy, compare experimental models, or investigate what the bot actually did? The repository includes the canonical userscript source, deterministic build scripts, regression tests, local diagnostics, and benchmarking tools.
+
+**Node.js 24+** is recommended for the development tools:
 
 ```sh
 node tools/build-userscript.cjs --check
@@ -52,18 +82,27 @@ node tests/scenario-pack-regression.cjs
 node tests/benchmark-regression.cjs
 ```
 
-The scripts are generated from `src/userscript/` and supporting runtime modules. Run `node tools/build-userscript.cjs --write` when editing canonical userscript source.
+Edit the modules in `src/userscript/` rather than editing generated scripts directly. Rebuild the standard script with `node tools/build-userscript.cjs --write` and the Run3 bundle with `node tools/build-run3-bundle.cjs --write`.
 
-More information: [Benchmarks](docs/BENCHMARKS.md), [Neural training](docs/NEURAL_TRAINING.md), [Experiment protocol](docs/EXPERIMENT_PROTOCOL.md), and [Issues](https://github.com/SLP-DEV1/openfront-bot/issues).
+The reviewed Run3 Schema 4 model is kept at `trainer/run3-champion.json`. Historical raw training datasets and bulk benchmark outputs are intentionally excluded from the public source tree. Some regression suites may currently fail; check [GitHub Actions](https://github.com/SLP-DEV1/openfront-bot/actions) for the latest results rather than assuming a green build.
 
-## Privacy and responsible use
+**Technical docs:** [Benchmarks](docs/BENCHMARKS.md) · [Neural training](docs/NEURAL_TRAINING.md) · [Experiment protocol](docs/EXPERIMENT_PROTOCOL.md) · [Diagnostics](docs/DIAGNOSTIC_V2.md)
 
-- Do **not** commit diagnostic ZIPs, private replay exports, access tokens, cookies, credentials or local profile/configuration files.
-- Logs and diagnostic exports can contain match IDs, player identifiers or other personal information. Review and anonymize all artifacts before sharing.
-- Keep the local monitor and Duo relay bound to loopback; do not expose their ports to the internet.
-- Publishing a repository does **not** remove sensitive content from past commits or forks. See [Security policy](SECURITY.md).
-- Follow OpenFront's applicable rules and terms. Automation in online matches may not be permitted.
+## 🤝 Help the project grow
 
-Large historical training datasets, simulation logs, and generated benchmark results are **not included** in the public source tree. They can be regenerated locally when needed. The reviewed Schema 4 Run3 model is kept at `trainer/run3-champion.json` so both distributed userscripts remain reproducible.
+If you find AggroBot interesting, there are easy ways to contribute:
 
-All experiments are research-grade; their results are not guarantees of performance.
+- ⭐ **[Star the repository](https://github.com/SLP-DEV1/openfront-bot)** to help others find it.
+- 🐛 **[Open an issue](https://github.com/SLP-DEV1/openfront-bot/issues)** with clear reproduction steps for a bug.
+- 💡 Share a strategy idea or a measurable improvement — especially with reproducible evidence.
+- 🔗 Share the project with people interested in OpenFront bots, game automation, JavaScript, or experimental AI strategy.
+
+## ⚠️ Project status & responsible use
+
+AggroBot is an independent community project **not affiliated with or endorsed by OpenFront**. It is experimental: the existence of neural models, successful tests, or a completed simulation does **not** demonstrate a particular win rate against humans or Impossible opponents. Follow OpenFront's rules and terms; automated play in online matches may be restricted.
+
+Do not publish credentials, private replay exports, player identifiers, or personal diagnostic ZIPs. Keep local tools bound to loopback and review shared logs for sensitive data. See [SECURITY.md](SECURITY.md). Deleted files can still exist in old Git commits, forks, or caches.
+
+---
+
+**Built for OpenFront strategy experiments.** ⭐ [Star AggroBot](https://github.com/SLP-DEV1/openfront-bot) if you want to support the project.
