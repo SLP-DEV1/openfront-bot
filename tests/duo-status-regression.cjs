@@ -21,5 +21,5 @@ assert(source.includes("if(e?.name==='AbortError')duoLocal.relayTimeouts++"));
 assert(source.includes('duoLocal.ackTimeouts++'));
 assert(source.includes('duoLocal.lastExpiredPlan!==duoPlan.planId'),
  'timeout counts must be de-duplicated per plan');
-assert(source.includes('Duo-Zustand: ${escapeHTML(duoStatusView('));
+assert(source.includes('Duo state: ${enHTML(duoStatusView('));
 console.log('PASS Duo ready, waiting-ack, expired and autonomous fallback without intent influence');

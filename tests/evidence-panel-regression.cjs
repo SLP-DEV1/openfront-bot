@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const source=fs.readFileSync(path.join(__dirname,'..','OpenFront_Solo_AggroBot.user.js'),'utf8');
 const from=source.indexOf('  function evidencePanelState(');
-const to=source.indexOf('  function paint() {',from);
+const to=source.indexOf('  // Presentation-only translation:',from);
 assert(from>0&&to>from,'evidence presentation function missing');
 const evidencePanelState=vm.runInNewContext('('+source.slice(from,to).trim()+')');
 const a={id:'attack:foe',utility:42,reason:'counter-risk'};
@@ -40,6 +40,8 @@ assert(source.includes('budget:budgetAge!==null&&budgetAge<=300?budget:null'),
   'expired economy samples must not masquerade as current');
 assert(source.includes('economyBudgetEvidence,'),
   'diagnostic export must include the economy snapshot');
-assert(source.includes('escapeHTML(a?a.id+'),
+assert(source.includes('enHTML(a?a.id+'),
+  'UI-facing candidate labels must use the escaping localization wrapper');
+assert(source.includes('const enHTML=value=>escapeHTML(translateMenuText(value));'),
   'untrusted candidate labels must be escaped in the panel');
 console.log('PASS read-only evidence state, stale worker/budget handling and opt-in GUI wiring');
