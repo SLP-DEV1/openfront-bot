@@ -157,7 +157,7 @@ function boot(benchmarkOptions={}) {
     assert.equal(x.sent.length,0);
   });
   await check('match cxBz9Y1WCZ: trusted partner ID survives status snapshot',()=>{
-    const x=boot();x.b.setDuo('weak','KITSU_DUO_123',{
+    const x=boot();x.b.setDuo('weak','TEST_DUO_ROOM_123',{
       id:'weak',state:{ready:false,fronts:[],incoming:0,home:90000}});
     x.me.isFriendly=p=>p===x.weak;
     x.b.coordinateDuo(x.me,x.b.military(x.me,[]),300);
@@ -3457,19 +3457,19 @@ function boot(benchmarkOptions={}) {
 
   await check('1.20.2 auto Duo only protects current verified peer',()=>{
     const x=boot();
-    x.b.setDuo('weak','KITSU_DUO_123',null);
+    x.b.setDuo('weak','TEST_DUO_ROOM_123',null);
     assert.equal(x.b.duoConfigured(),true);
     assert.equal(x.b.friendly(x.weak,x.me),false);
     assert.equal(x.b.actualFriendly(x.weak,x.me),false);
     assert.equal(x.b.friendly(x.strong,x.me),false);
     assert.equal(x.b.duoTrustedPeer(),null);
-    x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{}});
+    x.b.setDuo('weak','TEST_DUO_ROOM_123',{id:'weak',state:{}});
     assert.equal(x.b.friendly(x.weak,x.me),true);
     assert.equal(x.b.friendly(x.strong,x.me),false);
   });
   await check('1.20 reciprocal relay hints require real in-game friendship before joint plan',()=>{
     const x=boot();
-    x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{
+    x.b.setDuo('weak','TEST_DUO_ROOM_123',{id:'weak',state:{
       target:'strong',ready:true,needHelp:false,available:50000,
       reserve:40000,allied:true,spawn:5050,candidate:5050}});
     assert(x.b.duoTrustedPeer());
@@ -3483,7 +3483,7 @@ function boot(benchmarkOptions={}) {
   });
   await check('1.20 exact reciprocal ID auto-accepts real alliance request but waits for GameView confirmation',()=>{
     const x=boot();
-    x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{
+    x.b.setDuo('weak','TEST_DUO_ROOM_123',{id:'weak',state:{
       target:null,spawn:5050,candidate:5050,needHelp:false,ready:false,
       available:0,reserve:0,allied:false}});
     x.weak.isRequestingAllianceWith=()=>true;
@@ -3501,7 +3501,7 @@ function boot(benchmarkOptions={}) {
     x.game.hasOwner=()=>false;x.game.isBorder=()=>false;
     x.game.config().minDistanceBetweenPlayers=()=>20;
     x.weak.state.spawnTile=5050;x.strong.state.spawnTile=9999;
-    x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{
+    x.b.setDuo('weak','TEST_DUO_ROOM_123',{id:'weak',state:{
       target:null,spawn:5050,candidate:5050,needHelp:false,ready:false,
       available:0,reserve:0,allied:false}});
     const candidate=x.b.duoSpawnCandidate(x.game,x.me,[],false);
@@ -3524,7 +3524,7 @@ function boot(benchmarkOptions={}) {
     const x=boot();
     x.weak.troops=()=>90000;
     x.strong.troops=()=>5000;
-    x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{
+    x.b.setDuo('weak','TEST_DUO_ROOM_123',{id:'weak',state:{
       target:'strong',fronts:['strong'],tick:300,home:90000,
       incoming:0,ready:true,needHelp:false,available:40000,
       reserve:12000,allied:true,strikeTick:null}});
@@ -3538,7 +3538,7 @@ function boot(benchmarkOptions={}) {
   });
   await check('1.20.1 local alliance credits observed attacks only',()=>{
     const x=boot();
-    x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{
+    x.b.setDuo('weak','TEST_DUO_ROOM_123',{id:'weak',state:{
       target:'strong',ready:true,needHelp:false,available:40000,
       reserve:12000,allied:true,strikeTick:null}});
     x.weak.isFriendly=()=>true;
@@ -3551,7 +3551,7 @@ function boot(benchmarkOptions={}) {
   await check('1.20.1 follower uses ready partners scheduled tick',()=>{
     const x=boot();
     x.me.id=()=> 'zzz';
-    x.b.setDuo('strong','KITSU_DUO_123',{id:'strong',state:{
+    x.b.setDuo('strong','TEST_DUO_ROOM_123',{id:'strong',state:{
       target:'weak',fronts:['weak'],tick:300,home:85000,
       incoming:0,ready:true,needHelp:false,available:40000,
       reserve:12000,allied:true,strikeTick:345}});
@@ -3563,7 +3563,7 @@ function boot(benchmarkOptions={}) {
     assert.equal(plan.target,'weak');
     assert.equal(plan.strikeTick,345);
     assert.equal(x.b.duoState().strikeTick,345);
-    x.b.setDuo('strong','KITSU_DUO_123',{id:'strong',state:{
+    x.b.setDuo('strong','TEST_DUO_ROOM_123',{id:'strong',state:{
       target:'weak',fronts:['weak'],tick:301,home:85000,
       incoming:0,ready:false,needHelp:false,available:40000,
       reserve:12000,allied:true,strikeTick:345}});
@@ -3571,7 +3571,7 @@ function boot(benchmarkOptions={}) {
   });
   await check('1.20.1 FFA ally receives safe emergency troop aid',()=>{
     const x=boot();
-    x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{
+    x.b.setDuo('weak','TEST_DUO_ROOM_123',{id:'weak',state:{
       target:null,ready:false,needHelp:true,available:0,
       reserve:0,allied:true,strikeTick:null}});
     x.weak.isFriendly=()=>true;
@@ -3586,7 +3586,7 @@ function boot(benchmarkOptions={}) {
   });
   await check('1.20.4 partner third-party alliance is attack-protected, not our own alliance',()=>{
     const x=boot();
-    x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{
+    x.b.setDuo('weak','TEST_DUO_ROOM_123',{id:'weak',state:{
       target:'strong',allies:['strong'],ready:true,needHelp:false,
       available:30000,reserve:10000,allied:true}});
     x.weak.isFriendly=()=>true;
@@ -3596,7 +3596,7 @@ function boot(benchmarkOptions={}) {
       'peer relationship must not masquerade as our own alliance');
     const plan=x.b.coordinateDuo(x.me,x.b.military(x.me,[]),300);
     assert.equal(plan.target,null,'never plan a shared attack on peer ally');
-    x.b.setDuo('weak','KITSU_DUO_123',null);
+    x.b.setDuo('weak','TEST_DUO_ROOM_123',null);
     assert.equal(x.b.friendly(x.strong,x.me),false,
       'no inherited attack veto after relay disconnect');
   });
@@ -3609,7 +3609,7 @@ function boot(benchmarkOptions={}) {
   });
   await check('1.20.4 paired bots reject unrelated third-party incoming offers',()=>{
     const x=boot();
-    x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{allies:[]}});
+    x.b.setDuo('weak','TEST_DUO_ROOM_123',{id:'weak',state:{allies:[]}});
     x.weak.isFriendly=()=>true;
     x.strong.isRequestingAllianceWith=()=>true;
     x.b.setAllianceCtor(class Alliance{constructor(me,p){this.partner=p;}});
@@ -3619,7 +3619,7 @@ function boot(benchmarkOptions={}) {
   });
   await check('1.20.4 paired bots accept actual partner ally offer when not fighting',()=>{
     const x=boot();
-    x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{allies:['strong']}});
+    x.b.setDuo('weak','TEST_DUO_ROOM_123',{id:'weak',state:{allies:['strong']}});
     x.weak.isFriendly=()=>true;
     x.strong.isRequestingAllianceWith=()=>true;
     x.b.setAllianceCtor(class Alliance{constructor(me,p){this.partner=p;}});
@@ -3634,7 +3634,7 @@ function boot(benchmarkOptions={}) {
     const peer={id:'weak',state:{tick:300,home:90000,incoming:0,
       fronts:['strong'],target:'strong',strikeTick:345,allied:true,
       available:40000,reserve:45000,ready:true,needHelp:false}};
-    x.b.setDuo('weak','KITSU_DUO_123',peer);
+    x.b.setDuo('weak','TEST_DUO_ROOM_123',peer);
     x.weak.isFriendly=()=>true;
     let military=x.b.military(x.me,groups);
     assert(x.b.duoJointOpportunity(x.me,groups,military,groups[0],300));
@@ -3659,7 +3659,7 @@ function boot(benchmarkOptions={}) {
     const peer={id:'weak',state:{tick:300,home:90000,incoming:0,
       fronts:['strong'],target:'strong',strikeTick:345,allied:true,
       available:40000,reserve:45000,ready:true,needHelp:false}};
-    x.b.setDuo('weak','KITSU_DUO_123',peer);x.weak.isFriendly=()=>true;
+    x.b.setDuo('weak','TEST_DUO_ROOM_123',peer);x.weak.isFriendly=()=>true;
     const army=x.b.military(x.me,groups);
     const available=()=>x.b.duoJointOpportunity(x.me,groups,army,groups[0],300);
     assert(available());
@@ -3677,7 +3677,7 @@ function boot(benchmarkOptions={}) {
     const peer={id:'weak',state:{tick:300,home:90000,incoming:0,
       fronts:['strong'],target:'strong',strikeTick:345,allied:true,
       available:40000,reserve:45000,ready:true,needHelp:false}};
-    x.b.setDuo('weak','KITSU_DUO_123',peer);x.weak.isFriendly=()=>true;
+    x.b.setDuo('weak','TEST_DUO_ROOM_123',peer);x.weak.isFriendly=()=>true;
     let army=x.b.military(x.me,groups);
     const originalReserve=army.reserve;
     assert.equal(x.b.targetOpportunityCheck(x.me,groups,army,groups[0]).ok,false,
@@ -3707,7 +3707,7 @@ function boot(benchmarkOptions={}) {
     const peer={id:'weak',state:{tick:300,home:90000,incoming:0,
       fronts:['strong'],target:'strong',strikeTick:345,allied:true,
       available:40000,reserve:45000,ready:true,needHelp:false}};
-    x.b.setDuo('weak','KITSU_DUO_123',peer);x.weak.isFriendly=()=>true;
+    x.b.setDuo('weak','TEST_DUO_ROOM_123',peer);x.weak.isFriendly=()=>true;
     x.b.coordinateDuo(x.me,x.b.military(x.me,groups),300);
     x.setTick(350);peer.state.tick=350;
     const army=x.b.military(x.me,groups);
@@ -3730,7 +3730,7 @@ function boot(benchmarkOptions={}) {
     const peer={id:'weak',state:{tick:300,home:90000,incoming:0,
       fronts:['strong'],target:'strong',strikeTick:345,allied:true,
       available:40000,reserve:45000,ready:true,needHelp:false}};
-    x.b.setDuo('weak','KITSU_DUO_123',peer);
+    x.b.setDuo('weak','TEST_DUO_ROOM_123',peer);
     let army=x.b.military(x.me,groups);
     const plan=x.b.coordinateDuo(x.me,army,300);
     x.setTick(350);peer.state.tick=350;
@@ -3765,7 +3765,7 @@ function boot(benchmarkOptions={}) {
     const peer={id:'weak',state:{tick:300,home:90000,incoming:0,
       fronts:['strong'],target:'strong',strikeTick:null,allied:true,
       available:40000,reserve:45000,ready:true,warning:0,needHelp:false}};
-    x.b.setDuo('weak','KITSU_DUO_123',peer);
+    x.b.setDuo('weak','TEST_DUO_ROOM_123',peer);
     const army=x.b.military(x.me,groups);
     const first=x.b.coordinateDuo(x.me,army,300);
     assert.equal(first.strikeTick,345);
@@ -3813,7 +3813,7 @@ function boot(benchmarkOptions={}) {
     x.me.actions=async()=>({interaction:{canSendAllianceRequest:true}});
     x.b.setGroups([{id:'strong',opponent:x.strong,tiles:[6],front:5}]);
     x.b.setMode('ECONOMY');
-    x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{
+    x.b.setDuo('weak','TEST_DUO_ROOM_123',{id:'weak',state:{
       target:null,warTarget:null,allies:[],warning:0,allied:true}});
     x.b.setAllianceCtor(class Alliance {
       constructor(requestor,recipient){this.requestor=requestor;this.recipient=recipient;}
@@ -3831,7 +3831,7 @@ function boot(benchmarkOptions={}) {
     const peer={id:'weak',state:{tick:300,home:90000,incoming:0,
       fronts:['strong'],target:'strong',strikeTick:null,allied:true,
       available:40000,reserve:45000,ready:true,warning:0,needHelp:false}};
-    x.b.setDuo('weak','KITSU_DUO_123',peer);
+    x.b.setDuo('weak','TEST_DUO_ROOM_123',peer);
     assert.equal(x.b.coordinateDuo(x.me,x.b.military(x.me,groups),300).strikeTick,345);
     x.setTick(310);peer.state.tick=310;peer.state.warning=2;
     const aborted=x.b.coordinateDuo(x.me,x.b.military(x.me,groups),310);
@@ -3842,7 +3842,7 @@ function boot(benchmarkOptions={}) {
     const x=boot();x.weak.isFriendly=()=>true;
     x.me.actions=async()=>({interaction:{canSendAllianceRequest:true}});
     x.b.setGroups([{id:'strong',opponent:x.strong,front:5,tiles:[6]}]);
-    x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{
+    x.b.setDuo('weak','TEST_DUO_ROOM_123',{id:'weak',state:{
       target:null,warTarget:null,allies:['strong'],allied:true}});
     x.b.setAllianceCtor(class Alliance {
       constructor(requestor,recipient){this.requestor=requestor;this.recipient=recipient;}
@@ -4005,7 +4005,7 @@ function boot(benchmarkOptions={}) {
   });
   await check('1.20.8 critical Duo partner can receive recovery troops with own reserve intact',()=>{
     const x=boot();x.setHome(180000);x.weak.troops=()=>60000;x.weak.isFriendly=()=>true;
-    x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{
+    x.b.setDuo('weak','TEST_DUO_ROOM_123',{id:'weak',state:{
       warning:2,allied:true,target:null,fronts:[],incoming:0,
       ready:false,needHelp:true,available:0,reserve:50000}});
     x.me.canDonateTroops=()=>true;
@@ -4021,7 +4021,7 @@ function boot(benchmarkOptions={}) {
   });
   await check('1.20.8 own warning blocks Duo troop donation',()=>{
     const x=boot();x.setHome(180000);x.weak.troops=()=>40000;x.weak.isFriendly=()=>true;
-    x.b.setDuo('weak','KITSU_DUO_123',{id:'weak',state:{
+    x.b.setDuo('weak','TEST_DUO_ROOM_123',{id:'weak',state:{
       warning:2,allied:true,target:null,fronts:[],incoming:0,
       ready:false,needHelp:true,available:0,reserve:30000}});
     x.me.canDonateTroops=()=>true;

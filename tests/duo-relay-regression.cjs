@@ -5,7 +5,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const relay=require('../tools/duo-relay.cjs');
 const mk=(ownID,partnerID,instance,match='v1|Public|World|Large|FFA|123|_')=>({
-  room:'KITSU_DUO_123',ownID,partnerID,instance,match,
+  room:'TEST_DUO_ROOM_123',ownID,partnerID,instance,match,
   state:{tick:100,spawn:null,candidate:505,target:null,ready:false,
     needHelp:false,allied:false,available:0,reserve:500,role:'spawn'}
 });

@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const ROOT = 'C:/Users/SPK/Desktop/openfront';
+const ROOT = path.resolve(__dirname, '..', '..');
 const CAM = 'trainer/campaign-schema6-20260925';
 const EPOCH = 150;
 const SEED = 1337;
