@@ -4,7 +4,7 @@
 
 An experimental **OpenFront bot and Tampermonkey userscript** that handles expansion, economy, warfare, naval operations, defense, and diplomacy — with optional neural strategy models and local Duo coordination.
 
-[![Star OpenFront AggroBot](https://img.shields.io/github/stars/SLP-DEV1/openfront-bot?style=for-the-badge&logo=github&label=STARS)](https://github.com/SLP-DEV1/openfront-bot/stargazers)
+[![Star this project](https://img.shields.io/badge/Star-this%20project-181717?style=for-the-badge&logo=github)](https://github.com/SLP-DEV1/openfront-bot)
 [![Latest version](https://img.shields.io/badge/version-1.21.5-blue?style=for-the-badge)](./OpenFront_Solo_AggroBot.user.js)
 [![Userscript](https://img.shields.io/badge/platform-Tampermonkey-orange?style=for-the-badge)](https://www.tampermonkey.net/)
 
