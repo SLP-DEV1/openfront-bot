@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - '.github/workflows/impossible-paired.yml'
+      - 'tools/benchmark/**'
+      - 'trainer/**'
       - 'tools/benchmark/common.cjs'
       - 'tools/benchmark/trajectory.cjs'
       - 'tools/benchmark/engine-match.mjs'

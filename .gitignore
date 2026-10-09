@@ -47,3 +47,13 @@ trainer/**/warnings.log
 trainer/**/dataset.json
 tools/benchmark/**/warnings.log
 *.log
+
+# Historical/generated campaign material - keep out of public source control
+trainer/campaign-*/
+tools/benchmark/v5full-v2/
+tools/benchmark/v5rank-curriculum-*/
+docs/training-analysis-*/
+docs/benchmarks/*.tar.gz
+*.jsonl
+*.csv
+*.zip

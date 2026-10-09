@@ -60,8 +60,7 @@ const run3=fs.readFileSync(path.join(root,'OpenFront_AggroBot_Impossible_Run3.us
    const i=line.indexOf(prefix)+prefix.length;
    return JSON.parse(line.slice(i).replace(/;$/,''));
  };
- const referencePath=path.join(root,'docs','training-analysis-20260921',
-   'schema4-impossible-world-europe-20260920-run3','champion.json');
+ const referencePath=path.join(root,'trainer','run3-champion.json');
  assert.equal(crypto.createHash('sha256')
    .update(fs.readFileSync(referencePath)).digest('hex'),
    '65589febcf8a376c9dbd0e895e4ce643d2591b1ac185270012e148a9315f7ff3',

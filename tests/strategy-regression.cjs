@@ -1747,12 +1747,10 @@ function boot(benchmarkOptions={}) {
   });
   await check('issue #9 current README installs maintained script, legacy notes archived', () => {
     const readme=fs.readFileSync(path.join(__dirname,'..','README.md'),'utf8');
-    const archive=fs.readFileSync(path.join(__dirname,'..','docs','README_HISTORY.md'),'utf8');
     assert.match(readme,/\]\(\.\/OpenFront_Solo_AggroBot\.user\.js\)/);
     assert.doesNotMatch(readme,/\]\(\.\/OpenFront_Solo_AggroBot_1\.9\.0\.js\)/);
-    assert.match(archive,/1\.9\.9/);
-    assert.match(archive,/1\.9\.0\.js.{0,100}entfernt/);
     assert.doesNotMatch(readme,/1\.9\.0\.js.{0,90}bleibt als/);
+    assert.equal(fs.existsSync(path.join(__dirname,'..','docs','README_HISTORY.md')),false,'obsolete documentation removed');
   });
   await check('issue #10 AFK target reduces only ratio, not safe home/front floor', () => {
     const x=boot(),weak={id:'weak',opponent:x.weak,front:9,tiles:[5]};

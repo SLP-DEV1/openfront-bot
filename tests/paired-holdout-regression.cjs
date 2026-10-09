@@ -42,7 +42,7 @@ for(const map of ['World','Europe'])for(const opp of ['balanced','rush']){
 // --- resolveArms: three arms on the SAME bot code ---
 const real=resolveArms({
   bot:path.resolve(__dirname,'../OpenFront_AggroBot_Impossible_Run3.user.js'),
-  run3Policy:path.resolve(__dirname,'../docs/training-analysis-20260921/schema4-impossible-world-europe-20260920-run3/champion.json'),
+  run3Policy:path.resolve(__dirname,'../trainer/run3-champion.json'),
   candidateModel:path.resolve(__dirname,'../trainer/candidate-v5-holdout.json'),
   engineCommit:'a'.repeat(40),gain:18});
 assert.equal(real['rule-basis'].botSHA256,real['run3-schema4'].botSHA256,

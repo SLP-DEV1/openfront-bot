@@ -110,4 +110,4 @@ Das Deploy-Tool prueft das Modellschema, bettet die Gewichte in eine neue Usersc
 
 Zum Start einer neuen Kampagne mit einem **zuvor geprueften** Champion die Datei nach `trainer\champion.json` kopieren. Das Batch-Skript uebernimmt sie dann als Ausgangsmodell. Alternativ `--initialModel PFAD` angeben. Ein nicht aufgestiegener `provisional.json`-Kandidat darf nicht als Champion ausgegeben werden.
 
-Die alten Impossible-Vergleiche hatten 0/4 Siege; der neue Trainingscode ist keine Behauptung, dass dieses Problem bereits geloest ist. Siehe [Impossible-Benchmarks](IMPOSSIBLE.md).
+Die alten Impossible-Vergleiche hatten 0/4 Siege; der neue Trainingscode ist keine Behauptung, dass dieses Problem bereits geloest ist. Siehe [Impossible-Benchmarks](BENCHMARKS.md).

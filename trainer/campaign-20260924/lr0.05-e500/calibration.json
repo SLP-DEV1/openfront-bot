@@ -1,1 +1,0 @@
-{"risk":[{"bin":[0,0.25],"n":285,"meanPredicted":0.10081269243147671,"meanActual":0.10518421052631578},{"bin":[0.25,0.5],"n":67,"meanPredicted":0.27776660358420385,"meanActual":0.014944029850746268},{"bin":[0.5,0.75],"n":0,"meanPredicted":null,"meanActual":null},{"bin":[0.75,1],"n":0,"meanPredicted":null,"meanActual":null}]}

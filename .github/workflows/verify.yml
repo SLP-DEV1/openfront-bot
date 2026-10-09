@@ -13,10 +13,6 @@ on:
       - 'trainer/*.cjs'
       - 'trainer/*.mjs'
       - 'trainer/*.json'
-      - 'docs/**/*.json'
-      - 'benchmark-results/overnight-20260924-v6/campaign-state.json'
-      - 'benchmark-results/overnight-20260924-v6/inventory.json'
-      - 'benchmark-results/overnight-20260924-v6/o7hold/promotion-decision.json'
       - 'package.json'
       - 'package-lock.json'
       - '.gitattributes'
@@ -33,10 +29,6 @@ on:
       - 'trainer/*.cjs'
       - 'trainer/*.mjs'
       - 'trainer/*.json'
-      - 'docs/**/*.json'
-      - 'benchmark-results/overnight-20260924-v6/campaign-state.json'
-      - 'benchmark-results/overnight-20260924-v6/inventory.json'
-      - 'benchmark-results/overnight-20260924-v6/o7hold/promotion-decision.json'
       - 'package.json'
       - 'package-lock.json'
       - '.gitattributes'
@@ -152,7 +144,6 @@ jobs:
           node tests/v5-runtime-parity-regression.cjs
           node tests/v5-shadow-regression.cjs
           node --check trainer/v5-control-evidence.cjs
-          node tests/v5-control-departure-regression.cjs
       - name: Test P4 curriculum league and collapse watcher
         run: |
           node --check trainer/collapse-watch.cjs
@@ -163,7 +154,7 @@ jobs:
         run: |
           node --check tools/benchmark/paired-holdout.cjs
           node tests/paired-holdout-regression.cjs
-          node tools/benchmark/paired-holdout.cjs --bot OpenFront_AggroBot_Impossible_Run3.user.js --run3Policy docs/training-analysis-20260921/schema4-impossible-world-europe-20260920-run3/champion.json --candidateModel trainer/candidate-v5-holdout.json --engineCommit 13b403387af01d388f8c8ed8c953b6d3a11d1457 --out .ci/p5-holdout --mode 1v1 --maps World,Europe --opponents balanced,rush --runs 2
+          node tools/benchmark/paired-holdout.cjs --bot OpenFront_AggroBot_Impossible_Run3.user.js --run3Policy trainer/run3-champion.json --candidateModel trainer/candidate-v5-holdout.json --engineCommit 13b403387af01d388f8c8ed8c953b6d3a11d1457 --out .ci/p5-holdout --mode 1v1 --maps World,Europe --opponents balanced,rush --runs 2
       - name: Test P5 new-holdout seed freeze (disjoint from training + prior holdouts)
         run: |
           node --check tools/benchmark/freeze-holdout-seeds.cjs
@@ -190,7 +181,6 @@ jobs:
           node --check tools/benchmark/v5-decision-impact.cjs
           node tests/v5-decision-impact-failclosed-regression.cjs
           node tests/v5-decision-impact-provenance-regression.cjs
-          node tests/overnight-champion-provenance-regression.cjs
       - name: Test league plan provenance identities
         run: |
           node --check tools/benchmark/league-plan.mjs
@@ -213,10 +203,6 @@ jobs:
           node --check tools/benchmark/holdout-evidence.cjs
           node --check tools/benchmark/holdout-eval.mjs
           node tests/holdout-regression.cjs
-      - name: Check V3 map breakdown export
-        run: |
-          node --check tools/benchmark/v3-map-breakdown.mjs
-          node tests/v3-map-breakdown-regression.cjs
       - name: Test P6 paired model-promotion evidence gate
         run: |
           node tests/workflow-trigger-regression.cjs

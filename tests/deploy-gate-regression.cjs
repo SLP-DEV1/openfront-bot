@@ -13,8 +13,7 @@ try{
  const gateFile=path.join(dir,'gate.json');
  const out=path.join(dir,'out.user.js');
  const source=path.join(root,'OpenFront_Solo_AggroBot.user.js');
- const championFile=path.join(root,'docs','training-analysis-20260921',
-   'schema4-impossible-world-europe-20260920-run3','champion.json');
+ const championFile=path.join(root,'trainer','run3-champion.json');
  const model=candidate.zero();
  const sha=candidate.sha(model);
  fs.writeFileSync(modelFile,JSON.stringify(model));

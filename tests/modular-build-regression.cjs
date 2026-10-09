@@ -61,7 +61,7 @@ assert.equal(SEMANTICS,'gameview-hostile-only-v1');
    put('OpenFront_Solo_AggroBot.user.js','OpenFront_Solo_AggroBot.user.js');
    put('OpenFront_AggroBot_Impossible_Run3.user.js',
        'OpenFront_AggroBot_Impossible_Run3.user.js');
-   const champion='docs/training-analysis-20260921/schema4-impossible-world-europe-20260920-run3/champion.json';
+   const champion='trainer/run3-champion.json';
    put(champion,champion);
    const artifact=path.join(temp,'OpenFront_Solo_AggroBot.user.js');
    const pristine=fs.readFileSync(artifact,'utf8');

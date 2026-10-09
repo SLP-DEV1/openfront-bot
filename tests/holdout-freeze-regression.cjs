@@ -49,7 +49,7 @@ try{
   const base={
     engineCommit:'13b403387af01d388f8c8ed8c953b6d3a11d1457',
     bot:'OpenFront_AggroBot_Impossible_Run3.user.js',
-    run3Policy:'docs/training-analysis-20260921/schema4-impossible-world-europe-20260920-run3/champion.json',
+    run3Policy:'trainer/run3-champion.json',
     candidateModel:'trainer/candidate-v5-v2.json',
     resultsRoot,trainingFiles:[dataset]
   };

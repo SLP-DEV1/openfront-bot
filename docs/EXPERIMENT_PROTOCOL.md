@@ -62,7 +62,7 @@ Einstellungen zwischen gepaarten Vergleichsläufen einfrieren.
 **Offen:** zwei vollständige getrennte Bot-Clients in derselben
 Enginepartie, Gegnerliga, mehrere echte Replay-GameViews, neue gepaarte
 Holdouts und Modell-Promotion. Der Manifest-Generator löst diese Aufgaben
-nicht von selbst. Fortschritt: [Roadmap](COMPETITIVE_ROADMAP.md),
+nicht von selbst. Fortschritt: [Roadmap](BENCHMARKS.md),
 [P6-Issue #74](https://github.com/SLP-DEV1/openfront-bot/issues/74).
 
 

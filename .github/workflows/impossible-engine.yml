@@ -17,7 +17,7 @@ on:
       - 'trainer/*.cjs'
       - 'trainer/*.mjs'
       - 'trainer/*.json'
-      - 'docs/training-analysis-20260921/schema4-impossible-world-europe-20260920-run3/champion.json'
+      - 'trainer/run3-champion.json'
       - '.github/workflows/impossible-engine.yml'
   pull_request:
     paths:
@@ -35,7 +35,7 @@ on:
       - 'trainer/*.cjs'
       - 'trainer/*.mjs'
       - 'trainer/*.json'
-      - 'docs/training-analysis-20260921/schema4-impossible-world-europe-20260920-run3/champion.json'
+      - 'trainer/run3-champion.json'
       - '.github/workflows/impossible-engine.yml'
   workflow_dispatch:
 

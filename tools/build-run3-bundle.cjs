@@ -11,7 +11,7 @@ const root = path.resolve(__dirname, '..');
 const sourcePath = path.join(root, 'OpenFront_Solo_AggroBot.user.js');
 const bundlePath = path.join(root, 'OpenFront_AggroBot_Impossible_Run3.user.js');
 const championPath = path.join(root,
-  'docs/training-analysis-20260921/schema4-impossible-world-europe-20260920-run3/champion.json');
+  'trainer/run3-champion.json');
 const marker = 'const NEURAL_BUNDLED_MODEL = null;';
 const sourceDescription = '// @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.';
 

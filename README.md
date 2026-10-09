@@ -54,7 +54,7 @@ node tests/benchmark-regression.cjs
 
 The scripts are generated from `src/userscript/` and supporting runtime modules. Run `node tools/build-userscript.cjs --write` when editing canonical userscript source.
 
-More information: [Benchmarks](docs/BENCHMARKS.md), [Neural training](docs/NEURAL_TRAINING.md), [Current development roadmap](docs/COMPETITIVE_ROADMAP.md), and [Issues](https://github.com/SLP-DEV1/openfront-bot/issues).
+More information: [Benchmarks](docs/BENCHMARKS.md), [Neural training](docs/NEURAL_TRAINING.md), [Experiment protocol](docs/EXPERIMENT_PROTOCOL.md), and [Issues](https://github.com/SLP-DEV1/openfront-bot/issues).
 
 ## Privacy and responsible use
 
@@ -64,4 +64,6 @@ More information: [Benchmarks](docs/BENCHMARKS.md), [Neural training](docs/NEURA
 - Publishing a repository does **not** remove sensitive content from past commits or forks. See [Security policy](SECURITY.md).
 - Follow OpenFront's applicable rules and terms. Automation in online matches may not be permitted.
 
-This repository includes experimental research and historical benchmark reports. Interpret their results in context; they are not guarantees of performance.
+Large historical training datasets, simulation logs, and generated benchmark results are **not included** in the public source tree. They can be regenerated locally when needed. The reviewed Schema 4 Run3 model is kept at `trainer/run3-champion.json` so both distributed userscripts remain reproducible.
+
+All experiments are research-grade; their results are not guarantees of performance.

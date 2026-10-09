@@ -9,7 +9,7 @@ in Chrome mit Tampermonkey die einzige Spielsteuerung.
 1. Das aktuelle `OpenFront_Solo_AggroBot.user.js` in Tampermonkey aktualisieren.
 2. `OpenFront_AggroBot_Monitor.user.js` als zweites Tampermonkey-Skript
    installieren und aktivieren. Beide Skripte gelten für `openfront.io`.
-3. `Start_Live_Monitor.bat` doppelklicken oder im Repository
+3. Im Repository mit Node.js 24+ den Monitor über
    `node tools/live-monitor.cjs` starten. Der Dienst bindet nur
    an `127.0.0.1:8766` und zeigt einen einmaligen Token an.
 4. Im Tampermonkey-Menü des Begleitskripts **AggroBot-Monitor-Token setzen**
