@@ -281,7 +281,8 @@ function boot(benchmarkOptions={}) {
   function samScenario(){
     const x=boot();x.setTick(2400);x.setGold(1100000);x.setLand(28000);
     x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Medium'});
-    x.me.units=()=>[asset('City',5000,1),asset('Factory',5020,2)];
+    x.me.units=()=>[asset('City',5000,1),asset('City',5010,2),
+      asset('Factory',5020,3),asset('Factory',5030,4)];
     x.game.units=()=>[{...asset('Missile Silo',6,3),owner:()=>x.weak}];
     x.me.actions=async(tile,types)=>({buildableUnits:types.map(type=>({type,
       canBuild:type==='SAM Launcher'&&Number(x.me.gold())<1500000?false:tile,
@@ -404,8 +405,9 @@ function boot(benchmarkOptions={}) {
     const x=samScenario();
     assert.equal(await x.b.economy(x.me,2400,0,[]),false);
     assert.equal(x.b.economicNeeds(x.me,x.me.units(),[]).savingsTarget,1500000);
-    x.me.units=()=>[asset('City',5000,1),asset('Factory',5020,2),
-      asset('Port',5100,3)];
+    x.me.units=()=>[asset('City',5000,1),asset('City',5010,2),
+      asset('Factory',5020,3),asset('Factory',5030,4),
+      asset('Port',5100,5)];
     x.game.isWater=()=>true;
     x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
       type,canBuild:type==='Warship'?tile:false,

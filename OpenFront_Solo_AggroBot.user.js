@@ -215,8 +215,7 @@ function duoNuclearInvestmentKernel(x){
   // A visible enemy silo is not an incoming strike. First finish the two
   // City/two Factory economic core; actual inbound nukes still bypass it.
   const firstGuard=x.antiNuke===true&&!x.samSearchBlocked&&
-    coreReady&&uncovered>0&&ownSAM===0&&
-    ((x.enemySilos||0)>0||x.proactiveSAM===true);
+    coreReady&&uncovered>0&&ownSAM===0&&(x.enemySilos||0)>0;
   const siloFundActive=firstSiloWindow&&silos===0&&
     !x.urgentVictory&&!incoming&&!firstGuard;
   let wantedSAM=0;
