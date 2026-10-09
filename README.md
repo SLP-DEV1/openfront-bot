@@ -5,10 +5,10 @@
 An experimental **OpenFront bot and Tampermonkey userscript** that handles expansion, economy, warfare, naval operations, defense, and diplomacy — with optional neural strategy models and local Duo coordination.
 
 [![Star this project](https://img.shields.io/badge/Star-this%20project-181717?style=for-the-badge&logo=github)](https://github.com/SLP-DEV1/openfront-bot)
-[![Latest version](https://img.shields.io/badge/version-1.21.5-blue?style=for-the-badge)](./OpenFront_Solo_AggroBot.user.js)
+[![Public Preview](https://img.shields.io/badge/Download-v1.21.5-blue?style=for-the-badge&logo=github)](https://github.com/SLP-DEV1/openfront-bot/releases/tag/v1.21.5)
 [![Userscript](https://img.shields.io/badge/platform-Tampermonkey-orange?style=for-the-badge)](https://www.tampermonkey.net/)
 
-**[Get started](#-quick-start)** · **[Explore features](#-what-can-it-do)** · **[How it works](#-built-for-tinkering)** · **[Report a bug or suggest a feature](https://github.com/SLP-DEV1/openfront-bot/issues)**
+**[Download v1.21.5](https://github.com/SLP-DEV1/openfront-bot/releases/tag/v1.21.5)** · **[Get started](#-quick-start)** · **[Explore features](#-what-can-it-do)** · **[How it works](#-built-for-tinkering)** · **[Report a bug or suggest a feature](https://github.com/SLP-DEV1/openfront-bot/issues)**
 
 > ⭐ **Enjoy experimenting with AggroBot? [Star this repository](https://github.com/SLP-DEV1/openfront-bot) to support its development and help other OpenFront players discover it.**
 
@@ -31,12 +31,12 @@ The bot is an **experiment, not a guaranteed win button**: neural features are r
 **No Node.js setup is required to install the normal browser userscript.**
 
 1. Install [Tampermonkey](https://www.tampermonkey.net/) in your browser.
-2. Choose **one** script below. Open it on GitHub and copy its **complete contents** into a new Tampermonkey userscript:
+2. Choose **one** script below from the **[v1.21.5 public preview](https://github.com/SLP-DEV1/openfront-bot/releases/tag/v1.21.5)**. Download the file and import it into Tampermonkey, or paste its complete contents into a new Tampermonkey script:
 
    | Script | Best for |
    | --- | --- |
-   | **[OpenFront Solo AggroBot](./OpenFront_Solo_AggroBot.user.js)** | Standard automation and customizable strategy settings |
-   | **[Impossible Run3 Neural](./OpenFront_AggroBot_Impossible_Run3.user.js)** | Experimental variant with the fixed, bundled Schema 4 champion model |
+   | **[Download OpenFront Solo AggroBot](https://github.com/SLP-DEV1/openfront-bot/releases/download/v1.21.5/OpenFront_Solo_AggroBot.user.js)** | Standard automation and customizable strategy settings |
+   | **[Download Impossible Run3 Neural](https://github.com/SLP-DEV1/openfront-bot/releases/download/v1.21.5/OpenFront_AggroBot_Impossible_Run3.user.js)** | Experimental variant with the fixed, bundled Schema 4 champion model |
 
 3. Save the script, open **[openfront.io](https://openfront.io/)**, and enter a playable match.
 4. Use the in-game AggroBot panel to control the autopilot.
