@@ -29,6 +29,11 @@
     candidateControlEnabled:false,candidateControlGain:18,
     candidateControlMode:'raw',candidateControlCapGain:60,
     candidateControlConfidenceRef:0.5,candidateControlMargin:0.25,
+    // P7: schema-7 branch controller (after hard safety, before send).
+    // actionRankEnabled: score every legal, safety-approved, executable
+    // branch with the bundled schema-7 model (shadow observation).
+    // actionControlEnabled: the argmax branch drives the emitted intent.
+    actionRankEnabled:false,actionControlEnabled:false,
     duoEnabled:false,duoPartnerID:'',duoPartnerName:'',duoRoom:'',archetype:'legacy'};
   let opts;
   try { opts = {...defaults, ...JSON.parse(localStorage.getItem(KEY) || '{}')}; }
@@ -483,6 +488,195 @@ function predict(model,input){
   // GENERATED-SHADOW-V6-END
   let shadowV6Model=null;
   try{shadowV6Model=shadowV6.validate(SHADOW_V6_BUNDLED_MODEL);}catch(_){shadowV6Model=null;}
+  const SHADOW_V7_BUNDLED_MODEL = null;
+  // GENERATED-SHADOW-V7-BEGIN: keep equal to trainer/action-policy-v7.cjs
+  const shadowV7=(()=>{
+const INPUTS=38,OUTPUTS=1;
+// The 9 emission-relevant branch families (kind one-hot). Finer distinctions
+// (front vs finisher vs neutral target, which build type, which send kind)
+// are carried by the subtype/flag features and targetId, not by exploding the
+// one-hot, so the ranker generalizes across the 16 contract subclasses.
+const KINDS=['wait','expand','attack','boat','warship','build_warship',
+  'nuclear','build_economy','donate'];
+const HIDDEN_BY_ARCH={'38x24x2-tanh':24,'38x40x2-tanh':40};
+const ARCHES=Object.keys(HIDDEN_BY_ARCH);
+const clamp=(n,a=0,b=1)=>Math.max(a,Math.min(b,Number.isFinite(n)?n:a));
+const logrel=(n,base)=>clamp(Math.log1p(Math.max(0,Number(n)||0))/
+  Math.log1p(Math.max(1,Number(base)||1)),0,2)/2;
+// Bounded rule-utility normalization (same convention as schema-6): rule
+// utilities are order-of-magnitude bounded in [~-1000 (gated early attack),
+// ~+150 (strong candidate)]; the absolute feature is an offset/scale map, the
+// gap is signed-bounded so a branch far below the rule leader saturates at 1
+// without a gated early-attack floor collapsing the whole frame.
+const RU_ABS_OFFSET=100,RU_ABS_SCALE=200,RU_GAP_SCALE=100;
+function lengthFor(arch){const h=HIDDEN_BY_ARCH[arch];
+  if(h===undefined)throw Error('Invalid schema-7 arch '+arch);
+  return INPUTS*h+h+h*OUTPUTS+OUTPUTS;}
+// 38-dim action-branch feature vector.
+//   idx 0-13  state: gamePhase, landRatio, troopRatio, reserveRatio,
+//                  goldRatio, income, enemyPressure, activeWars, frontCount,
+//                  allyPressure, homeThreat, nukeThreat, recentLandTrend,
+//                  recentTroopTrend
+//   idx 14    ruleUtility (own, bounded)
+//   idx 15    utilityGapToTop (rule top-1 - own, bounded; 0.5 if unknown)
+//   idx 16    costRatio
+//   idx 17    troopCommitmentRatio
+//   idx 18    reserveAfterRatio
+//   idx 19    targetStrengthRatio
+//   idx 20    targetLandRatio
+//   idx 21    expectedBuildValue
+//   idx 22    expectedDefenseValue
+//   idx 23    cooldownReady
+//   idx 24    alreadyActiveOperation
+//   idx 25    targetReachable
+//   idx 26    isEmergency
+//   idx 27    isFinisher
+//   idx 28    isExpansion
+//   idx 29-37 kind one-hot: wait, expand, attack, boat, warship, build_warship,
+//                  nuclear, build_economy, donate
+// state/branch are the runtime-reliable fields documented in v7-features.cjs;
+// ctx is the per-frame rule-utility context {ownRu, ruleTop1}.
+function features(state={},branch={},ctx={}){
+  const home=Math.max(1,Number(state.home)||1);
+  const land=Number(state.land)||0;
+  const troops=Number(state.troops)||Number(state.home)||0;
+  const kind=String(branch.kind||'');
+  const ownRu=Number(ctx.ownRu!==undefined?ctx.ownRu:branch.ruleUtility);
+  const top1=Number(ctx.ruleTop1);
+  const values=[
+    // state idx 0-13
+    clamp((state.gamePhase||0)/20,0,1),
+    land?clamp(land/Math.max(1,Number(state.maxLand)||land),0,1):0,
+    clamp(troops/home,0,1),
+    clamp((state.reserve||0)/home,0,1),
+    logrel(state.gold,10000000),
+    clamp(state.income,0,2)/2,
+    clamp(state.enemyPressure,0,1),
+    clamp((state.activeWars||0)/8,0,1),
+    clamp((state.frontCount||0)/8,0,1),
+    clamp(state.allyPressure,0,1),
+    clamp(state.homeThreat,0,1),
+    clamp(state.nukeThreat,0,1),
+    clamp(state.recentLandTrend,-1,1)/2+.5,
+    clamp(state.recentTroopTrend,-1,1)/2+.5,
+    // branch idx 14-22
+    Number.isFinite(ownRu)?clamp((ownRu+RU_ABS_OFFSET)/RU_ABS_SCALE,0,1):0,
+    (Number.isFinite(ownRu)&&Number.isFinite(top1))
+      ?clamp((top1-ownRu)/RU_GAP_SCALE,0,1):0.5,
+    clamp((branch.cost||0)/Math.max(1,home),0,1),
+    clamp((branch.troopCommitment||0)/home,0,1),
+    clamp((branch.reserveAfter||0)/home,0,1),
+    clamp(branch.targetStrength,0,1),
+    clamp(branch.targetLand,0,1),
+    clamp(branch.expectedBuildValue,0,1),
+    clamp(branch.expectedDefenseValue,0,1),
+    // branch idx 23-28
+    branch.cooldownReady?1:0,
+    branch.alreadyActiveOperation?1:0,
+    branch.targetReachable?1:0,
+    branch.isEmergency?1:0,
+    branch.isFinisher?1:0,
+    branch.isExpansion?1:0,
+    // kind one-hot idx 29-37
+    ...(KINDS.map(k=>k===kind?1:0))
+  ];
+  return values.map(v=>clamp(v));
+}
+function validate(model){
+  if(!model||model.schema!==7)throw Error('Invalid schema-7 action model');
+  const h=HIDDEN_BY_ARCH[model.arch];
+  if(h===undefined)throw Error('Invalid schema-7 action model');
+  const L=lengthFor(model.arch);
+  if(!Array.isArray(model.outputs)||model.outputs.length!==OUTPUTS||
+    model.outputs[0]!=='branchScore'||
+    !Array.isArray(model.weights)||model.weights.length!==L||
+    Array.from(model.weights).some(x=>!Number.isFinite(x)||Math.abs(x)>5))
+    throw Error('Invalid schema-7 action model');
+  return model;
+}
+function zero(arch){arch=arch||ARCHES[0];
+  if(!HIDDEN_BY_ARCH[arch])throw Error('Invalid arch '+arch);
+  return {schema:7,arch,outputs:['branchScore'],
+    weights:Array(lengthFor(arch)).fill(0)};}
+function predict(model,input){
+  const m=validate(model);const h=HIDDEN_BY_ARCH[m.arch];
+  if(!Array.isArray(input)||input.length!==INPUTS||
+    input.some(x=>!Number.isFinite(x)||x<0||x>1))
+    throw Error('Invalid action-branch feature vector');
+  const w=m.weights;const hb=INPUTS*h,outStart=hb+h,outBias=outStart+h*OUTPUTS;
+  const hid=[];
+  for(let j=0;j<h;j++){let z=w[hb+j];
+    for(let i=0;i<INPUTS;i++)z+=input[i]*w[i*h+j];hid.push(Math.tanh(z));}
+  const out=[];
+  for(let k=0;k<OUTPUTS;k++){let z=w[outBias+k];
+    for(let j=0;j<h;j++)z+=hid[j]*w[outStart+j*OUTPUTS+k];
+    out.push((Math.tanh(z)+1)/2);}
+  return {branchScore:out[0]};
+}
+    return {features,validate,predict};
+  })();
+  // GENERATED-SHADOW-V7-END
+  let shadowV7Model=null;
+  try{shadowV7Model=shadowV7.validate(SHADOW_V7_BUNDLED_MODEL);}catch(_){shadowV7Model=null;}
+  // §28 branch funnel: one record per combat decision, accumulated in
+  // 40-economy-runner.js (the dispatch loop after strategicDirector). The
+  // counts feed the pre-gate (§26) and the dev/holdout comparison (§35/38).
+  // With no bundled model (shadowV7Model===null) the funnel stays at
+  // noModelFrames and the emitted action is identical to the rule basis.
+  const branchFunnel={planningFrames:0,actionableFrames:0,
+    multiChoiceFrames:0,modelDifferentFrames:0,differentEmittedActions:0,
+    engineConfirmedDifferences:0,positiveOutcomeDifferences:0,
+    negativeOutcomeDifferences:0,rankErrors:0,noModelFrames:0,
+    controlEmits:0,ruleEmits:0,waitEmits:0,lastDecision:null};
+  // Record one branch decision. `decision` is the object built by
+  // 40-economy-runner.chooseActionBranch; `emittedChannel` is the channel that
+  // actually sent an intent this turn (null when the model waited / no
+  // channel emitted). Keeping the aggregation here (not in the runner) keeps
+  // the funnel a single source of truth exposed by the snapshot + bridge.
+  // differentEmittedActions / engineConfirmedDifferences only count a
+  // model-caused emission: the channel the model steered to is the one that
+  // emitted. The exact intent-level diff is reconciled offline (§27
+  // turn-divergence.json from intents.jsonl); this is the live proxy.
+  function recordBranchDecision(decision,emittedChannel){
+    const f=branchFunnel;
+    if(decision.basis==='no-model'){f.noModelFrames++;f.ruleEmits++;return;}
+    f.planningFrames++;
+    if(decision.actionableCount>=1)f.actionableFrames++;
+    if(decision.actionableCount>=2)f.multiChoiceFrames++;
+    const differs=!!(decision.modelTop&&decision.ruleTop&&
+      decision.modelTop.id!==decision.ruleTop.id);
+    if(differs)f.modelDifferentFrames++;
+    const modelEmitted=emittedChannel!==null&&
+      decision.modelTop&&emittedChannel===decision.modelTop.channel;
+    if(decision.controlActive&&differs){
+      if(decision.modelTop.kind==='wait')f.waitEmits++;
+      else f.controlEmits++;
+      if(modelEmitted){
+        f.differentEmittedActions++;
+        f.engineConfirmedDifferences++;
+      }
+    }
+    f.lastDecision={tick:decision.tick,ruleTop:decision.ruleTop?.id??null,
+      modelTop:decision.modelTop?.id??null,
+      modelTopChannel:decision.modelTop?.channel??null,
+      modelScores:decision.scores??null,
+      controlActive:!!decision.controlActive,
+      emittedKind:emittedChannel??null,
+      actionableCount:decision.actionableCount,
+      state:decision.state?{...decision.state}:null,
+      ruleTop1:decision.state?
+        (decision.branches?.[0]?.ruleUtility??0):null,
+      branches:decision.branches?
+        decision.branches.map(b=>({id:b.id,kind:b.kind,channel:b.channel,
+          ruleUtility:b.ruleUtility,cost:b.cost,troopCommitment:b.troopCommitment,
+          reserveAfter:b.reserveAfter,targetStrength:b.targetStrength,
+          targetLand:b.targetLand,expectedBuildValue:b.expectedBuildValue,
+          expectedDefenseValue:b.expectedDefenseValue,
+          cooldownReady:b.cooldownReady,
+          alreadyActiveOperation:b.alreadyActiveOperation,
+          targetReachable:b.targetReachable,isEmergency:b.isEmergency,
+          isFinisher:b.isFinisher,isExpansion:b.isExpansion})):null};
+  }
   const NEURAL_LENGTH=90,NEURAL_STORAGE='of-aggrobot-neural-policy-v1';
   let neuralModel=null;
   function neuralValidate(data){
@@ -598,13 +792,31 @@ function predict(model,input){
       controlGain:opts.candidateControlGain,
       fingerprint:'fnv1a-'+(hash>>>0).toString(16).padStart(8,'0')+'-'+bytes};
   }
+  // Schema-7 branch controller: it sits AFTER hard legality/safety, BEFORE
+  // send(kind,args). Off by default (no model bundled). When a v7 model is
+  // bundled and actionRankEnabled is set it scores every currently-legal,
+  // safety-approved, executable branch; when actionControlEnabled the argmax
+  // drives the emitted intent (hard safety stays outside the learning).
+  function shadowV7ModelInfo(){
+    const model=shadowV7Model;
+    if(!model)return {loaded:false,enabled:!!opts.actionRankEnabled,
+      reason:'no-valid-action-model'};
+    const raw=JSON.stringify(model.weights),bytes=raw.length;
+    let hash=2166136261;
+    for(let i=0;i<raw.length;i++){hash^=raw.charCodeAt(i);hash=Math.imul(hash,16777619);}
+    return {loaded:true,enabled:!!opts.actionRankEnabled,schema:model.schema,
+      arch:model.arch,weights:model.weights.length,
+      controlEnabled:opts.actionControlEnabled===true,
+      fingerprint:'fnv1a-'+(hash>>>0).toString(16).padStart(8,'0')+'-'+bytes};
+  }
   // Deployment identity for the panel and diagnostic export: model/script/
   // engine hashes plus the rollback reference. The model hashes are FNV-1a
   // tracking fingerprints; the champion model-file SHA256 is recorded by the
   // deploy/build tooling, not recomputed here.
   function deploymentInfo(){
     return {
-      model:{champion:neuralModelInfo(),candidate:shadowModelInfo()},
+      model:{champion:neuralModelInfo(),candidate:shadowModelInfo(),
+        action:shadowV7ModelInfo()},
       script:{version:VERSION},
       engine:{commit:window.BOOTSTRAP_CONFIG?.gitCommit??null},
       rollback:'candidate is shadow-only (opt-in control); the NEURAL_BUNDLED_MODEL champion placeholder is never replaced by a schema-5 deploy'};
@@ -907,6 +1119,11 @@ function predict(model,input){
       finalChoice:planningState?.finalChoice??null,
       changedIntent:planningState?.changedIntent??false,
       safetyBlockReason:planningState?.safetyBlockReason??null,
+      // §19 on-policy branch capture: the schema-7 decision for this frame
+      // (rule top, model top, per-branch scores, emitted kind). Null when no
+      // schema-7 model is bundled, in which case the training frame is the
+      // pure rule basis.
+      branch:branchFunnel.lastDecision?{...branchFunnel.lastDecision}:null,
       candidate:project(sel),
       candidates:(planningState?.candidates||[]).map(project)};
   }
@@ -1281,6 +1498,10 @@ function predict(model,input){
       attackBlockReport,crisisTrend,landingFailures:[...landingFailures],
       neuralEvidence:{...neuralEvidence,model:neuralModelInfo()},
       deployment:deploymentInfo(),
+      // §28 schema-7 branch funnel: aggregate counts + the last decision so
+      // the pre-gate (differentExecutedTurns>0) and the dev/holdout
+      // comparison can be reconciled offline from the match report.
+      branchFunnel:{...branchFunnel,lastDecision:{...branchFunnel.lastDecision}},
       validation:{forecastAudits,incomeAttribution,
         terrainMethod:'nuke-cubic-bezier-conservative',
         railMethod:'owned-land-corridor-proxy',
@@ -8073,6 +8294,147 @@ function predict(model,input){
       tick>=frame.tick&&tick-frame.tick<=20&&
       frame.player===safeID(myPlayer());
   }
+  // §7/§9/§13: schema-7 actionable-branch extraction + Approach-A ranking.
+  // It sits AFTER hard safety (strategicDirector + the planners already
+  // validated every candidate) and BEFORE send(): it ranks the concrete
+  // branches the rule basis would emit and, when actionControlEnabled, the
+  // argmax branch steers the existing emitters. Hard legality stays
+  // authoritative downstream — the model can only reorder or pick among
+  // already-legal branches, never make an illegal action legal.
+  //
+  // The state object mirrors the 16 runtime-reliable fields documented in
+  // trainer/v7-features.cjs so the on-policy dataset builder can replay the
+  // exact inference features from the captured planning frame.
+  function branchState(s,me,groups,tick){
+    const home=Math.max(1,s.home);
+    const land=number(()=>me?.numTilesOwned?.(),0)||0;
+    const maxLand=number(()=>me?.maxLand?.(),null);
+    const observedIncome=Math.max(0,
+      (incomeStatus.train||0)+(incomeStatus.trade||0));
+    const enemyGroups=(groups||[]).filter(g=>g.id!==null&&g.opponent);
+    const samples=(typeof troopSamples!=='undefined'?troopSamples:[])
+      .filter(x=>tick-x.tick<=110);
+    let troopTrend=0;
+    if(samples.length>1){
+      const first=samples[0];
+      const base=first?.home||first?.troops||0;
+      if(base>0)troopTrend=Math.max(-1,Math.min(1,(home-base)/base));
+    }
+    return {
+      gamePhase:Math.min(20,Math.max(0,tick/200)),
+      home,troops:s.home,reserve:s.reserve||0,gold:goldAmount(me),
+      income:Math.max(0,Math.min(2,observedIncome/100000)),
+      enemyPressure:Math.max(0,Math.min(1,(s.strongest||0)/home)),
+      activeWars:enemyGroups.length,frontCount:(groups||[]).length||0,
+      allyPressure:0,
+      homeThreat:Math.max(0,Math.min(1,(s.incoming||0)/home)),
+      nukeThreat:0,recentLandTrend:0,recentTroopTrend:troopTrend,
+      maxLand:Number.isFinite(maxLand)&&maxLand>0?maxLand:Math.max(1,land),
+      land};
+  }
+  const b01=x=>Math.max(0,Math.min(1,Number.isFinite(x)?x:0));
+  // Map one rule-sorted candidate to its actionable-branch contract (§6).
+  // The 16 contract subclasses collapse to the 9 model kinds; the finer
+  // distinction (neutral vs enemy target, finisher, build type) rides on
+  // subtype/flags/targetId, not the one-hot.
+  function candidateToBranch(cand,home){
+    const kindMap={hold:'wait',invest:'build_economy',expand:'expand',
+      attack:'attack',naval:'boat',support:'donate'};
+    const kind=kindMap[cand.kind]||'wait';
+    const isLand=cand.kind==='attack'||cand.kind==='expand';
+    const cost=Math.max(0,Number(cand.cost)||0);
+    const v5=cand.v5||{};
+    const finisher=cand.kind==='attack'&&cand.forecast&&
+      Number.isFinite(cand.forecast.loss)&&cost>0&&
+      cand.forecast.loss/cost<0.35;
+    return {
+      id:String(cand.id),kind,
+      subtype:cand.kind==='attack'?(finisher?'finisher':'enemy'):
+        cand.kind==='expand'?'neutral':cand.kind==='naval'?'boat':
+        cand.kind==='support'?'donate':
+        cand.kind==='invest'?'build':'strategic',
+      targetId:cand.target??null,tile:null,
+      legal:true,safetyApproved:true,
+      executableNow:isLand?cost>0:true,
+      ruleUtility:Number(cand.utility)||0,
+      cost:isLand?cost:0,troopCommitment:isLand?cost:0,
+      reserveAfter:Math.max(0,home-(isLand?cost:0)),
+      targetStrength:b01(v5.siteRisk),
+      targetLand:b01((v5.expectedLand||0)/Math.max(1,home)),
+      expectedBuildValue:kind==='build_economy'?b01(v5.incomeValue):0,
+      expectedDefenseValue:kind==='wait'?b01(1-(Number(cand.risk)||0)):0,
+      cooldownReady:true,alreadyActiveOperation:false,
+      targetReachable:isLand,isEmergency:false,
+      isFinisher:finisher,isExpansion:cand.kind==='expand',
+      sourceId:String(cand.id),channel:cand.channel||null};
+  }
+  // Build the branch decision for one combat frame. Returns:
+  //   basis: 'no-model' (identical to rule basis, funnel noModelFrames)
+  //          | 'rule' (model scored but control off / fail-closed)
+  //          | 'model' (argmax drives steering when controlActive)
+  //   ruleTop: the branch of the rule-selected candidate (candidates[0])
+  //   modelTop: argmax branchScore over actionable branches (null if none)
+  //   controlActive: model present + actionRank + actionControl enabled
+  function chooseActionBranch(planning,s,me,groups,tick){
+    const home=Math.max(1,s.home);
+    const cands=(planning?.candidates||[]).filter(c=>c&&c.kind);
+    if(!cands.length)return {basis:'no-model',tick,ruleTop:null,modelTop:null,
+      branches:[],actionableCount:0,scores:null,controlActive:false,state:null};
+    const branches=cands.map(c=>candidateToBranch(c,home));
+    const actionable=branches.filter(b=>b.legal&&b.safetyApproved&&b.executableNow);
+    const ruleTop=branches.find(b=>b.id===String(cands[0].id))||branches[0];
+    const rankEnabled=!!(opts.actionRankEnabled&&shadowV7Model);
+    const controlActive=!!(rankEnabled&&opts.actionControlEnabled);
+    if(!rankEnabled)return {basis:'no-model',tick,ruleTop,modelTop:null,
+      branches,actionableCount:actionable.length,scores:null,
+      controlActive:false,state:branchState(s,me,groups,tick)};
+    const state=branchState(s,me,groups,tick);
+    const ruleTop1=Number(cands[0].utility)||0;
+    let scores={};
+    try{
+      for(const b of branches){
+        const feat=shadowV7.features(state,b,
+          {ownRu:b.ruleUtility,ruleTop1});
+        scores[b.id]=shadowV7.predict(shadowV7Model,feat).branchScore;
+      }
+    }catch(e){
+      branchFunnel.rankErrors++;
+      return {basis:'rule',tick,ruleTop,modelTop:ruleTop,branches,
+        actionableCount:actionable.length,scores:null,controlActive,
+        state,error:String(e?.message||e)};
+    }
+    let modelTop=null,best=-Infinity;
+    for(const b of actionable){
+      const sc=scores[b.id];
+      if(sc>best){best=sc;modelTop=b;}
+    }
+    if(!modelTop)modelTop=ruleTop;
+    return {basis:'model',tick,ruleTop,modelTop,branches,
+      actionableCount:actionable.length,scores,controlActive,state};
+  }
+  // Steer emission for a model-driven branch. Returns {order,ranked,wait}:
+  //   wait:  true when the model chose WAIT → the caller idles this decision
+  //   order: the re-ordered channel list (model channel first)
+  //   ranked: the re-ordered target list (model target first for land)
+  // The existing attack()/naval() emitters still run their full hard-safety
+  // checks; this only reorders what they consider, so legality is preserved.
+  function steerForBranch(branch,order,ranked){
+    if(!branch)return {order,ranked,wait:false};
+    const channel=branch.channel||
+      (branch.kind==='boat'||branch.kind==='warship'||
+        branch.kind==='build_warship'||branch.kind==='nuclear'
+        ?'naval':branch.kind==='wait'||branch.kind==='build_economy'
+        ?'hold':'land');
+    if(branch.kind==='wait')return {order,ranked,wait:true};
+    const rest=order.filter(ch=>ch!==channel);
+    const next=[...new Set([channel,...rest])];
+    if(channel==='land'&&branch.targetId!==null&&Array.isArray(ranked)){
+      const idx=ranked.findIndex(r=>r.id===branch.targetId);
+      if(idx>0)return {order:next,
+        ranked:[ranked[idx],...ranked.filter((_,i)=>i!==idx)],wait:false};
+    }
+    return {order:next,ranked,wait:false};
+  }
   async function step() {
     const found=discover();
     if(!found){if(game){generation++;game=null;bus=null;opts.enabled=false;persist();status='Warte auf Spiel';}paint();return;}
@@ -8299,13 +8661,37 @@ function predict(model,input){
         status='AUFBAU · Truppen regenerieren / Verteidigung halten';
         return;
       }
-      for(const channel of directive.order) {
-        if(channel==='land' && await attack(me,tick,serial,ranked,s)){
-          consecutiveIdle=0;return;
+      // §26/§28: schema-7 branch decision. The hard-safety hold gate above
+      // (recovering/defending) is preserved — the model only reorders or
+      // picks among already-legal branches in the channel loop below.
+      // With no bundled model, chooseActionBranch returns basis 'no-model'
+      // and steer is the identity, so emission is identical to the rule basis.
+      const branchDecision=chooseActionBranch(planning,s,me,groups,tick);
+      const steer=branchDecision.controlActive&&
+        branchDecision.modelTop&&
+        branchDecision.modelTop.id!==branchDecision.ruleTop.id?
+        steerForBranch(branchDecision.modelTop,directive.order,ranked):
+        {order:directive.order,ranked,wait:false};
+      if(steer.wait){
+        planning.blockReasons=['schema7-wait'];
+        recordBranchDecision(branchDecision,null);
+        return;
+      }
+      let emittedChannel=null;
+      for(const channel of steer.order) {
+        if(channel==='land' && await attack(me,tick,serial,steer.ranked,s)){
+          emittedChannel='land';consecutiveIdle=0;
+          recordBranchDecision(branchDecision,emittedChannel);
+          return;
         }
         if(channel==='naval' && !context.underAttack &&
-          await naval(me,tick,serial)){consecutiveIdle=0;return;}
+          await naval(me,tick,serial)){
+          emittedChannel='naval';consecutiveIdle=0;
+          recordBranchDecision(branchDecision,emittedChannel);
+          return;
+        }
       }
+      recordBranchDecision(branchDecision,null);
       consecutiveIdle++;
       planning.blockReasons=[directive.reason||'hold','no-channel-action'];
       if(consecutiveIdle>4){status='WARTEN · '+directive.reason;
@@ -8572,6 +8958,11 @@ function predict(model,input){
       stop:()=>{telemetry('benchmark_stop','Lokaler Testlauf gestoppt');opts.enabled=false;autoStartGame=game;generation++;},
       // Step 3: benchmark-only per-decision frame for real training capture.
       planningFrame:()=>planningFrame(),
+      // §28 schema-7 branch funnel (aggregate + last decision) for the
+      // pre-gate and dev/holdout reconciliation from the benchmark report.
+      branchFunnel:()=>({...branchFunnel,
+        lastDecision:branchFunnel.lastDecision?
+          {...branchFunnel.lastDecision}:null}),
       // Engine harness awaits every cycle; ordinary browser timers stay unchanged.
       pump:async()=>{await step();await economyStep();await diplomacyTick();
         await nukeStep();if(opts.duoEnabled)await duoPublish();}
