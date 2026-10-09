@@ -2167,7 +2167,7 @@ function boot(benchmarkOptions={}) {
   await check('v1.10.5 first Port beats upgrades after basic City/Factory', async () => {
     const x=boot();x.setTick(2400);x.setGold(500000);
     x.game.isShore=t=>t===5500;
-    const units=['City','Factory'].map((type,i)=>({
+    const units=['City','City','Factory','Factory'].map((type,i)=>({
       type:()=>type,isActive:()=>true,tile:()=>5000+i*20,
       id:()=>i+1,level:()=>1}));
     x.me.units=()=>units;
@@ -2237,7 +2237,8 @@ function boot(benchmarkOptions={}) {
     const x=boot();x.setTick(300);x.setGold(500000);x.game.isShore=t=>t===5500;
     const city={type:()=> 'City',isActive:()=>true,tile:()=>5000};
     const factory={type:()=> 'Factory',isActive:()=>true,tile:()=>5020};
-    let units=[city,factory];
+    let units=[city,{...city,tile:()=>5010},factory,
+      {...factory,tile:()=>5030}];
     x.me.units=()=>units;
     x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
       type,canBuild:tile,canUpgrade:false,cost:125000n}))});
@@ -2715,7 +2716,7 @@ function boot(benchmarkOptions={}) {
     x.game.isShore=t=>t===5500||t===5560;
     x.game.owner=t=>t===5501?x.weak:x.me;
     x.game.neighbors4=(t,out)=>{if(t===5500){out.push(5501);return 1;}return 0;};
-    x.me.units=()=>['City','Factory'].map((type,i)=>({
+    x.me.units=()=>['City','City','Factory','Factory'].map((type,i)=>({
       type:()=>type,isActive:()=>true,tile:()=>5000+i*20,id:()=>i+1,level:()=>1}));
     x.me.actions=async(tile,types)=>({buildableUnits:(types||[]).map(type=>({
       type,canBuild:tile,canUpgrade:false,cost:125000n}))});
@@ -2727,9 +2728,22 @@ function boot(benchmarkOptions={}) {
       x.game.y(x.sent[0].tile)-x.game.y(5501))>=20,
       'Port must be behind the active hostile frontier');
   });
+  await check('v1.21.4 static silo threat does not preempt the first two Cities and Factories',()=>{
+    const x=boot();x.setTick(2400);x.setLand(52000);x.setGold(900000);
+    const units=[asset('City',5000,1),asset('Factory',5020,2)];
+    x.me.units=()=>units;
+    x.game.units=()=>[{type:()=> 'Missile Silo',isActive:()=>true,
+      owner:()=>x.weak,tile:()=>6}];
+    const need=x.b.economicNeeds(x.me,units,[]);
+    assert.equal(need.nuclearThreat,true,'visible enemy silo is a real risk');
+    assert.equal(need.basic,true,'second City and Factory are not yet completed');
+    assert.equal(need.wantedSAM,0,'static silo visibility does not preempt the economic core');
+    assert(need.list.some(e=>e.type==='City'));
+    assert(need.list.some(e=>e.type==='Factory'));
+  });
   await check('v1.17.2 silo threat funds and prioritizes uncovered SAM before our silo', async () => {
     const x=boot();x.setTick(2400);x.setGold(900000);x.setLand(52000);
-    const units=['City','Factory'].map((type,i)=>({
+    const units=['City','City','Factory','Factory'].map((type,i)=>({
       type:()=>type,isActive:()=>true,tile:()=>5000+i*20,
       id:()=>i+1,level:()=>1}));
     x.me.units=()=>units;
@@ -2781,7 +2795,7 @@ function boot(benchmarkOptions={}) {
   await check('v1.18 impending rockets beat the first harbor milestone', async () => {
     const x=boot();x.setTick(2400);x.setLand(52000);x.setGold(900000);
     x.game.isShore=t=>t===5500;
-    const units=['City','Factory'].map((type,i)=>({
+    const units=['City','City','Factory','Factory'].map((type,i)=>({
       type:()=>type,isActive:()=>true,tile:()=>5000+i*20,
       id:()=>i+1,level:()=>1}));
     x.me.units=()=>units;
@@ -2809,7 +2823,7 @@ function boot(benchmarkOptions={}) {
   });
   await check('v1.18.1 emergency SAM searches separate asset-centered locations', async () => {
     const x=boot();x.setTick(2400);x.setGold(900000);x.setLand(52000);
-    const units=['City','Factory'].map((type,i)=>({
+    const units=['City','City','Factory','Factory'].map((type,i)=>({
       type:()=>type,isActive:()=>true,tile:()=>5000+i*20,
       id:()=>i+1,level:()=>1}));
     x.me.units=()=>units;
@@ -2831,7 +2845,7 @@ function boot(benchmarkOptions={}) {
   await check('v1.18.1 no legal harbor permits core investment instead of wasting tick', async () => {
     const x=boot();x.setTick(300);x.setGold(600000);
     x.game.isShore=t=>t===5500;
-    const units=['City','Factory'].map((type,i)=>({
+    const units=['City','City','Factory','Factory'].map((type,i)=>({
       type:()=>type,isActive:()=>true,tile:()=>5000+i*20,
       id:()=>i+1,level:()=>1}));
     x.me.units=()=>units;
@@ -2879,7 +2893,7 @@ function boot(benchmarkOptions={}) {
   });
   await check('v1.18.1 SAM probes continue beyond first denied asset sites', async () => {
     const x=boot();x.setTick(2400);x.setGold(900000);x.setLand(52000);
-    const units=['City','Factory'].map((type,i)=>({
+    const units=['City','City','Factory','Factory'].map((type,i)=>({
       type:()=>type,isActive:()=>true,tile:()=>5000+i*20,
       id:()=>i+1,level:()=>1}));
     x.me.units=()=>units;
@@ -2895,7 +2909,7 @@ function boot(benchmarkOptions={}) {
   });
   await check('v1.18.1 real SAM quote funds protection and expires when stale', async () => {
     const x=boot();x.setTick(2400);x.setGold(100000);x.setLand(52000);
-    const units=['City','Factory'].map((type,i)=>({
+    const units=['City','City','Factory','Factory'].map((type,i)=>({
       type:()=>type,isActive:()=>true,tile:()=>5000+i*20,
       id:()=>i+1,level:()=>1}));
     x.me.units=()=>units;
@@ -2913,18 +2927,20 @@ function boot(benchmarkOptions={}) {
   await check('v1.18.2 allied buildings do not inflate own SAM obligations', () => {
     const x=boot(),city={type:()=> 'City',tile:()=>5000,isActive:()=>true},
       factory={type:()=> 'Factory',tile:()=>5020,isActive:()=>true};
-    x.me.units=()=>[city,factory];
+    const ownCore=[city,{...city,tile:()=>5010},factory,
+      {...factory,tile:()=>5030}];
+    x.me.units=()=>ownCore;
     x.game.config().gameConfig=()=>({gameType:'Public',difficulty:'Medium'});
     x.me.isFriendly=p=>p===x.weak;
     x.game.units=()=>[{type:()=> 'City',tile:()=>6000,isActive:()=>true,
       owner:()=>x.weak},{type:()=> 'Missile Silo',tile:()=>6,
       isActive:()=>true,owner:()=>x.strong}];
-    const intel=x.b.nuclearIntel(x.me,[city,factory]);
-    assert.equal(intel.assets.length,2,'own assets only');
-    assert.equal(intel.uncovered.length,2,'own uncovered only');
+    const intel=x.b.nuclearIntel(x.me,ownCore);
+    assert.equal(intel.assets.length,4,'own core assets only');
+    assert.equal(intel.uncovered.length,4,'own uncovered only');
     assert.equal(intel.allyAssets.length,1,'ally assets reported separately');
     assert.equal(intel.allyUncovered.length,1);
-    const needs=x.b.economicNeeds(x.me,[city,factory],[]);
+    const needs=x.b.economicNeeds(x.me,ownCore,[]);
     assert(needs.wantedSAM>0);
   });
   await check('v1.18.2 first Port gets provisional funds before worker offers a price', async () => {
