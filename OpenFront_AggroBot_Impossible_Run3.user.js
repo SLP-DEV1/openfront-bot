@@ -8800,24 +8800,24 @@ function predict(model,input){
       ${game?.inSpawnPhase?.()?'<div style="color:#9bd0e4">Strategic spawn: '+
         enHTML(spawnState.phase)+' · checked '+spawnState.scanned+
         ' · attempts '+spawnState.attempts+' · remaining '+
-        spawnRemaining(game)+' Ticks</div>':''}
+        spawnRemaining(game)+' ticks</div>':''}
       <div>${b('enabled',opts.enabled?'⏸ PAUSE':'▶ START')} ${b('autoStart',opts.autoStart?'⚡ Auto-start ON':'⚡ Auto-start OFF')}</div>
       <div style="color:#a9efc9">${enHTML(strategic.mode)} · ${enHTML(strategic.reason)} · ${enHTML(economicStatus)}</div>
       <details data-section="features"${openFor('features')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Modules &amp; settings</summary>
       <div>${b('autoSpawn','Spawn')} ${b('defense','Counterattack')} ${b('economy','Economy')} ${b('boats','Navy')}</div>
-      <div>${b('upgrades','Upgrades')} ${b('safeMode','Emergency stop')} ${b('autoStrategy','Auto-strategy '+(opts.autoStrategy?'AN':'AUS'))} ${b('fullAuto','Fully autonomous '+(opts.fullAuto?'AN':'AUS'))}</div>
+      <div>${b('upgrades','Upgrades')} ${b('safeMode','Emergency stop')} ${b('autoStrategy','Auto-strategy '+(opts.autoStrategy?'ON':'OFF'))} ${b('fullAuto','Fully autonomous '+(opts.fullAuto?'ON':'OFF'))}</div>
       <div>${b('diplomacy','Diplomacy')} ${b('offerAlliances','Offer alliances')}</div>
       <div>${b('nukes','Auto-Nukes')} ${b('antiNuke','Smart SAMs')} ${b('lateOffense','Late-game offense')}</div>
       <div>${b('impossibleExperiment','Impossible AI Test')} ${b('learningEnabled','Learning')} ${b('neuralEnabled','Neural network')} ${b('impossibleMode','Impossible strategy')}</div>
       </details>
       <details data-section="localduo"${openFor('localduo')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">🤝 Duo mode (2 browsers, 1 PC)</summary>
-      <div>${b('duoEnabled','Local Duo '+(opts.duoEnabled?'AN':'AUS'))}</div>
+      <div>${b('duoEnabled','Local Duo '+(opts.duoEnabled?'ON':'OFF'))}</div>
       <div style="color:#9bd0e4">My player ID: <b>${enHTML(safeID(myPlayer())??'not in a match yet')}</b></div>
-      <label>Partner name (display only)<input type="text" data-option="duoPartnerName" maxlength="80" value="${enHTML(opts.duoPartnerName||'')}" placeholder="z. B. ExamplePartner" style="box-sizing:border-box;width:100%"></label>
+      <label>Partner name (display only)<input type="text" data-option="duoPartnerName" maxlength="80" value="${enHTML(opts.duoPartnerName||'')}" placeholder="e.g. ExamplePartner" style="box-sizing:border-box;width:100%"></label>
       <div>Partner ID (automatic): ${enHTML(duoTrustedPeer()?.id??"Waiting for partner")}</div>
-      <label>Duo room code (same in both browsers)<input type="text" data-option="duoRoom" maxlength="64" value="${enHTML(opts.duoRoom)}" placeholder="z. B. EXAMPLE_DUO_01" style="box-sizing:border-box;width:100%"></label>
+      <label>Duo room code (same in both browsers)<input type="text" data-option="duoRoom" maxlength="64" value="${enHTML(opts.duoRoom)}" placeholder="e.g. EXAMPLE_DUO_01" style="box-sizing:border-box;width:100%"></label>
       <div>Status: ${enHTML(duoLocal.status)} · ${duoTrustedPeer()?'Partner verified in current match':'Partner disconnected'}</div>
-      <div style="color:#9bd0e4">Duo state: ${enHTML(duoStatusView(opts.duoEnabled,duoTrustedPeer(),duoPlan,number(()=>game?.ticks?.(),-1),duoLocal).phase)} · Relay-Drops ${duoLocal.relayDrops} · Relay-Timeouts ${duoLocal.relayTimeouts} · ACK-Timeouts ${duoLocal.ackTimeouts}</div>
+      <div style="color:#9bd0e4">Duo state: ${enHTML(duoStatusView(opts.duoEnabled,duoTrustedPeer(),duoPlan,number(()=>game?.ticks?.(),-1),duoLocal).phase)} · Relay drops ${duoLocal.relayDrops} · Relay timeouts ${duoLocal.relayTimeouts} · ACK timeouts ${duoLocal.ackTimeouts}</div>
       <div style="color:#9bd0e4;font-size:10px">Match ID: ${enHTML(duoMatchKey())}</div>
       <div>In-game name: ${enHTML(duoTrustedPeer()?nameOf(duoTrustedPeer().player):'—')}${duoTrustedPeer()&&opts.duoPartnerName&&nameOf(duoTrustedPeer().player)!==opts.duoPartnerName?' · Display name mismatch (player ID takes precedence)':''}</div>
       <div>Partner's other allies (attack protection): ${enHTML((duoTrustedPeer()?.state?.allies||[]).map(id=>nameOf((game?.playerViews?.()||[]).find(p=>safeID(p)===id)||{id:()=>id})).join(', ')||'—')}</div>
@@ -8825,36 +8825,36 @@ function predict(model,input){
       <div>Joint plan: ${enHTML(duoPlan?duoPlan.role+' → '+duoPlan.targetName+(duoPlan.strikeTick!==null?' · attack from tick '+duoPlan.strikeTick:''):'Start together → confirm alliance → divide the front')}</div>
       <div>Joint attack budget: ${duoPlan?.joint?enHTML(Math.round(duoPlan.joint.own/10)+' own + '+Math.round(duoPlan.joint.ally/10)+' partner troops · required '+Math.round(duoPlan.joint.needed/10)):'No jointly safe front yet'}</div>
       <div>Attack coordination: ${enHTML(duoPlan?.strikeStatus||'none')} · partner warnings ${duoPlan?.partnerWarning||0}/2 · displayed troops = engine value / 10</div>
-      <div style="margin-top:4px"><b>Duo-Timeline</b>${decisionTimeline.filter(d=>d.kind==='2v2').slice(-4).reverse().map(d=>'<div style="border-top:1px solid #354d66;padding:2px 0">'+enHTML('Tick '+d.tick+' · '+d.why)+'</div>').join('')}</div>
+      <div style="margin-top:4px"><b>Duo timeline</b>${decisionTimeline.filter(d=>d.kind==='2v2').slice(-4).reverse().map(d=>'<div style="border-top:1px solid #354d66;padding:2px 0">'+enHTML('Tick '+d.tick+' · '+d.why)+'</div>').join('')}</div>
       <div style="color:#a9efc9">Run Start_Live_Duo.bat · port 8767 · use the same room code in both browsers · alliances require in-game confirmation · on relay loss, both bots continue independently.</div>
       </details>
       <details data-section="neural"${openFor('neural')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Neural model</summary>
       <div>${b('shadowRankEnabled',opts.shadowRankEnabled?'Shadow ranking ON':'Shadow ranking OFF')}</div>
       <div style="color:#9bd0e4">Shadow: ${shadowV6Model||shadowV5Model?((shadowV6Model?'Schema 6':'Schema 5')+(opts.shadowRankEnabled&&opts.candidateControlEnabled?' CONTROL ACTIVE (gain '+enHTML(shadowModelInfo().controlGain)+')':', loaded, comparison only')):'no shadow candidate loaded'} · ${enHTML(shadowDecisionEvidence?.wouldPrefer??'—')} ${(shadowV6Model||shadowV5Model)&&opts.shadowRankEnabled&&opts.candidateControlEnabled?(shadowDecisionEvidence?.failClosed?'(rule-based fallback: '+enHTML(shadowDecisionEvidence.failClosed)+')':shadowDecisionEvidence?.changedIntent?'(model changed the selected action)':'(control configured; last choice unchanged)'):'(no action effect)'}</div>
-      <div style="color:#9bd0e4">Inference: ${enHTML(neuralModelInfo().fingerprint||'kein Modell')} · signals ${neuralEvidence.nonzero}/${neuralEvidence.calls} · Ranking ${neuralEvidence.actionNonzero}/${neuralEvidence.actionCalls}</div>
-      <div style="color:#9bd0e4">Deployment: Modell ${enHTML(deploymentInfo().model.champion.fingerprint||'—')} · Kandidat ${enHTML(deploymentInfo().model.candidate.fingerprint||'—')} · Skript ${enHTML(deploymentInfo().script.version)} · Engine ${enHTML(deploymentInfo().engine.commit||'—')}</div>
+      <div style="color:#9bd0e4">Inference: ${enHTML(neuralModelInfo().fingerprint||'no model')} · signals ${neuralEvidence.nonzero}/${neuralEvidence.calls} · Ranking ${neuralEvidence.actionNonzero}/${neuralEvidence.actionCalls}</div>
+      <div style="color:#9bd0e4">Deployment: model ${enHTML(deploymentInfo().model.champion.fingerprint||'—')} · candidate ${enHTML(deploymentInfo().model.candidate.fingerprint||'—')} · script ${enHTML(deploymentInfo().script.version)} · Engine ${enHTML(deploymentInfo().engine.commit||'—')}</div>
       <div style="color:#9bd0e4">Neural model: ${neuralModel?.schema===4?'Strategic policy v4 (24 signals)':neuralModel?.schema===3?'Strategic policy v3 (16 signals)':neuralModel?.schema===2?'Action ranking (max ±14 points)':neuralModel?.schema===1?'Slider (max ±8 points)':'not loaded'} · only in a permitted match</div>
       </details>
       <details data-section="situation"${openFor('situation')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Situation &amp; diplomacy</summary>
-      <div style="color:#a9efc9">Main front: ${enHTML(warState.name)} · war ${isWar()?'aktiv':'frei'} · ${enHTML(lastRecoveryReason||'bereit')}</div>
-      <div>${b('plan','Manual: '+opts.plan)}<br>${b('buildStyle','Manual building focus: '+opts.buildStyle)}</div>
+      <div style="color:#a9efc9">Main front: ${enHTML(warState.name)} · war ${isWar()?'active':'none'} · ${enHTML(lastRecoveryReason||'ready')}</div>
+      <div>${b('plan','Manual: '+enHTML(opts.plan))}<br>${b('buildStyle','Manual building focus: '+enHTML(opts.buildStyle))}</div>
       <div style="color:#a9efc9">AI strategy: ${enHTML(strategic.mode)} · ${enHTML(strategic.reason)} · Construction: ${enHTML(effectiveBuildStyle())}</div>
       <div style="color:#9bd0e4">Defense: ${enHTML(defenseStatus)} · retreats ${defenseStats.retreatsOrdered}/${defenseStats.retreatsObserved} observed · unknown ${defenseStats.unknown} · unconfirmed ${defenseStats.unconfirmed}</div>
       <div style="color:#9bd0e4">Game mode: ${enHTML(winStatus.mode)} · victory progress: ${winStatus.progress===null?'unknown':(winStatus.progress*100).toFixed(1)+'%'} · victory threshold: ${winStatus.threshold===null?'unknown':winStatus.threshold+'%'} · time: ${winStatus.remaining===null?'no timer':Math.round(winStatus.remaining)+'s'} · Doomsday: ${winStatus.doomsday?'YES':'NO'}</div>
-      <div style="color:#9bd0e4">Trade per 60s: rail ${incomeStatus.train===null?'unknown':Math.round(incomeStatus.train)} · ship ${incomeStatus.trade===null?'unknown':Math.round(incomeStatus.trade)} · ${enHTML(tradeStatus)} · opened ${tradeStats.opened} / Embargos ${tradeStats.embargoed}</div>
+      <div style="color:#9bd0e4">Trade per 60s: rail ${incomeStatus.train===null?'unknown':Math.round(incomeStatus.train)} · ship ${incomeStatus.trade===null?'unknown':Math.round(incomeStatus.trade)} · ${enHTML(tradeStatus)} · opened ${tradeStats.opened} / embargoes ${tradeStats.embargoed}</div>
       <div style="color:#9bd0e4">Navy: ${enHTML(fleetStatus)}</div>
-      <div style="color:#9bd0e4">Nukes: ${enHTML(nukeStatus)} · bestätigt ${nukeShots} / Versuche ${nukeAttempts} / unbestätigt ${nukeUnconfirmed} · SAM coverage ${nuclearCache?.assets?.length - nuclearCache?.uncovered?.length||0}/${nuclearCache?.assets?.length||0}</div>
+      <div style="color:#9bd0e4">Nukes: ${enHTML(nukeStatus)} · confirmed ${nukeShots} / attempts ${nukeAttempts} / unconfirmed ${nukeUnconfirmed} · SAM coverage ${nuclearCache?.assets?.length - nuclearCache?.uncovered?.length||0}/${nuclearCache?.assets?.length||0}</div>
       <div style="color:#9bd0e4">Alliances: ${enHTML(diplomacyStatus)} · confirmed: ${diplomacyStats.accepted} accepted, ${diplomacyStats.rejected} rejected · ${diplomacyPending.size} pending · ${diplomacyStats.offered} offered</div>
       </details>
       <details data-section="humanplan"${openFor('humanplan')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Opponent analysis &amp; operations</summary>
-      <div>Operation: ${operation?enHTML(operation.type+' → '+operation.targetName+' · '+operation.spent+'/'+operation.budget+' Tr. · abort: '+operation.abort):'No safe operation'}</div>
+      <div>Operation: ${operation?enHTML(operation.type+' → '+operation.targetName+' · '+operation.spent+'/'+operation.budget+' troops · abort: '+operation.abort):'No safe operation'}</div>
       <div>Duo: ${duoPlan?enHTML(duoPlan.role+' · target '+duoPlan.targetName+' · partner commitment '+duoPlan.partnerCommitted+' · needs help '+(duoPlan.needHelp?'YES':'no')):'No verified team/Duo partner'}</div>
       <div>Opponent victory: ${victoryThreat?enHTML(victoryThreat.name+' · '+victoryThreat.progress.toFixed(1)+'% / '+victoryThreat.threshold+'%'+(victoryThreat.urgent?' · WARNING':'')):'No verifiable threshold / no opponent'}</div>
       ${[...opponentProfiles.values()].slice(0,8).map(p=>'<div>'+enHTML(p.name+' · '+p.profile+' · '+Math.round(p.confidence*100)+'% observation confidence')+'</div>').join('')}
       <div style="margin-top:5px"><b>Decision timeline</b>${decisionTimeline.slice(-8).reverse().map(d=>'<div style="padding:3px 0;border-top:1px solid #354d66">'+enHTML('Tick '+d.tick+' · '+d.why)+(d.alternatives.length?'<br><span style="color:#9bd0e4">'+enHTML(d.alternatives.join(' | '))+'</span>':'')+'</div>').join('')}</div>
       </details>
       <details data-section="tuning"${openFor('tuning')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Fine-tuning</summary>
-      <div style="color:#a9efc9">Parameters: ${opts.fullAuto?'AUTONOM '+enHTML(autoTuning.mode)+' · '+enHTML(autoTuning.reason):'MANUELL'}</div>
+      <div style="color:#a9efc9">Parameters: ${opts.fullAuto?'AUTONOMOUS '+enHTML(autoTuning.mode)+' · '+enHTML(autoTuning.reason):'MANUAL'}</div>
       <label>Aggressiveness: ${setting('aggressive')}%${opts.fullAuto?' (Auto)':''}<input type="range" data-option="aggressive" min="40" max="100" value="${setting('aggressive')}" ${opts.fullAuto?'disabled':''} style="display:block;width:100%"></label>
       <label>Reserve: ${setting('reserve')}%${opts.fullAuto?' (Auto)':''}<input type="range" data-option="reserve" min="5" max="65" value="${setting('reserve')}" ${opts.fullAuto?'disabled':''} style="display:block;width:100%"></label>
       <label>Actions/min: ${setting('actionsPerMinute')}${opts.fullAuto?' (Auto)':''}<input type="range" data-option="actionsPerMinute" min="15" max="120" value="${setting('actionsPerMinute')}" ${opts.fullAuto?'disabled':''} style="display:block;width:100%"></label>
@@ -8893,7 +8893,7 @@ function predict(model,input){
       <div style="color:${intentHealth().critical.length?'#ff8181':intentHealth().missing.length?'#ffd480':'#a9efc9'}">Intents: ${intentHealth().eventBus?intentHealth().found+'/'+intentHealth().total:'EventBus pending'} · ${intentHealth().missing.length?'Missing: '+enHTML(intentHealth().missing.join(', ')):'all detected'}${intentHealth().critical.length?' · CORE FUNCTION DEGRADED':''}</div>
       <div style="color:#9bd0e4">Action budget: ${actions.length}/${setting('actionsPerMinute')} · sent: ${totalSent} · failed: ${totalFailed} · errors: ${errors}</div>
       <div style="color:#9bd0e4">Home: ${Math.floor(troopSnapshot.home/10)} · Reserve: ${Math.floor(troopSnapshot.reserve/10)} · ongoing attacks: ${Math.floor(troopSnapshot.committed/10)} · income/reserve: ${(troopSnapshot.ratio*100).toFixed(0)}% capacity</div>
-      <div style="color:#9bd0e4">Incoming: ${Math.floor(troopSnapshot.incoming/10)} · strongest border neighbor: ${Math.floor(troopSnapshot.strongest/10)} · Ziel: ${enHTML(lastSelection||plan?.name||'Searching')} · ${borderCache?.length||0} border tiles</div>
+      <div style="color:#9bd0e4">Incoming: ${Math.floor(troopSnapshot.incoming/10)} · strongest border neighbor: ${Math.floor(troopSnapshot.strongest/10)} · target: ${enHTML(lastSelection||plan?.name||'Searching')} · ${borderCache?.length||0} border tiles</div>
       <div style="border-top:1px solid #527;margin-top:7px;padding-top:5px"><b>Recent decisions</b>${recent.map(s=>`<div>• ${enHTML(s)}</div>`).join('')}</div>
       <button data-key="export" style="border:1px solid #73acdd;border-radius:5px;background:#235078;color:white;padding:5px 7px;cursor:pointer">📄 Export diagnostic JSON</button>
       </details>
