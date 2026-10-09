@@ -89,6 +89,11 @@ jobs:
         run: |
           node --check tools/benchmark/engine-layout.cjs
           node tests/upstream-engine-layout-regression.cjs
+      - name: Test authoritative engine outcomes and current-engine smoke verification
+        run: |
+          node --check tools/benchmark/verify-upstream-run.cjs
+          node tests/upstream-smoke-regression.cjs
+          node tests/winner-outcome-regression.cjs
       - name: Test bot strategy
         run: node tests/strategy-regression.cjs
       - name: Test P0 decision frame linkage
