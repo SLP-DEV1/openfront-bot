@@ -64,8 +64,6 @@ The bot is an **experiment, not a guaranteed win button**: neural features are r
 
 **Local Duo mode:** Run `Start_Live_Duo.bat` with **Node.js 24+**, then enable Duo in two separate browser instances in the same match using the same room code. The relay is restricted to `127.0.0.1:8767`. It does not override actual in-game alliance status, legality checks, or reserve rules. Read the [Duo setup guide](docs/LOCAL_DUO.md).
 
-**Local match monitor:** An optional companion userscript can send diagnostic events to a read-only service on localhost. See the [monitor guide](docs/LIVE_MONITOR.md).
-
 ## 🧪 Built for tinkering
 
 Want to tune the strategy, compare experimental models, or investigate what the bot actually did? The repository includes the canonical userscript source, deterministic build scripts, regression tests, local diagnostics, and benchmarking tools.
