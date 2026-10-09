@@ -1195,12 +1195,6 @@ function predict(model,input){
       // A record the journal callback failed to receive is a true loss.
       catch(_){streamErrors++;recordsDropped++;}
     }
-    if(window.__OF_LOCAL_MONITOR_ACTIVE__===true){
-      try{
-        window.dispatchEvent(new CustomEvent('aggrobot:telemetry',{
-          detail:JSON.stringify(record,(_,v)=>typeof v==='bigint'?v.toString():v)}));
-      }catch(_){streamErrors++;}
-    }
     if(diagnostics.length>1400){
       // Ring eviction is a display cap, not a recording loss: the persistent
       // journal/stream received every record before it was evicted.

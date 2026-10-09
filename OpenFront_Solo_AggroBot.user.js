@@ -1359,12 +1359,6 @@ function predict(model,input){
       // A record the journal callback failed to receive is a true loss.
       catch(_){streamErrors++;recordsDropped++;}
     }
-    if(window.__OF_LOCAL_MONITOR_ACTIVE__===true){
-      try{
-        window.dispatchEvent(new CustomEvent('aggrobot:telemetry',{
-          detail:JSON.stringify(record,(_,v)=>typeof v==='bigint'?v.toString():v)}));
-      }catch(_){streamErrors++;}
-    }
     if(diagnostics.length>1400){
       // Ring eviction is a display cap, not a recording loss: the persistent
       // journal/stream received every record before it was evicted.
@@ -8730,9 +8724,9 @@ function predict(model,input){
       const key=e.target.closest('button[data-key]')?.dataset.key;if(!key)return;
       if(key==='export'){exportDiagnostics();return;}
       if(key==='enabled'){
-        if(!connected())status=conflicts()?'Alte Bot-Version deaktivieren':
-          advisorConflict()?'Spawn Advisor Auto/Smart/Auto-Accept ausschalten':
-          'Nur in laufender Singleplayer-, Public- oder Private-Partie mit EventBus';
+        if(!connected())status=conflicts()?'Disable the older bot version':
+          advisorConflict()?'Disable Spawn Advisor auto/smart/auto-accept':
+          'Only available in an active single-player, public or private match with EventBus';
         else {opts.enabled=!opts.enabled;autoStartGame=game;generation++;log(opts.enabled?'BOT START':'BOT PAUSE');
           if(opts.enabled)reportIntents(true);}
       }else if(key==='autoStart'){
@@ -8746,7 +8740,7 @@ function predict(model,input){
         opts[key]=!opts[key];
         if(key==='duoEnabled'){
           duoLocal.peer=null;duoLocal.lastAt=0;duoLocal.match=null;
-          duoLocal.status=opts.duoEnabled?'Verbinde lokalen Relay':'AUS';
+          duoLocal.status=opts.duoEnabled?'Connecting to local relay':'AUS';
         }
       }
       else if(key==='plan'){opts.fullAuto=false;opts.autoStrategy=false;opts.plan=opts.plan==='Blitz'?'Adaptiv':opts.plan==='Adaptiv'?'Ökonomie':'Blitz';}
@@ -8762,7 +8756,7 @@ function predict(model,input){
       if(key==='duoRoom'||key==='duoPartnerName'){
         opts[key]=String(e.target.value||'').trim();
         duoLocal.peer=null;duoLocal.lastAt=0;duoLocal.match=null;
-        duoLocal.status='Partnerdaten geändert · erneut verbinden';
+        duoLocal.status='Partner details changed · reconnecting';
       }
       persist();lastPaint=0;paint();
     });
@@ -8782,7 +8776,15 @@ function predict(model,input){
       effect:latest?.effect??'unconfirmed',
       budget:budgetAge!==null&&budgetAge<=300?budget:null,budgetAge};
   }
+  // Presentation-only translation: stored strategy enum values remain unchanged.
+  const MENU_STATUS_TRANSLATIONS=[["Warte auf Spiel","Waiting for a match"],["Singleplayer erkannt","Single-player detected"],["Multiplayer erkannt","Multiplayer detected"],["Autostart wartet auf EventBus","auto-start waiting for EventBus"],["Bot bereit","Bot ready"],["Replay · BOT GESPERRT","Replay · BOT DISABLED"],["Verteidigung vor Investitionen","Defense before investing"],["Erste Stadt/Fabrik","First City/Factory"],["SAM-Schutz vor Raketenfonds","SAM defense before missile savings"],["Truppenlimit: Stadt/City-Upgrade oder Landgewinn priorisiert","Troop cap: prioritize City upgrades or territory"],["Hafen vor Silo","Port before silo"],["Zwei Städte und zwei Fabriken","Two Cities and two Factories"],["Wirtschaft & Offensive","Economy & offense"],["Keine legalen Bauoptionen im geprüften Gebiet","No legal building options in inspected area"],["Baukandidaten durch Priorität oder Reserve gesperrt","Build choices blocked by priority or reserve"],["Gold für Bauoption fehlt; Standort noch ungeprüft","Not enough gold for construction; site not yet verified"],["Spare auf ersten Kernbau:","Saving for first core building:"],["Spare auf SAM:","Saving for SAM:"],["Warte auf","Waiting for"],["Keine","No"],["keine","none"],["Verteidigung","Defense"],["Wirtschaft","Economy"],["Hafen","Port"],["Stadt","City"],["Truppen","Troops"],["Angriff","Attack"],["Gegner","Opponent"],["Bündnis","Alliance"],["bestätigt","confirmed"],["unbestätigt","unconfirmed"],["ausstehend","pending"],["unbekannt","unknown"],["bereit","ready"],["aktiv","active"],["Defensiv","Defensive"],["Ausgewogen","Balanced"],["Adaptiv","Adaptive"],["Ökonomie","Economy"]];
+  function translateMenuText(value) {
+    let text=String(value??'');
+    for(const [from,to] of MENU_STATUS_TRANSLATIONS)text=text.replaceAll(from,to);
+    return text;
+  }
   function paint() {
+    const enHTML=value=>escapeHTML(translateMenuText(value));
     if(!document.body)return;if(!panel)mount();
     if(!panel||Date.now()-lastPaint<900)return;
     // Keep the user's slider interaction from being interrupted by a redraw.
@@ -8795,119 +8797,119 @@ function predict(model,input){
     const sectionStyle='border:1px solid #354d66;border-radius:6px;margin-top:6px;padding:5px 7px';
     const b=(key,label)=>`<button data-key="${key}" style="border:1px solid #779;border-radius:5px;color:#fff;background:${opts[key]?'#167247':'#344157'};padding:5px 7px;margin:2px;cursor:pointer">${label}</button>`;
     panel.innerHTML=`<b style="font-size:14px;color:#83dcff">AggroBot ${VERSION}</b> ${permittedMatch(game)?'🟢':'🔒'}
-      <div style="color:#bed5e8;margin:6px 0">${escapeHTML(status)}</div>
-      ${game?.inSpawnPhase?.()?'<div style="color:#9bd0e4">Strategischer Spawn: '+
-        escapeHTML(spawnState.phase)+' · geprüft '+spawnState.scanned+
-        ' · Versuche '+spawnState.attempts+' · Rest '+
+      <div style="color:#bed5e8;margin:6px 0">${enHTML(status)}</div>
+      ${game?.inSpawnPhase?.()?'<div style="color:#9bd0e4">Strategic spawn: '+
+        enHTML(spawnState.phase)+' · checked '+spawnState.scanned+
+        ' · attempts '+spawnState.attempts+' · remaining '+
         spawnRemaining(game)+' Ticks</div>':''}
-      <div>${b('enabled',opts.enabled?'⏸ PAUSE':'▶ STARTEN')} ${b('autoStart',opts.autoStart?'⚡ Auto-Start AN':'⚡ Auto-Start AUS')}</div>
-      <div style="color:#a9efc9">${escapeHTML(strategic.mode)} · ${escapeHTML(strategic.reason)} · ${escapeHTML(economicStatus)}</div>
-      <details data-section="features"${openFor('features')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Module &amp; Optionen</summary>
-      <div>${b('autoSpawn','Spawn')} ${b('defense','Gegenangriff')} ${b('economy','Wirtschaft')} ${b('boats','Marine')}</div>
-      <div>${b('upgrades','Upgrades')} ${b('safeMode','Not-Aus')} ${b('autoStrategy','Auto-Strategie '+(opts.autoStrategy?'AN':'AUS'))} ${b('fullAuto','Vollautonom '+(opts.fullAuto?'AN':'AUS'))}</div>
-      <div>${b('diplomacy','Diplomatie')} ${b('offerAlliances','Bündnisse anbieten')}</div>
-      <div>${b('nukes','Auto-Nukes')} ${b('antiNuke','Intelligente SAMs')} ${b('lateOffense','Late-Game-Offensive')}</div>
-      <div>${b('impossibleExperiment','Impossible AI Test')} ${b('learningEnabled','Lernen')} ${b('neuralEnabled','Neurales Netz')} ${b('impossibleMode','Unmöglich-Taktik')}</div>
+      <div>${b('enabled',opts.enabled?'⏸ PAUSE':'▶ START')} ${b('autoStart',opts.autoStart?'⚡ Auto-start ON':'⚡ Auto-start OFF')}</div>
+      <div style="color:#a9efc9">${enHTML(strategic.mode)} · ${enHTML(strategic.reason)} · ${enHTML(economicStatus)}</div>
+      <details data-section="features"${openFor('features')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Modules &amp; settings</summary>
+      <div>${b('autoSpawn','Spawn')} ${b('defense','Counterattack')} ${b('economy','Economy')} ${b('boats','Navy')}</div>
+      <div>${b('upgrades','Upgrades')} ${b('safeMode','Emergency stop')} ${b('autoStrategy','Auto-strategy '+(opts.autoStrategy?'AN':'AUS'))} ${b('fullAuto','Fully autonomous '+(opts.fullAuto?'AN':'AUS'))}</div>
+      <div>${b('diplomacy','Diplomacy')} ${b('offerAlliances','Offer alliances')}</div>
+      <div>${b('nukes','Auto-Nukes')} ${b('antiNuke','Smart SAMs')} ${b('lateOffense','Late-game offense')}</div>
+      <div>${b('impossibleExperiment','Impossible AI Test')} ${b('learningEnabled','Learning')} ${b('neuralEnabled','Neural network')} ${b('impossibleMode','Impossible strategy')}</div>
       </details>
-      <details data-section="localduo"${openFor('localduo')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">🤝 Duo-Modus (2 Browser, 1 PC)</summary>
-      <div>${b('duoEnabled','Lokales Duo '+(opts.duoEnabled?'AN':'AUS'))}</div>
-      <div style="color:#9bd0e4">Eigene Spieler-ID: <b>${escapeHTML(safeID(myPlayer())??'noch nicht im Spiel')}</b></div>
-      <label>Partnername (nur Anzeige)<input type="text" data-option="duoPartnerName" maxlength="80" value="${escapeHTML(opts.duoPartnerName||'')}" placeholder="z. B. ExamplePartner" style="box-sizing:border-box;width:100%"></label>
-      <div>Partner-ID (automatisch): ${escapeHTML(duoTrustedPeer()?.id??"Warte auf Partner")}</div>
-      <label>Duo-Raumcode (in beiden Browsern gleich)<input type="text" data-option="duoRoom" maxlength="64" value="${escapeHTML(opts.duoRoom)}" placeholder="z. B. EXAMPLE_DUO_01" style="box-sizing:border-box;width:100%"></label>
-      <div>Status: ${escapeHTML(duoLocal.status)} · ${duoTrustedPeer()?'Partner im aktuellen Match bestätigt':'Partner nicht verbunden'}</div>
-      <div style="color:#9bd0e4">Duo-Zustand: ${escapeHTML(duoStatusView(opts.duoEnabled,duoTrustedPeer(),duoPlan,number(()=>game?.ticks?.(),-1),duoLocal).phase)} · Relay-Drops ${duoLocal.relayDrops} · Relay-Timeouts ${duoLocal.relayTimeouts} · ACK-Timeouts ${duoLocal.ackTimeouts}</div>
-      <div style="color:#9bd0e4;font-size:10px">Matchkennung: ${escapeHTML(duoMatchKey())}</div>
-      <div>Spielname: ${escapeHTML(duoTrustedPeer()?nameOf(duoTrustedPeer().player):'—')}${duoTrustedPeer()&&opts.duoPartnerName&&nameOf(duoTrustedPeer().player)!==opts.duoPartnerName?' · Name weicht von Anzeige ab (ID maßgeblich)':''}</div>
-      <div>Duo-Fremdbündnisse (Angriffsschutz): ${escapeHTML((duoTrustedPeer()?.state?.allies||[]).map(id=>nameOf((game?.playerViews?.()||[]).find(p=>safeID(p)===id)||{id:()=>id})).join(', ')||'—')}</div>
-      <div>Partner: Ziel ${escapeHTML(duoTrustedPeer()?.state?.target??'—')} · verfügbar ${Math.round(duoTrustedPeer()?.state?.available||0)} · Reserve ${Math.round(duoTrustedPeer()?.state?.reserve||0)} · Hilfe ${duoTrustedPeer()?.state?.needHelp?'JA':'nein'}</div>
-      <div>Gemeinsamer Plan: ${escapeHTML(duoPlan?duoPlan.role+' → '+duoPlan.targetName+(duoPlan.strikeTick!==null?' · Angriff ab Tick '+duoPlan.strikeTick:''):'Gemeinsam starten → Allianz bestätigen → Front aufteilen')}</div>
-      <div>Duo-Angriffsbudget: ${duoPlan?.joint?escapeHTML(Math.round(duoPlan.joint.own/10)+' eigene + '+Math.round(duoPlan.joint.ally/10)+' Partner-Truppen · nötig '+Math.round(duoPlan.joint.needed/10)):'Noch keine gemeinsam sichere Front'}</div>
-      <div>Angriffsbindung: ${escapeHTML(duoPlan?.strikeStatus||'keine')} · Partnerwarnung ${duoPlan?.partnerWarning||0}/2 · Truppenanzeige = Engine-Wert / 10</div>
-      <div style="margin-top:4px"><b>Duo-Timeline</b>${decisionTimeline.filter(d=>d.kind==='2v2').slice(-4).reverse().map(d=>'<div style="border-top:1px solid #354d66;padding:2px 0">'+escapeHTML('Tick '+d.tick+' · '+d.why)+'</div>').join('')}</div>
-      <div style="color:#a9efc9">Start_Live_Duo.bat starten · Port 8767 · nur Raumcode in beiden Browsern gleich · Bündnis gilt erst nach Bestätigung im Spiel · Relay-Ausfall ⇒ beide spielen autonom weiter.</div>
+      <details data-section="localduo"${openFor('localduo')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">🤝 Duo mode (2 browsers, 1 PC)</summary>
+      <div>${b('duoEnabled','Local Duo '+(opts.duoEnabled?'AN':'AUS'))}</div>
+      <div style="color:#9bd0e4">My player ID: <b>${enHTML(safeID(myPlayer())??'not in a match yet')}</b></div>
+      <label>Partner name (display only)<input type="text" data-option="duoPartnerName" maxlength="80" value="${enHTML(opts.duoPartnerName||'')}" placeholder="z. B. ExamplePartner" style="box-sizing:border-box;width:100%"></label>
+      <div>Partner ID (automatic): ${enHTML(duoTrustedPeer()?.id??"Waiting for partner")}</div>
+      <label>Duo room code (same in both browsers)<input type="text" data-option="duoRoom" maxlength="64" value="${enHTML(opts.duoRoom)}" placeholder="z. B. EXAMPLE_DUO_01" style="box-sizing:border-box;width:100%"></label>
+      <div>Status: ${enHTML(duoLocal.status)} · ${duoTrustedPeer()?'Partner verified in current match':'Partner disconnected'}</div>
+      <div style="color:#9bd0e4">Duo state: ${enHTML(duoStatusView(opts.duoEnabled,duoTrustedPeer(),duoPlan,number(()=>game?.ticks?.(),-1),duoLocal).phase)} · Relay-Drops ${duoLocal.relayDrops} · Relay-Timeouts ${duoLocal.relayTimeouts} · ACK-Timeouts ${duoLocal.ackTimeouts}</div>
+      <div style="color:#9bd0e4;font-size:10px">Match ID: ${enHTML(duoMatchKey())}</div>
+      <div>In-game name: ${enHTML(duoTrustedPeer()?nameOf(duoTrustedPeer().player):'—')}${duoTrustedPeer()&&opts.duoPartnerName&&nameOf(duoTrustedPeer().player)!==opts.duoPartnerName?' · Display name mismatch (player ID takes precedence)':''}</div>
+      <div>Partner's other allies (attack protection): ${enHTML((duoTrustedPeer()?.state?.allies||[]).map(id=>nameOf((game?.playerViews?.()||[]).find(p=>safeID(p)===id)||{id:()=>id})).join(', ')||'—')}</div>
+      <div>Partner: target ${enHTML(duoTrustedPeer()?.state?.target??'—')} · available ${Math.round(duoTrustedPeer()?.state?.available||0)} · Reserve ${Math.round(duoTrustedPeer()?.state?.reserve||0)} · needs help ${duoTrustedPeer()?.state?.needHelp?'YES':'no'}</div>
+      <div>Joint plan: ${enHTML(duoPlan?duoPlan.role+' → '+duoPlan.targetName+(duoPlan.strikeTick!==null?' · attack from tick '+duoPlan.strikeTick:''):'Start together → confirm alliance → divide the front')}</div>
+      <div>Joint attack budget: ${duoPlan?.joint?enHTML(Math.round(duoPlan.joint.own/10)+' own + '+Math.round(duoPlan.joint.ally/10)+' partner troops · required '+Math.round(duoPlan.joint.needed/10)):'No jointly safe front yet'}</div>
+      <div>Attack coordination: ${enHTML(duoPlan?.strikeStatus||'none')} · partner warnings ${duoPlan?.partnerWarning||0}/2 · displayed troops = engine value / 10</div>
+      <div style="margin-top:4px"><b>Duo-Timeline</b>${decisionTimeline.filter(d=>d.kind==='2v2').slice(-4).reverse().map(d=>'<div style="border-top:1px solid #354d66;padding:2px 0">'+enHTML('Tick '+d.tick+' · '+d.why)+'</div>').join('')}</div>
+      <div style="color:#a9efc9">Run Start_Live_Duo.bat · port 8767 · use the same room code in both browsers · alliances require in-game confirmation · on relay loss, both bots continue independently.</div>
       </details>
-      <details data-section="neural"${openFor('neural')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Neurales Modell</summary>
-      <div>${b('shadowRankEnabled',opts.shadowRankEnabled?'Shadow-Ranking AN':'Shadow-Ranking AUS')}</div>
-      <div style="color:#9bd0e4">Shadow: ${shadowV6Model||shadowV5Model?((shadowV6Model?'Schema 6':'Schema 5')+(opts.shadowRankEnabled&&opts.candidateControlEnabled?' CONTROL AKTIV (Gain '+escapeHTML(shadowModelInfo().controlGain)+')':', geladen, nur Vergleich')):'kein Shadow-Kandidat geladen'} · ${escapeHTML(shadowDecisionEvidence?.wouldPrefer??'—')} ${(shadowV6Model||shadowV5Model)&&opts.shadowRankEnabled&&opts.candidateControlEnabled?(shadowDecisionEvidence?.failClosed?'(Fallback Regelbasis: '+escapeHTML(shadowDecisionEvidence.failClosed)+')':shadowDecisionEvidence?.changedIntent?'(Auswahl durch Modell verändert)':'(Control konfiguriert; letzte Auswahl unverändert)'):'(ohne Aktionswirkung)'}</div>
-      <div style="color:#9bd0e4">Inferenz: ${escapeHTML(neuralModelInfo().fingerprint||'kein Modell')} · Signale ${neuralEvidence.nonzero}/${neuralEvidence.calls} · Ranking ${neuralEvidence.actionNonzero}/${neuralEvidence.actionCalls}</div>
-      <div style="color:#9bd0e4">Deployment: Modell ${escapeHTML(deploymentInfo().model.champion.fingerprint||'—')} · Kandidat ${escapeHTML(deploymentInfo().model.candidate.fingerprint||'—')} · Skript ${escapeHTML(deploymentInfo().script.version)} · Engine ${escapeHTML(deploymentInfo().engine.commit||'—')}</div>
-      <div style="color:#9bd0e4">Neurales Modell: ${neuralModel?.schema===4?'Strategische Policy v4 (24 Signale)':neuralModel?.schema===3?'Strategische Policy v3 (16 Signale)':neuralModel?.schema===2?'Aktionsranking (max. ±14 Punkte)':neuralModel?.schema===1?'Slider (max. ±8 Punkte)':'nicht geladen'} · nur bei freigegebener Partie</div>
+      <details data-section="neural"${openFor('neural')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Neural model</summary>
+      <div>${b('shadowRankEnabled',opts.shadowRankEnabled?'Shadow ranking ON':'Shadow ranking OFF')}</div>
+      <div style="color:#9bd0e4">Shadow: ${shadowV6Model||shadowV5Model?((shadowV6Model?'Schema 6':'Schema 5')+(opts.shadowRankEnabled&&opts.candidateControlEnabled?' CONTROL ACTIVE (gain '+enHTML(shadowModelInfo().controlGain)+')':', loaded, comparison only')):'no shadow candidate loaded'} · ${enHTML(shadowDecisionEvidence?.wouldPrefer??'—')} ${(shadowV6Model||shadowV5Model)&&opts.shadowRankEnabled&&opts.candidateControlEnabled?(shadowDecisionEvidence?.failClosed?'(rule-based fallback: '+enHTML(shadowDecisionEvidence.failClosed)+')':shadowDecisionEvidence?.changedIntent?'(model changed the selected action)':'(control configured; last choice unchanged)'):'(no action effect)'}</div>
+      <div style="color:#9bd0e4">Inference: ${enHTML(neuralModelInfo().fingerprint||'kein Modell')} · signals ${neuralEvidence.nonzero}/${neuralEvidence.calls} · Ranking ${neuralEvidence.actionNonzero}/${neuralEvidence.actionCalls}</div>
+      <div style="color:#9bd0e4">Deployment: Modell ${enHTML(deploymentInfo().model.champion.fingerprint||'—')} · Kandidat ${enHTML(deploymentInfo().model.candidate.fingerprint||'—')} · Skript ${enHTML(deploymentInfo().script.version)} · Engine ${enHTML(deploymentInfo().engine.commit||'—')}</div>
+      <div style="color:#9bd0e4">Neural model: ${neuralModel?.schema===4?'Strategic policy v4 (24 signals)':neuralModel?.schema===3?'Strategic policy v3 (16 signals)':neuralModel?.schema===2?'Action ranking (max ±14 points)':neuralModel?.schema===1?'Slider (max ±8 points)':'not loaded'} · only in a permitted match</div>
       </details>
-      <details data-section="situation"${openFor('situation')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Lage &amp; Diplomatie</summary>
-      <div style="color:#a9efc9">Hauptfront: ${escapeHTML(warState.name)} · Krieg ${isWar()?'aktiv':'frei'} · ${escapeHTML(lastRecoveryReason||'bereit')}</div>
-      <div>${b('plan','Manuell: '+opts.plan)}<br>${b('buildStyle','Manueller Baufokus: '+opts.buildStyle)}</div>
-      <div style="color:#a9efc9">KI-Strategie: ${escapeHTML(strategic.mode)} · ${escapeHTML(strategic.reason)} · Bau: ${escapeHTML(effectiveBuildStyle())}</div>
-      <div style="color:#9bd0e4">Verteidigung: ${escapeHTML(defenseStatus)} · Rückzüge ${defenseStats.retreatsOrdered}/${defenseStats.retreatsObserved} beobachtet · unklar ${defenseStats.unknown} · unbestätigt ${defenseStats.unconfirmed}</div>
-      <div style="color:#9bd0e4">Spielmodus: ${escapeHTML(winStatus.mode)} · Siegfortschritt: ${winStatus.progress===null?'unbekannt':(winStatus.progress*100).toFixed(1)+'%'} · Siegschwelle: ${winStatus.threshold===null?'unbekannt':winStatus.threshold+'%'} · Zeit: ${winStatus.remaining===null?'ohne Timer':Math.round(winStatus.remaining)+'s'} · Doomsday: ${winStatus.doomsday?'JA':'NEIN'}</div>
-      <div style="color:#9bd0e4">Handel / 60s: Bahn ${incomeStatus.train===null?'unbekannt':Math.round(incomeStatus.train)} · Schiff ${incomeStatus.trade===null?'unbekannt':Math.round(incomeStatus.trade)} · ${escapeHTML(tradeStatus)} · geöffnet ${tradeStats.opened} / Embargos ${tradeStats.embargoed}</div>
-      <div style="color:#9bd0e4">Marine: ${escapeHTML(fleetStatus)}</div>
-      <div style="color:#9bd0e4">Nukes: ${escapeHTML(nukeStatus)} · bestätigt ${nukeShots} / Versuche ${nukeAttempts} / unbestätigt ${nukeUnconfirmed} · SAM-Schutz ${nuclearCache?.assets?.length - nuclearCache?.uncovered?.length||0}/${nuclearCache?.assets?.length||0}</div>
-      <div style="color:#9bd0e4">Allianzen: ${escapeHTML(diplomacyStatus)} · Bestätigt: ${diplomacyStats.accepted} angenommen, ${diplomacyStats.rejected} abgelehnt · ${diplomacyPending.size} ausstehend · ${diplomacyStats.offered} angeboten</div>
+      <details data-section="situation"${openFor('situation')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Situation &amp; diplomacy</summary>
+      <div style="color:#a9efc9">Main front: ${enHTML(warState.name)} · war ${isWar()?'aktiv':'frei'} · ${enHTML(lastRecoveryReason||'bereit')}</div>
+      <div>${b('plan','Manual: '+opts.plan)}<br>${b('buildStyle','Manual building focus: '+opts.buildStyle)}</div>
+      <div style="color:#a9efc9">AI strategy: ${enHTML(strategic.mode)} · ${enHTML(strategic.reason)} · Construction: ${enHTML(effectiveBuildStyle())}</div>
+      <div style="color:#9bd0e4">Defense: ${enHTML(defenseStatus)} · retreats ${defenseStats.retreatsOrdered}/${defenseStats.retreatsObserved} observed · unknown ${defenseStats.unknown} · unconfirmed ${defenseStats.unconfirmed}</div>
+      <div style="color:#9bd0e4">Game mode: ${enHTML(winStatus.mode)} · victory progress: ${winStatus.progress===null?'unknown':(winStatus.progress*100).toFixed(1)+'%'} · victory threshold: ${winStatus.threshold===null?'unknown':winStatus.threshold+'%'} · time: ${winStatus.remaining===null?'no timer':Math.round(winStatus.remaining)+'s'} · Doomsday: ${winStatus.doomsday?'YES':'NO'}</div>
+      <div style="color:#9bd0e4">Trade per 60s: rail ${incomeStatus.train===null?'unknown':Math.round(incomeStatus.train)} · ship ${incomeStatus.trade===null?'unknown':Math.round(incomeStatus.trade)} · ${enHTML(tradeStatus)} · opened ${tradeStats.opened} / Embargos ${tradeStats.embargoed}</div>
+      <div style="color:#9bd0e4">Navy: ${enHTML(fleetStatus)}</div>
+      <div style="color:#9bd0e4">Nukes: ${enHTML(nukeStatus)} · bestätigt ${nukeShots} / Versuche ${nukeAttempts} / unbestätigt ${nukeUnconfirmed} · SAM coverage ${nuclearCache?.assets?.length - nuclearCache?.uncovered?.length||0}/${nuclearCache?.assets?.length||0}</div>
+      <div style="color:#9bd0e4">Alliances: ${enHTML(diplomacyStatus)} · confirmed: ${diplomacyStats.accepted} accepted, ${diplomacyStats.rejected} rejected · ${diplomacyPending.size} pending · ${diplomacyStats.offered} offered</div>
       </details>
-      <details data-section="humanplan"${openFor('humanplan')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Gegneranalyse &amp; Operationen</summary>
-      <div>Operation: ${operation?escapeHTML(operation.type+' → '+operation.targetName+' · '+operation.spent+'/'+operation.budget+' Tr. · Abbruch: '+operation.abort):'Keine sichere Operation'}</div>
-      <div>Duo: ${duoPlan?escapeHTML(duoPlan.role+' · Ziel '+duoPlan.targetName+' · Partner-Einsatz '+duoPlan.partnerCommitted+' · Hilfebedarf '+(duoPlan.needHelp?'JA':'nein')):'Kein bestätigter Team-/Duo-Partner'}</div>
-      <div>Gegnerischer Sieg: ${victoryThreat?escapeHTML(victoryThreat.name+' · '+victoryThreat.progress.toFixed(1)+'% / '+victoryThreat.threshold+'%'+(victoryThreat.urgent?' · WARNUNG':'')):'Keine belegbare Schwelle / kein Gegner'}</div>
-      ${[...opponentProfiles.values()].slice(0,8).map(p=>'<div>'+escapeHTML(p.name+' · '+p.profile+' · '+Math.round(p.confidence*100)+'% Beobachtungssicherheit')+'</div>').join('')}
-      <div style="margin-top:5px"><b>Entscheidungs-Timeline</b>${decisionTimeline.slice(-8).reverse().map(d=>'<div style="padding:3px 0;border-top:1px solid #354d66">'+escapeHTML('Tick '+d.tick+' · '+d.why)+(d.alternatives.length?'<br><span style="color:#9bd0e4">'+escapeHTML(d.alternatives.join(' | '))+'</span>':'')+'</div>').join('')}</div>
+      <details data-section="humanplan"${openFor('humanplan')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Opponent analysis &amp; operations</summary>
+      <div>Operation: ${operation?enHTML(operation.type+' → '+operation.targetName+' · '+operation.spent+'/'+operation.budget+' Tr. · abort: '+operation.abort):'No safe operation'}</div>
+      <div>Duo: ${duoPlan?enHTML(duoPlan.role+' · target '+duoPlan.targetName+' · partner commitment '+duoPlan.partnerCommitted+' · needs help '+(duoPlan.needHelp?'YES':'no')):'No verified team/Duo partner'}</div>
+      <div>Opponent victory: ${victoryThreat?enHTML(victoryThreat.name+' · '+victoryThreat.progress.toFixed(1)+'% / '+victoryThreat.threshold+'%'+(victoryThreat.urgent?' · WARNING':'')):'No verifiable threshold / no opponent'}</div>
+      ${[...opponentProfiles.values()].slice(0,8).map(p=>'<div>'+enHTML(p.name+' · '+p.profile+' · '+Math.round(p.confidence*100)+'% observation confidence')+'</div>').join('')}
+      <div style="margin-top:5px"><b>Decision timeline</b>${decisionTimeline.slice(-8).reverse().map(d=>'<div style="padding:3px 0;border-top:1px solid #354d66">'+enHTML('Tick '+d.tick+' · '+d.why)+(d.alternatives.length?'<br><span style="color:#9bd0e4">'+enHTML(d.alternatives.join(' | '))+'</span>':'')+'</div>').join('')}</div>
       </details>
-      <details data-section="tuning"${openFor('tuning')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Feintuning</summary>
-      <div style="color:#a9efc9">Parameter: ${opts.fullAuto?'AUTONOM '+escapeHTML(autoTuning.mode)+' · '+escapeHTML(autoTuning.reason):'MANUELL'}</div>
-      <label>Aggressivität: ${setting('aggressive')}%${opts.fullAuto?' (Auto)':''}<input type="range" data-option="aggressive" min="40" max="100" value="${setting('aggressive')}" ${opts.fullAuto?'disabled':''} style="display:block;width:100%"></label>
+      <details data-section="tuning"${openFor('tuning')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Fine-tuning</summary>
+      <div style="color:#a9efc9">Parameters: ${opts.fullAuto?'AUTONOM '+enHTML(autoTuning.mode)+' · '+enHTML(autoTuning.reason):'MANUELL'}</div>
+      <label>Aggressiveness: ${setting('aggressive')}%${opts.fullAuto?' (Auto)':''}<input type="range" data-option="aggressive" min="40" max="100" value="${setting('aggressive')}" ${opts.fullAuto?'disabled':''} style="display:block;width:100%"></label>
       <label>Reserve: ${setting('reserve')}%${opts.fullAuto?' (Auto)':''}<input type="range" data-option="reserve" min="5" max="65" value="${setting('reserve')}" ${opts.fullAuto?'disabled':''} style="display:block;width:100%"></label>
-      <label>Aktionen/Min.: ${setting('actionsPerMinute')}${opts.fullAuto?' (Auto)':''}<input type="range" data-option="actionsPerMinute" min="15" max="120" value="${setting('actionsPerMinute')}" ${opts.fullAuto?'disabled':''} style="display:block;width:100%"></label>
-      <label>Zielprüfungen: ${setting('maxTargets')}${opts.fullAuto?' (Auto)':''}<input type="range" data-option="maxTargets" min="4" max="25" value="${setting('maxTargets')}" ${opts.fullAuto?'disabled':''} style="display:block;width:100%"></label>
+      <label>Actions/min: ${setting('actionsPerMinute')}${opts.fullAuto?' (Auto)':''}<input type="range" data-option="actionsPerMinute" min="15" max="120" value="${setting('actionsPerMinute')}" ${opts.fullAuto?'disabled':''} style="display:block;width:100%"></label>
+      <label>Target checks: ${setting('maxTargets')}${opts.fullAuto?' (Auto)':''}<input type="range" data-option="maxTargets" min="4" max="25" value="${setting('maxTargets')}" ${opts.fullAuto?'disabled':''} style="display:block;width:100%"></label>
       </details>
-      <details data-section="diagnostics"${openFor('diagnostics')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Diagnose &amp; Protokoll</summary>
-      <div>${b('evidenceMode',opts.evidenceMode?'🔎 Evidence AN':'🔎 Evidence AUS')}</div>
+      <details data-section="diagnostics"${openFor('diagnostics')} style="${sectionStyle}"><summary style="cursor:pointer;font-weight:bold;color:#83dcff">Diagnostics &amp; log</summary>
+      <div>${b('evidenceMode',opts.evidenceMode?'🔎 Evidence ON':'🔎 Evidence OFF')}</div>
       ${opts.evidenceMode?(()=>{
         const e=evidencePanelState(planningState,troopSnapshot,lastDecisionFrame,
           number(()=>game?.ticks?.(),-1),actionLedger,economyBudgetEvidence);
         const a=e.alternative;
-        return '<div style="color:#a9efc9">Verworfene Alternative: '+
-          escapeHTML(a?a.id+' · Nutzen '+a.utility+' · '+a.reason:'noch keine Rangliste')+'</div>'+
-          '<div style="color:#9bd0e4">Reservegrund: '+escapeHTML(e.reserveReason)+
-          ' · Worker-Alter: '+(e.workerAge===null?'unbekannt':e.workerAge+' Ticks')+
-          (e.workerStale?' (veraltet/unklar)':'')+'</div>'+
-          '<div style="color:#9bd0e4">Letzte Aktion: '+escapeHTML(e.actionId??'—')+
-          ' · Entscheidung: '+escapeHTML(e.decisionId??'—')+
-          ' · Wirkung: '+escapeHTML(e.effect)+' (nicht aus Intent ableiten)</div>'+
-          '<div style="color:#9bd0e4;font-size:10px">Nur Rangfolge und Beobachtung; keine zusätzliche Aktionsfreigabe.</div>';
+        return '<div style="color:#a9efc9">Rejected alternative: '+
+          enHTML(a?a.id+' · utility '+a.utility+' · '+a.reason:'noch none Rangliste')+'</div>'+
+          '<div style="color:#9bd0e4">Reserve reason: '+enHTML(e.reserveReason)+
+          ' · worker age: '+(e.workerAge===null?'unknown':e.workerAge+' Ticks')+
+          (e.workerStale?' (stale/uncertain)':'')+'</div>'+
+          '<div style="color:#9bd0e4">Last action: '+enHTML(e.actionId??'—')+
+          ' · decision: '+enHTML(e.decisionId??'—')+
+          ' · effect: '+enHTML(e.effect)+' (cannot infer from intent)</div>'+
+          '<div style="color:#9bd0e4;font-size:10px">Ranking and observation only; no additional authorization to act.</div>';
       })():''}
       ${(()=>{const e=evidencePanelState(planningState,troopSnapshot,lastDecisionFrame,
         number(()=>game?.ticks?.(),-1),actionLedger,economyBudgetEvidence),q=e.budget;
-        return '<div style="color:#9bd0e4">Budget-Zeile: '+(q?
-          escapeHTML('Cap '+(q.capUse===null?'?':(q.capUse*100).toFixed(0)+'%')+
-            ' · City-Wunsch '+(q.cityWanted?'JA':'nein')+' ('+q.cityCount+')'+
-            ' · SAM '+(q.wantedSAM||0)+(q.nuclearThreat?' (Bedrohung)':'')+
-            ' · Hafen-Meilenstein '+(q.portMilestone?'JA':'nein')+
-            ' · Gold-Floor '+q.goldFloor+' (Basis, bauabhängig)'+
-            ' · SAM-Quote '+(q.samQuote??'?')+' · Port-Quote '+(q.portQuote??'?')):
-            'noch kein frischer Wirtschaftssnapshot')+'</div>';
+        return '<div style="color:#9bd0e4">Budget breakdown: '+(q?
+          enHTML('Cap '+(q.capUse===null?'?':(q.capUse*100).toFixed(0)+'%')+
+            ' · City desired '+(q.cityWanted?'YES':'no')+' ('+q.cityCount+')'+
+            ' · SAM '+(q.wantedSAM||0)+(q.nuclearThreat?' (threat)':'')+
+            ' · Port milestone '+(q.portMilestone?'YES':'no')+
+            ' · Gold-Floor '+q.goldFloor+' (baseline, depends on construction)'+
+            ' · SAM quote '+(q.samQuote??'?')+' · Port quote '+(q.portQuote??'?')):
+            'no recent economy snapshot')+'</div>';
       })()}
       
-      <div style="color:#9bd0e4">Bau: ${escapeHTML(economicStatus)} · Sparziel: ${escapeHTML(investmentStatus)} · Prioritäten: ${escapeHTML(economicLastPlan)}</div>
-      <div style="color:#9bd0e4">Tempo: Front ${runtime.borderMs}ms · Kampf ${runtime.combatMs}ms · Bau ${runtime.economyMs}ms · Worker-Checks ${runtime.attackProbes}/${runtime.buildProbes}</div>
-      <div style="color:${intentHealth().critical.length?'#ff8181':intentHealth().missing.length?'#ffd480':'#a9efc9'}">Intents: ${intentHealth().eventBus?intentHealth().found+'/'+intentHealth().total:'EventBus ausstehend'} · ${intentHealth().missing.length?'Fehlen: '+escapeHTML(intentHealth().missing.join(', ')):'alle erkannt'}${intentHealth().critical.length?' · KERNFUNKTION EINGESCHRÄNKT':''}</div>
-      <div style="color:#9bd0e4">Aktionsbudget: ${actions.length}/${setting('actionsPerMinute')} · Gesendet: ${totalSent} · Fehlgeschlagen: ${totalFailed} · Fehler: ${errors}</div>
-      <div style="color:#9bd0e4">Heim: ${Math.floor(troopSnapshot.home/10)} · Reserve: ${Math.floor(troopSnapshot.reserve/10)} · Laufende Angriffe: ${Math.floor(troopSnapshot.committed/10)} · Einkommen/Reserve: ${(troopSnapshot.ratio*100).toFixed(0)}% Kapazität</div>
-      <div style="color:#9bd0e4">Eingehend: ${Math.floor(troopSnapshot.incoming/10)} · Stärkster Grenznachbar: ${Math.floor(troopSnapshot.strongest/10)} · Ziel: ${escapeHTML(lastSelection||plan?.name||'Suche')} · ${borderCache?.length||0} Grenzfelder</div>
-      <div style="border-top:1px solid #527;margin-top:7px;padding-top:5px"><b>Letzte Entscheidungen</b>${recent.map(s=>`<div>• ${escapeHTML(s)}</div>`).join('')}</div>
-      <button data-key="export" style="border:1px solid #73acdd;border-radius:5px;background:#235078;color:white;padding:5px 7px;cursor:pointer">📄 Diagnose JSON</button>
+      <div style="color:#9bd0e4">Construction: ${enHTML(economicStatus)} · savings target: ${enHTML(investmentStatus)} · priorities: ${enHTML(economicLastPlan)}</div>
+      <div style="color:#9bd0e4">Runtime: front ${runtime.borderMs}ms · combat ${runtime.combatMs}ms · construction ${runtime.economyMs}ms · worker checks ${runtime.attackProbes}/${runtime.buildProbes}</div>
+      <div style="color:${intentHealth().critical.length?'#ff8181':intentHealth().missing.length?'#ffd480':'#a9efc9'}">Intents: ${intentHealth().eventBus?intentHealth().found+'/'+intentHealth().total:'EventBus pending'} · ${intentHealth().missing.length?'Missing: '+enHTML(intentHealth().missing.join(', ')):'all detected'}${intentHealth().critical.length?' · CORE FUNCTION DEGRADED':''}</div>
+      <div style="color:#9bd0e4">Action budget: ${actions.length}/${setting('actionsPerMinute')} · sent: ${totalSent} · failed: ${totalFailed} · errors: ${errors}</div>
+      <div style="color:#9bd0e4">Home: ${Math.floor(troopSnapshot.home/10)} · Reserve: ${Math.floor(troopSnapshot.reserve/10)} · ongoing attacks: ${Math.floor(troopSnapshot.committed/10)} · income/reserve: ${(troopSnapshot.ratio*100).toFixed(0)}% capacity</div>
+      <div style="color:#9bd0e4">Incoming: ${Math.floor(troopSnapshot.incoming/10)} · strongest border neighbor: ${Math.floor(troopSnapshot.strongest/10)} · Ziel: ${enHTML(lastSelection||plan?.name||'Searching')} · ${borderCache?.length||0} border tiles</div>
+      <div style="border-top:1px solid #527;margin-top:7px;padding-top:5px"><b>Recent decisions</b>${recent.map(s=>`<div>• ${enHTML(s)}</div>`).join('')}</div>
+      <button data-key="export" style="border:1px solid #73acdd;border-radius:5px;background:#235078;color:white;padding:5px 7px;cursor:pointer">📄 Export diagnostic JSON</button>
       </details>
-      <div style="color:#97a8be;font-size:10px;margin-top:8px">Singleplayer, Public und Private freigegeben · Replays gesperrt · Autostart pro Partie · Pause bis zum Spielwechsel · Alt+Shift+P Start/Pause · Alt+Shift+X NOT-AUS (Autostart AUS).<br>Bei parallelem Spawn Advisor: Auto-Spawn, Smart Attack und Auto-Accept Alliances dort ausschalten.</div>`;
+      <div style="color:#97a8be;font-size:10px;margin-top:8px">Single-player, public and private matches supported · replays disabled · one auto-start per match · pause until match change · Alt+Shift+P start/pause · Alt+Shift+X emergency stop (auto-start OFF).<br>When running Spawn Advisor, disable its auto-spawn, smart attack and auto-accept alliances.</div>`;
   }
   document.addEventListener('keydown',e=>{
     if(!e.altKey||!e.shiftKey||!['p','x'].includes(e.key.toLowerCase())||e.repeat||e.target?.isContentEditable||
       /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName||''))return;
     e.preventDefault();
     if(e.key.toLowerCase()==='x'){
-      opts.enabled=false;opts.autoStart=false;autoStartGame=game;generation++;log('NOT-AUS über Hotkey · Autostart AUS');
+      opts.enabled=false;opts.autoStart=false;autoStartGame=game;generation++;log('Emergency stop by hotkey · auto-start OFF');
     }else if(connected()){
       opts.enabled=!opts.enabled;autoStartGame=game;generation++;log(opts.enabled?'BOT START':'BOT PAUSE');
       if(opts.enabled)reportIntents(true);
-    } else status='Bot nur in laufender Singleplayer-, Public- oder Private-Partie verfügbar';
+    } else status='Bot available only in an active single-player, public or private match';
     persist();lastPaint=0;paint();
   });
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',paint,{once:true});
@@ -8921,11 +8923,11 @@ function predict(model,input){
   const economyInterval=setInterval(economyStep,750);
   const diplomacyInterval=setInterval(diplomacyTick,950);
   const tradeInterval=setInterval(()=>{tradeTick().catch(e=>{
-    tradeStatus='Handel: '+String(e?.message||e).slice(0,75);
+    tradeStatus='Trade: '+String(e?.message||e).slice(0,75);
   });},1250);
   const nukeInterval=setInterval(nukeStep,1100);
   const duoInterval=setInterval(()=>{duoPublish().catch(e=>{
-    duoLocal.status='Relay-Fehler: '+String(e?.message||e).slice(0,55);
+    duoLocal.status='Relay error: '+String(e?.message||e).slice(0,55);
   });},950);
   window.addEventListener('beforeunload',()=>{clearInterval(interval);clearInterval(economyInterval);clearInterval(diplomacyInterval);clearInterval(tradeInterval);clearInterval(nukeInterval);clearInterval(duoInterval);clearInterval(donationInterval);});
   if(benchmark){
@@ -8952,10 +8954,10 @@ function predict(model,input){
         Object.assign(opts,settings);if(opts.fullAuto)opts.autoStrategy=true;
         applyArchetypeOptions();
         autoTuning.tick=-Infinity;opts.enabled=true;autoStartGame=game;generation++;
-        telemetry('benchmark_start','Lokaler Testlauf gestartet',{settings});
+        telemetry('benchmark_start','Local benchmark started',{settings});
         reportIntents(true);
       },
-      stop:()=>{telemetry('benchmark_stop','Lokaler Testlauf gestoppt');opts.enabled=false;autoStartGame=game;generation++;},
+      stop:()=>{telemetry('benchmark_stop','Local benchmark stopped');opts.enabled=false;autoStartGame=game;generation++;},
       // Step 3: benchmark-only per-decision frame for real training capture.
       planningFrame:()=>planningFrame(),
       // §28 schema-7 branch funnel (aggregate + last decision) for the
