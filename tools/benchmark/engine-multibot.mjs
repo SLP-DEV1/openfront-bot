@@ -10,7 +10,7 @@ const localRequire=createRequire(import.meta.url);
 const relay=localRequire('../duo-relay.cjs');
 const {aggregateRecordings}=localRequire('./multibot-recording.cjs');
 const visibleTrajectory=localRequire('./trajectory.cjs');
-const {winnerOutcome}=localRequire('./winner-outcome.cjs');
+const {winnerOutcome,applyEngineOutcome}=localRequire('./winner-outcome.cjs');
 import policyModel from '../../trainer/policy.cjs';
 import actionModel from '../../trainer/action-policy.cjs';
 import strategicModel from '../../trainer/strategic-policy.cjs';
@@ -281,13 +281,9 @@ finally{
     scriptedStats};
   report.recording={...report.recording,
     ...aggregateRecordings(reports,recordsCount),streamFile:'events.jsonl'};
-  if(me?.isAlive?.()===false&&instances[0].spawned)
-    report.gameEnd={outcome:'defeat',source:'engine-elimination',
-      tick:finalTick,land:me?.numTilesOwned()??0};
-  if(observedWinner){
-    report.botReportedGameEnd=report.gameEnd;
-    report.gameEnd={outcome:winnerOutcome(observedWinner.winner,me),source:'engine-WinUpdate',tick:finalTick,land:me?.numTilesOwned()??0};
-  }
+  applyEngineOutcome(report,{hasWinUpdate:!!observedWinner,
+    winner:observedWinner?.winner,player:me,tick:finalTick,
+    land:me?.numTilesOwned()??0,spawned:instances[0].spawned});
   report.engineWinner=observedWinner?.winner??null;
   if(visibleSamples.length)report.trajectory=visibleTrajectory.trajectory(visibleSamples);
   report.finalState={tick:finalTick,land:me?.numTilesOwned()??0,alive:me?.isAlive()??null,gold:String(me?.gold()??0),

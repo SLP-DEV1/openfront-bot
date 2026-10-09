@@ -6,30 +6,85 @@ on:
     paths:
       - 'tools/benchmark/engine-layout.cjs'
       - 'tools/benchmark/engine-match.mjs'
+      - 'tools/benchmark/engine-multibot.mjs'
       - 'tools/benchmark/engine-capacity-smoke.mjs'
+      - 'tools/benchmark/winner-outcome.cjs'
+      - 'tools/benchmark/verify-upstream-run.cjs'
+      - 'tests/upstream-smoke-regression.cjs'
+      - 'OpenFront_Solo_AggroBot.user.js'
+      - '.github/workflows/upstream-compat.yml'
+  pull_request:
+    paths:
+      - 'tools/benchmark/engine-layout.cjs'
+      - 'tools/benchmark/engine-match.mjs'
+      - 'tools/benchmark/engine-multibot.mjs'
+      - 'tools/benchmark/engine-capacity-smoke.mjs'
+      - 'tools/benchmark/winner-outcome.cjs'
+      - 'tools/benchmark/verify-upstream-run.cjs'
+      - 'tests/upstream-smoke-regression.cjs'
+      - 'OpenFront_Solo_AggroBot.user.js'
       - '.github/workflows/upstream-compat.yml'
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   upstream:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
+    env:
+      UPSTREAM_SHA: c8dc34214e248c1877556d11011ebf3206bb186a
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Install current pinned official engine
+      - name: Validate current-engine result gates
+        run: |
+          node tests/upstream-smoke-regression.cjs
+          node tests/winner-outcome-regression.cjs
+      - name: Install exact official engine revision
         run: |
           git clone --depth 1 https://github.com/openfrontio/OpenFrontIO.git ../OpenFrontIO
-          git -C ../OpenFrontIO fetch --depth 1 origin c8dc34214e248c1877556d11011ebf3206bb186a
-          git -C ../OpenFrontIO checkout --detach c8dc34214e248c1877556d11011ebf3206bb186a
+          git -C ../OpenFrontIO fetch --depth 1 origin "$UPSTREAM_SHA"
+          git -C ../OpenFrontIO checkout --detach "$UPSTREAM_SHA"
           cd ../OpenFrontIO
           npm install --global npm@12.1.0
           npm ci
-      - name: Test current official Config
+      - name: Test official Config troop capacity
         run: |
-          node tools/benchmark/engine-capacity-smoke.mjs --engine ../OpenFrontIO --engineCommit c8dc34214e248c1877556d11011ebf3206bb186a
-      - name: Run current engine small match
+          node tools/benchmark/engine-capacity-smoke.mjs --engine ../OpenFrontIO --engineCommit "$UPSTREAM_SHA"
+      - name: Run current-engine Impossible match with authoritative recording checks
         run: |
-          node tools/benchmark/engine-match.mjs --engine ../OpenFrontIO --engineCommit c8dc34214e248c1877556d11011ebf3206bb186a --ticks 120 --out ${RUNNER_TEMP}/aggrobot-upstream-smoke
+          node tools/benchmark/engine-match.mjs \
+            --engine ../OpenFrontIO --engineCommit "$UPSTREAM_SHA" \
+            --map World --size Compact --difficulty Impossible \
+            --bots 0 --nations 2 --seed upstream-impossible-001 \
+            --ticks 1600 --out ${{ runner.temp }}/aggrobot-upstream-single
+          node tools/benchmark/verify-upstream-run.cjs \
+            ${{ runner.temp }}/aggrobot-upstream-single/match.json \
+            "$UPSTREAM_SHA" OpenFront_Solo_AggroBot.user.js 1
+      - name: Run current-engine two-browser-bot FFA match
+        run: |
+          printf '%s\n' '[{"bot":"OpenFront_Solo_AggroBot.user.js","profile":"autonomous"},{"bot":"OpenFront_Solo_AggroBot.user.js","profile":"autonomous"}]' > ${{ runner.temp }}/upstream-lineup.json
+          node tools/benchmark/engine-multibot.mjs \
+            --engine ../OpenFrontIO --engineCommit "$UPSTREAM_SHA" \
+            --lineup ${{ runner.temp }}/upstream-lineup.json \
+            --map World --size Compact --difficulty Medium \
+            --gameType Private --gameMode FFA --bots 0 --nations 0 \
+            --seed upstream-multibot-001 --ticks 1400 \
+            --out ${{ runner.temp }}/aggrobot-upstream-multi
+          node tools/benchmark/verify-upstream-run.cjs \
+            ${{ runner.temp }}/aggrobot-upstream-multi/match.json \
+            "$UPSTREAM_SHA" OpenFront_Solo_AggroBot.user.js 2
+      - name: Preserve engine-provenance artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-engine-smoke-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/aggrobot-upstream-single/
+            ${{ runner.temp }}/aggrobot-upstream-multi/
+          if-no-files-found: ignore
+          retention-days: 7

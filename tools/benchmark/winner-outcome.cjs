@@ -1,7 +1,8 @@
 'use strict';
 
-// Winner is ['player', clientID] or ['team', teamID], not a list of winners.
-// Resolve team membership from the actual player view, never lineup indices.
+// The userscript's local game-end detection is diagnostic, not authoritative.
+// Only an official engine WinUpdate or confirmed player elimination may mark a
+// match as complete. This prevents tick-limited smokes from fabricating wins.
 function winnerOutcome(winner,player){
   if(winner==null)return 'incomplete';
   if(!Array.isArray(winner)||winner.length!==2||typeof winner[1]!=='string')
@@ -19,4 +20,20 @@ function winnerOutcome(winner,player){
   return 'unknown';
 }
 
-module.exports={winnerOutcome};
+function applyEngineOutcome(report,{hasWinUpdate=false,winner=null,player=null,
+  tick,land=0,spawned=false}){
+  if(report.gameEnd!==undefined){
+    report.botReportedGameEnd=report.gameEnd;
+    delete report.gameEnd;
+  }
+  if(hasWinUpdate){
+    report.gameEnd={outcome:winnerOutcome(winner,player),
+      source:'engine-WinUpdate',tick,land};
+  }else if(spawned&&player?.isAlive?.()===false){
+    report.gameEnd={outcome:'defeat',source:'engine-elimination',
+      tick,land,reason:'Player eliminated after confirmed spawn'};
+  }
+  return report;
+}
+
+module.exports={winnerOutcome,applyEngineOutcome};

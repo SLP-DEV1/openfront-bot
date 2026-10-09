@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import {createRequire} from 'node:module';
 const localRequire=createRequire(import.meta.url);
 const visibleTrajectory=localRequire('./trajectory.cjs');
+const {applyEngineOutcome}=localRequire('./winner-outcome.cjs');
 import {pathToFileURL} from 'node:url';
 import common from './common.cjs';
 import engineLayout from './engine-layout.cjs';
@@ -290,13 +291,9 @@ finally{
   report.run={termination,tick:finalTick,spawned,emitted,failure,recordCount:recordsCount,
     scriptedStats};
   report.recording={...report.recording,streamFile:'events.jsonl',streamCount:recordsCount,complete:recordsCount===report.recording.total&&report.recording.streamErrors===0};
-  if(termination==='eliminated')report.gameEnd={outcome:'defeat',source:'engine-elimination',tick:finalTick,land:me?.numTilesOwned()??0,reason:'Player eliminated after confirmed spawn'};
-  if(observedWinner){
-    const winner=observedWinner.winner;
-    const ids=Array.isArray(winner)?winner.slice(winner[0]==='player'?1:2):[];
-    report.botReportedGameEnd=report.gameEnd;
-    report.gameEnd={outcome:winner==null?'incomplete':ids.includes(me?.clientID())?'victory':'defeat',source:'engine-WinUpdate',tick:finalTick,land:me?.numTilesOwned()??0};
-  }
+  applyEngineOutcome(report,{hasWinUpdate:!!observedWinner,
+    winner:observedWinner?.winner,player:me,tick:finalTick,
+    land:me?.numTilesOwned()??0,spawned});
   report.engineWinner=observedWinner?.winner??null;
   if(planningFrames.length)report.planningFrames=planningFrames;
   if(visibleSamples.length)report.trajectory=visibleTrajectory.trajectory(visibleSamples);
