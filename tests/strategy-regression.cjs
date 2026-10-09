@@ -1748,7 +1748,10 @@ function boot(benchmarkOptions={}) {
   });
   await check('issue #9 current README installs maintained script, legacy notes archived', () => {
     const readme=fs.readFileSync(path.join(__dirname,'..','README.md'),'utf8');
-    assert.match(readme,/releases\/download\/v1\.21\.5\/OpenFront_Solo_AggroBot\.user\.js/);
+    const version=source.match(/^\/\/ @version\s+(\d+\.\d+\.\d+)\s*$/m)?.[1];
+    assert(version,'userscript version must be defined');
+    assert(readme.includes('releases/download/v'+version+'/OpenFront_Solo_AggroBot.user.js'),
+      'README release download must match installed userscript version');
     assert.doesNotMatch(readme,/\]\(\.\/OpenFront_Solo_AggroBot_1\.9\.0\.js\)/);
     assert.doesNotMatch(readme,/1\.9\.0\.js.{0,90}bleibt als/);
     assert.equal(fs.existsSync(path.join(__dirname,'..','docs','README_HISTORY.md')),false,'obsolete documentation removed');
