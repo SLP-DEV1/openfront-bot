@@ -255,7 +255,7 @@ Die Umstellung erfolgt in kleinen Schritten hinter experimentellen Schaltern. Zu
 - Archivierte Bot-Versionen und unterschiedliche vollständige Strategien in einer Liga behalten: früher Druck, defensiver Wirtschaftsaufbau, koordinierte Mehrfrontangriffe, opportunistischer Gegenangriff, Marine und Technik.
 - Schwierige Teilzustände gesondert trainieren: Ausbruch aus Einkesselung, Gebäude nach Verlust ersetzen, am Kapazitätslimit reagieren, zeitversetzte Angriffe, Rückzug und Nachschub.
 - Menschliche Replays mit genauer Engine-Version und allen nötigen Startdaten rekonstruieren, soweit möglich. Nur aus dem zum Entscheidungszeitpunkt sichtbaren Zustand lernen. Reine Intent-Listen ohne rekonstruierten Zustand reichen nicht für zuverlässige Zustands-/Aktionspaare.
-- Mehrere gute Spieler sowie Siege und Niederlagen berücksichtigen. Das vorhandene ProfessorSployer-Replay ist wertvolle Anregung, aber ein einzelnes positives Beispiel.
+- Mehrere gute Spieler sowie Siege und Niederlagen berücksichtigen. Das vorhandene an anonymized replay participant-Replay ist wertvolle Anregung, aber ein einzelnes positives Beispiel.
 
 **Dann das Modell verändern**
 
@@ -335,8 +335,8 @@ Die folgenden Aufwände sind grobe Größenordnungen für fokussierte Entwicklun
 - [Geprüfter GitHub-Stand](https://github.com/SLP-DEV1/openfront-bot/commit/10e81ee).
 - Hauptskript-Funktionen und Zeilen beziehen sich auf diesen Stand; spätere Commits können die Positionen ändern.
 - `docs/COMPETITIVE_PLAN_EVIDENCE_2026-09-22.json`: verdichtete lokale Diagnosewerte, Match-/Session-Zuordnung, Snapshots, Bauereignisse und Angriffsblockaden.
-- Lokale Originale in `C:/Users/SPK/Downloads`: `OpenFront_AggroBot_1.20.2_Diagnose*.json` und `OpenFront_AggroBot_1.20.5_Diagnose*.json`.
+- Lokale Originale in `%USERPROFILE%/Downloads`: `OpenFront_AggroBot_1.20.2_Diagnose*.json` und `OpenFront_AggroBot_1.20.5_Diagnose*.json`.
 - `docs/training-analysis-20260921/holdout/holdout-finalD.json` und `docs/training-analysis-neural-v2/evaluation-summary.json`: ältere Vergleichsergebnisse; keine gemeinsame Statistik mit den neuen Live-Exporten.
-- `docs/replays/professor-sployer-cR8SRtEEcR.md`: vorhandene, ausdrücklich begrenzte Replay-Auswertung.
+- `docs/replays/example-duo-replay.md`: vorhandene, ausdrücklich begrenzte Replay-Auswertung.
 
 **Gesamturteil:** Eine erhebliche Verbesserung ist technisch plausibel, weil mehrere konkrete Engpässe identifiziert sind. Zuerst müssen Kapazitätsplanung, wirtschaftlicher Nutzen, abgestimmte Einsatzentscheidungen und realistische Tests stimmen. Ob daraus eine belastbare Chance gegen sehr gute menschliche Gegner entsteht, wird anschließend an vollständigen, unabhängigen Multiplayer-Partien gemessen.

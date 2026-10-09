@@ -6,7 +6,7 @@ Stand: 20.09.2026. Grundlage ist der lokale, bereits veränderte Arbeitsstand vo
 
 Die Befunde unten sind durch Lesen des Codes belegt. Die Auswirkungen auf menschliche Gegner sind Hypothesen, die gezielt geprüft werden müssen. Es wurde für diese Prüfung kein Match gestartet, kein Spiel bedient und keine neue Testserie ausgeführt.
 
-Der vorliegende Export `C:/Users/SPK/Downloads/OpenFront_AggroBot_1.15.0_Diagnose.json` stammt aus Singleplayer/Medium, erstellt am 20.09.2026 um 14:13:18 MESZ, Zwischenstand Tick 3651. Er enthält kein `gameEnd`. Er belegt 14 `build_stalled`, 13 `build_confirmed`, vier bestätigte Transporte, eine bestätigte Ankunft und drei ungeklärte Transportausgänge. Das sind Hinweise für Messung und Diagnose; weder sind drei versenkte Transporte bewiesen, noch ist damit ein Fehler von Version 1.18.0 nachgewiesen. Die README beschreibt ältere Public-Matches, ist aber bei der aktuellen Versionsangabe noch auf 1.15.0.
+Der vorliegende Export `%USERPROFILE%/Downloads/OpenFront_AggroBot_1.15.0_Diagnose.json` stammt aus Singleplayer/Medium, erstellt am 20.09.2026 um 14:13:18 MESZ, Zwischenstand Tick 3651. Er enthält kein `gameEnd`. Er belegt 14 `build_stalled`, 13 `build_confirmed`, vier bestätigte Transporte, eine bestätigte Ankunft und drei ungeklärte Transportausgänge. Das sind Hinweise für Messung und Diagnose; weder sind drei versenkte Transporte bewiesen, noch ist damit ein Fehler von Version 1.18.0 nachgewiesen. Die README beschreibt ältere Public-Matches, ist aber bei der aktuellen Versionsangabe noch auf 1.15.0.
 
 ## Vorhandene Stärken erhalten
 

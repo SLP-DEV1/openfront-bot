@@ -62,7 +62,7 @@ Matchdaten. Ein hoeherer Reward allein erteilt keine Freigabe.
 Alternativ erst die Groesse pruefen (startet **kein** Match):
 
 ```powershell
-cd C:\Users\SPK\Desktop\openfront
+cd C:\path\to\openfront
 node trainer/train.mjs --dryRun true --generations 3 --population 4 --parallel 4 --trainSeeds 2 --evalSeeds 4 --nations 1,4
 ```
 

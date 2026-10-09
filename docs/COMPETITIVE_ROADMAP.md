@@ -151,7 +151,7 @@ Multi-Bot-Läufe nötig.**
 - **Tests bestanden:** `replay-events`, `replay-split`, `replay-curriculum`,
   `replay-visible-state`, `replay-cli` (lokal grün).
 - **BLOCKER (Daten):** aktuell genau **ein** menschliches Replay
-  (ProfessorSployer `cR8SRtEEcR`). Mehrere Spieler mit Siegen **und**
+  (an anonymized replay participant `[redacted replay ID]`). Mehrere Spieler mit Siegen **und**
   Niederlagen sind noch zu sammeln. „Menschliches Verhalten gelernt" wird
   erst ab dieser Datengrundlage behauptet. Inventar + Policy:
   [docs/replays/README.md](replays/README.md).

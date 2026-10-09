@@ -15,7 +15,7 @@ kein Ersatz für Worker-Aktionsprüfung, Eigentumskontrolle oder Heimreserve.
    `OpenFront_Solo_AggroBot.user.js` oder zweimal
    `OpenFront_AggroBot_Impossible_Run3.user.js` mit eingebettetem Modell.
 3. In **beiden Panels** `🤝 Duo-Modus` öffnen. Beide tragen **denselben**
-   Raumcode ein, z. B. `KITSU_DUO_01` (6–64 Zeichen; Buchstaben, Zahlen,
+   Raumcode ein, z. B. `EXAMPLE_DUO_01` (6–64 Zeichen; Buchstaben, Zahlen,
    Minus, Unterstrich). Optional den Partnernamen als reine Anzeigehilfe
    eintragen. **Lokales Duo AN** und den Bot einschalten bzw. Auto-Start verwenden.
    Die PlayerID wird nicht mehr eingetragen.

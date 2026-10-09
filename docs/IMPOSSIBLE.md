@@ -89,7 +89,7 @@ Commit bestätigt werden, bevor eine volle Vergleichsmatrix repräsentativ ist.
 ### Lokale Vorbereitung (PowerShell, Node.js 24 und Git)
 
 ```powershell
-cd C:\Users\SPK\Desktop\openfront
+cd C:\path\to\openfront
 git pull --ff-only
 git clone https://github.com/openfrontio/OpenFrontIO.git ..\OpenFrontIO
 git -C ..\OpenFrontIO checkout bb8af015b515b3b717bd4d901074c5f4c16641cb

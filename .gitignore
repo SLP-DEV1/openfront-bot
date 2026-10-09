@@ -6,4 +6,44 @@ __pycache__/
 *.pyc
 trainer/champion.json
 OpenFront_Solo_AggroBot_Neural.user.js
-.qwen
+.qwen/
+.vscode/
+.idea/
+
+# Local secrets and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.kdbx
+id_rsa
+id_ed25519
+credentials.json
+secrets.json
+*credentials.local.*
+*secrets.local.*
+
+# Personal diagnostics, exports, and local-only state
+diagnostics/
+private/
+local-data/
+*.local
+*.sqlite
+*.sqlite3
+*.db
+*_Diagnose*.json
+*_Diagnose*.jsonl
+*_Diagnose*.zip
+*diagnostic*.zip
+*diagnostics*.zip
+*.har
+
+# Generated/raw training output (existing tracked artifacts need explicit removal)
+trainer/**/events.jsonl
+trainer/**/warnings.log
+trainer/**/dataset.json
+tools/benchmark/**/warnings.log
+*.log

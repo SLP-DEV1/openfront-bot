@@ -1,6 +1,6 @@
-# ProfessorSployer – OpenFront Italia Duos (cR8SRtEEcR)
+# Player A – OpenFront Italia Duos ([redacted replay ID])
 
-**Datengrundlage:** Vom Nutzer bereitgestelltes offizielles Replay-JSON, `gameID=cR8SRtEEcR`, `clientID=nzSEztci`; 6.071 Spielticks, circa 610 Sekunden, Public/Team/Duos/Italia/Medium. Sieger laut Replay: Team 1 mit ProfessorSployer und DARKEYRAS.
+**Datengrundlage:** Vom Nutzer bereitgestelltes offizielles Replay-JSON, `gameID=[redacted replay ID]`, `clientID=[redacted client ID]`; 6.071 Spielticks, circa 610 Sekunden, Public/Team/Duos/Italia/Medium. Sieger laut Replay: Team 1 mit Player A und Player B.
 
 ## Beobachtete, explizit aufgezeichnete Aktionen
 
@@ -9,10 +9,10 @@
 | 207–439 | Zwölf neutrale Landangriffe; erste gegnergerichtete Attacke Tick 502. |
 | 502–1393 | Fortlaufende Landangriffe vor und während der frühen Wirtschaft: City-Befehle 834/992, Factory 1364, weitere City 1441. |
 | 1714 | Erster Defense Post zwischen zwei Offensivphasen. |
-| 1797/1855/1945/1966 | Vier Attacken auf **dieselbe** Ziel-ID `lqbedai5` statt nur einer Einzelwelle. Weitere wiederholte Ziel-IDs: `zgx9yqoa` (2550/2573/2795), `gsmgxkpy` (3114/3180/3487). |
+| 1797/1855/1945/1966 | Vier Attacken auf **dieselbe** Ziel-ID `target-A` statt nur einer Einzelwelle. Weitere wiederholte Ziel-IDs: `target-B` (2550/2573/2795), `target-C` (3114/3180/3487). |
 | 1916/1997/2251 | Erste drei Transportbefehle; erster eigener Port-Baubefehl erst Tick 2330. Das Replay beweist nicht, wie die vorherigen Transporte ermöglicht wurden (z. B. bereits kontrollierter/capturierter Hafen). |
 | 3029, 3702, 3873, 3926, 3974 | Weiterer gestaffelter und später konzentrierter Defense-Post-Ausbau. |
-| 3514/4266/4945 | Drei Goldspenden an Empfänger-ID `38vnn3zf`: 4.761.763 / 5.820.127 / 4.155.744. |
+| 3514/4266/4945 | Drei Goldspenden an Empfänger-ID `recipient-A`: 4.761.763 / 5.820.127 / 4.155.744. |
 | 4488/4614 | Zwei Truppenspenden an dieselbe Empfänger-ID: 801.474 / 1.280.830. |
 | 4732/5361/5944 | Drei Wasserstoffbomben-Baubefehle (nicht automatisch Beweis eines Treffers). |
 | 5995 | Allianzbruch vor den letzten Angriffsbefehlen. **Kein** Grund, automatisch Bündnisse zu brechen. |
@@ -23,7 +23,7 @@ Gesamt in den Intents dieses Client: **67 Angriffe** (12 neutral, 55 Spielerziel
 
 - Das Wiederholen desselben Angriffsziels **kann** das Ausnutzen einer entstandenen Lücke sein. Der Replay-Intent allein zeigt keine zuverlässigen Heimtruppen, Reserven, Bauzeiten, tatsächliche erfolgreiche Landung oder Entscheidungsgründe. Daher **keine pauschale Aggressivitätserhöhung**.
 - Frühe Landexpansion und ein anschließender Mix aus Land- und Seerouten sind beobachtbar, aber bestehende AggroBot-Planer besitzen dafür bereits Regeln. Der Zeitpunkt 1916 ist **keine** allgemeingültige Hafen-Frist.
-- Hohe Spenden könnten das Duo stärken; der Empfänger `38vnn3zf` ist ohne sichere interne Spieler-ID-Zuordnung **nicht als DARKEYRAS nachgewiesen**. Spenden dürfen nur an im *aktuellen Spiel* verifiziert befreundete Spieler gehen.
+- Hohe Spenden könnten das Duo stärken; der Empfänger `recipient-A` ist ohne sichere interne Spieler-ID-Zuordnung **nicht als Player B nachgewiesen**. Spenden dürfen nur an im *aktuellen Spiel* verifiziert befreundete Spieler gehen.
 - Die Datei liefert **keine vollständigen pro Tick aufgezeichneten Weltzustände für Imitation Learning**. Ein einzelner Siegerlauf belegt keinen kausalen Vorteil eines konkreten Parameterwertes.
 
 ## In AggroBot 1.20.7 übernommen

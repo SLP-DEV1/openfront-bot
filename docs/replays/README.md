@@ -8,10 +8,10 @@ behauptet wird.
 
 | Replay | Spieler | Modus | Sieg/Niederlage | Provenienz | Status |
 | --- | --- | --- | --- | --- | --- |
-| `cR8SRtEEcR` | ProfessorSployer (+DARKEYRAS) | Italia Duos, Public/Team | Sieg (Team 1) | `gameID=cR8SRtEEcR`, `clientID=nzSEztci` | einziger aktueller Datenpunkt → [Doku](./professor-sployer-cR8SRtEEcR.md) |
+| `[redacted replay ID]` | anonymized player (+teammate) | Italia Duos, Public/Team | Sieg (Team 1) | `gameID=[redacted replay ID]`, `clientID=[redacted client ID]` | einziger aktueller Datenpunkt → [Doku](./example-duo-replay.md) |
 
 **Erforderlich, aber noch fehlt:** mehrere Spieler **und** ein Mix aus
-Siegen UND Niederlagen. Das ProfessorSployer-Beispiel ist ein einzelner
+Siegen UND Niederlagen. Das anonymized player-Beispiel ist ein einzelner
 Siegerlauf und belegt keinen kausalen Vorteil eines Parameterwerts.
 
 ## Provenienz- und Nutzungsrecht-Regel
@@ -45,7 +45,7 @@ reproduzierbar abweisbar.
 ## Blocker (Daten)
 
 > **BLOCKER:** Es existiert genau **ein** menschliches Replay
-> (ProfessorSployer `cR8SRtEEcR`). Bevor mehrere Spieler mit Siegen **und**
+> (anonymized player `[redacted replay ID]`). Bevor mehrere Spieler mit Siegen **und**
 > Niederlagen mit Provenienz + Nutzungsrecht vorliegen, wird „menschliches
 > Verhalten gelernt“ **nicht** behauptet. Der Import- und Curriculums-Rahmen
 > (Gate, Tags, Split, Provenienz) ist bereit und getestet.

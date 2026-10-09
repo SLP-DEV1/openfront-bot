@@ -1,27 +1,46 @@
 # OpenFront Solo AggroBot
 
-**Version 1.21.2** · Tampermonkey-Autopilot für [OpenFront](https://openfront.io/) (Singleplayer, Public, Private).
-Der Bot steuert Spawn, Expansion, Wirtschaft, Marine, Verteidigung, Handel und Diplomatie mit Sicherheitsprüfungen vor ausgesendeten Befehlen. **Eine garantierte Impossible- oder echte Multiplayer-Siegquote ist nicht belegt.** Ein Engine-Smoke ersetzt keinen Mehrspieler-Langzeittest.
+An experimental **Tampermonkey userscript** for [OpenFront](https://openfront.io/) that automates gameplay decisions in single-player, public and private matches.
 
-## Installation und Update
+**Current bundled scripts: v1.21.5.** This is an independent community project and is not affiliated with or endorsed by OpenFront.
 
-1. Repository aktualisieren: `git pull --ff-only` im **sauberen** Arbeitsbaum; bei lokalen Änderungen erst sichern.
-2. Den **vollständigen Inhalt** von [OpenFront_Solo_AggroBot.user.js](./OpenFront_Solo_AggroBot.user.js) in Tampermonkey installieren bzw. ersetzen. Für den bestehenden, separat gebündelten Schema-4-Champion stattdessen [OpenFront_AggroBot_Impossible_Run3.user.js](./OpenFront_AggroBot_Impossible_Run3.user.js) installieren. **Nie beide zugleich aktivieren.**
-3. [openfront.io](https://openfront.io/) neu laden, Spielmodus öffnen. Auto-Start reagiert auf das spielbare Match und den EventBus; Replays bleiben gesperrt. Neben dem Spawn Advisor dessen Auto-Spawn, Smart Attack und Auto-Accept Alliances deaktivieren.
+## Features
 
-**Steuerung:** `Alt+Shift+P` pausiert/startet, `Alt+Shift+X` deaktiviert den Bot samt Auto-Start. Im Panel gibt es einen optionalen **Evidence-Mode** (verworfene Alternative, Reserve-Grund, Worker-Alter, letzte Aktions-IDs) und eine rein lesende **Budget-Zeile**. Der **Duo-Modus** benötigt den lokalen Relay-Prozess aus `Start_Live_Duo.bat`; Relay-Zusagen ersetzen keine im Spiel bestätigte Allianz und keine eigenen Reserve-/Legalitätsprüfungen.
+- Automated spawning, territorial expansion, economy, upgrades and defense.
+- Combat planning, naval operations, diplomacy, alliances and late-game strategy.
+- Configurable safety checks for legality, resource reserves and action budgets.
+- Optional local two-browser Duo coordination using a loopback relay.
+- Diagnostic event recording and a local, read-only match monitor.
+- Experimental neural strategy components and reproducible engine benchmarks.
 
-## Stand und Grenzen
+**Important:** Experimental policies and scripted engine benchmarks do not establish a reliable win rate against human players or on Impossible difficulty. A completed CI job does not mean the bot won a game.
 
-- **Run3** ist eine deterministische Ableitung desselben Solo-Quellcodes mit einem unveränderten Schema-4-Modell. Ein Schema-5-Kandidat wird **nicht** als Champion deployed: [trainer/shadow-deploy.mjs](trainer/shadow-deploy.mjs) erzeugt höchstens ein separates, standardmäßig inaktives Shadow-Script zur beobachtenden Auswertung.
-- **Diagnose v2** exportiert `summary.json`, `events.jsonl`, `snapshots.jsonl`, `duo.jsonl`. Fehlende/journalisierte Ereignisse oder unbeobachtete Wirkungen dürfen nicht als Erfolg interpretiert werden. [Diagnose-Anleitung](docs/DIAGNOSTIC_V2.md).
-- **Tests:** [Scenario-Pack + Evidence](docs/SCENARIO_PACK_EVIDENCE.md), [Benchmark-Hinweise](docs/BENCHMARKS.md). Gegner im scripted Harness sind deterministische Clients, **keine echten Menschen**. Ein Tick-Limit ist kein bestätigter Spielsieg.
-- **Replay:** [Visible-state CLI](docs/REPLAY_VISIBLE_CLI.md) akzeptiert nur vollständig gekennzeichnete, bereits aus GameView extrahierte Frames mit festem Engine-SHA. Roh-Replays werden nicht automatisch zu Spieler-Sichtzuständen hochgestuft.
-- **Entwicklung:** [laufende Roadmap](docs/COMPETITIVE_ROADMAP.md) · [Master-Issue #75](https://github.com/SLP-DEV1/openfront-bot/issues/75) · [Issue #121](https://github.com/SLP-DEV1/openfront-bot/issues/121). [Historische README vor Aufteilung](docs/README_1.21.1_ARCHIVE.md) und [Versionsarchiv](docs/README_HISTORY.md) sind **keine aktuellen Installationsanweisungen**.
+## Install
 
-## Entwickler-Checks
+1. Install a userscript manager such as [Tampermonkey](https://www.tampermonkey.net/).
+2. Choose **one** script:
+   - [OpenFront_Solo_AggroBot.user.js](./OpenFront_Solo_AggroBot.user.js) — standard bot.
+   - [OpenFront_AggroBot_Impossible_Run3.user.js](./OpenFront_AggroBot_Impossible_Run3.user.js) — experimental version with a bundled, fixed Schema 4 model.
+3. Copy the **entire contents** of your chosen file into a new Tampermonkey script, save, and open [openfront.io](https://openfront.io/).
+4. Only enable one AggroBot variant at a time. If you also use Spawn Advisor, disable its overlapping automatic controls.
 
-Node.js 24; vollständige Prüfung über [GitHub Actions](https://github.com/SLP-DEV1/openfront-bot/actions):
+The bot waits for a playable match and a ready game event bus before starting. Replay mode is not an automation target.
+
+### Controls
+
+- **Alt + Shift + P** — pause/resume.
+- **Alt + Shift + X** — disable the bot and automatic start.
+- Use the in-game panel for strategy preferences, diagnostics, evidence mode and optional Duo settings.
+
+### Optional local Duo mode
+
+Run `Start_Live_Duo.bat` with **Node.js 24+** installed, then enable Duo in two separate browser instances in the same game with the same room code. The relay listens only on `127.0.0.1:8767`; it does not replace in-game alliance validation or action safety checks.
+
+See [Local Duo](docs/LOCAL_DUO.md) and [Local monitor](docs/LIVE_MONITOR.md) for details.
+
+## Development and validation
+
+Node.js 24 is recommended for the build and regression tools:
 
 ```sh
 node tools/build-userscript.cjs --check
@@ -33,4 +52,16 @@ node tests/scenario-pack-regression.cjs
 node tests/benchmark-regression.cjs
 ```
 
-Offene Abnahmen aus [Issue #12](https://github.com/SLP-DEV1/openfront-bot/issues/12) bleiben als solche markiert; ein grüner CI-Lauf belegt nicht automatisch bessere Gegnerleistung.
+The scripts are generated from `src/userscript/` and supporting runtime modules. Run `node tools/build-userscript.cjs --write` when editing canonical userscript source.
+
+More information: [Benchmarks](docs/BENCHMARKS.md), [Neural training](docs/NEURAL_TRAINING.md), [Current development roadmap](docs/COMPETITIVE_ROADMAP.md), and [Issues](https://github.com/SLP-DEV1/openfront-bot/issues).
+
+## Privacy and responsible use
+
+- Do **not** commit diagnostic ZIPs, private replay exports, access tokens, cookies, credentials or local profile/configuration files.
+- Logs and diagnostic exports can contain match IDs, player identifiers or other personal information. Review and anonymize all artifacts before sharing.
+- Keep the local monitor and Duo relay bound to loopback; do not expose their ports to the internet.
+- Publishing a repository does **not** remove sensitive content from past commits or forks. See [Security policy](SECURITY.md).
+- Follow OpenFront's applicable rules and terms. Automation in online matches may not be permitted.
+
+This repository includes experimental research and historical benchmark reports. Interpret their results in context; they are not guarantees of performance.

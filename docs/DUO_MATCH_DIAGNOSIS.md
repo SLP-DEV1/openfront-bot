@@ -1,7 +1,7 @@
-# Match cxBz9Y1WCZ — SPK/Kitsu follow-up
+# Match [redacted duo match] — Player A/Player B follow-up
 
-Based on the two user-provided diagnostic V2 ZIPs (SPK eliminated tick
-5165; Kitsu eliminated tick 6446). This patch changes the bot only at
+Based on the two user-provided diagnostic V2 ZIPs (Player A eliminated tick
+5165; Player B eliminated tick 6446). This patch changes the bot only at
 existing safety/legality gates. Do not infer that the changes are proven to
 win until actual paired browser matches are compared.
 
@@ -58,9 +58,9 @@ a multiplayer win or a causal neural benefit.
 The following diagnoses are **not Duo Relay matches**, and must not be
 combined into one replay or evaluated as a Ranked 2v2 outcome.
 
-| Evidence | Match `dZK7W1CkfP` | Match `drYuPivuTv` |
+| Evidence | Match `Team match A` | Match `Team match B` |
 | --- | ---: | ---: |
-| SPK player ID | `yuggtdvo` | `19jik396` |
+| Player A player ID | `[redacted player ID A]` | `[redacted player ID B]` |
 | Own elimination | tick 7015 | tick 3581 |
 | Peak snapshot territory | 62,969 | 53,075 |
 | Last observed attack command | tick 1760 | tick 2377 |
@@ -70,7 +70,7 @@ combined into one replay or evaluated as a Ranked 2v2 outcome.
 | Event journal | 3416/3416, complete | 1893/1893, complete |
 
 Both were Public Team games at Medium difficulty, one bot
-per browser. `dZK7W1CkfP` used Las Vegas Strip and `drYuPivuTv`
+per browser. `Team match A` used Las Vegas Strip and `Team match B`
 used Giant World Map; neither may be treated as a same-map controlled
 comparison. Both had `duoEnabled=false`, empty `duo.jsonl`, and both exports ended
 with **own player eliminated / team outcome unknown**. A configured
@@ -81,11 +81,11 @@ enabled schema-4 policy, 1000 weights, fingerprint
 
 ### Evidence that changes the existing priorities
 
-- **P0: non-Duo offensive stagnation.** In `dZK7W1CkfP` territory remained
+- **P0: non-Duo offensive stagnation.** In `Team match A` territory remained
   62,969 across snapshots from ~2967 to ~4994. No attack command followed
   tick 1760, despite periods of >2 million home troops; observed
   `attack_block_report` repeatedly lists `war-lock` and `low-home-ratio`.
-  In `drYuPivuTv`, the last command was tick 2377; before the large invasion
+  In `Team match B`, the last command was tick 2377; before the large invasion
   reports list `war-lock` and `insufficient-available`. Do not interpret
   this as proof that a proposed attack was safe. Implement an explicit
   **offense-stagnation director**: track opponent focus, independent attack
@@ -99,11 +99,11 @@ enabled schema-4 policy, 1000 weights, fingerprint
 
 - **P0: transport lifecycle, cancelled targets and long routes.** Seven ships
   were observed and then classified `boat_unresolved` with zero confirmed
-  landings in `dZK7W1CkfP`. The journal separately contains **four**
+  landings in `Team match A`. The journal separately contains **four**
   `cancelBoat` intents because their targets became allied; several occur
   near unresolved ships. These events lack a proven one-to-one ship/action
   link, so **do not count all seven as sunk or all four as confirmed
-  cancellations**. One other boat in `drYuPivuTv` was still en route at
+  cancellations**. One other boat in `Team match B` was still en route at
   elimination (estimated arrival tick 4030, elimination tick 3581).
   Carry transport actionId/shipId through cancellation intent, observed
   cancellation or missing vessel, destination ownership, ETA and beachhead.
@@ -113,9 +113,9 @@ enabled schema-4 policy, 1000 weights, fingerprint
   opportunity cost of stranded troops. Regression: ally cancellation is
   labelled `cancelled` only after receipt; unseen ship remains `unknown`.
 
-- **P0: earlier solo-Team survival/recovery.** `drYuPivuTv` already had
+- **P0: earlier solo-Team survival/recovery.** `Team match B` already had
   1.96m incoming at tick 3178 while owning ~50.6k land and ~2.04m home;
-  by tick 3421 only ~4.7k land and ~248k home remained. `dZK7W1CkfP`
+  by tick 3421 only ~4.7k land and ~248k home remained. `Team match A`
   first recorded a 3780-land loss at tick 5106 and eventually lost its own
   core. Extend the survival director beyond Duo: short-horizon incoming
   ratio, territory/structure loss and opponent fronts must trigger a
