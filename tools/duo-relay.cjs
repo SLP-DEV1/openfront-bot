@@ -36,7 +36,7 @@ function exchange(v,now=Date.now()){
 }
 function allowed(origin){return typeof origin==='string'&&/^https:\/\/(?:[a-z0-9-]+\.)*openfront\.io$/i.test(origin);}
 function createServer(){return http.createServer((req,res)=>{
-  if(req.method==='GET'&&req.url==='/health'){res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}).end(JSON.stringify({ok:true,service:'AggroBot Duo Relay',version:'1.21.6'}));return;}
+  if(req.method==='GET'&&req.url==='/health'){res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}).end(JSON.stringify({ok:true,service:'AggroBot Duo Relay',version:'1.21.7'}));return;}
   const origin=req.headers.origin;if(!allowed(origin)){console.warn('[AggroBot Duo] Browser-Ursprung abgewiesen:',origin||'ohne Origin');res.writeHead(403,{'Content-Type':'application/json','Cache-Control':'no-store'}).end('{"error":"origin-denied"}');return;}
   const headers={'Access-Control-Allow-Origin':origin,'Vary':'Origin','Access-Control-Allow-Methods':'POST,OPTIONS','Access-Control-Allow-Headers':'Content-Type','Access-Control-Allow-Private-Network':'true','Cache-Control':'no-store','Content-Type':'application/json'};
   if(req.method==='OPTIONS'){console.log('[AggroBot Duo] Browser fragt nach lokalem Netzwerkzugriff:',origin);res.writeHead(204,headers).end();return;}
@@ -55,5 +55,5 @@ function createServer(){return http.createServer((req,res)=>{
     res.writeHead(result.status,headers).end(JSON.stringify(result.body));
   });
 });}
-if(require.main===module){const server=createServer();server.listen(port,host,()=>console.log('[AggroBot Duo] v1.21.6 · Nur lokal: http://'+host+':'+server.address().port+' · Test: http://'+host+':'+server.address().port+'/health · STRG+C stoppt den Relay.'));}
+if(require.main===module){const server=createServer();server.listen(port,host,()=>console.log('[AggroBot Duo] v1.21.7 · Nur lokal: http://'+host+':'+server.address().port+' · Test: http://'+host+':'+server.address().port+'/health · STRG+C stoppt den Relay.'));}
 module.exports={createServer,validate,exchange,rooms,trim,allowed,TTL,MAX_BODY};
