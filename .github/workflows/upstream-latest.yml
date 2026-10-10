@@ -1,0 +1,62 @@
+name: Latest OpenFront Compatibility (Daily)
+on:
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/upstream-latest.yml'
+      - 'tools/benchmark/engine-layout.cjs'
+      - 'tools/benchmark/engine-match.mjs'
+      - 'tools/benchmark/engine-multibot.mjs'
+      - 'tools/benchmark/verify-upstream-run.cjs'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  latest-upstream:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Clone official latest upstream
+        run: |
+          git clone --depth 1 https://github.com/openfrontio/OpenFrontIO.git ../OpenFrontIO
+          git -C ../OpenFrontIO rev-parse HEAD > upstream-head.txt
+          echo "Latest official OpenFront commit: $(cat upstream-head.txt)" >> "$GITHUB_STEP_SUMMARY"
+          cd ../OpenFrontIO
+          npm install --global npm@12.1.0
+          npm ci
+      - name: Check official engine and bot interface
+        run: |
+          node tests/upstream-engine-layout-regression.cjs
+          node tests/winner-outcome-regression.cjs
+          node tools/benchmark/engine-capacity-smoke.mjs --engine ../OpenFrontIO --engineCommit "$(cat upstream-head.txt)"
+      - name: Test live engine intents and victory outcomes
+        run: |
+          node tools/benchmark/engine-match.mjs \
+            --engine ../OpenFrontIO --engineCommit "$(cat upstream-head.txt)" \
+            --map World --size Compact --difficulty Impossible \
+            --bots 0 --nations 2 --seed daily-latest-001 \
+            --ticks 1600 --out "${{ runner.temp }}/upstream-latest-single"
+          node tools/benchmark/verify-upstream-run.cjs \
+            "${{ runner.temp }}/upstream-latest-single/match.json" \
+            "$(cat upstream-head.txt)" OpenFront_Solo_AggroBot.user.js 1
+      - name: Preserve commit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: latest-openfront-compat-${{ github.run_id }}
+          path: |
+            upstream-head.txt
+            ${{ runner.temp }}/upstream-latest-single/
+          if-no-files-found: ignore
+          retention-days: 14
