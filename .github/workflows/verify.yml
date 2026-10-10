@@ -69,6 +69,8 @@ jobs:
         run: |
           node tests/duo-match-key-regression.cjs
           node tests/ui-interval-regression.cjs
+      - name: Verify browser panel avoids redundant DOM writes
+        run: node tests/panel-redraw-regression.cjs
       - name: Verify experiment manifest provenance
         run: |
           node --check tools/benchmark/experiment-manifest.cjs
