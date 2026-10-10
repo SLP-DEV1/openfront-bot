@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OpenFront Solo AggroBot
 // @namespace    https://openfront.io/
-// @version      1.21.6
+// @version      1.21.7
 // @description  OpenFront autopilot for Singleplayer, Public and Private games; economy, combat, nukes, defense and diplomacy.
 // @match        https://openfront.io/*
 // @match        https://*.openfront.io/*
@@ -14,7 +14,7 @@
   if (window.__ofSoloAggroBot1111) return;
   window.__ofSoloAggroBot1111 = true;
 
-  const VERSION = '1.21.6', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
+  const VERSION = '1.21.7', PREFIX = '[Solo AggroBot]', KEY = 'of-solo-aggrobot-v1111';
   const defaults = {enabled:false, autoStart:true, learningEnabled:true, fullAuto:true, aggressive:85, reserve:35, actionsPerMinute:72,
     economy:true, boats:true, autoSpawn:true, defense:true, stopOnError:false,
     upgrades:true, plan:'Adaptiv', safeMode:true, maxTargets:16, buildStyle:'Ausgewogen',
@@ -8790,6 +8790,9 @@ function predict(model,input){
     }
     return text;
   }
+  // Skip expensive DOM replacement when telemetry and controls have not changed.
+  // Still build the snapshot to catch any changed visible state.
+  let lastPanelMarkup=null;
   function paint() {
     const enHTML=value=>escapeHTML(translateMenuText(value));
     if(!document.body)return;if(!panel)mount();
@@ -8803,7 +8806,7 @@ function predict(model,input){
     const openFor=key=>expanded[key]?' open':'';
     const sectionStyle='border:1px solid #354d66;border-radius:6px;margin-top:6px;padding:5px 7px';
     const b=(key,label)=>`<button data-key="${key}" style="border:1px solid #779;border-radius:5px;color:#fff;background:${opts[key]?'#167247':'#344157'};padding:5px 7px;margin:2px;cursor:pointer">${label}</button>`;
-    panel.innerHTML=`<b style="font-size:14px;color:#83dcff">AggroBot ${VERSION}</b> ${permittedMatch(game)?'🟢':'🔒'}
+    const nextMarkup=`<b style="font-size:14px;color:#83dcff">AggroBot ${VERSION}</b> ${permittedMatch(game)?'🟢':'🔒'}
       <div style="color:#bed5e8;margin:6px 0">${enHTML(status)}</div>
       ${game?.inSpawnPhase?.()?'<div style="color:#9bd0e4">Strategic spawn: '+
         enHTML(spawnState.phase)+' · checked '+spawnState.scanned+
@@ -8906,6 +8909,10 @@ function predict(model,input){
       <button data-key="export" style="border:1px solid #73acdd;border-radius:5px;background:#235078;color:white;padding:5px 7px;cursor:pointer">📄 Export diagnostic JSON</button>
       </details>
       <div style="color:#97a8be;font-size:10px;margin-top:8px">Single-player, public and private matches supported · replays disabled · one auto-start per match · pause until match change · Alt+Shift+P start/pause · Alt+Shift+X emergency stop (auto-start OFF).<br>When running Spawn Advisor, disable its auto-spawn, smart attack and auto-accept alliances.</div>`;
+    if(nextMarkup!==lastPanelMarkup){
+      panel.innerHTML=nextMarkup;
+      lastPanelMarkup=nextMarkup;
+    }
   }
   document.addEventListener('keydown',e=>{
     if(!e.altKey||!e.shiftKey||!['p','x'].includes(e.key.toLowerCase())||e.repeat||e.target?.isContentEditable||

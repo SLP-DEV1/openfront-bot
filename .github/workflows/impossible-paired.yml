@@ -50,6 +50,9 @@ jobs:
             --maps World,Europe --size Compact --nations 4 --bots 0 \
             --seeds impossible-101,impossible-102 --ticks 18000 \
             --out benchmark-results/impossible-paired-ci
+      - name: Summarize land, economy opening and first-attack differences
+        if: success()
+        run: node tools/benchmark/matrix-diagnostics.cjs benchmark-results/impossible-paired-ci/matrix.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -69,6 +69,8 @@ jobs:
         run: |
           node tests/duo-match-key-regression.cjs
           node tests/ui-interval-regression.cjs
+      - name: Verify browser panel avoids redundant DOM writes
+        run: node tests/panel-redraw-regression.cjs
       - name: Verify experiment manifest provenance
         run: |
           node --check tools/benchmark/experiment-manifest.cjs
@@ -79,6 +81,10 @@ jobs:
           node --check OpenFront_Solo_AggroBot.user.js
           node --check OpenFront_AggroBot_Impossible_Run3.user.js
           node --check tests/strategy-regression.cjs
+      - name: Test paired Impossible opening diagnostics
+        run: |
+          node --check tools/benchmark/matrix-diagnostics.cjs
+          node tests/matrix-diagnostics-regression.cjs
       - name: Test browser finish persistence
         run: node tests/browser-finish-regression.cjs
       - name: Test diagnostic v2 journal and Duo event capture

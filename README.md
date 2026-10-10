@@ -5,10 +5,10 @@
 An experimental **OpenFront bot and Tampermonkey userscript** that handles expansion, economy, warfare, naval operations, defense, and diplomacy — with optional neural strategy models and local Duo coordination.
 
 [![Star this project](https://img.shields.io/badge/Star-this%20project-181717?style=for-the-badge&logo=github)](https://github.com/SLP-DEV1/openfront-bot)
-[![Public Preview](https://img.shields.io/badge/Download-v1.21.6-blue?style=for-the-badge&logo=github)](https://github.com/SLP-DEV1/openfront-bot/releases/tag/v1.21.6)
+[![Public Preview](https://img.shields.io/badge/Download-v1.21.7-blue?style=for-the-badge&logo=github)](https://github.com/SLP-DEV1/openfront-bot/releases/tag/v1.21.7)
 [![Userscript](https://img.shields.io/badge/platform-Tampermonkey-orange?style=for-the-badge)](https://www.tampermonkey.net/)
 
-**[Download v1.21.6](https://github.com/SLP-DEV1/openfront-bot/releases/tag/v1.21.6)** · **[Get started](#-quick-start)** · **[Explore features](#-what-can-it-do)** · **[How it works](#-built-for-tinkering)** · **[Report a bug or suggest a feature](https://github.com/SLP-DEV1/openfront-bot/issues)**
+**[Download v1.21.7](https://github.com/SLP-DEV1/openfront-bot/releases/tag/v1.21.7)** · **[Get started](#-quick-start)** · **[Explore features](#-what-can-it-do)** · **[How it works](#-built-for-tinkering)** · **[Report a bug or suggest a feature](https://github.com/SLP-DEV1/openfront-bot/issues)**
 
 > ⭐ **Enjoy experimenting with AggroBot? [Star this repository](https://github.com/SLP-DEV1/openfront-bot) to support its development and help other OpenFront players discover it.**
 
@@ -31,12 +31,12 @@ The bot is an **experiment, not a guaranteed win button**: neural features are r
 **No Node.js setup is required to install the normal browser userscript.**
 
 1. Install [Tampermonkey](https://www.tampermonkey.net/) in your browser.
-2. Choose **one** script below from the **[v1.21.6 public preview](https://github.com/SLP-DEV1/openfront-bot/releases/tag/v1.21.6)**. Download the file and import it into Tampermonkey, or paste its complete contents into a new Tampermonkey script:
+2. Choose **one** script below from the **[v1.21.7 public preview](https://github.com/SLP-DEV1/openfront-bot/releases/tag/v1.21.7)**. Download the file and import it into Tampermonkey, or paste its complete contents into a new Tampermonkey script:
 
    | Script | Best for |
    | --- | --- |
-   | **[Download OpenFront Solo AggroBot](https://github.com/SLP-DEV1/openfront-bot/releases/download/v1.21.6/OpenFront_Solo_AggroBot.user.js)** | Standard automation and customizable strategy settings |
-   | **[Download Impossible Run3 Neural](https://github.com/SLP-DEV1/openfront-bot/releases/download/v1.21.6/OpenFront_AggroBot_Impossible_Run3.user.js)** | Experimental variant with the fixed, bundled Schema 4 champion model |
+   | **[Download OpenFront Solo AggroBot](https://github.com/SLP-DEV1/openfront-bot/releases/download/v1.21.7/OpenFront_Solo_AggroBot.user.js)** | Standard automation and customizable strategy settings |
+   | **[Download Impossible Run3 Neural](https://github.com/SLP-DEV1/openfront-bot/releases/download/v1.21.7/OpenFront_AggroBot_Impossible_Run3.user.js)** | Experimental variant with the fixed, bundled Schema 4 champion model |
 
 3. Save the script, open **[openfront.io](https://openfront.io/)**, and enter a playable match.
 4. Use the in-game AggroBot panel to control the autopilot.
@@ -82,7 +82,7 @@ node tests/benchmark-regression.cjs
 
 Edit the modules in `src/userscript/` rather than editing generated scripts directly. Rebuild the standard script with `node tools/build-userscript.cjs --write` and the Run3 bundle with `node tools/build-run3-bundle.cjs --write`.
 
-The reviewed Run3 Schema 4 model is kept at `trainer/run3-champion.json`. Historical raw training datasets and bulk benchmark outputs are intentionally excluded from the public source tree. Some regression suites may currently fail; check [GitHub Actions](https://github.com/SLP-DEV1/openfront-bot/actions) for the latest results rather than assuming a green build.
+The reviewed Run3 Schema 4 model is kept at `trainer/run3-champion.json`. Historical raw training datasets and bulk benchmark outputs are intentionally excluded from the public source tree. Always check [GitHub Actions](https://github.com/SLP-DEV1/openfront-bot/actions) for the latest CI status. The pinned compatibility suite verifies reproducibility; the separate [daily latest-upstream check](.github/workflows/upstream-latest.yml) detects new OpenFront engine/API changes.
 
 **Technical docs:** [Benchmarks](docs/BENCHMARKS.md) · [Neural training](docs/NEURAL_TRAINING.md) · [Experiment protocol](docs/EXPERIMENT_PROTOCOL.md) · [Diagnostics](docs/DIAGNOSTIC_V2.md)
 
