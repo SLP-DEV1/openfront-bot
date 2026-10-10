@@ -5,7 +5,10 @@
 // match as complete. This prevents tick-limited smokes from fabricating wins.
 function winnerOutcome(winner,player){
   if(winner==null)return 'incomplete';
-  if(!Array.isArray(winner)||winner.length!==2||typeof winner[1]!=='string')
+  // Team winners include a variable-length list of winning ClientIDs.
+  // Player winner tuples are exactly two elements; reject malformed extras.
+  if(!Array.isArray(winner)||winner.length<2||typeof winner[1]!=='string'||
+    (winner[0]==='player'&&winner.length!==2))
     return 'unknown';
   if(!player)return 'unknown';
   if(winner[0]==='player')

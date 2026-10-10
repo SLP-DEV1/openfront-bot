@@ -15,6 +15,13 @@ assert.deepEqual(members.map(p=>winnerOutcome(['team','blue'],p)),
   ['victory','victory','defeat','defeat'],'first 2v2 team wins');
 assert.deepEqual(members.map(p=>winnerOutcome(['team','red'],p)),
   ['defeat','defeat','victory','victory'],'opposing 2v2 team wins');
+// Real GameImpl.makeWinner(team) appends every winning human ClientID.
+assert.deepEqual(members.map(p=>winnerOutcome(['team','blue','aggrobot1','aggrobot2'],p)),
+  ['victory','victory','defeat','defeat'],'real official team winner tuple');
+assert.deepEqual(members.map(p=>winnerOutcome(['team','red','aggrobot3','aggrobot4'],p)),
+  ['defeat','defeat','victory','victory'],'real opponent team winner tuple');
+assert.equal(winnerOutcome(['player','aggrobot2','unexpected'],members[1]),'unknown',
+  'malformed single-player winner tuple is rejected');
 assert.deepEqual(members.map(p=>winnerOutcome(undefined,p)),
   ['incomplete','incomplete','incomplete','incomplete'],'no fabricated winner');
 assert.equal(winnerOutcome(['team','blue'],player('aggrobot1',null)),
@@ -31,7 +38,7 @@ applyEngineOutcome(local,{player:members[0],tick:500,land:100,spawned:true});
 assert.equal(local.gameEnd,undefined,'censored tick limit must not claim a victory');
 assert.equal(local.botReportedGameEnd.outcome,'victory','preserve heuristic as diagnostic');
 const verified={gameEnd:{outcome:'victory',source:'userscript'}};
-applyEngineOutcome(verified,{hasWinUpdate:true,winner:['team','red'],
+applyEngineOutcome(verified,{hasWinUpdate:true,winner:['team','red','aggrobot3','aggrobot4'],
   player:members[0],tick:500,land:100,spawned:true});
 assert.equal(verified.gameEnd.outcome,'defeat','engine result overrides local guess');
 assert.equal(verified.gameEnd.source,'engine-WinUpdate');

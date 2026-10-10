@@ -47,10 +47,15 @@
   // Presentation-only readout. No planner or intent consumes this state.
   /* __EVIDENCE_PANEL_STATE__ */
   // Presentation-only translation: stored strategy enum values remain unchanged.
-  const MENU_STATUS_TRANSLATIONS=[["Warte auf Spiel","Waiting for a match"],["Singleplayer erkannt","Single-player detected"],["Multiplayer erkannt","Multiplayer detected"],["Autostart wartet auf EventBus","auto-start waiting for EventBus"],["Bot bereit","Bot ready"],["Replay · BOT GESPERRT","Replay · BOT DISABLED"],["Verteidigung vor Investitionen","Defense before investing"],["Erste Stadt/Fabrik","First City/Factory"],["SAM-Schutz vor Raketenfonds","SAM defense before missile savings"],["Truppenlimit: Stadt/City-Upgrade oder Landgewinn priorisiert","Troop cap: prioritize City upgrades or territory"],["Hafen vor Silo","Port before silo"],["Zwei Städte und zwei Fabriken","Two Cities and two Factories"],["Wirtschaft & Offensive","Economy & offense"],["Keine legalen Bauoptionen im geprüften Gebiet","No legal building options in inspected area"],["Baukandidaten durch Priorität oder Reserve gesperrt","Build choices blocked by priority or reserve"],["Gold für Bauoption fehlt; Standort noch ungeprüft","Not enough gold for construction; site not yet verified"],["Spare auf ersten Kernbau:","Saving for first core building:"],["Spare auf SAM:","Saving for SAM:"],["Warte auf","Waiting for"],["Keine","No"],["keine","none"],["Verteidigung","Defense"],["Wirtschaft","Economy"],["Hafen","Port"],["Stadt","City"],["Truppen","Troops"],["Angriff","Attack"],["Gegner","Opponent"],["Bündnis","Alliance"],["bestätigt","confirmed"],["unbestätigt","unconfirmed"],["ausstehend","pending"],["unbekannt","unknown"],["bereit","ready"],["aktiv","active"],["Defensiv","Defensive"],["Ausgewogen","Balanced"],["Adaptiv","Adaptive"],["Ökonomie","Economy"]];
+  const MENU_STATUS_TRANSLATIONS=[["Warte auf Spiel","Waiting for a match"],["Singleplayer erkannt","Single-player detected"],["Multiplayer erkannt","Multiplayer detected"],["Autostart wartet auf EventBus","auto-start waiting for EventBus"],["Bot bereit","Bot ready"],["Replay · BOT GESPERRT","Replay · BOT DISABLED"],["Verteidigung vor Investitionen","Defense before investing"],["Erste Stadt/Fabrik","First City/Factory"],["SAM-Schutz vor Raketenfonds","SAM defense before missile savings"],["Truppenlimit: Stadt/City-Upgrade oder Landgewinn priorisiert","Troop cap: prioritize City upgrades or territory"],["Hafen vor Silo","Port before silo"],["Zwei Städte und zwei Fabriken","Two Cities and two Factories"],["Wirtschaft & Offensive","Economy & offense"],["Keine legalen Bauoptionen im geprüften Gebiet","No legal building options in inspected area"],["Baukandidaten durch Priorität oder Reserve gesperrt","Build choices blocked by priority or reserve"],["Gold für Bauoption fehlt; Standort noch ungeprüft","Not enough gold for construction; site not yet verified"],["Spare auf ersten Kernbau:","Saving for first core building:"],["Spare auf SAM:","Saving for SAM:"],["Warte auf","Waiting for"],["Keine","No"],["keine","none"],["Verteidigung","Defense"],["Wirtschaft","Economy"],["Hafen","Port"],["Stadt","City"],["Truppen","Troops"],["Angriff","Attack"],["Gegner","Opponent"],["Bündnis","Alliance"],["bestätigt","confirmed"],["unbestätigt","unconfirmed"],["ausstehend","pending"],["unbekannt","unknown"],["bereit","ready"],["aktiv","active"],["Defensiv","Defensive"],["Ausgewogen","Balanced"],["Adaptiv","Adaptive"],["Ökonomie","Economy"],["Warte auf Spielzustand","Waiting for game state"],["Warte auf Silo","Waiting for missile silo"],["Bauplanung bereit","Construction planner ready"],["Noch keine Anfrage","No alliance requests yet"],["Keine Bedrohung","No threats detected"],["Keine Marineaktivität","No naval activity"],["Handel automatisch offen","Trade automatically available"],["Gebäudeziele erreicht","Building targets reached"],["Grundaufbau","Initial construction"],["Startphase","Opening phase"],["Neue Partie","New match"],["Neue Singleplayer-Partie","New single-player match"],["Neue Multiplayer-Partie","New multiplayer match"],["Warte auf Spawn","Waiting for spawn"],["Spare:","Saving:"],["Not-Aus","Emergency stop"]];
   function translateMenuText(value) {
     let text=String(value??'');
-    for(const [from,to] of MENU_STATUS_TRANSLATIONS)text=text.replaceAll(from,to);
+    // Longest phrases first, then only whole words/phrases. This prevents
+    // e.g. 'Warte auf Spielzustand' -> 'Waiting for a matchzustand'.
+    for(const [from,to] of MENU_STATUS_TRANSLATIONS.slice().sort((a,b)=>b[0].length-a[0].length)){
+      const escaped=from.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+      text=text.replace(new RegExp('(?<![\\p{L}])'+escaped+'(?![\\p{L}])','gu'),to);
+    }
     return text;
   }
   function paint() {
@@ -138,7 +143,7 @@
           number(()=>game?.ticks?.(),-1),actionLedger,economyBudgetEvidence);
         const a=e.alternative;
         return '<div style="color:#a9efc9">Rejected alternative: '+
-          enHTML(a?a.id+' · utility '+a.utility+' · '+a.reason:'noch none Rangliste')+'</div>'+
+          enHTML(a?a.id+' · utility '+a.utility+' · '+a.reason:'no ranked alternatives')+'</div>'+
           '<div style="color:#9bd0e4">Reserve reason: '+enHTML(e.reserveReason)+
           ' · worker age: '+(e.workerAge===null?'unknown':e.workerAge+' Ticks')+
           (e.workerStale?' (stale/uncertain)':'')+'</div>'+
@@ -183,19 +188,34 @@
     persist();lastPaint=0;paint();
   });
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',paint,{once:true});
-  const interval=setInterval(step,400);
+  // Catch both synchronous and asynchronous failures before they escape
+  // timer callbacks as unhandled promise rejections.
+  function runIntervalTask(task,label){
+    Promise.resolve().then(task).catch(e=>{
+      errors++;
+      status='Runtime error ('+label+'): '+String(e?.message||e).slice(0,90);
+      console.warn(PREFIX,label+' interval error:',e);
+      if((opts.stopOnError||opts.safeMode)&&errors>=5){
+        opts.enabled=false;generation++;autoStartGame=game;persist();
+        status='Emergency stop: 5 runtime errors';
+      }
+      lastPaint=0;
+      try{paint();}catch(paintError){console.warn(PREFIX,'Panel error:',paintError);}
+    });
+  }
+  const interval=setInterval(()=>runIntervalTask(step,'main'),400);
   // DonateEvent exists only in the current GameView update. Sample frequently
   // instead of relying exclusively on the 400 ms planner cycle (which can
   // skip a donation update). Background-tab throttling can still miss one.
   const donationInterval=setInterval(()=>{
     if(opts.enabled&&game&&permittedMatch(game))diagnosticDonationUpdates();
   },90);
-  const economyInterval=setInterval(economyStep,750);
+  const economyInterval=setInterval(()=>runIntervalTask(economyStep,'economy'),750);
   const diplomacyInterval=setInterval(diplomacyTick,950);
   const tradeInterval=setInterval(()=>{tradeTick().catch(e=>{
     tradeStatus='Trade: '+String(e?.message||e).slice(0,75);
   });},1250);
-  const nukeInterval=setInterval(nukeStep,1100);
+  const nukeInterval=setInterval(()=>runIntervalTask(nukeStep,'nuclear'),1100);
   const duoInterval=setInterval(()=>{duoPublish().catch(e=>{
     duoLocal.status='Relay error: '+String(e?.message||e).slice(0,55);
   });},950);

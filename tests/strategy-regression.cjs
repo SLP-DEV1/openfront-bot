@@ -43,6 +43,8 @@ function boot(benchmarkOptions={}) {
     isUnitDisabled: () => false, samRange: () => 70
   };
   const game = {
+    // Test fixture models the official GameView, including its match identity.
+    gameID: () => 'strategy-regression-match',
     config: () => config, myPlayer: () => me, ticks: () => tick,
     gameOver: () => gameOver, playerViews: () => [me, weak, strong],
     units: () => [], inSpawnPhase: () => false,

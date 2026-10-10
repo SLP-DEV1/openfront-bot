@@ -65,6 +65,10 @@ jobs:
           node --check tools/duo-relay.cjs
           node tests/duo-relay-regression.cjs
           node tests/duo-relay-oversize-regression.cjs
+      - name: Test true Duo game identity, English panel and guarded async timers
+        run: |
+          node tests/duo-match-key-regression.cjs
+          node tests/ui-interval-regression.cjs
       - name: Verify experiment manifest provenance
         run: |
           node --check tools/benchmark/experiment-manifest.cjs
