@@ -1,0 +1,54 @@
+name: Publish AggroBot v1.21.7
+on:
+  workflow_run:
+    workflows: ["Verify AggroBot"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-openfront-v1-21-7
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Verify release files match the successful commit
+        run: |
+          set -euo pipefail
+          test -s release-notes/v1.21.7.md
+          grep -qE '^// @version[[:space:]]+1\.21\.7$' OpenFront_Solo_AggroBot.user.js
+          grep -qE '^// @version[[:space:]]+1\.21\.7$' OpenFront_AggroBot_Impossible_Run3.user.js
+          node --check OpenFront_Solo_AggroBot.user.js
+          node --check OpenFront_AggroBot_Impossible_Run3.user.js
+          node tools/build-userscript.cjs --check
+          node tools/build-run3-bundle.cjs --check
+      - name: Publish official v1.21.7 pre-release once
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view v1.21.7 >/dev/null 2>&1; then
+            echo 'Release v1.21.7 already exists; avoiding duplicate.'
+            exit 0
+          fi
+          gh release create v1.21.7 \
+            OpenFront_Solo_AggroBot.user.js \
+            OpenFront_AggroBot_Impossible_Run3.user.js \
+            --title 'OpenFront AggroBot v1.21.7 — Stability & Monitoring' \
+            --notes-file release-notes/v1.21.7.md \
+            --target "${GITHUB_SHA}" \
+            --prerelease \
+            --latest=false
