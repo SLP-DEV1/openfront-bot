@@ -1934,7 +1934,8 @@ function predict(model,input){
   // each match. The relay discovers the current one for this room.
   function duoConfigured(){
     const own=safeID(myPlayer());
-    return opts.duoEnabled&&
+    const matchId=game?.gameID?.();
+    return opts.duoEnabled&&typeof matchId==='string'&&matchId.length>0&&
       /^[a-zA-Z0-9_-]{6,64}$/.test(opts.duoRoom||'')&&duoID(own);
   }
   function duoPartnerID(){
@@ -1942,9 +1943,11 @@ function predict(model,input){
   }
   function duoMatchKey(){
     const cfg=game?.config?.().gameConfig?.()||{},loc=window.location||{};
-    const seed=cfg.seed??cfg.gameID??cfg.gameId??'unknown';
-    return ['v2',cfg.gameType??'unknown',cfg.gameMap??'unknown',
-      cfg.gameMapSize??'unknown',cfg.gameMode??'unknown',seed,
+    // GameConfig does not carry the live game's identifier. Distinct lobbies
+    // can share map, mode, path and seed; GameView.gameID() is authoritative.
+    const matchId=String(game?.gameID?.()??'unknown');
+    return ['v3',matchId,cfg.gameType??'unknown',cfg.gameMap??'unknown',
+      cfg.gameMapSize??'unknown',cfg.gameMode??'unknown',
       loc.pathname||'/'].join('|')
       .replace(/[^a-zA-Z0-9_.:@|,-]/g,'_').slice(0,260);
   }
