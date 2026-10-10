@@ -49,6 +49,6 @@ jobs:
             OpenFront_AggroBot_Impossible_Run3.user.js \
             --title 'OpenFront AggroBot v1.21.7 — Stability & Monitoring' \
             --notes-file release-notes/v1.21.7.md \
-            --target "${GITHUB_SHA}" \
+            --target "$(git rev-parse HEAD)" \
             --prerelease \
             --latest=false
