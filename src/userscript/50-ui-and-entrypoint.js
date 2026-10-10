@@ -53,7 +53,7 @@
     // Longest phrases first, then only whole words/phrases. This prevents
     // e.g. 'Warte auf Spielzustand' -> 'Waiting for a matchzustand'.
     for(const [from,to] of MENU_STATUS_TRANSLATIONS.slice().sort((a,b)=>b[0].length-a[0].length)){
-      const escaped=from.replace(/[.*+?^${}()|[\]\\]/g,'\\for(const [from,to] of MENU_STATUS_TRANSLATIONS)text=text.replaceAll(from,to);');
+      const escaped=from.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
       text=text.replace(new RegExp('(?<![\\p{L}])'+escaped+'(?![\\p{L}])','gu'),to);
     }
     return text;
